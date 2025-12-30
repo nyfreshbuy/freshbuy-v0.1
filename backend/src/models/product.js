@@ -1,5 +1,4 @@
-// backend/src/models/Product.js
-import mongoose from "mongoose";
+// backend/src/models/product.jsimport mongoose from "mongoose";
 
 const productSchema = new mongoose.Schema(
   {

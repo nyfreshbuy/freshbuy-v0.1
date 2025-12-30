@@ -2,7 +2,7 @@
 // 前台首页专区：家庭必备 / 畅销 / 新品 / 周五爆品日（MongoDB版）
 
 import express from "express";
-import Product from "../models/Product.js";
+import Product from "../models/product.js";
 import FlashSale from "../models/FlashSale.js"; // ✅ 需要你有这个模型（没有就看下面注释说明）
 
 const router = express.Router();

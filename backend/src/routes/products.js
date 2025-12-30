@@ -2,7 +2,7 @@
 // 在鲜购拼好货 · 通用商品接口（MongoDB 版，保持原返回结构 success/list/total）
 
 import express from "express";
-import Product from "../models/Product.js";
+import Product from "../models/product.js";
 import { toClient, toClientList } from "../utils/toClient.js";
 const router = express.Router();
 

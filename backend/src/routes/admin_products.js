@@ -16,7 +16,7 @@ import fs from "fs";
 import multer from "multer";
 import { fileURLToPath } from "url";
 
-import Product from "../models/Product.js";
+import Product from "../models/product.js";
 import ProductPurchaseBatch from "../models/ProductPurchaseBatch.js";
 import { toClient, toClientList } from "../utils/toClient.js";
 const router = express.Router();

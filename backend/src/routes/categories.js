@@ -3,7 +3,7 @@
 // 提供：GET /api/categories
 
 import express from "express";
-import Product from "../models/Product.js";
+import Product from "../models/product.js";
 
 const router = express.Router();
 router.use(express.json());

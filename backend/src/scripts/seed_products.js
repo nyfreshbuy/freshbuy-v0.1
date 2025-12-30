@@ -2,7 +2,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 import { connectDB } from "../db.js";
-import Product from "../models/Product.js";
+import Product from "../models/product.js";
 import { products } from "../data/products.js";
 
 function asNum(v, d = null) {
