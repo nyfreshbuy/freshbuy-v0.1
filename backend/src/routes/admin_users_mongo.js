@@ -2,7 +2,7 @@
 import express from "express";
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
-import User from "../models/User.js";
+import User from "../models/user.js";
 console.log("✅ admin_users_mongo.js 已加载");
 const router = express.Router();
 router.use(express.json()); // ✅ 关键：支持 PATCH/POST JSON body

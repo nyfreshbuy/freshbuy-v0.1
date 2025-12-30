@@ -1,6 +1,6 @@
 // backend/src/routes/wallet.js
 import express from "express";
-import User from "../models/User.js";
+import User from "../models/user.js";
 import Wallet from "../models/Wallet.js";
 import Recharge from "../models/Recharge.js";
 import { requireLogin } from "../middlewares/auth.js";

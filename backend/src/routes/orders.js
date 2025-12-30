@@ -2,7 +2,7 @@
 import express from "express";
 import mongoose from "mongoose";
 import Order from "../models/order.js";
-import User from "../models/User.js";
+import User from "../models/user.js";
 import Zone from "../models/Zone.js"; // ✅ 用于 zip -> zone 自动归类
 import { requireLogin } from "../middlewares/auth.js";
 

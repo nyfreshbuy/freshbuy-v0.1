@@ -2,7 +2,7 @@ import express from "express";
 import twilio from "twilio";
 import jwt from "jsonwebtoken";
 import rateLimit from "express-rate-limit";
-import User from "../models/User.js";
+import User from "../models/user.js";
 
 const router = express.Router();
 router.use(express.json());

@@ -2,7 +2,7 @@
 import express from "express";
 import mongoose from "mongoose";
 import Order from "../models/order.js"; // ✅ 你目前模型文件叫 order.js，就这样写；并且变量统一叫 Order
-import User from "../models/User.js";
+import User from "../models/user.js";
 import { requireLogin } from "../middlewares/auth.js";
 
 const router = express.Router();

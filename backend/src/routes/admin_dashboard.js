@@ -1,6 +1,6 @@
 import express from "express";
 import Product from "../models/Product.js";
-import User from "../models/User.js";
+import User from "../models/user.js";
 import Order from "../models/Order.js"; // ✅ 确保你有 Order 模型
 import { requireLogin } from "../middlewares/auth.js";
 const router = express.Router();

@@ -1,6 +1,6 @@
 // backend/src/middlewares/requireAuth.js
 import jwt from "jsonwebtoken";
-import User from "../models/User.js";
+import User from "../models/user.js";
 
 export default async function requireAuth(req, res, next) {
   try {

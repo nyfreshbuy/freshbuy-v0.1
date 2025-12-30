@@ -1,13 +1,12 @@
 // backend/src/routes/auth_mongo.js
 import express from "express";
 import jwt from "jsonwebtoken";
-import User from "../models/User.js";
+import User from "../models/user.js";
 import { requireLogin } from "../middlewares/auth.js";
 
 console.log("🔥 RUNNING auth_mongo.js FROM:", import.meta.url);
 
 const router = express.Router();
-
 // ✅ 确保 body 可用（不依赖 server.js）
 router.use(express.json());
 router.use(express.urlencoded({ extended: true }));

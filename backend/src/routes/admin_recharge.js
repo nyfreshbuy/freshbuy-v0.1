@@ -1,7 +1,7 @@
 import express from "express";
 import mongoose from "mongoose";
 import Recharge from "../models/Recharge.js";
-import User from "../models/User.js";
+import User from "../models/user.js";
 import { requireLogin } from "../middlewares/auth.js";
 
 const router = express.Router();
