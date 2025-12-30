@@ -1,5 +1,5 @@
-// backend/src/models/product.jsimport mongoose from "mongoose";
-
+// backend/src/models/product.js
+import mongoose from "mongoose";
 const productSchema = new mongoose.Schema(
   {
     // 兼容旧系统的自定义 id（你 admin_products.js 会生成 p_时间戳）
@@ -69,4 +69,4 @@ const productSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-export default mongoose.model("Product", productSchema);
+export default mongoose.models.Product || mongoose.model("Product", productSchema);
