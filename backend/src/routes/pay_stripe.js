@@ -2,7 +2,7 @@
 import express from "express";
 import Stripe from "stripe";
 
-import Order from "../models/Order.js";
+import Order from "../models/order.js";
 import { requireLogin } from "../middlewares/auth.js";
 
 const router = express.Router();

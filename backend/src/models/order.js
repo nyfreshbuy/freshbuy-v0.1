@@ -1,5 +1,4 @@
-// backend/src/models/Order.js
-import mongoose from "mongoose";
+// backend/src//models/order.jsimport mongoose from "mongoose";
 
 // =========================
 // 工具函数

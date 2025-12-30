@@ -1,7 +1,7 @@
 import express from "express";
 import mongoose from "mongoose";
 import Settlement from "../models/Settlement.js";
-import Order from "../models/Order.js";
+import Order from "../models/order.js";
 
 const router = express.Router();
 router.use(express.json());

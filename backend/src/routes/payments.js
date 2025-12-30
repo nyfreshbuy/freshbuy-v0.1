@@ -2,7 +2,7 @@
 import express from "express";
 import mongoose from "mongoose";
 import User from "../models/user.js";
-import Order from "../models/Order.js";
+import Order from "../models/order.js";
 import { requireLogin } from "../middlewares/auth.js";
 
 const router = express.Router();

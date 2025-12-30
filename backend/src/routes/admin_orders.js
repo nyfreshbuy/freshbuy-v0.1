@@ -514,7 +514,7 @@ router.patch("/:id/status", async (req, res) => {
 
 router.get("/drivers", async (req, res) => {
   try {
-    const User = (await import("../models/User.js")).default;
+    const User = (await import("../models/user.js")).default;
     const list = await User.find({ role: "driver" })
       .select("_id name phone")
       .sort({ createdAt: -1 })
