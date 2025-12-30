@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>商品详情 - Freshbuy 在鲜购拼好货</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- 公共样式 -->
+    <link rel="stylesheet" href="assets/css/main.css" />
+    <style>
+      /* ===== 详情页基础布局 ===== */
+      .detail-page {
+        max-width: 1200px;
+        margin: 16px auto 40px;
+        padding: 0 16px;
+      }
+        /* ===== 详情页推荐区：整排卡片 + 左右箭头 ===== */
+  .detail-recommend-section {
+    position: relative;
+    margin-top: 32px;
+  }
+
+  .detail-recommend-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+
+  .detail-section-title {
+    font-size: 16px;
+    font-weight: 600;
+  }
+
+  .detail-recommend-viewport {
+    overflow: hidden;
+    padding: 4px 8px 12px;
+  }
+
+  .detail-recommend-track {
+    display: flex;
+    gap: 16px;
+    scroll-behavior: smooth;
+  }
+
+  /* 单个推荐卡片（大图 + 文字 + 加入购物车） */
+  .detail-recommend-card {
+    flex: 0 0 320px;
+    background: #ffffff;
+    border-radius: 18px;
+    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.10);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .detail-recommend-img-wrap {
+    position: relative;
+    width: 100%;
+    padding-top: 62%;
+    background: #f3f4f6;
+    overflow: hidden;
+  }
+
+  .detail-recommend-img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .detail-recommend-top-badge {
+    position: absolute;
+    left: 12px;
+    top: 12px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    background: #f97316;
+    color: #fff;
+  }
+
+  .detail-recommend-body {
+    padding: 10px 14px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .detail-recommend-name {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 2px;
+  }
+
+  .detail-recommend-desc {
+    font-size: 12px;
+    color: #6b7280;
+  }
+
+  .detail-recommend-price-row {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    margin-top: 4px;
+  }
+
+  .detail-recommend-price {
+    font-size: 18px;
+    font-weight: 700;
+    color: #16a34a;
+  }
+
+  .detail-recommend-origin {
+    font-size: 12px;
+    text-decoration: line-through;
+    color: #9ca3af;
+  }
+
+  .detail-recommend-bottom-row {
+    margin-top: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+  }
+
+  .detail-recommend-fav-btn {
+    border-radius: 999px;
+    border: 1px solid #e5e7eb;
+    background: #ffffff;
+    padding: 6px 12px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+
+  .detail-recommend-add-btn {
+    flex: 1;
+    border-radius: 999px;
+    border: none;
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    background: linear-gradient(135deg, #22c55e, #16a34a);
+    color: #ffffff;
+    cursor: pointer;
+  }
+
+  /* 左右箭头按钮 */
+  .detail-recommend-arrows {
+    display: flex;
+    gap: 6px;
+  }
+
+  .detail-rec-arrow {
+    width: 30px;
+    height: 30px;
+    border-radius: 999px;
+    border: 1px solid #e5e7eb;
+    background: #ffffff;
+    font-size: 18px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .detail-rec-arrow:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+
+  /* 窄屏时卡片变宽度 100%，箭头隐藏 */
+  @media (max-width: 768px) {
+    .detail-recommend-card {
+      flex: 0 0 80%;
+    }
+    .detail-recommend-arrows {
+      display: none;
+    }
+  }
+      .detail-breadcrumb {
+        font-size: 12px;
+        color: #6b7280;
+        margin-bottom: 10px;
+      }
+      .detail-breadcrumb a {
+        color: #2563eb;
+        text-decoration: none;
+      }
+      .detail-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.2fr);
+        gap: 24px;
+      }
+      @media (max-width: 900px) {
+        .detail-layout {
+          grid-template-columns: minmax(0, 1fr);
+        }
+      }
+      .detail-image-box {
+        background: #f3f4f6;
+        border-radius: 16px;
+        min-height: 260px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 13px;
+        color: #6b7280;
+      }
+      .detail-tag-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-bottom: 8px;
+      }
+      .detail-tag {
+        font-size: 11px;
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: #ecfdf3;
+        color: #15803d;
+      }
+      .detail-title {
+        font-size: 20px;
+        font-weight: 700;
+        margin-bottom: 6px;
+      }
+      .detail-desc {
+        font-size: 13px;
+        color: #4b5563;
+        margin-bottom: 10px;
+      }
+      .detail-price-row {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+      .detail-price {
+        font-size: 22px;
+        font-weight: 700;
+        color: #16a34a;
+      }
+      .detail-origin {
+        font-size: 13px;
+        text-decoration: line-through;
+        color: #9ca3af;
+      }
+      .detail-extra-note {
+        font-size: 12px;
+        color: #fb923c;
+        margin-bottom: 14px;
+      }
+
+      /* ===== 大胶囊加入购物车 + 收藏 ===== */
+      .detail-cart-cta-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 14px;
+        margin-bottom: 10px;
+      }
+      .detail-big-cart-btn {
+        flex: 1;
+        display: inline-flex;
+        align-items: center;
+        justify-content: space-between;
+        border-radius: 999px;
+        background: #06b6d4;
+        /* 渐变可以自己调 */
+        background: linear-gradient(90deg, #0ea5e9, #06b6d4);
+        color: #fff;
+        padding: 8px 10px;
+        cursor: pointer;
+        border: none;
+      }
+      .detail-big-cart-btn:active {
+        transform: translateY(1px);
+        box-shadow: 0 0 0 transparent;
+      }
+      .detail-big-cart-icon {
+        border-radius: 999px;
+        width: 32px;
+        height: 32px;
+        border: none;
+        background: rgba(15, 23, 42, 0.15);
+        color: #fff;
+        font-size: 18px;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .detail-big-cart-text {
+        flex: 1;
+        padding: 0 8px;
+        text-align: center;
+      }
+      .detail-big-cart-main {
+        font-size: 14px;
+        font-weight: 700;
+      }
+      .detail-big-cart-sub {
+        font-size: 11px;
+        opacity: 0.9;
+      }
+      .detail-fav-circle {
+        width: 40px;
+        height: 40px;
+        border-radius: 999px;
+        border: 1px solid #e5e7eb;
+        background: #fff;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 18px;
+      }
+      .detail-small-note {
+        font-size: 11px;
+        color: #6b7280;
+      }
+      .detail-back-row {
+        margin-top: 10px;
+      }
+      .detail-btn-secondary {
+        border-radius: 999px;
+        border: 1px solid #e5e7eb;
+        padding: 8px 14px;
+        font-size: 13px;
+        background: #ffffff;
+        cursor: pointer;
+      }
+
+      /* ===== 详情页推荐区：在底部铺满一整排 ===== */
+      .detail-section-title {
+        margin-top: 28px;
+        margin-bottom: 10px;
+        font-size: 16px;
+        font-weight: 600;
+      }
+
+      /* 容器占满整个 detail-page 宽度 */
+      .detail-recommend-grid {
+        display: grid;
+        width: 100%;
+        /* 根据屏幕自动塞满卡片，一整排铺满 */
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 16px;
+      }
+
+      /* 窄屏时自动减少列数 */
+      @media (max-width: 900px) {
+        .detail-recommend-grid {
+          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        }
+      }
+
+      @media (max-width: 600px) {
+        .detail-recommend-grid {
+          grid-template-columns: minmax(0, 1fr);
+        }
+      }
+
+      .detail-empty {
+        font-size: 13px;
+        color: #6b7280;
+      }
+
+      /* 防止首页的 product-grid 样式把推荐区“居中挤到一块” */
+      .detail-page .product-grid-recommend {
+        max-width: 100%;
+        margin: 0;
+        justify-content: stretch;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- 顶部导航（直接复用首页结构，保持统一） -->
+    <div class="top-nav">
+      <div class="top-nav-inner">
+        <div class="logo-area">
+          <div class="logo-badge">鲜</div>
+          <div>
+            <div class="logo-text-main">Freshbuy 在鲜购拼好货</div>
+            <div class="logo-text-sub">
+              新鲜草原区域 · 次日达 / 每周区域团配
+            </div>
+          </div>
+        </div>
+
+        <div class="search-area">
+          <div class="search-box">
+            <span class="search-icon">🔍</span>
+            <input
+              id="searchInput"
+              class="search-input"
+              placeholder="搜索商品，如：鸡腿、牛奶、苹果..."
+            />
+          </div>
+        </div>
+
+        <div class="user-area">
+          <button class="link-btn">登录</button>
+          <button class="link-btn primary">注册</button>
+          <div class="cart-icon" onclick="toggleCartDrawer()">
+            🛒
+            <span id="cartCountBadge" class="cart-count-badge">0</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  <main class="detail-page">
+  <div class="detail-breadcrumb">
+    <a href="index.html">首页</a> /
+    <span id="crumbProductName">商品详情</span>
+  </div>
+
+  <!-- 详情主体：两列布局 -->
+  <div class="detail-layout">
+    <!-- 左侧：图片 / 标签 -->
+    <div class="detail-image-box">
+      <span id="detailImageText">商品图占位 · 后续接真实图片</span>
+    </div>
+
+    <!-- 右侧：标题 / 价格 / 大按钮 / 收藏 / 返回首页 -->
+    <div>
+      <div class="detail-tag-row" id="detailTagRow"></div>
+
+      <div class="detail-title" id="detailTitle">加载中...</div>
+      <div class="detail-desc" id="detailDesc"></div>
+
+      <div class="detail-price-row">
+        <span class="detail-price" id="detailPrice">$0.00</span>
+        <span class="detail-origin" id="detailOrigin"></span>
+      </div>
+
+      <div class="detail-extra-note" id="detailExtraNote"></div>
+
+      <!-- 数量 + 大胶囊加入购物车 + 收藏 -->
+      <div class="detail-cart-cta-row">
+        <!-- 大胶囊按钮（整个都是“加入购物车”） -->
+        <div
+          class="detail-big-cart-btn"
+          id="btnAddToCartDetail"
+          type="button"
+        >
+          <button
+            class="detail-big-cart-icon"
+            type="button"
+            id="btnQtyMinusBig"
+          >
+            −
+          </button>
+
+          <div class="detail-big-cart-text">
+            <div class="detail-big-cart-main" id="detailCartMainText">
+              加入 1 件商品
+            </div>
+            <div class="detail-big-cart-sub" id="detailCartSubText">
+              点击中间区域加入购物车
+            </div>
+          </div>
+
+          <button
+            class="detail-big-cart-icon"
+            type="button"
+            id="btnQtyPlusBig"
+          >
+            +
+          </button>
+        </div>
+
+        <!-- 右侧圆形收藏按钮 -->
+        <button
+          class="detail-fav-circle"
+          type="button"
+          id="btnDetailFav"
+        >
+          ♡
+        </button>
+      </div>
+
+      <div class="detail-small-note">
+        当前为 Freshbuy v0.1 测试页面：加入购物车只会更新本地状态，不会真实扣款。
+      </div>
+
+      <!-- 返回首页按钮保持独立 -->
+      <div class="detail-back-row">
+        <button
+          class="detail-btn-secondary"
+          type="button"
+          onclick="window.location.href='index.html'"
+        >
+          返回首页继续逛
+        </button>
+      </div>
+    </div>
+  </div><!-- ✅ 这里结束 detail-layout -->
+
+        <!-- 推荐区：可左右滑动 -->
+      <section class="detail-recommend-section">
+        <div class="detail-recommend-header">
+          <div class="detail-section-title">你可能还会想买</div>
+          <div class="detail-recommend-arrows">
+            <button type="button" class="detail-rec-arrow" id="recPrev">‹</button>
+            <button type="button" class="detail-rec-arrow" id="recNext">›</button>
+          </div>
+        </div>
+
+        <div class="detail-recommend-viewport">
+          <!-- track 由 JS 填充 -->
+          <div id="recommendList" class="detail-recommend-track"></div>
+        </div>
+      </section>
+</main>
+    <!-- 购物车侧边栏（完全复用首页结构，cart.js 直接可用） -->
+    <div
+      id="cartBackdrop"
+      class="cart-drawer-backdrop"
+      onclick="toggleCartDrawer(false)"
+    ></div>
+    <div id="cartDrawer" class="cart-drawer">
+      <div class="cart-header">
+        <div class="cart-title">购物车</div>
+        <button class="cart-close" onclick="toggleCartDrawer(false)">✕</button>
+      </div>
+      <div id="cartBody" class="cart-body">
+        <div class="cart-empty">购物车还是空的，去逛逛吧～</div>
+      </div>
+      <div class="cart-footer">
+        <div class="line">
+          <span>商品小计</span>
+          <span id="cartSubtotal">$0.00</span>
+        </div>
+        <div class="line">
+          <span>预估运费</span>
+          <span id="cartShipping">$0.00</span>
+        </div>
+        <div class="line line-total">
+          <span>订单总金额</span>
+          <span id="cartTotal">$0.00</span>
+        </div>
+
+        <div class="shipping-modes">
+          <div>选择配送模式：</div>
+          <div class="mode-row">
+            <label class="mode-pill-small">
+              <input
+                type="radio"
+                name="shipMode"
+                value="single"
+                checked
+                onchange="updateShippingMode()"
+              />
+              普通 4.99
+            </label>
+            <label class="mode-pill-small">
+              <input
+                type="radio"
+                name="shipMode"
+                value="friend"
+                onchange="updateShippingMode()"
+              />
+              好友拼单
+            </label>
+            <label class="mode-pill-small">
+              <input
+                type="radio"
+                name="shipMode"
+                value="area"
+                onchange="updateShippingMode()"
+              />
+              区域团免运费
+            </label>
+            <label class="mode-pill-small">
+              <input
+                type="radio"
+                name="shipMode"
+                value="pickup"
+                onchange="updateShippingMode()"
+              />
+              自提点 0.99
+            </label>
+          </div>
+          <div
+            id="groupSizeWrap"
+            class="group-size-select"
+            style="display: none;"
+          >
+            好友拼同一地址人数：
+            <select id="groupSize" onchange="recalcCartTotals()">
+              <option value="2">2 人</option>
+              <option value="3">3 人</option>
+              <option value="4">4 人</option>
+            </select>
+          </div>
+          <div id="modeHintSmall" class="mode-hint-small">
+            当前：普通配送，每单运费 $4.99。
+          </div>
+        </div>
+
+        <button
+          id="checkoutBtn"
+          class="btn-checkout"
+          onclick="submitOrder()"
+          disabled
+        >
+          去结算（测试）
+        </button>
+        <div class="footer-note">
+          当前为模式测试页面：下单信息会发送到测试后端，不会真实扣款。
+        </div>
+      </div>
+    </div>
+
+    <!-- 顶部“已加入购物车”提示条 -->
+    <div id="addToCartToast" class="add-cart-toast"></div>
+
+    <!-- 公共 JS + 详情页 JS（顺序不要改） -->
+    <script src="assets/js/products.js"></script>
+    <script src="assets/js/cart.js"></script>
+    <script src="assets/js/product_detail.js"></script>
+    <script src="/user/components/footer.js"></script>
+  </body>
+</html>

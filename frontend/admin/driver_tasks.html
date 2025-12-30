@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>司机配送任务 - 在鲜购拼好货</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- 复用你现有的后台样式 -->
+    <link rel="stylesheet" href="assets/css/admin.css" />
+    <style>
+      .driver-topbar-title {
+        font-size: 16px;
+        font-weight: 600;
+      }
+      .driver-subtitle {
+        font-size: 12px;
+        color: #9ca3af;
+      }
+      .driver-address {
+        max-width: 260px;
+        font-size: 13px;
+        line-height: 1.4;
+      }
+    </style>
+  </head>
+
+  <body data-page="driver-tasks">
+    <div class="admin-layout">
+      <!-- 简化版：左侧不放菜单，给司机一个干净界面 -->
+      <aside class="admin-sidebar">
+        <div class="admin-logo">
+          <div class="admin-logo-icon">F</div>
+          <div>
+            <div class="admin-logo-text-main">Freshbuy Driver</div>
+            <div class="admin-logo-text-sub">在鲜购 · 司机端</div>
+          </div>
+        </div>
+
+        <div class="admin-nav-section-title">配送任务</div>
+        <ul class="admin-nav">
+          <li class="admin-nav-item">
+            <a
+              href="driver_tasks.html"
+              class="admin-nav-link active"
+              data-link="driver-tasks"
+            >
+              <span class="admin-nav-link-icon">🚚</span>
+              <span>今日任务</span>
+            </a>
+          </li>
+        </ul>
+
+        <div class="admin-sidebar-footer">
+          司机端 · 内部测试<br />© 在鲜购拼好货 Freshbuy
+        </div>
+      </aside>
+
+      <!-- 右侧主区域 -->
+      <div class="admin-main">
+        <!-- 顶部栏 -->
+        <header class="admin-topbar">
+          <button
+            class="admin-btn admin-btn-ghost admin-topbar-toggle"
+            data-toggle-sidebar
+          >
+            ☰
+          </button>
+          <div class="admin-topbar-title driver-topbar-title">
+            今日配送任务
+            <div class="driver-subtitle">
+              点击「一键规划本轮路线」自动打开 Google Maps 导航
+            </div>
+          </div>
+          <div class="admin-topbar-spacer"></div>
+        </header>
+
+        <!-- 内容 -->
+        <main class="admin-content">
+          <!-- 顶部操作区 -->
+          <div class="admin-page-header">
+            <div>
+              <div class="admin-page-title">今日配送任务</div>
+              <div class="admin-breadcrumb">司机端 &gt; 配送任务</div>
+            </div>
+
+            <div class="admin-page-actions">
+              <button
+                class="admin-btn admin-btn-ghost"
+                id="btnRefreshDriverOrders"
+              >
+                ⟳ 刷新任务
+              </button>
+              <!-- ⭐ 一键规划整条路线 -->
+              <button
+                class="admin-btn admin-btn-primary"
+                id="btnDriverRouteAll"
+              >
+                🗺 一键规划本轮路线
+              </button>
+            </div>
+          </div>
+
+          <!-- 今日订单列表 -->
+          <section class="admin-card admin-card-ghost">
+            <div class="admin-card-header">
+              <div>
+                <div class="admin-card-header-title">今日订单列表</div>
+                <div class="admin-card-header-sub">
+                  单笔可以「🚗 导航」，也可以一键生成整条路线。
+                </div>
+              </div>
+              <div
+                id="driverTasksSummary"
+                style="font-size:12px;color:#9ca3af;"
+              >
+                正在加载配送任务...
+              </div>
+            </div>
+
+            <div class="admin-table-wrapper">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th>订单号</th>
+                    <th>客户</th>
+                    <th>配送地址</th>
+                    <th style="width:120px;">操作</th>
+                  </tr>
+                </thead>
+                <tbody id="driverOrdersTbody">
+                  <tr>
+                    <td colspan="4" style="text-align:center;">
+                      正在加载...
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+    <script src="/admin/assets/js/admin_guard.js"></script>
+    <script src="./assets/js/admin_auth_ui.js"></script>
+    <script src="assets/js/admin.js"></script>
+    <script src="assets/js/driver_tasks.js"></script>
+  </body>
+</html>

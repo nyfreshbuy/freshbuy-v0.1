@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>后台登录 - 在鲜购拼好货</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body{
+      margin:0;height:100vh;display:flex;align-items:center;justify-content:center;
+      background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto;
+    }
+    .card{
+      width:360px;background:#fff;padding:28px;border-radius:14px;
+      box-shadow:0 10px 30px rgba(0,0,0,.08);
+    }
+    h1{margin:0 0 6px;font-size:20px;text-align:center;}
+    .sub{text-align:center;color:#6b7280;font-size:13px;margin-bottom:20px;}
+    .field{margin-bottom:14px;}
+    .field input{
+      width:100%;padding:10px 12px;font-size:14px;border-radius:8px;border:1px solid #d1d5db;
+      outline:none;
+    }
+    .btn{
+      width:100%;padding:10px;border-radius:999px;border:none;background:#22c55e;color:#fff;
+      font-size:15px;font-weight:700;cursor:pointer;
+    }
+    .btn:disabled{opacity:.65;cursor:not-allowed;}
+    .error{
+      color:#ef4444;font-size:13px;margin-bottom:10px;display:none;white-space:pre-wrap;
+    }
+    .hint{
+      margin-top:12px;text-align:center;font-size:12px;color:#9ca3af;line-height:1.4;
+    }
+
+    /* ===== 右上角登录/登出浮动条（不影响你原布局） ===== */
+    #adminAuthBox {
+      position: fixed;
+      right: 16px;
+      top: 16px;
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: #fff;
+      border: 1px solid rgba(0,0,0,0.08);
+      box-shadow: 0 6px 18px rgba(0,0,0,0.08);
+      padding: 10px 12px;
+      border-radius: 12px;
+    }
+    #adminWelcome{
+      color:#374151;
+      font-size: 13px;
+      max-width: 200px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    #btnAdminLogin, #btnAdminLogout{
+      padding: 8px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(0,0,0,.12);
+      background: #fff;
+      cursor: pointer;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ✅ 登录/登出按钮（浮动右上角） -->
+  <div id="adminAuthBox">
+    <span id="adminWelcome" style="display:none;"></span>
+    <button id="btnAdminLogin" style="display:none;">登录</button>
+    <button id="btnAdminLogout" style="display:none;">登出</button>
+  </div>
+
+  <div class="card">
+    <h1>Freshbuy 后台</h1>
+    <div class="sub">管理员登录</div>
+
+    <div id="error" class="error"></div>
+
+    <div class="field">
+      <input id="phone" placeholder="管理员手机号" inputmode="tel" autocomplete="username" />
+    </div>
+    <div class="field">
+      <input id="password" type="password" placeholder="密码" autocomplete="current-password" />
+    </div>
+
+    <button class="btn" id="btnLogin">登录</button>
+
+    <div class="hint">
+      仅管理员可登录后台。<br/>
+      如无法登录，请确认账号 role=admin。
+    </div>
+  </div>
+
+  <script>
+    // =========================
+    // ✅ 工具：token key 统一兼容
+    // =========================
+    function setToken(token){
+      localStorage.setItem("freshbuy_token", token);
+      localStorage.setItem("token", token);
+      localStorage.setItem("auth_token", token);
+      localStorage.setItem("admin_token", token);
+    }
+    function clearToken(){
+      localStorage.removeItem("freshbuy_token");
+      localStorage.removeItem("token");
+      localStorage.removeItem("auth_token");
+      localStorage.removeItem("admin_token");
+
+      // ✅ 同时清理后台登录态字段（给登录/登出按钮用）
+      localStorage.removeItem("freshbuy_role");
+      localStorage.removeItem("freshbuy_login_nickname");
+      localStorage.removeItem("freshbuy_is_logged_in");
+    }
+
+    // ✅ 登录成功后写入后台登录态（给按钮 & guard 用）
+    function setAdminIdentity(user){
+      localStorage.setItem("freshbuy_role", "admin");
+      localStorage.setItem("freshbuy_is_logged_in", "1");
+      const nickname =
+        user?.nickname ||
+        user?.nick ||
+        user?.name ||
+        user?.phone ||
+        "管理员";
+      localStorage.setItem("freshbuy_login_nickname", String(nickname));
+    }
+
+    function getNext(){
+      const qs = new URLSearchParams(location.search);
+      const next = qs.get("next");
+      // 只允许跳到 /admin 下，防止被外部注入跳转
+      if (next && next.startsWith("/admin/")) return next;
+      return "/admin/dashboard.html";
+    }
+
+    async function apiFetch(path, options = {}) {
+      const res = await fetch(path, {
+        ...options,
+        headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+        credentials: "include"
+      });
+
+      const text = await res.text();
+      let json = {};
+      try { json = text ? JSON.parse(text) : {}; } catch { json = {}; }
+
+      if (!res.ok) throw new Error(json.message || json.msg || ("HTTP " + res.status));
+      if (json && json.success === false) throw new Error(json.message || json.msg || "请求失败");
+      return json;
+    }
+
+    function showErr(msg){
+      const err = document.getElementById("error");
+      err.textContent = msg || "登录失败";
+      err.style.display = "block";
+    }
+    function hideErr(){
+      const err = document.getElementById("error");
+      err.style.display = "none";
+      err.textContent = "";
+    }
+
+    // =========================
+    // ✅ 右上角登录/登出按钮逻辑（本页也启用）
+    // =========================
+    function renderAdminAuthButtons(){
+      const elWelcome = document.getElementById("adminWelcome");
+      const btnLogin = document.getElementById("btnAdminLogin");
+      const btnLogout = document.getElementById("btnAdminLogout");
+
+      const token =
+        localStorage.getItem("freshbuy_token") ||
+        localStorage.getItem("admin_token") ||
+        localStorage.getItem("token") ||
+        localStorage.getItem("auth_token") ||
+        "";
+
+      const role = localStorage.getItem("freshbuy_role");
+      const nickname = localStorage.getItem("freshbuy_login_nickname") || "管理员";
+
+      const isAdminLoggedIn = Boolean(token && String(role || "").toLowerCase() === "admin");
+
+      if (isAdminLoggedIn) {
+        elWelcome.style.display = "inline";
+        elWelcome.textContent = `已登录：${nickname}`;
+        btnLogout.style.display = "inline-block";
+        btnLogin.style.display = "none";
+      } else {
+        elWelcome.style.display = "none";
+        btnLogout.style.display = "none";
+        btnLogin.style.display = "none"; // 当前就是登录页，不需要再显示“登录”
+      }
+
+      btnLogin.onclick = () => location.href = "./login.html";
+
+      btnLogout.onclick = () => {
+        if (!confirm("确认退出后台登录？")) return;
+        clearToken();
+        renderAdminAuthButtons();
+      };
+    }
+
+    async function doLogin(){
+      const phoneEl = document.getElementById("phone");
+      const pwdEl = document.getElementById("password");
+      const btn = document.getElementById("btnLogin");
+
+      const phone = phoneEl.value.trim();
+      const password = pwdEl.value.trim();
+
+      hideErr();
+
+      if (!phone || !password) {
+        showErr("请输入手机号和密码");
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = "登录中...";
+
+      try {
+        // 1) 登录拿 token
+        const data = await apiFetch("/api/admin/auth/login", {
+          method: "POST",
+          body: JSON.stringify({ phone, password })
+        });
+
+        const token = data.token || data.data?.token;
+        if (!token) throw new Error("登录成功但未返回 token");
+
+        // 2) 保存 token（兼容你全站 key）
+        setToken(token);
+
+        // 3) 再调用 /api/auth/me 校验角色必须是 admin
+        let me;
+        try{
+          me = await fetch("/api/auth/me", {
+            method: "GET",
+            headers: { "Authorization": "Bearer " + token },
+            credentials: "include"
+          });
+        }catch(e){
+          throw new Error("登录成功，但校验身份失败（/api/auth/me 无法访问）");
+        }
+
+        const meText = await me.text();
+        let meJson = {};
+        try { meJson = meText ? JSON.parse(meText) : {}; } catch { meJson = {}; }
+
+        if (!me.ok || meJson.success === false) {
+          clearToken();
+          throw new Error(meJson.message || meJson.msg || "身份校验失败");
+        }
+
+        const u = meJson.user || meJson.data || {};
+        if (String(u.role || "").toLowerCase() !== "admin") {
+          clearToken();
+          throw new Error("你不是管理员账号，禁止进入后台");
+        }
+
+        // ✅ 4) 写入 admin 身份（给后台按钮/guard 用）
+        setAdminIdentity(u);
+
+        // ✅ 立刻刷新右上角状态
+        renderAdminAuthButtons();
+
+        // 5) 跳转到 next 或 dashboard
+        location.replace(getNext());
+
+      } catch (e) {
+        clearToken();
+        showErr(e.message || "登录失败");
+        renderAdminAuthButtons();
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "登录";
+      }
+    }
+
+    // 点击登录
+    document.getElementById("btnLogin").addEventListener("click", doLogin);
+
+    // 回车登录
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") doLogin();
+    });
+
+    // 如果已经有 token，尝试直接进后台（避免重复登录）
+    window.addEventListener("DOMContentLoaded", async () => {
+      renderAdminAuthButtons();
+
+      const t =
+        localStorage.getItem("freshbuy_token") ||
+        localStorage.getItem("admin_token") ||
+        localStorage.getItem("token") ||
+        localStorage.getItem("auth_token") ||
+        "";
+
+      if (!t) return;
+
+      try {
+        const res = await fetch("/api/auth/me", {
+          method: "GET",
+          headers: { "Authorization": "Bearer " + t },
+          credentials: "include"
+        });
+        const text = await res.text();
+        let json = {};
+        try { json = text ? JSON.parse(text) : {}; } catch { json = {}; }
+
+        const u = json.user || json.data || {};
+        if (res.ok && json.success !== false && String(u.role||"").toLowerCase() === "admin") {
+          // ✅ 写入身份，保证其它后台页面按钮能显示“登出”
+          setAdminIdentity(u);
+          renderAdminAuthButtons();
+          location.replace(getNext());
+        }
+      } catch (_) {}
+    });
+  </script>
+
+</body>
+</html>

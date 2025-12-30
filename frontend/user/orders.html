@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>我的订单 - Freshbuy</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="assets/css/main.css">
+  <style>
+    .order-card {
+      background: #fff;
+      padding: 14px;
+      border-radius: 10px;
+      margin-bottom: 12px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+      cursor: pointer;        /* ⭐ 新增 */
+    }
+    .order-header {
+      display: flex;
+      justify-content: space-between;
+      font-size: 14px;
+      font-weight: bold;
+      margin-bottom: 6px;
+    }
+    .order-items {
+      font-size: 14px;
+      color: #444;
+      margin: 6px 0;
+    }
+    .order-total {
+      font-size: 15px;
+      font-weight: bold;
+      color: #2563eb;
+      text-align: right;
+      margin-top: 6px;
+    }
+    .no-orders {
+      text-align: center;
+      color: #888;
+      font-size: 14px;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="page">
+    <h2 style="margin-bottom: 14px;">我的订单</h2>
+    <div id="ordersList"></div>
+  </div>
+
+  <script src="assets/js/orders.js"></script>
+</body>
+</html>

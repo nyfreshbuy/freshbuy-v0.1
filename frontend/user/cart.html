@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>购物车 - 在鲜购拼好货</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      :root {
+        --primary: #22c55e;
+        --primary-dark: #16a34a;
+        --bg: #f3f4f6;
+        --text-main: #111827;
+        --text-sub: #6b7280;
+        --card-bg: #ffffff;
+        --radius-lg: 18px;
+        --radius-md: 12px;
+        --shadow-sm: 0 4px 12px rgba(15, 23, 42, 0.08);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+        background: var(--bg);
+        color: var(--text-main);
+      }
+      a { color: inherit; text-decoration: none; }
+      header {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        background: #ffffff;
+        box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08);
+      }
+      .top-bar {
+        max-width: 1000px;
+        margin: 0 auto;
+        padding: 10px 14px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .top-left { display: flex; align-items: center; gap: 8px; }
+      .logo-badge {
+        width: 30px;
+        height: 30px;
+        border-radius: 999px;
+        background: radial-gradient(circle at 30% 30%, #22c55e, #16a34a);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        font-weight: 700;
+        font-size: 18px;
+        box-shadow: 0 3px 8px rgba(16, 185, 129, 0.7);
+      }
+      .title-main { font-size: 17px; font-weight: 700; }
+      .title-sub { font-size: 11px; color: var(--text-sub); }
+      .top-right { display: flex; align-items: center; gap: 10px; }
+
+      .btn {
+        border-radius: 999px;
+        border: 1px solid #e5e7eb;
+        background: #ffffff;
+        padding: 6px 10px;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .btn.primary {
+        border-color: transparent;
+        background: linear-gradient(135deg, #22c55e, #16a34a);
+        color: #ffffff;
+        font-weight: 600;
+      }
+      .btn.btn-disabled { opacity: 0.55; cursor: not-allowed; }
+
+      .container { max-width: 1000px; margin: 12px auto 24px; padding: 0 14px; }
+      .page-title { font-size: 20px; font-weight: 700; margin: 8px 0 12px; }
+
+      .cart-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 2.2fr) minmax(0, 1fr);
+        gap: 16px;
+      }
+      @media (max-width: 768px) {
+        .cart-layout { grid-template-columns: minmax(0, 1fr); }
+      }
+
+      .card {
+        background: var(--card-bg);
+        border-radius: var(--radius-md);
+        box-shadow: var(--shadow-sm);
+        padding: 12px;
+      }
+
+      .cart-empty {
+        font-size: 14px;
+        color: var(--text-sub);
+        text-align: center;
+        padding: 20px 0;
+      }
+
+      .cart-list { display: flex; flex-direction: column; gap: 10px; }
+
+      .cart-item {
+        display: grid;
+        grid-template-columns: 60px minmax(0, 1fr) 90px;
+        gap: 10px;
+        align-items: center;
+        font-size: 13px;
+      }
+      @media (max-width: 600px) {
+        .cart-item {
+          grid-template-columns: 50px minmax(0, 1fr);
+          grid-template-rows: auto auto;
+        }
+      }
+
+      .cart-thumb {
+        width: 100%;
+        padding-top: 100%;
+        border-radius: 10px;
+        background: #f3f4f6;
+        position: relative;
+        overflow: hidden;
+      }
+      .cart-thumb img {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .cart-item-main {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-width: 0;
+      }
+      .cart-item-name {
+        font-size: 14px;
+        font-weight: 600;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .cart-item-price { font-size: 13px; color: var(--primary-dark); }
+      .cart-item-sub { font-size: 11px; color: var(--text-sub); }
+
+      .qty-row {
+        display: inline-flex;
+        align-items: center;
+        border-radius: 999px;
+        border: 1px solid #e5e7eb;
+        overflow: hidden;
+      }
+      .qty-btn {
+        width: 26px;
+        height: 26px;
+        border: none;
+        background: #f9fafb;
+        cursor: pointer;
+        font-size: 16px;
+      }
+      .qty-input {
+        width: 34px;
+        border: none;
+        border-left: 1px solid #e5e7eb;
+        border-right: 1px solid #e5e7eb;
+        text-align: center;
+        font-size: 13px;
+        outline: none;
+      }
+
+      .cart-item-actions {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 6px;
+        font-size: 12px;
+      }
+      .remove-btn {
+        border: none;
+        background: transparent;
+        color: #ef4444;
+        cursor: pointer;
+        font-size: 12px;
+      }
+
+      .summary-row {
+        display: flex;
+        justify-content: space-between;
+        margin: 4px 0;
+        font-size: 14px;
+      }
+      .summary-row.muted { font-size: 13px; color: var(--text-sub); }
+      .summary-total { font-weight: 700; font-size: 16px; }
+
+      .summary-footer {
+        margin-top: 10px;
+        font-size: 11px;
+        color: var(--text-sub);
+        line-height: 1.5;
+      }
+
+      .summary-actions { display: flex; gap: 8px; margin-top: 10px; }
+      .summary-actions .btn { flex: 1; }
+    </style>
+  </head>
+
+  <body>
+    <header>
+      <div class="top-bar">
+        <div class="top-left">
+          <div class="logo-badge">鲜</div>
+          <div>
+            <div class="title-main">在鲜购拼好货</div>
+            <div class="title-sub">购物车</div>
+          </div>
+        </div>
+        <div class="top-right">
+          <button class="btn" onclick="window.location.href='/user/index.html';">
+            ← 返回首页继续选购
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main class="container">
+      <h1 class="page-title">我的购物车</h1>
+
+      <div class="cart-layout">
+        <!-- 左侧列表 -->
+        <section class="card">
+          <div id="cartEmpty" class="cart-empty" style="display: none">
+            购物车还是空的～ 去首页挑点喜欢的商品吧。
+          </div>
+          <div id="cartList" class="cart-list"></div>
+        </section>
+
+        <!-- 右侧结算 -->
+        <aside class="card">
+          <div class="summary-row">
+            <span>商品件数</span>
+            <span id="summaryItems">0 件</span>
+          </div>
+
+          <!-- ✅ 右侧金额由 cart.js 接管（关键） -->
+          <div class="summary-row muted">
+            <span>商品金额小计</span>
+            <span id="summarySubtotal" data-cart-subtotal>$0.00</span>
+          </div>
+          <div class="summary-row muted">
+            <span>预计配送费</span>
+            <span id="summaryShipping" data-cart-shipping>$0.00</span>
+          </div>
+          <hr />
+          <div class="summary-row">
+            <span>预计需支付</span>
+            <span class="summary-total" id="summaryTotal" data-cart-total>$0.00</span>
+          </div>
+
+          <div class="summary-footer" id="summaryTip" data-cart-tip>
+            <!-- cart.js 会填充提示文案 -->
+          </div>
+
+          <div id="checkoutDeliveryModeBox"></div>
+
+          <div class="summary-actions">
+            <button class="btn" id="btnClear">清空购物车</button>
+
+            <!-- ✅ 让 cart.js 控制可点/不可点，但点击我们会生成快照跳 checkout.html -->
+            <button class="btn primary" id="btnCheckout" data-cart-checkout-btn>
+              去结算
+            </button>
+          </div>
+        </aside>
+      </div>
+    </main>
+
+    <!-- ✅ 必须用绝对路径，避免 /user/assets/... 找不到 -->
+    <script src="/assets/js/cart.js"></script>
+
+    <script>
+      // ==========================================
+      // 本页职责：
+      // 1) 渲染左侧列表（展示）
+      // 2) 加减/删除/清空：调用 Cart API（让 cart.js 统一重算）
+      // 3) 去结算：生成 freshbuy_checkout_v1 快照并跳转 /user/checkout.html
+      // ==========================================
+
+      function safeNum(v, fallback = 0) {
+        const n = Number(v);
+        return Number.isFinite(n) ? n : fallback;
+      }
+
+      function getImgUrl(p, index) {
+        const raw =
+          (p?.imageUrl && String(p.imageUrl).trim()) ||
+          (p?.image && String(p.image).trim()) ||
+          (p?.img && String(p.img).trim()) ||
+          (p?.cover && String(p.cover).trim()) ||
+          (p?.thumb && String(p.thumb).trim()) ||
+          (Array.isArray(p?.images) ? p.images[0] : "") ||
+          "";
+
+        if (!raw) {
+          return (
+            "https://picsum.photos/seed/" +
+            encodeURIComponent(p?.id || p?._id || ("x" + index)) +
+            "/160/160"
+          );
+        }
+        if (/^https?:\/\//i.test(raw)) return raw;
+        if (raw.startsWith("/")) return location.origin + raw;
+        if (raw.startsWith("uploads/")) return location.origin + "/" + raw;
+        return raw;
+      }
+
+      function getModeLabel(mode) {
+        if (mode === "dealsDay") return "爆品日配送（纯爆品）";
+        if (mode === "groupDay") return "区域团购配送";
+        if (mode === "normal") return "次日配送";
+        if (mode === "friendGroup") return "好友拼单配送";
+        return mode || "";
+      }
+
+      function readZone() {
+        try {
+          const z = JSON.parse(localStorage.getItem("freshbuy_zone") || "null");
+          return z || null;
+        } catch {
+          return null;
+        }
+      }
+
+      function renderLeftList() {
+        const listEl = document.getElementById("cartList");
+        const emptyEl = document.getElementById("cartEmpty");
+        const summaryItems = document.getElementById("summaryItems");
+
+        if (!listEl || !emptyEl) return;
+
+        const st = window.Cart && typeof Cart.getState === "function" ? Cart.getState() : null;
+        const items = st && Array.isArray(st.items) ? st.items : [];
+
+        // 件数
+        let totalQty = 0;
+        items.forEach((it) => (totalQty += Number(it.qty || 0)));
+        if (summaryItems) summaryItems.textContent = totalQty + " 件";
+
+        listEl.innerHTML = "";
+        if (!items.length) {
+          emptyEl.style.display = "block";
+          return;
+        }
+        emptyEl.style.display = "none";
+
+        items.forEach((it, index) => {
+          const p = it.product || {};
+          const qty = Number(it.qty || 1);
+          const price = safeNum(p.priceNum ?? p.price, 0);
+          const imgUrl = getImgUrl(p, index);
+
+          const row = document.createElement("div");
+          row.className = "cart-item";
+          row.innerHTML = `
+            <div class="cart-thumb">
+              <img src="${imgUrl}" alt="${String(p.name || "").replace(/"/g, "&quot;")}" />
+            </div>
+
+            <div class="cart-item-main">
+              <div class="cart-item-name">${p.name || "未命名商品"}</div>
+              <div class="cart-item-price">$${price.toFixed(2)}</div>
+              <div class="cart-item-sub">商品编号：${p.id || p._id || "--"}</div>
+
+              <div>
+                <div class="qty-row" data-id="${p.id}">
+                  <button class="qty-btn" data-action="minus">-</button>
+                  <input class="qty-input" type="text" value="${qty}" readonly />
+                  <button class="qty-btn" data-action="plus">+</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="cart-item-actions">
+              <span>小计：$${(price * qty).toFixed(2)}</span>
+              <button class="remove-btn" data-remove="${p.id}">删除</button>
+            </div>
+          `;
+          listEl.appendChild(row);
+        });
+
+        // 绑定加减/删除（调用 cart.js）
+        listEl.querySelectorAll(".qty-row").forEach((box) => {
+          const id = box.getAttribute("data-id");
+          box.addEventListener("click", (e) => {
+            const btn = e.target.closest(".qty-btn");
+            if (!btn || !id) return;
+            const action = btn.getAttribute("data-action");
+            if (action === "plus") Cart.changeQty(id, 1);
+            if (action === "minus") Cart.changeQty(id, -1);
+          });
+        });
+
+        listEl.querySelectorAll(".remove-btn").forEach((btn) => {
+          const id = btn.getAttribute("data-remove");
+          btn.addEventListener("click", () => {
+            if (!id) return;
+            Cart.removeItem(id);
+          });
+        });
+      }
+
+      // ✅ 清空
+      document.getElementById("btnClear").addEventListener("click", () => {
+        const st = window.Cart && typeof Cart.getState === "function" ? Cart.getState() : null;
+        const items = st && Array.isArray(st.items) ? st.items : [];
+        if (!items.length) return;
+        if (!confirm("确定要清空购物车吗？")) return;
+        Cart.clear();
+      });
+
+      // ✅ 去结算：生成快照 freshbuy_checkout_v1（不改 cart.js）
+      document.getElementById("btnCheckout").addEventListener("click", (e) => {
+        e.preventDefault();
+        const btn = document.getElementById("btnCheckout");
+        if (btn && btn.disabled) return;
+
+        const st = window.Cart && typeof Cart.getState === "function" ? Cart.getState() : null;
+        const itemsRaw = st && Array.isArray(st.items) ? st.items : [];
+
+        if (!itemsRaw.length) return;
+
+        // 计算 subtotal（这里仅用于快照；右侧金额仍以 cart.js 为准显示）
+        let subtotal = 0;
+        let totalQty = 0;
+
+        const items = itemsRaw.map((it) => {
+          const p = it.product || {};
+          const qty = Number(it.qty || 1);
+          const price = safeNum(p.priceNum ?? p.price, 0);
+          totalQty += qty;
+          subtotal += price * qty;
+
+          return {
+            id: p.id,
+            name: p.name,
+            price: price,
+            priceNum: price,
+            tag: p.tag || "",
+            type: p.type || "",
+            isDeal: !!p.isDeal,
+            isSpecial: !!p.isSpecial,
+            imageUrl: p.imageUrl || p.image || p.img || "",
+            qty,
+          };
+        });
+
+        // 读取 cart.js 计算出的“当前模式”
+        // 注意：Cart.getState() 会带 mode（cart.js 里有）
+        const mode = st?.mode || localStorage.getItem("freshbuy_pref_mode") || "groupDay";
+        const zone = st?.zone || readZone();
+
+        // ⚠️ 不改 cart.js 的前提下，我们无法拿到 cart.js 的 rule/meetMin/shippingFee 精确值
+        // 所以这里快照只保存：items/subtotal/mode/zone，结算页再用同一套 cart.js 重新计算（最稳）
+        const payload = {
+          mode,
+          modeLabel: getModeLabel(mode),
+          zoneId: zone?.id || "",
+          zoneName: zone?.name || "",
+          items,
+          totalQty,
+          subtotal: Number(subtotal.toFixed(2)),
+          createdAt: new Date().toISOString(),
+        };
+
+        localStorage.setItem("freshbuy_checkout_v1", JSON.stringify(payload));
+        window.location.href = "/user/checkout.html";
+      });
+
+      // ✅ 购物车变化：刷新左侧列表 + 件数
+      window.addEventListener("freshcart:updated", () => {
+        renderLeftList();
+      });
+
+      window.addEventListener("DOMContentLoaded", () => {
+        // cart.js 会自己 init；这里渲染一次左侧即可
+        renderLeftList();
+      });
+    </script>
+
+    <script src="/user/components/footer.js"></script>
+  </body>
+</html>

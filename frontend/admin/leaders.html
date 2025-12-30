@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>团长管理 - 在鲜购拼好货后台</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="assets/css/admin.css" />
+  </head>
+
+  <!-- data-page="leaders" -->
+  <body data-page="leaders">
+    <div class="admin-layout">
+      <!-- 左侧侧边栏 -->
+      <aside class="admin-sidebar">
+      <!-- ✅ 统一 sidebar：由 /admin/assets/js/admin_sidebar.js 注入 -->
+      <div id="adminSidebar"></div>
+    </aside>
+      <!-- 主区域 -->
+      <div class="admin-main">
+        <header class="admin-topbar">
+          <button class="admin-btn admin-btn-ghost" data-toggle-sidebar>
+            ☰
+          </button>
+
+          <div class="admin-topbar-title">团长管理</div>
+          <div class="admin-topbar-spacer"></div>
+
+          <div class="admin-search">
+            <span class="admin-search-icon">🔍</span>
+            <input type="text" placeholder="搜索团长姓名 / 自提点..." />
+          </div>
+
+          <div class="admin-user">
+            <div class="admin-user-avatar">A</div>
+            <div class="admin-user-info">
+              <span class="admin-user-name">Admin</span>
+              <span class="admin-user-role">超级管理员</span>
+            </div>
+          </div>
+        </header>
+
+        <main class="admin-content">
+          <div class="admin-page-header">
+            <div>
+              <div class="admin-page-title">团长列表</div>
+              <div class="admin-breadcrumb">后台 &gt; 团长管理</div>
+            </div>
+
+            <div class="admin-page-actions">
+              <button class="admin-btn admin-btn-ghost">
+                ⟳ 刷新
+              </button>
+              <button class="admin-btn admin-btn-primary">
+                ＋ 新增团长
+              </button>
+            </div>
+          </div>
+
+          <!-- 上方统计卡片：团长总体表现 -->
+          <section class="admin-grid">
+            <article class="admin-card admin-card-ghost">
+              <div class="admin-card-title">团长总数</div>
+              <div class="admin-card-value">42</div>
+              <div class="admin-card-sub">本月新增 6 个团长</div>
+            </article>
+            <article class="admin-card admin-card-ghost">
+              <div class="admin-card-title">本月团长贡献 GMV</div>
+              <div class="admin-card-value">$82,430</div>
+              <div class="admin-card-sub">占整体 GMV 的 64.2%</div>
+            </article>
+            <article class="admin-card admin-card-ghost">
+              <div class="admin-card-title">待结算佣金</div>
+              <div class="admin-card-value">$6,280</div>
+              <div class="admin-card-sub">本周内需结算</div>
+            </article>
+            <article class="admin-card admin-card-ghost">
+              <div class="admin-card-title">活跃团长（近 30 日）</div>
+              <div class="admin-card-value">27</div>
+              <div class="admin-card-sub">有下单或分享行为</div>
+            </article>
+          </section>
+
+          <!-- 筛选条 -->
+          <section class="admin-card admin-card-ghost" style="margin-top: 10px">
+            <div class="admin-card-title">筛选条件</div>
+            <div
+              style="
+                margin-top: 8px;
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                align-items: center;
+              "
+            >
+              <button class="admin-btn admin-btn-ghost">全部团长</button>
+              <button class="admin-btn admin-btn-ghost">活跃团长</button>
+              <button class="admin-btn admin-btn-ghost">本月新加入</button>
+              <button class="admin-btn admin-btn-ghost">待结算</button>
+              <button class="admin-btn admin-btn-ghost">已冻结</button>
+            </div>
+          </section>
+
+          <!-- 团长表格 -->
+          <section class="admin-table-card" style="margin-top: 12px">
+            <div class="admin-card-header">
+              <div>
+                <div class="admin-card-header-title">团长列表</div>
+                <div class="admin-card-header-sub">
+                  后续可对接 /api/admin/leaders · 支持结算、冻结、查看团长明细。
+                </div>
+              </div>
+
+              <button class="admin-btn admin-btn-ghost">
+                导出团长数据
+              </button>
+            </div>
+
+            <div class="admin-table-wrapper">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th>团长ID</th>
+                    <th>团长姓名</th>
+                    <th>手机号</th>
+                    <th>自提点 / 社区</th>
+                    <th>累计订单数</th>
+                    <th>累计 GMV</th>
+                    <th>佣金比例</th>
+                    <th>可提现佣金</th>
+                    <th>状态</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>L0001</td>
+                    <td>王团长</td>
+                    <td>+1 917-***-8888</td>
+                    <td>Flushing Main St 自提点</td>
+                    <td>326</td>
+                    <td>$28,430</td>
+                    <td>5%</td>
+                    <td>$1,280.50</td>
+                    <td>
+                      <span class="admin-tag admin-tag-success">正常</span>
+                    </td>
+                    <td>
+                      <button class="admin-btn admin-btn-ghost">
+                        明细
+                      </button>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>L0002</td>
+                    <td>Liqi</td>
+                    <td>+1 646-***-5566</td>
+                    <td>Fresh Meadows 社区</td>
+                    <td>128</td>
+                    <td>$12,890</td>
+                    <td>6%</td>
+                    <td>$620.00</td>
+                    <td>
+                      <span class="admin-tag admin-tag-success">正常</span>
+                    </td>
+                    <td>
+                      <button class="admin-btn admin-btn-ghost">
+                        明细
+                      </button>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>L0003</td>
+                    <td>Amy</td>
+                    <td>+1 347-***-9911</td>
+                    <td>Bayside 自提点</td>
+                    <td>56</td>
+                    <td>$4,320</td>
+                    <td>4%</td>
+                    <td>$130.00</td>
+                    <td>
+                      <span class="admin-tag admin-tag-warning">待结算</span>
+                    </td>
+                    <td>
+                      <button class="admin-btn admin-btn-ghost">
+                        明细
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="admin-pagination">
+              <span>共 42 位团长（示例）</span>
+              <button class="admin-btn admin-btn-ghost">«</button>
+              <button class="admin-btn admin-btn-primary">1</button>
+              <button class="admin-btn admin-btn-ghost">2</button>
+              <button class="admin-btn admin-btn-ghost">3</button>
+              <button class="admin-btn admin-btn-ghost">»</button>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+    <script src="/admin/assets/js/admin_guard.js"></script>
+    <script src="./assets/js/admin_auth_ui.js"></script>
+    <!-- ✅ 统一 sidebar 注入脚本（必须加） -->
+    <script src="/admin/assets/js/admin_sidebar.js"></script>
+    <script src="assets/js/admin.js"></script>
+  </body>
+</html>

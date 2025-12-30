@@ -1,0 +1,33 @@
+{
+  "name": "freshbuy-v0-1",
+  "version": "0.1.0",
+  "description": "Freshbuy v0.1 prototype - simple online grocery shop",
+  "type": "module",
+  "main": "src/server.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "nodemon src/server.js",
+    "start": "node src/server.js",
+    "build": "echo build ok",
+    "seed:products": "node src/scripts/seed_products.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^4.19.2",
+    "express-rate-limit": "^8.2.1",
+    "jsonwebtoken": "^9.0.3",
+    "mongodb": "^7.0.0",
+    "mongoose": "^9.0.1",
+    "multer": "^2.0.2",
+    "sharp": "^0.34.5",
+    "stripe": "^20.1.0",
+    "twilio": "^5.10.7"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.11"
+  }
+}

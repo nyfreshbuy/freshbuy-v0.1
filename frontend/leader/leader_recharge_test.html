@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>团长本地代充值（测试版）</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial;
+      background: #f4f4f5;
+      margin: 0;
+      padding: 30px;
+    }
+    .card {
+      max-width: 420px;
+      margin: 0 auto;
+      background: #ffffff;
+      border-radius: 12px;
+      padding: 20px 22px;
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+    }
+    h2 {
+      margin-top: 0;
+      margin-bottom: 8px;
+      font-size: 20px;
+    }
+    .sub {
+      font-size: 12px;
+      color: #6b7280;
+      margin-bottom: 14px;
+    }
+    label {
+      font-size: 13px;
+      display: block;
+      margin-top: 8px;
+      margin-bottom: 4px;
+    }
+    input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid #d1d5db;
+      font-size: 14px;
+    }
+    button {
+      width: 100%;
+      margin-top: 14px;
+      padding: 10px 12px;
+      border-radius: 999px;
+      border: none;
+      background: #16a34a;
+      color: white;
+      font-size: 15px;
+      cursor: pointer;
+    }
+    button:hover {
+      filter: brightness(1.05);
+    }
+    .result {
+      margin-top: 16px;
+      font-size: 13px;
+      color: #374151;
+      background: #f9fafb;
+      border-radius: 8px;
+      padding: 8px 10px;
+      border: 1px solid #e5e7eb;
+      word-break: break-all;
+    }
+    .error {
+      color: #b91c1c;
+    }
+    .success {
+      color: #166534;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>团长本地代充值</h2>
+    <div class="sub">
+      仅用于本地测试：团长输入顾客手机号和金额，直接给顾客余额加钱，不连接真实支付。
+    </div>
+
+    <label>团长姓名（可选）</label>
+    <input id="leaderName" placeholder="例如：王团长" />
+
+    <label>顾客手机号（必填）</label>
+    <input id="userPhone" placeholder="必须和数据库里的 phone 一致" />
+
+    <label>充值金额（必填）</label>
+    <input id="amount" type="number" step="0.01" placeholder="例如：50" />
+
+    <button onclick="doRecharge()">代充值（测试）</button>
+
+    <div class="result" id="resultBox">
+      提示信息会显示在这里。
+    </div>
+  </div>
+
+  <script>
+    async function doRecharge() {
+      const leaderName = document.getElementById("leaderName").value.trim();
+      const userPhone = document.getElementById("userPhone").value.trim();
+      const amount = document.getElementById("amount").value.trim();
+      const box = document.getElementById("resultBox");
+
+      if (!userPhone || !amount) {
+        box.innerHTML = '<span class="error">请填写顾客手机号和充值金额</span>';
+        return;
+      }
+
+      try {
+        const res = await fetch("/api/leader/recharge-user-test", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userPhone, amount, leaderName }),
+        });
+
+        const data = await res.json();
+
+        if (!data.success) {
+          box.innerHTML =
+            '<span class="error">失败：' +
+            (data.message || "未知错误") +
+            "</span>";
+          return;
+        }
+
+        const u = data.user || {};
+        box.innerHTML =
+          '<span class="success">代充值成功！</span><br>' +
+          "顾客：" +
+          (u.name || "未知") +
+          "（" +
+          (u.phone || "") +
+          "）<br>" +
+          "当前余额：$" +
+          Number(u.walletBalance || 0).toFixed(2) +
+          "<br>" +
+          "累计充值：$" +
+          Number(u.totalRecharge || 0).toFixed(2);
+      } catch (err) {
+        console.error(err);
+        box.innerHTML =
+          '<span class="error">请求出错，请检查后端 /api/leader/recharge-user-test 是否已开启</span>';
+      }
+    }
+  </script>
+</body>
+</html>

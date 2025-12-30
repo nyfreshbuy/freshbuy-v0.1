@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <title>本地测试 — 用户充值</title>
+  <style>
+    body {
+      font-family: Arial;
+      padding: 30px;
+      background: #f7f7f7;
+    }
+    .card {
+      background: white;
+      padding: 20px;
+      max-width: 400px;
+      border-radius: 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    input {
+      width: 100%;
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+    }
+    button {
+      width: 100%;
+      padding: 12px;
+      background: #2563eb;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    .balance {
+      margin-top: 15px;
+      font-size: 16px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>本地测试 — 用户充值</h2>
+
+    <label>用户 ID：</label>
+    <input id="uid" placeholder="请输入用户 _id（MongoDB 文档的 id）" />
+
+    <label>充值金额：</label>
+    <input id="amt" type="number" placeholder="输入金额，如 50" />
+
+    <button onclick="recharge()">充值</button>
+
+    <div class="balance">
+      <p>余额：<span id="bal">--</span></p>
+      <p>累计充值：<span id="total">--</span></p>
+    </div>
+  </div>
+
+  <script>
+    async function loadWallet() {
+      const userId = document.getElementById("uid").value.trim();
+      if (!userId) return;
+
+      const res = await fetch("/api/wallet/me?userId=" + userId);
+      const data = await res.json();
+
+      if (data.success) {
+        document.getElementById("bal").textContent = "$" + data.balance.toFixed(2);
+        document.getElementById("total").textContent = "$" + data.totalRecharge.toFixed(2);
+      }
+    }
+
+    async function recharge() {
+      const userId = document.getElementById("uid").value.trim();
+      const amount = document.getElementById("amt").value.trim();
+
+      if (!userId || !amount) {
+        alert("请输入用户 ID 和金额");
+        return;
+      }
+
+      const res = await fetch("/api/wallet/recharge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, amount }),
+      });
+
+      const data = await res.json();
+
+      alert(data.message);
+      loadWallet();
+    }
+
+    setInterval(loadWallet, 1500);
+  </script>
+</body>
+</html>

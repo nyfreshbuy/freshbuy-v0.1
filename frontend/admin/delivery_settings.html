@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>配送方式说明设置 - 在鲜购拼好货后台</title>
+  <link rel="stylesheet" href="assets/css/admin.css" />
+</head>
+
+<!-- ✅ 保留 data-page（可选），但统一 sidebar 以后不靠它也能高亮 -->
+<body class="admin-layout" data-page="delivery-settings">
+
+  <!-- ✅ 统一 Sidebar：把原来写死的 aside 内容换成一个容器 -->
+  <aside class="admin-sidebar">
+    <div id="adminSidebar"></div>
+  </aside>
+
+  <main class="admin-main">
+    <h1 class="page-title">配送方式说明（后台可编辑）</h1>
+
+    <div class="settings-card">
+      <textarea
+        id="instructionInput"
+        style="width:100%;height:260px;border-radius:10px;padding:12px;font-size:14px;"
+      ></textarea>
+
+      <button id="saveBtn" class="btn-primary" style="margin-top:10px;">保存</button>
+    </div>
+  </main>
+ <script src="/admin/assets/js/admin_guard.js"></script>
+ <script src="./assets/js/admin_auth_ui.js"></script> 
+ <!-- ✅ 统一 sidebar 脚本（必须） -->
+  <script src="/admin/assets/js/admin_sidebar.js"></script>
+
+  <script>
+    // ✅ 统一 token 读取：兼容你后台其它页面的 token key
+    function getToken() {
+      return (
+        localStorage.getItem("freshbuy_token") ||
+        localStorage.getItem("adminToken") ||
+        localStorage.getItem("token") ||
+        localStorage.getItem("auth_token") ||
+        localStorage.getItem("jwt") ||
+        ""
+      );
+    }
+
+    function authHeaders() {
+      const t = getToken();
+      return t ? { Authorization: "Bearer " + t } : {};
+    }
+
+    async function loadData() {
+      try {
+        // ✅ 读取也带 token，避免接口要求登录时 401
+        const res = await fetch("/api/admin/settings/delivery-instructions", {
+          headers: { ...authHeaders() },
+        });
+
+        if (res.status === 401) {
+          // ✅ 未登录：跳后台登录
+          location.href = "/admin/login.html";
+          return;
+        }
+
+        const data = await res.json().catch(() => ({}));
+        if (data.success) {
+          document.getElementById("instructionInput").value = data.content || "";
+        } else {
+          alert(data.message || data.msg || "加载失败");
+        }
+      } catch (e) {
+        alert("加载失败：" + (e.message || e));
+      }
+    }
+
+    async function save() {
+      const content = document.getElementById("instructionInput").value;
+
+      try {
+        const res = await fetch("/api/admin/settings/delivery-instructions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...authHeaders(),
+          },
+          body: JSON.stringify({ content }),
+        });
+
+        if (res.status === 401) {
+          location.href = "/admin/login.html";
+          return;
+        }
+
+        const data = await res.json().catch(() => ({}));
+        alert(data.message || data.msg || "已保存");
+      } catch (e) {
+        alert("保存失败：" + (e.message || e));
+      }
+    }
+
+    document.getElementById("saveBtn").addEventListener("click", save);
+
+    // ✅ 如果没有 token，直接去登录（可选但推荐）
+    if (!getToken()) {
+      location.href = "/admin/login.html";
+    } else {
+      loadData();
+    }
+  </script>
+
+</body>
+</html>

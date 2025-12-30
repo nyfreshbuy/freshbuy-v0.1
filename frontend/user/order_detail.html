@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>订单详情 - Freshbuy</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="assets/css/main.css" />
+  <style>
+    .page {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 16px;
+    }
+    .back-link {
+      font-size: 14px;
+      color: #2563eb;
+      margin-bottom: 10px;
+      display: inline-block;
+      cursor: pointer;
+    }
+    .order-detail-card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.06);
+      margin-top: 8px;
+    }
+    .od-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 10px;
+      font-size: 14px;
+    }
+    .od-section-title {
+      font-size: 15px;
+      font-weight: 600;
+      margin: 12px 0 6px;
+    }
+    .od-row {
+      font-size: 14px;
+      margin: 2px 0;
+      color: #374151;
+    }
+    .od-row span.label {
+      color: #6b7280;
+      margin-right: 4px;
+    }
+    table.od-items {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 6px;
+      font-size: 14px;
+    }
+    .od-items th,
+    .od-items td {
+      padding: 6px 4px;
+      border-bottom: 1px solid #e5e7eb;
+      text-align: left;
+    }
+    .od-items th {
+      background: #f9fafb;
+      font-weight: 600;
+      font-size: 13px;
+    }
+    .od-summary {
+      text-align: right;
+      margin-top: 10px;
+      font-size: 14px;
+    }
+    .od-summary div {
+      margin: 2px 0;
+    }
+    .od-summary .total {
+      font-size: 16px;
+      font-weight: 700;
+      color: #16a34a;
+    }
+    .od-status {
+      font-size: 13px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: #dcfce7;
+      color: #16a34a;
+    }
+    .od-notfound {
+      margin-top: 40px;
+      text-align: center;
+      color: #6b7280;
+      font-size: 14px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="page">
+    <div class="back-link" onclick="window.location.href='/user/user_center.html#orders'">
+  ← 返回用户中心
+</div>
+
+
+    <h2>订单详情</h2>
+
+    <div id="orderDetailContainer">
+      <!-- JS 渲染 -->
+    </div>
+  </div>
+
+  <script src="assets/js/order_detail.js"></script>
+</body>
+</html>

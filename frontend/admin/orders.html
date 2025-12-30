@@ -1,0 +1,1208 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>订单管理 - 在鲜购拼好货后台</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="assets/css/admin.css" />
+    <style>
+      /* 订单详情侧栏的小样式增强 */
+      .order-detail-panel {
+        margin-top: 12px;
+        display: none;
+        grid-template-columns: 2fr 1fr;
+        gap: 10px;
+      }
+      .order-detail-panel.active {
+        display: grid;
+      }
+      .order-detail-card {
+        background: rgba(15, 23, 42, 0.9);
+        border-radius: 14px;
+        padding: 10px;
+        border: 1px solid rgba(148, 163, 184, 0.5);
+        color: #e5e7eb;
+        font-size: 13px;
+      }
+      .order-detail-title {
+        font-size: 14px;
+        font-weight: 600;
+        margin-bottom: 6px;
+      }
+      .order-detail-row {
+        margin-bottom: 4px;
+      }
+      .order-detail-label {
+        color: #9ca3af;
+        margin-right: 4px;
+      }
+      .delivery-pill {
+        display: inline-flex;
+        align-items: center;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 11px;
+        background: rgba(56, 189, 248, 0.12);
+        color: #38bdf8;
+      }
+      .delivery-pill.pickup {
+        background: rgba(16, 185, 129, 0.12);
+        color: #34d399;
+      }
+      .pay-pill {
+        display: inline-flex;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 11px;
+        background: rgba(248, 250, 252, 0.08);
+        color: #e5e7eb;
+      }
+      .stat-highlight {
+        font-weight: 600;
+        color: #a5b4fc;
+      }
+
+      /* 列表里的小圆形配送序号标记 */
+      .order-seq-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px;
+        height: 32px;
+        border-radius: 999px;
+        background: rgba(56, 189, 248, 0.16);
+        color: #38bdf8;
+        font-weight: 700;
+        font-size: 18px;
+      }
+      .order-seq-badge.order-seq-empty {
+        opacity: 0.35;
+      }
+
+      /* 订单详情里的大号配送序号（司机专用大字版） */
+      .order-detail-seq-box {
+        margin-bottom: 10px;
+        padding: 8px 10px;
+        border-radius: 10px;
+        background: rgba(34, 197, 94, 0.18);
+        border: 1px solid #22c55e;
+        text-align: center;
+      }
+      .order-detail-seq-label {
+        font-size: 12px;
+        color: #bbf7d0;
+        letter-spacing: 1px;
+      }
+      .order-detail-seq-value {
+        font-size: 32px;
+        font-weight: 900;
+        color: #4ade80;
+        line-height: 1.1;
+      }
+    </style>
+  </head>
+
+  <body data-page="orders">
+    <div class="admin-layout">
+      <!-- 左侧侧边栏（简版） -->
+      <aside class="admin-sidebar">
+      <!-- ✅ 统一 sidebar：由 /admin/assets/js/admin_sidebar.js 注入 -->
+      <div id="adminSidebar"></div>
+    </aside>
+      <!-- 右侧主区域 -->
+      <div class="admin-main">
+        <!-- 顶部栏 -->
+        <header class="admin-topbar">
+          <button class="admin-btn admin-btn-ghost admin-topbar-toggle" data-toggle-sidebar>
+            ☰
+          </button>
+          <div class="admin-topbar-title">订单管理</div>
+          <div class="admin-topbar-spacer"></div>
+
+          <div class="admin-search">
+            <span class="admin-search-icon">🔍</span>
+            <input type="text" id="searchKeyword" placeholder="订单号 / 用户名 / 手机号" />
+          </div>
+
+          <div class="admin-user">
+            <div class="admin-user-avatar">A</div>
+            <div class="admin-user-info">
+              <span class="admin-user-name">Admin</span>
+              <span class="admin-user-role">超级管理员</span>
+            </div>
+          </div>
+        </header>
+
+        <!-- 内容 -->
+        <main class="admin-content">
+          <!-- 标题 + 操作 -->
+          <div class="admin-page-header">
+            <div>
+              <div class="admin-page-title">订单列表</div>
+              <div class="admin-breadcrumb">后台 &gt; 订单管理</div>
+            </div>
+
+            <div class="admin-page-actions">
+              <button class="admin-btn admin-btn-ghost" id="btnRefresh">⟳ 刷新</button>
+              <button class="admin-btn admin-btn-secondary" id="btnGoPicklist">📦 本周配货单</button>
+              <button class="admin-btn admin-btn-secondary" id="btnOptimizeRoute">📍 路线智能排序</button>
+              <button class="admin-btn admin-btn-primary">⬇ 导出订单（占位）</button>
+            </div>
+          </div>
+
+          <!-- 筛选条 -->
+          <section class="admin-card admin-card-ghost">
+            <div class="admin-card-title">
+              筛选条件
+              <span id="filterSummary" style="font-size: 11px; color: #9ca3af; margin-left: 8px"></span>
+            </div>
+            <div
+              style="
+                margin-top: 8px;
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                align-items: center;
+              "
+            >
+              <!-- 订单状态 -->
+              <select id="filterStatus" class="admin-input">
+                <option value="">全部状态</option>
+                <option value="pending">待支付 / 待确认</option>
+                <option value="paid">已支付</option>
+                <option value="packing">配货中</option>
+                <option value="shipping">配送中</option>
+                <option value="done">已完成</option>
+                <option value="cancelled">已取消</option>
+              </select>
+
+              <!-- 收货方式：送货上门 / 团长自提 -->
+              <select id="filterDelivery" class="admin-input">
+                <option value="">全部收货方式</option>
+                <option value="door">送货上门</option>
+                <option value="pickup">团长自提</option>
+              </select>
+
+              <!-- 配送模式（业务模式） -->
+              <select id="filterServiceMode" class="admin-input">
+                <option value="">全部配送模式</option>
+                <option value="normal">次日配送</option>
+                <option value="friend">好友拼单配送</option>
+                <option value="areaGroup">区域团拼单配送</option>
+              </select>
+
+              <!-- 区域团拼单的区域筛选 -->
+              <select id="filterAreaGroupZone" class="admin-input" style="display: none; min-width: 180px">
+                <option value="">全部区域</option>
+              </select>
+
+              <!-- 时间范围 -->
+              <div style="display: flex; gap: 4px; align-items: center">
+                <input id="filterFrom" type="date" class="admin-input" style="width: 150px" />
+                <span style="font-size: 12px; color: #9ca3af">至</span>
+                <input id="filterTo" type="date" class="admin-input" style="width: 150px" />
+              </div>
+
+              <button class="admin-btn admin-btn-primary" id="btnSearch">查询</button>
+
+              <button class="admin-btn admin-btn-ghost" id="btnPrintOrderList">打印筛选订单</button>
+            </div>
+          </section>
+
+          <!-- 订单表格 -->
+          <section class="admin-table-card" style="margin-top: 12px">
+            <div class="admin-card-header">
+              <div>
+                <div class="admin-card-header-title">订单列表</div>
+                <div class="admin-card-header-sub">
+                  从 <code>/api/admin/orders</code> 拉取数据，支持筛选和分页，可查看订单详情、打印配货小票，并可根据
+                  Google 路线自动优化配送顺序。
+                </div>
+              </div>
+              <div id="gmvSummary" style="font-size: 12px; color: #e5e7eb">
+                当前筛选 GMV：<span class="stat-highlight">$0.00</span>
+              </div>
+            </div>
+
+            <div class="admin-table-wrapper">
+              <table class="admin-table" id="ordersTable">
+                <thead>
+                  <tr>
+                    <th style="width: 70px">序号</th>
+                    <th>订单号</th>
+                    <th>用户</th>
+                    <th>金额</th>
+                    <th>配送方式</th>
+                    <th>团长/自提点</th>
+                    <th>商品数</th>
+                    <th>订单状态</th>
+                    <th>下单时间</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="ordersTableBody">
+                  <tr>
+                    <td colspan="10">正在加载订单...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="admin-pagination" id="ordersPagination">
+              <span id="ordersSummary">共 0 笔订单</span>
+              <div>
+                <button class="admin-btn admin-btn-ghost" id="btnPrevPage" disabled>«</button>
+                <span id="pageInfo" style="margin: 0 6px; font-size: 12px">第 1 / 1 页</span>
+                <button class="admin-btn admin-btn-ghost" id="btnNextPage" disabled>»</button>
+              </div>
+            </div>
+          </section>
+
+          <!-- 订单详情面板 -->
+          <section id="orderDetailPanel" class="order-detail-panel">
+            <div class="order-detail-card">
+              <div class="order-detail-title">订单详情</div>
+
+              <div id="orderDetailSeqBox" class="order-detail-seq-box" style="display: none">
+                <div class="order-detail-seq-label">配送序号</div>
+                <div id="orderDetailSeqValue" class="order-detail-seq-value">--</div>
+              </div>
+
+              <div id="orderDetailMain">
+                <div style="font-size: 12px; color: #9ca3af">点击列表中的「详情」按钮查看具体订单。</div>
+              </div>
+            </div>
+            <div class="order-detail-card">
+              <div class="order-detail-title">商品明细</div>
+              <div id="orderItemList">
+                <div style="font-size: 12px; color: #9ca3af">商品列表会显示在这里。</div>
+              </div>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+    <script src="/admin/assets/js/admin_guard.js"></script>
+    <script src="./assets/js/admin_auth_ui.js"></script>
+    <!-- 先加载 Google Maps JS -->
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyA6GEAhetFXnP-y9iYaE7oewv-mLKrELN0&loading=async"></script>
+
+    <script src="assets/js/admin.js"></script>
+    <script>
+      let currentPage = 1;
+      const pageSize = 20;
+      let totalPages = 1;
+      let currentOrdersCache = [];
+
+      // Google DirectionsService（只用来算路线，不画地图）
+      let directionsService = null;
+
+      function formatDate(str) {
+        if (!str) return "-";
+        const d = new Date(str);
+        if (Number.isNaN(d.getTime())) return str;
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, "0");
+        const day = String(d.getDate()).padStart(2, "0");
+        const hh = String(d.getHours()).padStart(2, "0");
+        const mm = String(d.getMinutes()).padStart(2, "0");
+        return `${y}-${m}-${day} ${hh}:${mm}`;
+      }
+
+      function renderStatusTag(status) {
+        const s = (status || "").toLowerCase();
+        if (s === "done" || s === "completed")
+          return '<span class="admin-tag admin-tag-success">已完成</span>';
+        if (s === "shipping")
+          return '<span class="admin-tag admin-tag-warning">配送中</span>';
+        if (s === "packing")
+          return '<span class="admin-tag admin-tag-warning">配货中</span>';
+        if (s === "paid")
+          return '<span class="admin-tag admin-tag-success">已支付</span>';
+        if (s === "cancelled") return '<span class="admin-tag">已取消</span>';
+        return '<span class="admin-tag">待支付</span>';
+      }
+
+      // ✅ 从订单对象推断收货方式：door / pickup
+      function getDeliveryType(o) {
+        const v = String(
+          o.deliveryType ||
+            o.fulfillmentType ||
+            o.shippingType ||
+            o.receiveMode ||
+            ""
+        ).toLowerCase();
+
+        if (v === "door" || v === "delivery" || v === "home") return "door";
+        if (v === "pickup" || v === "leader") return "pickup";
+
+        // 兜底：有地址字段就当送货上门
+        if (o.address || o.shippingAddress || o.fullAddress) return "door";
+        return "";
+      }
+
+      // ✅ 从订单对象推断业务模式：normal / groupDay / dealsDay / friendGroup
+      function getServiceMode(o) {
+        const raw = String(
+          o.deliveryMode ||
+            o.serviceMode ||
+            o.bizMode ||
+            o.orderMode ||
+            o.orderType ||
+            ""
+        ).trim();
+
+        // 兼容老字段
+        if (raw === "area_group") return "groupDay";
+        if (raw === "friend_group") return "friendGroup";
+        if (raw === "areaGroup") return "groupDay";
+        if (raw === "friend") return "friendGroup";
+
+        const allow = new Set(["normal", "groupDay", "dealsDay", "friendGroup"]);
+        return allow.has(raw) ? raw : raw;
+      }
+
+      function renderDeliveryLabel(type) {
+        const t = (type || "").toLowerCase();
+        if (t === "door") return '<span class="delivery-pill">送货上门</span>';
+        if (t === "pickup")
+          return '<span class="delivery-pill pickup">团长自提</span>';
+        return "未知";
+      }
+
+      // ✅ 业务模式 label
+      function renderServiceModeLabel(mode) {
+        const m = String(mode || "").trim();
+        const map = {
+          normal: "次日配送",
+          groupDay: "区域团",
+          dealsDay: "爆品日",
+          friendGroup: "好友拼单",
+        };
+        return map[m] || "未知";
+      }
+
+      function formatPayMethod(pm) {
+        const v = (pm || "").toLowerCase();
+        if (!v) return "—";
+        if (v === "card") return "信用卡";
+        if (v === "cash") return "现金";
+        if (v === "applepay") return "Apple Pay";
+        if (v === "wechat") return "微信支付";
+        if (v === "alipay") return "支付宝";
+        return pm;
+      }
+
+      // 通用获取配送序号（优先 routeSeq，其次 sequenceNumber / sequenceNo）
+      function getOrderSeq(o) {
+        if (typeof o.routeSeq === "number") return o.routeSeq;
+        if (typeof o.sequenceNumber === "number") return o.sequenceNumber;
+        if (typeof o.sequenceNo === "number") return o.sequenceNo;
+        return null;
+      }
+
+      // 小票专用：姓名脱敏，只保留第一个字/姓
+      function maskName(name) {
+        if (!name) return "—";
+        const n = String(name).trim();
+        if (n.includes(" ")) {
+          const parts = n.split(/\s+/);
+          return parts[0] + " *";
+        }
+        if (n.length <= 1) return n;
+        return n[0] + "*".repeat(n.length - 1);
+      }
+
+      // 小票专用：手机号脱敏，保留前2+后2
+      function maskPhone(phone) {
+        if (!phone) return "—";
+        const p = String(phone).trim();
+        if (p.length <= 4) return p;
+        return p.slice(0, 2) + "*".repeat(p.length - 4) + p.slice(-2);
+      }
+
+      // 当前订单列表的 GMV
+      function computeGMV(list) {
+        return list.reduce((sum, o) => {
+          const amount =
+            typeof o.totalAmount === "number" ? o.totalAmount : o.amount || 0;
+          return sum + Number(amount || 0);
+        }, 0);
+      }
+
+      // ✅ 从订单里提取 zoneId（兼容多种结构）
+      function getZoneIdFromOrder(o) {
+        const z =
+          (o && o.address && o.address.zoneId) ||
+          (o && o.fulfillment && o.fulfillment.zoneId) ||
+          o.zoneId ||
+          o.areaGroupZone ||
+          "";
+        return String(z || "").trim();
+      }
+
+      // ✅ 动态刷新区域下拉（基于当前页订单真实 zoneId）
+      function refreshAreaGroupZoneSelect(selectEl, orders, keepSelectedValue) {
+        if (!selectEl) return;
+
+        const prev = keepSelectedValue ? String(selectEl.value || "") : "";
+        selectEl.innerHTML = `<option value="">全部区域</option>`;
+
+        const zones = new Map(); // zoneId -> count
+        (orders || []).forEach((o) => {
+          const z = getZoneIdFromOrder(o);
+          if (!z) return;
+          zones.set(z, (zones.get(z) || 0) + 1);
+        });
+
+        const arr = Array.from(zones.entries()).sort((a, b) => b[1] - a[1]);
+
+        arr.forEach(([zoneId, count]) => {
+          const opt = document.createElement("option");
+          opt.value = zoneId;
+          opt.textContent = `${zoneId} (${count})`;
+          selectEl.appendChild(opt);
+        });
+
+        if (prev && Array.from(selectEl.options).some((x) => x.value === prev)) {
+          selectEl.value = prev;
+        }
+      }
+
+      // 构造地址字符串（给 Google 用）
+      function buildOrderAddress(o) {
+        return o.fullAddress || o.address || o.shippingAddress || "";
+      }
+
+      // ✅ 一键打印当前页缓存（批量）——使用 routeSeq 顺序
+      function printOrderList() {
+        if (!currentOrdersCache.length) {
+          alert("当前页没有可打印的订单");
+          return;
+        }
+
+        const orders = [...currentOrdersCache].sort((a, b) => {
+          const sa = getOrderSeq(a);
+          const sb = getOrderSeq(b);
+          if (sa != null && sb != null) return sa - sb;
+          if (sa != null) return -1;
+          if (sb != null) return 1;
+          const ta = new Date(a.createdAt || 0).getTime();
+          const tb = new Date(b.createdAt || 0).getTime();
+          return ta - tb;
+        });
+
+        const ticketsHtml = orders
+          .map((o) => {
+            const orderId = o.orderNo || o._id || o.id || "";
+            const amount =
+              typeof o.totalAmount === "number" ? o.totalAmount : o.amount || 0;
+
+            const rawUserName = (o.user && o.user.name) || o.customerName || "—";
+            const rawUserPhone =
+              (o.user && o.user.phone) || o.customerPhone || "";
+
+            const userName = maskName(rawUserName);
+            const userPhone = maskPhone(rawUserPhone);
+
+            const address = o.address || o.shippingAddress || "—";
+            const items = o.items || [];
+            const deliveryFee = Number(o.deliveryFee || o.shippingFee || 0);
+            const createdAt = o.createdAt;
+            const payMethod = formatPayMethod(o.payMethod);
+            const seq = getOrderSeq(o);
+
+            const serviceText = renderServiceModeLabel(getServiceMode(o));
+            const receiveText =
+              getDeliveryType(o) === "pickup" ? "团长自提" : "送货上门";
+            const deliveryModeText = `${serviceText} / ${receiveText}`;
+
+            const itemsRows =
+              items
+                .map((it) => {
+                  const name = it.name || it.productName || "商品";
+                  const qty = it.qty || it.quantity || 1;
+                  const price = Number(it.price || it.unitPrice || 0);
+                  const subtotal = price * qty;
+                  return `
+                    <tr>
+                      <td>${name}</td>
+                      <td>${qty}</td>
+                      <td>$${price.toFixed(2)}</td>
+                      <td>$${subtotal.toFixed(2)}</td>
+                    </tr>
+                  `;
+                })
+                .join("") || "";
+
+            return `
+              <div class="ticket">
+                <h1>在鲜购拼好货 · 配货小票</h1>
+
+                <div class="seq-box">
+                  <div class="seq-label">配送序号</div>
+                  <div class="seq-value">${seq != null ? seq : "-"}</div>
+                </div>
+
+                <div class="meta">
+                  <div>订单号：${orderId}</div>
+                  <div>下单时间：${formatDate(createdAt)}</div>
+                  <div>客户姓名：${userName}</div>
+                  <div>联系电话：${userPhone}</div>
+                  <div>配送方式：${deliveryModeText}</div>
+                  <div>收货地址：${address}</div>
+                  <div>支付方式：${payMethod}</div>
+                </div>
+
+                <table>
+                  <thead>
+                    <tr>
+                      <th>商品</th>
+                      <th>数量</th>
+                      <th>单价</th>
+                      <th>小计</th>
+                    </tr>
+                  </thead>
+                  <tbody>${itemsRows}</tbody>
+                </table>
+
+                <div class="total">
+                  商品总额：$${Number(amount).toFixed(2)}<br/>
+                  配送费：$${deliveryFee.toFixed(2)}<br/>
+                  <strong>应付总额：$${(Number(amount) + deliveryFee).toFixed(2)}</strong>
+                </div>
+              </div>
+            `;
+          })
+          .join("");
+
+        const html = `
+          <html>
+            <head>
+              <meta charset="UTF-8" />
+              <title>配货小票批量打印</title>
+              <style>
+                body {
+                  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+                  padding: 16px;
+                  color: #111827;
+                }
+                h1 { font-size: 18px; margin-bottom: 8px; }
+                .seq-box {
+                  margin-bottom: 8px;
+                  padding: 6px 8px;
+                  border-radius: 8px;
+                  border: 1px solid #16a34a;
+                  background: #dcfce7;
+                  text-align: center;
+                }
+                .seq-label { font-size: 11px; color: #166534; letter-spacing: 1px; }
+                .seq-value { font-size: 26px; font-weight: 900; color: #166534; line-height: 1.1; }
+                .meta { font-size: 12px; margin-bottom: 10px; }
+                .meta div { margin-bottom: 2px; }
+                table {
+                  width: 100%;
+                  border-collapse: collapse;
+                  font-size: 12px;
+                  margin-top: 6px;
+                }
+                th, td { border: 1px solid #e5e7eb; padding: 4px 6px; }
+                th { background: #f9fafb; }
+                .total { margin-top: 10px; font-size: 13px; text-align: right; }
+                .total strong { font-size: 14px; }
+                .ticket { page-break-after: always; margin-bottom: 24px; }
+              </style>
+            </head>
+            <body>${ticketsHtml}</body>
+          </html>
+        `;
+
+        const win = window.open("", "_blank");
+        if (!win) {
+          alert("浏览器拦截了打印窗口，请允许弹窗后重试。");
+          return;
+        }
+        win.document.write(html);
+        win.document.close();
+        win.focus();
+        win.print();
+        win.close();
+      }
+
+      // ✅ 渲染当前页缓存到表格（含配送序号）
+      function renderTableFromCache(total, totalPagesValue) {
+        const tbody = document.getElementById("ordersTableBody");
+        if (!tbody) return;
+
+        if (!currentOrdersCache.length) {
+          tbody.innerHTML = '<tr><td colspan="10">暂无符合条件的订单</td></tr>';
+        } else {
+          tbody.innerHTML = "";
+          currentOrdersCache.forEach((o) => {
+            const tr = document.createElement("tr");
+            const oid = o.orderNo || o._id || o.id || "";
+            const userName = (o.user && o.user.name) || o.customerName || "—";
+            const userPhone = (o.user && o.user.phone) || o.customerPhone || "";
+            const leaderName = (o.leader && o.leader.name) || o.leaderName || "";
+            const pickupName = o.pickupName || "";
+
+            const amount =
+              typeof o.totalAmount === "number" ? o.totalAmount : o.amount || 0;
+            const itemCount = o.items ? o.items.length : o.itemCount || 0;
+            const seq = getOrderSeq(o);
+
+            const serviceText = renderServiceModeLabel(getServiceMode(o));
+            const receiveText = renderDeliveryLabel(getDeliveryType(o));
+
+            tr.innerHTML = `
+              <td>${
+                seq != null
+                  ? `<span class="order-seq-badge">${seq}</span>`
+                  : '<span class="order-seq-badge order-seq-empty">-</span>'
+              }</td>
+              <td>${oid}</td>
+              <td>${userName}${
+                userPhone
+                  ? "<br><span style='font-size:11px;color:#9ca3af'>" +
+                    userPhone +
+                    "</span>"
+                  : ""
+              }</td>
+              <td>$${Number(amount).toFixed(2)}</td>
+              <td>${serviceText}<br/>${receiveText}</td>
+              <td>${
+                leaderName || pickupName
+                  ? `${leaderName || ""}${pickupName ? " / " + pickupName : ""}`
+                  : "—"
+              }</td>
+              <td>${itemCount}</td>
+              <td>${renderStatusTag(o.status)}</td>
+              <td>${formatDate(o.createdAt)}</td>
+              <td>
+                <button class="admin-btn admin-btn-ghost" onclick="viewOrderDetail('${o._id || o.id || oid}')">详情</button>
+                <button class="admin-btn admin-btn-ghost" onclick="printOrder('${o._id || o.id || oid}')">打印</button>
+                <button class="admin-btn admin-btn-ghost" onclick="markOrderCompleted('${o._id || o.id}')">标记完成</button>
+              </td>
+            `;
+            tbody.appendChild(tr);
+          });
+        }
+
+        const gmv = computeGMV(currentOrdersCache);
+        document.getElementById("ordersSummary").textContent = `共 ${total} 笔订单`;
+        document.getElementById("pageInfo").textContent = `第 ${currentPage} / ${totalPagesValue} 页`;
+        document.getElementById("btnPrevPage").disabled = currentPage <= 1;
+        document.getElementById("btnNextPage").disabled = currentPage >= totalPagesValue;
+        document.getElementById("gmvSummary").innerHTML =
+          `当前筛选 GMV：<span class="stat-highlight">$${gmv.toFixed(2)}</span>`;
+      }
+
+      // ✅ 拉取订单列表
+      async function loadOrders(page = 1) {
+        currentPage = page;
+        const tbody = document.getElementById("ordersTableBody");
+        tbody.innerHTML = '<tr><td colspan="10">正在加载订单...</td></tr>';
+
+        const keyword = document.getElementById("searchKeyword").value.trim();
+        const status = document.getElementById("filterStatus").value || "";
+
+        // ✅ 收货方式（door/pickup）——不传给后端，前端过滤，避免 “爆品日送货上门查不到”
+        const receiveFilter = document.getElementById("filterDelivery").value || "";
+
+        // ✅ 业务模式筛选（normal/friend/areaGroup）
+        const serviceModeEl = document.getElementById("filterServiceMode");
+        const areaZoneEl = document.getElementById("filterAreaGroupZone");
+        const serviceModeFilter = serviceModeEl ? serviceModeEl.value : "";
+        const areaGroupZone = areaZoneEl ? areaZoneEl.value : "";
+
+        const from = document.getElementById("filterFrom").value;
+        const to = document.getElementById("filterTo").value;
+
+        const params = new URLSearchParams();
+        params.append("page", page);
+        params.append("pageSize", pageSize);
+        if (keyword) params.append("keyword", keyword);
+        if (status) params.append("status", status);
+
+        // ✅ 注意：这里不再 params.append("deliveryMode", receiveFilter)
+
+        if (serviceModeFilter) params.append("serviceMode", serviceModeFilter);
+        // 这里 areaGroupZone 也可传给后端（即使后端不支持也没事）
+        if (areaGroupZone) params.append("areaGroupZone", areaGroupZone);
+        if (from) params.append("dateFrom", from);
+        if (to) params.append("dateTo", to);
+
+        try {
+          const res = await fetch("/api/admin/orders?" + params.toString());
+          const data = await res.json();
+
+          if (!data.success) {
+            tbody.innerHTML =
+              '<tr><td colspan="10">加载失败：' + (data.message || "未知错误") + "</td></tr>";
+            return;
+          }
+
+          const list = data.list || data.orders || [];
+          const total = data.total || list.length;
+          totalPages = data.totalPages || 1;
+
+          // ✅ 每次拿到 list，就用真实 zoneId 刷新“区域下拉”
+          // 只在区域团模式下显示，但我们依然刷新 options，避免切换时空白
+          refreshAreaGroupZoneSelect(areaZoneEl, list, true);
+
+          // ✅ 前端二次筛选（关键）
+          let filtered = [...list];
+
+          // 1) 收货方式：door / pickup
+          if (receiveFilter) {
+            filtered = filtered.filter((o) => getDeliveryType(o) === receiveFilter);
+          }
+
+          // 2) 业务模式：把“爆品日”归类到“区域团”
+          if (serviceModeFilter) {
+            if (serviceModeFilter === "areaGroup") {
+              filtered = filtered.filter((o) => {
+                const sm = getServiceMode(o);
+                return sm === "groupDay" || sm === "dealsDay";
+              });
+            } else if (serviceModeFilter === "friend") {
+              filtered = filtered.filter((o) => getServiceMode(o) === "friendGroup");
+            } else if (serviceModeFilter === "normal") {
+              filtered = filtered.filter((o) => getServiceMode(o) === "normal");
+            }
+          }
+
+          // 3) ✅ 区域筛选：真正按 zoneId 区分
+          if (serviceModeFilter === "areaGroup" && areaGroupZone) {
+            filtered = filtered.filter((o) => getZoneIdFromOrder(o) === String(areaGroupZone).trim());
+          }
+
+          currentOrdersCache = filtered;
+
+          if (!currentOrdersCache.length) {
+            tbody.innerHTML = '<tr><td colspan="10">暂无符合条件的订单</td></tr>';
+            document.getElementById("gmvSummary").innerHTML =
+              '当前筛选 GMV：<span class="stat-highlight">$0.00</span>';
+            document.getElementById("ordersSummary").textContent = `共 0 笔订单`;
+            document.getElementById("pageInfo").textContent = `第 ${currentPage} / ${totalPages} 页`;
+            document.getElementById("btnPrevPage").disabled = true;
+            document.getElementById("btnNextPage").disabled = true;
+            return;
+          }
+
+          renderTableFromCache(total, totalPages);
+        } catch (e) {
+          console.error(e);
+          tbody.innerHTML =
+            '<tr><td colspan="10">请求出错，请检查 /api/admin/orders 是否可用</td></tr>';
+        }
+      }
+
+      // ✅ 订单详情（从当前页缓存取）
+      function viewOrderDetail(idOrNo) {
+        const panel = document.getElementById("orderDetailPanel");
+        const main = document.getElementById("orderDetailMain");
+        const listBox = document.getElementById("orderItemList");
+        const seqBox = document.getElementById("orderDetailSeqBox");
+        const seqValueEl = document.getElementById("orderDetailSeqValue");
+
+        const o =
+          currentOrdersCache.find(
+            (x) => x._id === idOrNo || x.id === idOrNo || x.orderNo === idOrNo
+          ) || null;
+
+        if (!o) {
+          panel.classList.add("active");
+          main.innerHTML =
+            '<div class="order-detail-row">未在当前页缓存中找到该订单。</div>';
+          listBox.innerHTML =
+            '<div class="order-detail-row">没有商品信息。</div>';
+          if (seqBox) seqBox.style.display = "none";
+          return;
+        }
+
+        const amount =
+          typeof o.totalAmount === "number" ? o.totalAmount : o.amount || 0;
+        const userName = (o.user && o.user.name) || o.customerName || "—";
+        const userPhone = (o.user && o.user.phone) || o.customerPhone || "";
+        const leaderName = (o.leader && o.leader.name) || o.leaderName || "";
+        const pickupName = o.pickupName || "";
+        const address = o.address || o.shippingAddress || "—";
+        const remark = o.remark || "—";
+
+        const payMethod = formatPayMethod(o.payMethod);
+        const seq = getOrderSeq(o);
+
+        const serviceText = renderServiceModeLabel(getServiceMode(o));
+        const receiveText =
+          getDeliveryType(o) === "pickup" ? "团长自提" : "送货上门";
+
+        if (seqBox && seqValueEl) {
+          if (seq != null) {
+            seqBox.style.display = "block";
+            seqValueEl.textContent = seq;
+          } else {
+            seqBox.style.display = "none";
+          }
+        }
+
+        main.innerHTML = `
+          <div class="order-detail-row">
+            <span class="order-detail-label">订单号:</span> ${o.orderNo || o._id}
+          </div>
+          <div class="order-detail-row">
+            <span class="order-detail-label">用户:</span> ${userName}${
+              userPhone ? "（" + userPhone + "）" : ""
+            }
+          </div>
+          <div class="order-detail-row">
+            <span class="order-detail-label">金额:</span> $${Number(amount).toFixed(2)}
+          </div>
+          <div class="order-detail-row">
+            <span class="order-detail-label">配送方式:</span> ${serviceText} / ${receiveText}
+          </div>
+          <div class="order-detail-row">
+            <span class="order-detail-label">支付方式:</span>
+            <span class="pay-pill">${payMethod}</span>
+          </div>
+          <div class="order-detail-row">
+            <span class="order-detail-label">团长/自提点:</span>
+            ${leaderName || pickupName || "—"}
+          </div>
+          <div class="order-detail-row">
+            <span class="order-detail-label">收货地址:</span> ${address}
+          </div>
+          <div class="order-detail-row">
+            <span class="order-detail-label">备注:</span> ${remark}
+          </div>
+          <div class="order-detail-row">
+            <span class="order-detail-label">下单时间:</span> ${formatDate(o.createdAt)}
+          </div>
+        `;
+
+        if (!o.items || !o.items.length) {
+          listBox.innerHTML = '<div class="order-detail-row">没有商品信息。</div>';
+        } else {
+          listBox.innerHTML = "";
+          o.items.forEach((it) => {
+            const row = document.createElement("div");
+            row.className = "order-detail-row";
+            const name = it.name || it.productName || "商品";
+            const qty = it.qty || it.quantity || 1;
+            const price = it.price || it.unitPrice || 0;
+            row.innerHTML = `
+              ${name} × ${qty}
+              <span style="float:right">$${Number(price).toFixed(2)}</span>
+            `;
+            listBox.appendChild(row);
+          });
+        }
+
+        panel.classList.add("active");
+      }
+
+      // ✅ 打印单个订单小票（从当前页缓存取）
+      function printOrder(idOrNo) {
+        const o =
+          currentOrdersCache.find(
+            (x) => x._id === idOrNo || x.id === idOrNo || x.orderNo === idOrNo
+          ) || null;
+
+        if (!o) {
+          alert("未在当前页缓存中找到该订单，请刷新后重试。");
+          return;
+        }
+
+        const orderId = o.orderNo || o._id || "";
+        const amount =
+          typeof o.totalAmount === "number" ? o.totalAmount : o.amount || 0;
+        const rawUserName = (o.user && o.user.name) || o.customerName || "—";
+        const rawUserPhone = (o.user && o.user.phone) || o.customerPhone || "";
+        const userName = maskName(rawUserName);
+        const userPhone = maskPhone(rawUserPhone);
+        const address = o.address || o.shippingAddress || "—";
+        const items = o.items || [];
+        const deliveryFee = Number(o.deliveryFee || o.shippingFee || 0);
+        const createdAt = o.createdAt;
+        const payMethod = formatPayMethod(o.payMethod);
+        const seq = getOrderSeq(o);
+
+        const serviceText = renderServiceModeLabel(getServiceMode(o));
+        const receiveText =
+          getDeliveryType(o) === "pickup" ? "团长自提" : "送货上门";
+        const deliveryModeText = `${serviceText} / ${receiveText}`;
+
+        const printHtml = `
+          <html>
+            <head>
+              <meta charset="UTF-8" />
+              <title>订单小票 - ${orderId}</title>
+              <style>
+                body {
+                  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+                  padding: 16px;
+                  color: #111827;
+                }
+                h1 { font-size: 18px; margin-bottom: 8px; }
+                .seq-box {
+                  margin-bottom: 8px;
+                  padding: 6px 8px;
+                  border-radius: 8px;
+                  border: 1px solid #16a34a;
+                  background: #dcfce7;
+                  text-align: center;
+                }
+                .seq-label { font-size: 11px; color: #166534; letter-spacing: 1px; }
+                .seq-value { font-size: 26px; font-weight: 900; color: #166534; line-height: 1.1; }
+                .meta { font-size: 12px; margin-bottom: 10px; }
+                .meta div { margin-bottom: 2px; }
+                table {
+                  width: 100%;
+                  border-collapse: collapse;
+                  font-size: 12px;
+                  margin-top: 6px;
+                }
+                th, td { border: 1px solid #e5e7eb; padding: 4px 6px; }
+                th { background: #f9fafb; }
+                .total { margin-top: 10px; font-size: 13px; text-align: right; }
+                .total strong { font-size: 14px; }
+              </style>
+            </head>
+            <body>
+              <h1>在鲜购拼好货 · 配货小票</h1>
+
+              <div class="seq-box">
+                <div class="seq-label">配送序号</div>
+                <div class="seq-value">${seq != null ? seq : "-"}</div>
+              </div>
+
+              <div class="meta">
+                <div>订单号：${orderId}</div>
+                <div>下单时间：${formatDate(createdAt)}</div>
+                <div>客户姓名：${userName}</div>
+                <div>联系电话：${userPhone}</div>
+                <div>配送方式：${deliveryModeText}</div>
+                <div>收货地址：${address}</div>
+                <div>支付方式：${payMethod}</div>
+              </div>
+
+              <table>
+                <thead>
+                  <tr>
+                    <th>商品</th>
+                    <th>数量</th>
+                    <th>单价</th>
+                    <th>小计</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${
+                    items
+                      .map((it) => {
+                        const name = it.name || it.productName || "商品";
+                        const qty = it.qty || it.quantity || 1;
+                        const price = Number(it.price || it.unitPrice || 0);
+                        const subtotal = price * qty;
+                        return `
+                          <tr>
+                            <td>${name}</td>
+                            <td>${qty}</td>
+                            <td>$${price.toFixed(2)}</td>
+                            <td>$${subtotal.toFixed(2)}</td>
+                          </tr>
+                        `;
+                      })
+                      .join("") || ""
+                  }
+                </tbody>
+              </table>
+
+              <div class="total">
+                商品总额：$${Number(amount).toFixed(2)}<br/>
+                配送费：$${deliveryFee.toFixed(2)}<br/>
+                <strong>应付总额：$${(Number(amount) + deliveryFee).toFixed(2)}</strong>
+              </div>
+            </body>
+          </html>
+        `;
+
+        const win = window.open("", "_blank");
+        if (!win) {
+          alert("浏览器拦截了打印窗口，请允许弹出窗口后重试。");
+          return;
+        }
+        win.document.write(printHtml);
+        win.document.close();
+        win.focus();
+        win.print();
+        win.close();
+      }
+
+      // ✅ 标记订单完成
+      async function markOrderCompleted(orderId) {
+        if (!orderId) {
+          alert("缺少订单 ID");
+          return;
+        }
+        if (!confirm("确定将该订单标记为已完成？")) return;
+
+        try {
+          const res = await fetch("/api/admin/orders/" + orderId + "/status", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: "done" }),
+          });
+          const data = await res.json();
+          if (!data.success) {
+            alert("更新失败：" + (data.message || "未知错误"));
+            return;
+          }
+          loadOrders(currentPage);
+        } catch (e) {
+          console.error(e);
+          alert("请求失败，请检查 /api/admin/orders/:id/status 接口");
+        }
+      }
+
+      // ✅ Google 路线智能排序（只对当前页 + 送货上门订单）
+      function ensureDirectionsService() {
+        if (!window.google || !google.maps) {
+          alert("Google Maps 脚本未加载，请检查 API Key");
+          return null;
+        }
+        if (!directionsService) directionsService = new google.maps.DirectionsService();
+        return directionsService;
+      }
+
+      async function optimizeRouteForCurrentPage() {
+        const svc = ensureDirectionsService();
+        if (!svc) return;
+
+        if (!currentOrdersCache.length) {
+          alert("当前没有订单，无需排序");
+          return;
+        }
+
+        const doorOrders = currentOrdersCache.filter((o) => getDeliveryType(o) === "door");
+
+        if (doorOrders.length <= 1) {
+          let seq = 1;
+          currentOrdersCache.forEach((o) => (o.routeSeq = seq++));
+          renderTableFromCache(currentOrdersCache.length, totalPages);
+          alert("送货上门订单少于 2 单，已按当前顺序简单编号。");
+          return;
+        }
+
+        const buildLocation = (o) => {
+          if (typeof o.lat === "number" && typeof o.lng === "number") {
+            return new google.maps.LatLng(o.lat, o.lng);
+          }
+          const addr = buildOrderAddress(o);
+          return addr || null;
+        };
+
+        const waypoints = [];
+        const waypointOrders = [];
+        doorOrders.forEach((o) => {
+          const loc = buildLocation(o);
+          if (loc) {
+            waypoints.push({ location: loc, stopover: true });
+            waypointOrders.push(o);
+          }
+        });
+
+        if (waypoints.length <= 1) {
+          let seq = 1;
+          currentOrdersCache.forEach((o) => (o.routeSeq = seq++));
+          renderTableFromCache(currentOrdersCache.length, totalPages);
+          alert("有效地址的送货上门订单不足 2 单，已按当前顺序编号。");
+          return;
+        }
+
+        const warehouse = new google.maps.LatLng(40.758531, -73.829252);
+        const req = {
+          origin: warehouse,
+          destination: warehouse,
+          waypoints,
+          travelMode: google.maps.TravelMode.DRIVING,
+          optimizeWaypoints: true,
+        };
+
+        document.getElementById("gmvSummary").innerHTML =
+          "正在调用 Google 路线优化，请稍候...";
+
+        svc.route(req, (result, status) => {
+          if (status !== google.maps.DirectionsStatus.OK) {
+            console.warn("Directions 失败:", status, result);
+            alert("Google 路线优化失败：" + status + "，已保持原顺序。");
+            renderTableFromCache(currentOrdersCache.length, totalPages);
+            return;
+          }
+
+          const order = result.routes[0].waypoint_order || [];
+          const sortedDoor = order.map((idx) => waypointOrders[idx]);
+          const nonDoor = currentOrdersCache.filter((o) => !doorOrders.includes(o));
+
+          let seq = 1;
+          const newList = [];
+          sortedDoor.forEach((o) => {
+            o.routeSeq = seq++;
+            newList.push(o);
+          });
+          nonDoor.forEach((o) => {
+            o.routeSeq = seq++;
+            newList.push(o);
+          });
+
+          currentOrdersCache = newList;
+          renderTableFromCache(currentOrdersCache.length, totalPages);
+        });
+      }
+
+      window.addEventListener("DOMContentLoaded", () => {
+        loadOrders(1);
+
+        document.getElementById("btnSearch").addEventListener("click", () => loadOrders(1));
+        document.getElementById("btnRefresh").addEventListener("click", () => loadOrders(currentPage));
+        document.getElementById("btnPrevPage").addEventListener("click", () => {
+          if (currentPage > 1) loadOrders(currentPage - 1);
+        });
+        document.getElementById("btnNextPage").addEventListener("click", () => {
+          if (currentPage < totalPages) loadOrders(currentPage + 1);
+        });
+
+        const serviceModeSelect = document.getElementById("filterServiceMode");
+        const areaZoneSelect = document.getElementById("filterAreaGroupZone");
+
+        if (serviceModeSelect && areaZoneSelect) {
+          serviceModeSelect.addEventListener("change", () => {
+            if (serviceModeSelect.value === "areaGroup") {
+              areaZoneSelect.style.display = "inline-block";
+            } else {
+              areaZoneSelect.style.display = "none";
+              areaZoneSelect.value = "";
+            }
+            loadOrders(1);
+          });
+
+          areaZoneSelect.addEventListener("change", () => loadOrders(1));
+        }
+
+        const btnPrintOrderList = document.getElementById("btnPrintOrderList");
+        if (btnPrintOrderList) btnPrintOrderList.addEventListener("click", printOrderList);
+
+        const btnGoPicklist = document.getElementById("btnGoPicklist");
+        if (btnGoPicklist) {
+          btnGoPicklist.addEventListener("click", () => {
+            window.location.href = "picklist.html";
+          });
+        }
+
+        const btnOptimizeRoute = document.getElementById("btnOptimizeRoute");
+        if (btnOptimizeRoute) btnOptimizeRoute.addEventListener("click", optimizeRouteForCurrentPage);
+      });
+    </script>
+   <!-- ✅ 统一 sidebar 注入脚本（必须加） -->
+    <script src="/admin/assets/js/admin_sidebar.js"></script>
+</body>
+</html>

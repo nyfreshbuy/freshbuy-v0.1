@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>账户充值 - 在鲜购 Freshbuy</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <link rel="stylesheet" href="../assets/css/main.css" />
+
+  <style>
+    body {
+      background: #f3f4f6;
+    }
+
+    .recharge-container {
+      max-width: 480px;
+      margin: 24px auto;
+      background: #fff;
+      padding: 22px 18px 32px;
+      border-radius: 16px;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.08);
+    }
+
+    .recharge-title {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 16px;
+      color: #111827;
+    }
+
+    .balance-box {
+      background: linear-gradient(135deg, #22c55e, #16a34a);
+      color: #fff;
+      padding: 16px;
+      border-radius: 14px;
+      font-size: 16px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      margin-bottom: 22px;
+    }
+
+    .recharge-amount-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .amount-item {
+      background: #fff;
+      border: 2px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 14px 6px;
+      text-align: center;
+      cursor: pointer;
+      font-size: 16px;
+      font-weight: 600;
+      transition: all .2s ease;
+    }
+
+    .amount-item.active {
+      border-color: #16a34a;
+      background: #ecfdf5;
+      color: #15803d;
+    }
+
+    .btn-recharge {
+      width: 100%;
+      padding: 14px 0;
+      background: linear-gradient(135deg, #22c55e, #16a34a);
+      border: none;
+      border-radius: 999px;
+      color: #fff;
+      font-size: 18px;
+      font-weight: bold;
+      cursor: pointer;
+      box-shadow: 0 4px 14px rgba(34, 197, 94, 0.35);
+    }
+
+    .btn-recharge:active {
+      transform: scale(.97);
+    }
+
+    .back-home {
+      text-align: center;
+      margin-top: 22px;
+      font-size: 14px;
+      color: #22c55e;
+      cursor: pointer;
+    }
+
+  </style>
+</head>
+
+<body>
+
+  <div class="recharge-container">
+    <div class="recharge-title">账户充值</div>
+
+    <div class="balance-box">
+      账户余额：<span id="balanceAmount">$0.00</span>
+    </div>
+
+    <div class="recharge-amount-grid">
+      <div class="amount-item" data-amount="20">$20</div>
+      <div class="amount-item" data-amount="50">$50</div>
+      <div class="amount-item" data-amount="100">$100</div>
+      <div class="amount-item" data-amount="150">$150</div>
+      <div class="amount-item" data-amount="200">$200</div>
+      <div class="amount-item" data-amount="300">$300</div>
+    </div>
+
+    <button class="btn-recharge" id="btnRecharge">立即充值</button>
+
+    <div class="back-home" onclick="goHome()">返回首页</div>
+  </div>
+
+<script>
+  let selectedAmount = 0;
+
+  document.querySelectorAll(".amount-item").forEach(item => {
+    item.addEventListener("click", () => {
+      document.querySelectorAll(".amount-item").forEach(b => b.classList.remove("active"));
+      item.classList.add("active");
+      selectedAmount = Number(item.dataset.amount);
+    });
+  });
+
+  document.getElementById("btnRecharge").addEventListener("click", () => {
+    if (!selectedAmount) return alert("请选择充值金额");
+
+    alert("🎉 充值成功 $" + selectedAmount);
+  });
+
+  function goHome() {
+    window.location.href = "/user/index.html";
+  }
+</script>
+
+</body>
+</html>

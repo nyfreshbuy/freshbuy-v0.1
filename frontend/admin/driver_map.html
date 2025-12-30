@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>司机地图导航测试 - 在鲜购拼好货</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="assets/css/admin.css" />
+    <style>
+      #map {
+        width: 100%;
+        height: 420px;
+        border-radius: 12px;
+        border: 1px solid #e5e7eb;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="admin-main" style="padding: 12px 16px">
+      <h2 style="margin: 8px 0">司机地图导航 · 测试版</h2>
+      <p style="font-size: 12px; color: #6b7280">
+        如果这里能看到地图，说明 Google Maps 和 API Key 没问题。
+      </p>
+
+      <div id="map"></div>
+
+      <div style="margin-top: 12px; display: flex; gap: 8px">
+        <button class="admin-btn admin-btn-primary" id="btnLoadOrders">
+          ⟳ 从 /api/driver/orders/today 拉订单并打点
+        </button>
+        <span id="statusText" style="font-size: 12px; color: #6b7280">
+          等待操作...
+        </span>
+      </div>
+    </div>
+    <script src="/admin/assets/js/admin_guard.js"></script>
+    <script src="./assets/js/admin_auth_ui.js"></script>
+    <!-- 先同步加载 Google Maps JS（不带 callback） -->
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyA6GEAhetFXnP-y9iYaE7oewv-mLKrELN0"></script>
+    <!-- 再加载我们的测试脚本 -->
+    <script src="assets/js/driver_map_test.js"></script>
+  </body>
+</html>

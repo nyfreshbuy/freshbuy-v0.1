@@ -1,0 +1,1117 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>系统设置 - 在鲜购拼好货后台</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="assets/css/admin.css" />
+
+    <style>
+      /* 仅本页的小增强样式 */
+      .settings-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+        gap: 16px;
+        margin-top: 16px;
+      }
+      .settings-card {
+        padding: 16px;
+        border-radius: 14px;
+        background: rgba(15, 23, 42, 0.9);
+        border: 1px solid rgba(148, 163, 184, 0.5);
+        color: #e5e7eb;
+      }
+      .settings-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+      }
+      .settings-card-title {
+        font-size: 15px;
+        font-weight: 600;
+      }
+      .settings-card-sub {
+        font-size: 12px;
+        color: #9ca3af;
+        margin-top: 2px;
+      }
+      .settings-form-row {
+        margin-bottom: 10px;
+      }
+      .settings-label {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 13px;
+        margin-bottom: 4px;
+        color: #d1d5db;
+      }
+      .settings-label span {
+        font-size: 12px;
+        color: #6b7280;
+        margin-left: 6px;
+      }
+      .settings-input,
+      .settings-select,
+      .settings-textarea {
+        width: 100%;
+        padding: 7px 9px;
+        border-radius: 8px;
+        border: 1px solid rgba(55, 65, 81, 0.9);
+        background: rgba(15, 23, 42, 0.8);
+        color: #e5e7eb;
+        font-size: 13px;
+        outline: none;
+      }
+      .settings-input:focus,
+      .settings-select:focus,
+      .settings-textarea:focus {
+        border-color: #22c55e;
+        box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.5);
+      }
+      .settings-textarea {
+        resize: vertical;
+        min-height: 60px;
+      }
+      .settings-switch-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+      .settings-switch-row small {
+        color: #6b7280;
+        font-size: 11px;
+      }
+      .settings-switch {
+        position: relative;
+        width: 38px;
+        height: 20px;
+      }
+      .settings-switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+      }
+      .settings-slider {
+        position: absolute;
+        cursor: pointer;
+        inset: 0;
+        background-color: #374151;
+        transition: 0.2s;
+        border-radius: 999px;
+      }
+      .settings-slider:before {
+        position: absolute;
+        content: "";
+        height: 14px;
+        width: 14px;
+        left: 3px;
+        bottom: 3px;
+        background-color: white;
+        transition: 0.2s;
+        border-radius: 999px;
+      }
+      .settings-switch input:checked + .settings-slider {
+        background-color: #22c55e;
+      }
+      .settings-switch input:checked + .settings-slider:before {
+        transform: translateX(18px);
+      }
+
+      .settings-page-actions {
+        position: sticky;
+        bottom: 0;
+        margin-top: 18px;
+        padding-top: 10px;
+        padding-bottom: 10px;
+        background: linear-gradient(
+          to top,
+          rgba(15, 23, 42, 0.98),
+          rgba(15, 23, 42, 0.7)
+        );
+        backdrop-filter: blur(10px);
+        border-top: 1px solid rgba(55, 65, 81, 0.8);
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        z-index: 20;
+      }
+      .btn-primary {
+        padding: 6px 14px;
+        border-radius: 999px;
+        border: none;
+        background: linear-gradient(135deg, #22c55e, #16a34a);
+        color: white;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .btn-secondary {
+        padding: 6px 14px;
+        border-radius: 999px;
+        border: 1px solid rgba(148, 163, 184, 0.7);
+        background: transparent;
+        color: #e5e7eb;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .settings-badge {
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 11px;
+        background: rgba(34, 197, 94, 0.15);
+        color: #6ee7b7;
+      }
+    </style>
+  </head>
+
+  <body data-page="settings">
+    <div class="admin-layout">
+      <!-- 侧边栏 -->
+     <aside class="admin-sidebar">
+      <!-- ✅ 统一 sidebar：由 /admin/assets/js/admin_sidebar.js 注入 -->
+      <div id="adminSidebar"></div>
+    </aside>
+      <!-- 主内容 -->
+      <main class="admin-main">
+        <!-- 顶部栏 -->
+        <header class="admin-header">
+          <div>
+            <div class="admin-page-title">系统设置</div>
+            <div class="admin-page-subtitle">
+              配置平台基础信息、运费规则、拼单策略、通知与安全策略等。
+            </div>
+          </div>
+          <div class="admin-header-actions">
+            <span id="lastSavedHint" class="admin-header-tag">
+              上次保存：尚未保存
+            </span>
+          </div>
+        </header>
+
+        <!-- 快速概览 -->
+        <section class="admin-section">
+          <div class="admin-section-header">
+            <h2 class="admin-section-title">配置概览</h2>
+            <p class="admin-section-subtitle">
+              当前配置仅对后台管理员可见，修改后立即生效（部分需重启服务）。
+            </p>
+          </div>
+
+          <div class="settings-grid">
+            <!-- 平台基础 -->
+            <div class="settings-card">
+              <div class="settings-card-header">
+                <div>
+                  <div class="settings-card-title">平台基础</div>
+                  <div class="settings-card-sub">名称、Logo、客服电话等</div>
+                </div>
+                <span class="settings-badge">必填</span>
+              </div>
+
+              <div class="settings-form-row">
+                <label class="settings-label">
+                  平台名称 <span>站点显示的主名称</span>
+                </label>
+                <input
+                  id="siteName"
+                  class="settings-input"
+                  placeholder="例如：在鲜购拼好货"
+                />
+              </div>
+
+              <div class="settings-form-row">
+                <label class="settings-label">
+                  客服电话 <span>显示在前台页脚与订单页</span>
+                </label>
+                <input
+                  id="supportPhone"
+                  class="settings-input"
+                  placeholder="例如：188-0000-0000"
+                />
+              </div>
+
+              <div class="settings-form-row">
+                <label class="settings-label">
+                  客服微信/WhatsApp <span>用于售后&团长对接</span>
+                </label>
+                <input
+                  id="supportIM"
+                  class="settings-input"
+                  placeholder="@freshbuy-support"
+                />
+              </div>
+            </div>
+
+            <!-- 运费与订单 -->
+            <div class="settings-card">
+              <div class="settings-card-header">
+                <div>
+                  <div class="settings-card-title">运费与订单</div>
+                  <div class="settings-card-sub">
+                    统一运费、免费门槛、起送金额
+                  </div>
+                </div>
+              </div>
+
+              <div class="settings-form-row">
+                <label class="settings-label">
+                  标准运费（$） <span>单人下单基础运费</span>
+                </label>
+                <input
+                  id="shippingBase"
+                  class="settings-input"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="例如：4.99"
+                />
+              </div>
+
+              <div class="settings-form-row">
+                <label class="settings-label">
+                  免运费门槛（$） <span>0 表示不开启</span>
+                </label>
+                <input
+                  id="freeShippingThreshold"
+                  class="settings-input"
+                  type="number"
+                  min="0"
+                  step="1"
+                  placeholder="例如：69"
+                />
+              </div>
+
+              <div class="settings-form-row">
+                <label class="settings-label">
+                  最低起送金额（$） <span>0 表示不限</span>
+                </label>
+                <input
+                  id="minOrderAmount"
+                  class="settings-input"
+                  type="number"
+                  min="0"
+                  step="1"
+                  placeholder="例如：25"
+                />
+              </div>
+            </div>
+
+            <!-- ✅ 新增：配送说明 / 运费规则（前端展示） -->
+            <div class="settings-card" id="deliveryExplainCard">
+              <div class="settings-card-header">
+                <div>
+                  <div class="settings-card-title">
+                    配送说明 / 运费规则（前端展示）
+                  </div>
+                  <div class="settings-card-sub">
+                    用户端 Footer 与「配送说明弹窗」共用
+                  </div>
+                </div>
+                <span class="settings-badge">新增</span>
+              </div>
+
+              <div class="settings-form-row">
+                <label class="settings-label">
+                  配送范围（中文）<span>Footer 显示</span>
+                </label>
+                <input
+                  id="deliveryAreaZh"
+                  class="settings-input"
+                  placeholder="Fresh Meadows 及周边社区"
+                />
+              </div>
+
+              <div class="settings-form-row">
+                <label class="settings-label">
+                  Delivery Area (EN)<span>Footer display</span>
+                </label>
+                <input
+                  id="deliveryAreaEn"
+                  class="settings-input"
+                  placeholder="Fresh Meadows and nearby neighborhoods"
+                />
+              </div>
+
+              <div class="settings-form-row">
+                <label class="settings-label">
+                  范围备注（中文）<span>括号小字</span>
+                </label>
+                <input
+                  id="deliveryAreaNoteZh"
+                  class="settings-input"
+                  placeholder="以可下单区域为准"
+                />
+              </div>
+
+              <div class="settings-form-row">
+                <label class="settings-label">
+                  Area note (EN)<span>small note</span>
+                </label>
+                <input
+                  id="deliveryAreaNoteEn"
+                  class="settings-input"
+                  placeholder="subject to available service areas"
+                />
+              </div>
+
+              <div class="settings-form-row">
+                <label class="settings-label">
+                  频率（中文）<span>例如：每周固定配送 1 次</span>
+                </label>
+                <input
+                  id="deliveryFreqZh"
+                  class="settings-input"
+                  placeholder="每周固定配送 1 次"
+                />
+              </div>
+
+              <div class="settings-form-row">
+                <label class="settings-label">
+                  Frequency (EN)<span>e.g. once per week</span>
+                </label>
+                <input
+                  id="deliveryFreqEn"
+                  class="settings-input"
+                  placeholder="Scheduled delivery once per week"
+                />
+              </div>
+
+              <div class="settings-form-row">
+                <label class="settings-label">
+                  星期（中文）<span>例如：周五</span>
+                </label>
+                <input
+                  id="deliveryDayZh"
+                  class="settings-input"
+                  placeholder="周五"
+                />
+              </div>
+
+              <div class="settings-form-row">
+                <label class="settings-label">
+                  Day (EN)<span>e.g. Friday</span>
+                </label>
+                <input
+                  id="deliveryDayEn"
+                  class="settings-input"
+                  placeholder="Friday"
+                />
+              </div>
+
+              <div class="settings-form-row">
+                <label class="settings-label">
+                  时间段（中文）<span>例如：17:00 – 21:00（纽约时间）</span>
+                </label>
+                <input
+                  id="deliveryTimeZh"
+                  class="settings-input"
+                  placeholder="17:00 – 21:00（纽约时间）"
+                />
+              </div>
+
+              <div class="settings-form-row">
+                <label class="settings-label">
+                  Time window (EN)<span>e.g. 5:00 PM – 9:00 PM (NY time)</span>
+                </label>
+                <input
+                  id="deliveryTimeEn"
+                  class="settings-input"
+                  placeholder="5:00 PM – 9:00 PM (NY time)"
+                />
+              </div>
+
+              <div class="settings-form-row">
+                <label class="settings-label">
+                  弹窗说明（中文）<span>可选</span>
+                </label>
+                <textarea
+                  id="deliveryModalZh"
+                  class="settings-textarea"
+                  placeholder="这里写更详细的中文说明（可选）"
+                ></textarea>
+              </div>
+
+              <div class="settings-form-row">
+                <label class="settings-label">
+                  Modal Text (EN)<span>optional</span>
+                </label>
+                <textarea
+                  id="deliveryModalEn"
+                  class="settings-textarea"
+                  placeholder="Detailed English notes (optional)"
+                ></textarea>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 拼单&优惠、通知、权限、安全等分区 -->
+        <section class="admin-section">
+          <div class="admin-section-header">
+            <h2 class="admin-section-title">高级配置</h2>
+          </div>
+
+          <div class="settings-grid">
+            <!-- 拼单 & 优惠策略 -->
+            <div class="settings-card">
+              <div class="settings-card-header">
+                <div>
+                  <div class="settings-card-title">拼单 & 优惠策略</div>
+                  <div class="settings-card-sub">
+                    控制好友拼单、阶梯价开关、分享减运费等玩法。
+                  </div>
+                </div>
+              </div>
+
+              <div class="settings-switch-row">
+                <div>
+                  <div style="font-size: 13px">开启好友拼单</div>
+                  <small>允许不同用户拼同一团，按阶梯价或运费规则结算。</small>
+                </div>
+                <label class="settings-switch">
+                  <input id="enableFriendGroup" type="checkbox" />
+                  <span class="settings-slider"></span>
+                </label>
+              </div>
+
+              <div class="settings-switch-row">
+                <div>
+                  <div style="font-size: 13px">开启阶梯价</div>
+                  <small>达到人数/件数后自动降价并退差价。</small>
+                </div>
+                <label class="settings-switch">
+                  <input id="enableTierPrice" type="checkbox" />
+                  <span class="settings-slider"></span>
+                </label>
+              </div>
+
+              <div class="settings-form-row">
+                <label class="settings-label">
+                  阶梯价自动退款方式 <span>仅在开启阶梯价时生效</span>
+                </label>
+                <select id="tierRefundMode" class="settings-select">
+                  <option value="wallet">退至余额钱包</option>
+                  <option value="original">原路返回（视支付通道支持）</option>
+                  <option value="coupon">发放优惠券</option>
+                </select>
+              </div>
+
+              <div class="settings-form-row">
+                <label class="settings-label">
+                  好友拼单运费模式 <span>控制多人的运费分摊逻辑</span>
+                </label>
+                <select id="friendShippingMode" class="settings-select">
+                  <option value="ladder">
+                    阶梯运费：1人4.99 → 2人2.99/人 → 3人1.99/人 → 4人免运
+                  </option>
+                  <option value="fixedSplit">固定平摊：按参与人数平均分摊</option>
+                  <option value="ownerFull">发起人付全额，参与人享免运</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- 通知 & 消息 -->
+            <div class="settings-card">
+              <div class="settings-card-header">
+                <div>
+                  <div class="settings-card-title">通知 & 消息</div>
+                  <div class="settings-card-sub">
+                    客户、团长、司机接收哪些系统推送。
+                  </div>
+                </div>
+              </div>
+
+              <div class="settings-switch-row">
+                <div>
+                  <div style="font-size: 13px">订单状态短信提醒</div>
+                  <small>下单成功 / 配送中 / 已送达。</small>
+                </div>
+                <label class="settings-switch">
+                  <input id="smsOrderNotify" type="checkbox" />
+                  <span class="settings-slider"></span>
+                </label>
+              </div>
+
+              <div class="settings-switch-row">
+                <div>
+                  <div style="font-size: 13px">团长新订单提醒</div>
+                  <small>团长端实时收到拼团人数变化。</small>
+                </div>
+                <label class="settings-switch">
+                  <input id="notifyLeaderNewOrder" type="checkbox" />
+                  <span class="settings-slider"></span>
+                </label>
+              </div>
+
+              <div class="settings-switch-row">
+                <div>
+                  <div style="font-size: 13px">司机派单提醒</div>
+                  <small>新配送任务时推送到司机端。</small>
+                </div>
+                <label class="settings-switch">
+                  <input id="notifyDriverTask" type="checkbox" />
+                  <span class="settings-slider"></span>
+                </label>
+              </div>
+
+              <div class="settings-form-row">
+                <label class="settings-label">
+                  推送渠道优先级 <span>按顺序尝试</span>
+                </label>
+                <select id="notifyPriority" class="settings-select" multiple>
+                  <option value="sms">短信</option>
+                  <option value="wechat">微信服务号</option>
+                  <option value="email">邮件</option>
+                  <option value="app">App 推送</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- 角色 & 权限（增强版） -->
+            <div class="settings-card">
+              <div class="settings-card-header">
+                <div>
+                  <div class="settings-card-title">角色 & 权限</div>
+                  <div class="settings-card-sub">
+                    控制团长、司机、客服能看到哪些模块，以及可以做哪些操作。
+                  </div>
+                </div>
+              </div>
+
+              <!-- 可见模块配置 -->
+              <div class="settings-form-row">
+                <label class="settings-label">
+                  团长端可见模块 <span>逗号分隔或在后端维护</span>
+                </label>
+                <input
+                  id="leaderVisibleModules"
+                  class="settings-input"
+                  placeholder="例如：订单管理, 团长收益, 团长充值, 帮客户下单"
+                />
+              </div>
+              <div class="settings-form-row">
+                <label class="settings-label">
+                  司机端可见模块 <span>仅影响前端菜单</span>
+                </label>
+                <input
+                  id="driverVisibleModules"
+                  class="settings-input"
+                  placeholder="例如：今日任务, 路线导航, 完成记录, 收入统计"
+                />
+              </div>
+              <div class="settings-form-row">
+                <label class="settings-label">
+                  客服可见模块 <span>例如：订单查询、售后处理</span>
+                </label>
+                <input
+                  id="csVisibleModules"
+                  class="settings-input"
+                  placeholder="例如：订单查询, 退款处理, 投诉记录"
+                />
+              </div>
+
+              <hr style="border-color: rgba(55,65,81,0.8); margin: 10px 0" />
+
+              <!-- 团长权限 -->
+              <div class="settings-form-row">
+                <div class="settings-label">
+                  <strong>团长权限</strong> <span>决定团长能帮客户做多少事情</span>
+                </div>
+
+                <div class="settings-switch-row">
+                  <div>
+                    <div style="font-size: 13px">允许团长帮客户下单</div>
+                    <small>例如帮不会用手机的老人下单</small>
+                  </div>
+                  <label class="settings-switch">
+                    <input id="leaderCanPlaceOrderForCustomer" type="checkbox" />
+                    <span class="settings-slider"></span>
+                  </label>
+                </div>
+
+                <div class="settings-switch-row">
+                  <div>
+                    <div style="font-size: 13px">允许团长帮客户充值余额</div>
+                    <small>团长代收现金，给客户冲到余额钱包</small>
+                  </div>
+                  <label class="settings-switch">
+                    <input id="leaderCanRecharge" type="checkbox" />
+                    <span class="settings-slider"></span>
+                  </label>
+                </div>
+
+                <div class="settings-switch-row">
+                  <div>
+                    <div style="font-size: 13px">团长可查看本团全部订单明细</div>
+                    <small>关闭时仅能看到自己发起的订单</small>
+                  </div>
+                  <label class="settings-switch">
+                    <input id="leaderCanViewAllGroupOrders" type="checkbox" />
+                    <span class="settings-slider"></span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- 司机权限 -->
+              <div class="settings-form-row" style="margin-top: 8px">
+                <div class="settings-label">
+                  <strong>司机权限</strong> <span>控制司机在 APP 中能看到的信息</span>
+                </div>
+
+                <div class="settings-switch-row">
+                  <div>
+                    <div style="font-size: 13px">司机可查看客户手机号</div>
+                    <small>关闭时只显示匿名信息，减少骚扰风险</small>
+                  </div>
+                  <label class="settings-switch">
+                    <input id="driverCanSeeCustomerPhone" type="checkbox" />
+                    <span class="settings-slider"></span>
+                  </label>
+                </div>
+
+                <div class="settings-switch-row">
+                  <div>
+                    <div style="font-size: 13px">司机可修改预计送达时间</div>
+                    <small>允许司机在路上根据实际情况调整时间</small>
+                  </div>
+                  <label class="settings-switch">
+                    <input id="driverCanModifyETA" type="checkbox" />
+                    <span class="settings-slider"></span>
+                  </label>
+                </div>
+
+                <div class="settings-switch-row">
+                  <div>
+                    <div style="font-size: 13px">送达必须上传门口照片</div>
+                    <small>用于「已送达 + 照片」的证据留存</small>
+                  </div>
+                  <label class="settings-switch">
+                    <input id="driverRequirePhotoProof" type="checkbox" />
+                    <span class="settings-slider"></span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- 客服权限 -->
+              <div class="settings-form-row" style="margin-top: 8px">
+                <div class="settings-label">
+                  <strong>客服权限</strong> <span>控制客服能否直接改订单</span>
+                </div>
+
+                <div class="settings-switch-row">
+                  <div>
+                    <div style="font-size: 13px">客服可修改订单收货信息</div>
+                    <small>允许修改地址 / 电话 / 备注</small>
+                  </div>
+                  <label class="settings-switch">
+                    <input id="csCanEditOrderAddress" type="checkbox" />
+                    <span class="settings-slider"></span>
+                  </label>
+                </div>
+
+                <div class="settings-switch-row">
+                  <div>
+                    <div style="font-size: 13px">客服可发起退款 / 部分退款</div>
+                    <small>建议开启，但配合风控金额限制</small>
+                  </div>
+                  <label class="settings-switch">
+                    <input id="csCanProcessRefund" type="checkbox" />
+                    <span class="settings-slider"></span>
+                  </label>
+                </div>
+
+                <div class="settings-switch-row">
+                  <div>
+                    <div style="font-size: 13px">客服可创建「补单 / 手工单」</div>
+                    <small>用于漏发、错发时的补发处理</small>
+                  </div>
+                  <label class="settings-switch">
+                    <input id="csCanCreateManualOrder" type="checkbox" />
+                    <span class="settings-slider"></span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <!-- 安全 & 风控 -->
+            <div class="settings-card">
+              <div class="settings-card-header">
+                <div>
+                  <div class="settings-card-title">安全 & 风控</div>
+                  <div class="settings-card-sub">登录安全、异常订单风控策略。</div>
+                </div>
+              </div>
+
+              <div class="settings-form-row">
+                <label class="settings-label">
+                  后台登录失败次数上限 <span>超过后锁定账号（0 表示不限）</span>
+                </label>
+                <input
+                  id="adminLoginRetryLimit"
+                  class="settings-input"
+                  type="number"
+                  min="0"
+                  step="1"
+                  placeholder="例如：5"
+                />
+              </div>
+
+              <div class="settings-form-row">
+                <label class="settings-label">
+                  敏感金额人工审核阈值（$） <span>单笔订单超过该金额需人工确认</span>
+                </label>
+                <input
+                  id="manualReviewThreshold"
+                  class="settings-input"
+                  type="number"
+                  min="0"
+                  step="1"
+                  placeholder="例如：300"
+                />
+              </div>
+
+              <div class="settings-form-row">
+                <label class="settings-label">
+                  后台操作日志保留天数 <span>0 表示永久</span>
+                </label>
+                <input
+                  id="adminLogKeepDays"
+                  class="settings-input"
+                  type="number"
+                  min="0"
+                  step="1"
+                  placeholder="例如：180"
+                />
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 底部保存按钮（全局） -->
+        <div class="settings-page-actions">
+          <button id="btnResetSettings" class="btn-secondary" type="button">
+            恢复上次保存
+          </button>
+          <button id="btnSaveSettings" class="btn-primary" type="button">
+            保存所有设置
+          </button>
+        </div>
+      </main>
+    </div>
+<script src="/admin/assets/js/admin_guard.js"></script>
+    <script src="./assets/js/admin_auth_ui.js"></script>
+    <script>
+      // ============ 简单的前端逻辑：加载 / 保存设置 ============
+      const API_BASE = "/api/admin/settings"; // 可以根据你后端实际路径调整
+      const tokenKey = "adminToken"; // 如果你用的是别的 key，改这里
+
+      function getToken() {
+        return localStorage.getItem(tokenKey) || "";
+      }
+
+      function setLastSavedHint(text) {
+        const el = document.getElementById("lastSavedHint");
+        if (el) el.textContent = text;
+      }
+
+      function collectSettingsFromForm() {
+        return {
+          general: {
+            siteName: document.getElementById("siteName").value.trim(),
+            supportPhone: document.getElementById("supportPhone").value.trim(),
+            supportIM: document.getElementById("supportIM").value.trim(),
+          },
+          order: {
+            shippingBase: Number(
+              document.getElementById("shippingBase").value || 0
+            ),
+            freeShippingThreshold: Number(
+              document.getElementById("freeShippingThreshold").value || 0
+            ),
+            minOrderAmount: Number(
+              document.getElementById("minOrderAmount").value || 0
+            ),
+          },
+          promotion: {
+            enableFriendGroup:
+              document.getElementById("enableFriendGroup").checked,
+            enableTierPrice:
+              document.getElementById("enableTierPrice").checked,
+            tierRefundMode: document.getElementById("tierRefundMode").value,
+            friendShippingMode:
+              document.getElementById("friendShippingMode").value,
+          },
+          notify: {
+            smsOrderNotify: document.getElementById("smsOrderNotify").checked,
+            notifyLeaderNewOrder: document.getElementById(
+              "notifyLeaderNewOrder"
+            ).checked,
+            notifyDriverTask:
+              document.getElementById("notifyDriverTask").checked,
+            notifyPriority: Array.from(
+              document.getElementById("notifyPriority").selectedOptions
+            ).map((o) => o.value),
+          },
+          roles: {
+            leaderVisibleModules: document
+              .getElementById("leaderVisibleModules")
+              .value.trim(),
+            driverVisibleModules: document
+              .getElementById("driverVisibleModules")
+              .value.trim(),
+            csVisibleModules: document
+              .getElementById("csVisibleModules")
+              .value.trim(),
+
+            leaderPermissions: {
+              canPlaceOrderForCustomer: document.getElementById(
+                "leaderCanPlaceOrderForCustomer"
+              ).checked,
+              canRecharge: document.getElementById("leaderCanRecharge").checked,
+              canViewAllGroupOrders: document.getElementById(
+                "leaderCanViewAllGroupOrders"
+              ).checked,
+            },
+            driverPermissions: {
+              canSeeCustomerPhone: document.getElementById(
+                "driverCanSeeCustomerPhone"
+              ).checked,
+              canModifyETA: document.getElementById("driverCanModifyETA").checked,
+              requirePhotoProof: document.getElementById(
+                "driverRequirePhotoProof"
+              ).checked,
+            },
+            csPermissions: {
+              canEditOrderAddress: document.getElementById(
+                "csCanEditOrderAddress"
+              ).checked,
+              canProcessRefund:
+                document.getElementById("csCanProcessRefund").checked,
+              canCreateManualOrder: document.getElementById(
+                "csCanCreateManualOrder"
+              ).checked,
+            },
+          },
+
+          // ✅ 新增：配送说明 / 运费规则（前端弹窗 + Footer 共用）
+          deliveryExplain: {
+            areaZh: document.getElementById("deliveryAreaZh").value.trim(),
+            areaEn: document.getElementById("deliveryAreaEn").value.trim(),
+            areaNoteZh: document
+              .getElementById("deliveryAreaNoteZh")
+              .value.trim(),
+            areaNoteEn: document
+              .getElementById("deliveryAreaNoteEn")
+              .value.trim(),
+            frequencyZh: document.getElementById("deliveryFreqZh").value.trim(),
+            frequencyEn: document.getElementById("deliveryFreqEn").value.trim(),
+            dayZh: document.getElementById("deliveryDayZh").value.trim(),
+            dayEn: document.getElementById("deliveryDayEn").value.trim(),
+            timeWindowZh: document.getElementById("deliveryTimeZh").value.trim(),
+            timeWindowEn: document.getElementById("deliveryTimeEn").value.trim(),
+            modalZh: document.getElementById("deliveryModalZh").value.trim(),
+            modalEn: document.getElementById("deliveryModalEn").value.trim(),
+          },
+
+          security: {
+            adminLoginRetryLimit: Number(
+              document.getElementById("adminLoginRetryLimit").value || 0
+            ),
+            manualReviewThreshold: Number(
+              document.getElementById("manualReviewThreshold").value || 0
+            ),
+            adminLogKeepDays: Number(
+              document.getElementById("adminLogKeepDays").value || 0
+            ),
+          },
+        };
+      }
+
+      function fillFormFromSettings(data) {
+        try {
+          if (data.general) {
+            document.getElementById("siteName").value = data.general.siteName || "";
+            document.getElementById("supportPhone").value =
+              data.general.supportPhone || "";
+            document.getElementById("supportIM").value = data.general.supportIM || "";
+          }
+
+          if (data.order) {
+            document.getElementById("shippingBase").value =
+              data.order.shippingBase ?? "";
+            document.getElementById("freeShippingThreshold").value =
+              data.order.freeShippingThreshold ?? "";
+            document.getElementById("minOrderAmount").value =
+              data.order.minOrderAmount ?? "";
+          }
+
+          if (data.promotion) {
+            document.getElementById("enableFriendGroup").checked =
+              !!data.promotion.enableFriendGroup;
+            document.getElementById("enableTierPrice").checked =
+              !!data.promotion.enableTierPrice;
+
+            if (data.promotion.tierRefundMode) {
+              document.getElementById("tierRefundMode").value =
+                data.promotion.tierRefundMode;
+            }
+            if (data.promotion.friendShippingMode) {
+              document.getElementById("friendShippingMode").value =
+                data.promotion.friendShippingMode;
+            }
+          }
+
+          if (data.notify) {
+            document.getElementById("smsOrderNotify").checked =
+              !!data.notify.smsOrderNotify;
+            document.getElementById("notifyLeaderNewOrder").checked =
+              !!data.notify.notifyLeaderNewOrder;
+            document.getElementById("notifyDriverTask").checked =
+              !!data.notify.notifyDriverTask;
+
+            if (Array.isArray(data.notify.notifyPriority)) {
+              const selectEl = document.getElementById("notifyPriority");
+              Array.from(selectEl.options).forEach((opt) => {
+                opt.selected = data.notify.notifyPriority.includes(opt.value);
+              });
+            }
+          }
+
+          if (data.roles) {
+            document.getElementById("leaderVisibleModules").value =
+              data.roles.leaderVisibleModules || "";
+            document.getElementById("driverVisibleModules").value =
+              data.roles.driverVisibleModules || "";
+            document.getElementById("csVisibleModules").value =
+              data.roles.csVisibleModules || "";
+
+            const lp = data.roles.leaderPermissions || {};
+            document.getElementById("leaderCanPlaceOrderForCustomer").checked =
+              !!lp.canPlaceOrderForCustomer;
+            document.getElementById("leaderCanRecharge").checked = !!lp.canRecharge;
+            document.getElementById("leaderCanViewAllGroupOrders").checked =
+              !!lp.canViewAllGroupOrders;
+
+            const dp = data.roles.driverPermissions || {};
+            document.getElementById("driverCanSeeCustomerPhone").checked =
+              !!dp.canSeeCustomerPhone;
+            document.getElementById("driverCanModifyETA").checked =
+              !!dp.canModifyETA;
+            document.getElementById("driverRequirePhotoProof").checked =
+              !!dp.requirePhotoProof;
+
+            const cp = data.roles.csPermissions || {};
+            document.getElementById("csCanEditOrderAddress").checked =
+              !!cp.canEditOrderAddress;
+            document.getElementById("csCanProcessRefund").checked =
+              !!cp.canProcessRefund;
+            document.getElementById("csCanCreateManualOrder").checked =
+              !!cp.canCreateManualOrder;
+          }
+
+          // ✅ 新增：回填配送说明/运费规则（前端弹窗 + Footer 共用）
+          if (data.deliveryExplain) {
+            const d = data.deliveryExplain || {};
+            document.getElementById("deliveryAreaZh").value = d.areaZh || "";
+            document.getElementById("deliveryAreaEn").value = d.areaEn || "";
+            document.getElementById("deliveryAreaNoteZh").value =
+              d.areaNoteZh || "";
+            document.getElementById("deliveryAreaNoteEn").value =
+              d.areaNoteEn || "";
+            document.getElementById("deliveryFreqZh").value =
+              d.frequencyZh || "";
+            document.getElementById("deliveryFreqEn").value =
+              d.frequencyEn || "";
+            document.getElementById("deliveryDayZh").value = d.dayZh || "";
+            document.getElementById("deliveryDayEn").value = d.dayEn || "";
+            document.getElementById("deliveryTimeZh").value =
+              d.timeWindowZh || "";
+            document.getElementById("deliveryTimeEn").value =
+              d.timeWindowEn || "";
+            document.getElementById("deliveryModalZh").value = d.modalZh || "";
+            document.getElementById("deliveryModalEn").value = d.modalEn || "";
+          }
+
+          if (data.security) {
+            document.getElementById("adminLoginRetryLimit").value =
+              data.security.adminLoginRetryLimit ?? "";
+            document.getElementById("manualReviewThreshold").value =
+              data.security.manualReviewThreshold ?? "";
+            document.getElementById("adminLogKeepDays").value =
+              data.security.adminLogKeepDays ?? "";
+          }
+        } catch (err) {
+          console.warn("填充设置时出错:", err);
+        }
+      }
+
+      async function loadSettings() {
+        try {
+          const res = await fetch(API_BASE, {
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: "Bearer " + getToken(),
+            },
+          });
+          if (!res.ok) throw new Error("加载失败:" + res.status);
+          const json = await res.json();
+          if (json && json.success && json.data) {
+            fillFormFromSettings(json.data);
+            if (json.data.updatedAt) {
+              setLastSavedHint("上次保存：" + json.data.updatedAt);
+            }
+          }
+        } catch (err) {
+          console.warn("加载系统设置失败:", err);
+          setLastSavedHint("上次保存：加载失败");
+        }
+      }
+
+      async function saveSettings() {
+        const payload = collectSettingsFromForm();
+        try {
+          const res = await fetch(API_BASE, {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: "Bearer " + getToken(),
+            },
+            body: JSON.stringify(payload),
+          });
+          const json = await res.json();
+          if (json.success) {
+            alert("设置已保存");
+            if (json.data && json.data.updatedAt) {
+              setLastSavedHint("上次保存：" + json.data.updatedAt);
+            } else {
+              setLastSavedHint("上次保存：刚刚");
+            }
+          } else {
+            alert("保存失败：" + (json.message || "未知错误"));
+          }
+        } catch (err) {
+          console.error("保存系统设置失败:", err);
+          alert("保存失败，请检查网络或稍后重试");
+        }
+      }
+
+      document.addEventListener("DOMContentLoaded", () => {
+        // 初始加载
+        loadSettings();
+
+        document
+          .getElementById("btnSaveSettings")
+          .addEventListener("click", saveSettings);
+
+        document
+          .getElementById("btnResetSettings")
+          .addEventListener("click", loadSettings);
+      });
+    </script>
+    <!-- ✅ 统一 sidebar 注入脚本（必须加） -->
+    <script src="/admin/assets/js/admin_sidebar.js"></script>
+</body>
+</html>

@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>司机管理 - 在鲜购拼好货后台</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="assets/css/admin.css" />
+
+    <!-- 只补一点点司机页专用样式，不会破坏现有主题 -->
+    <style>
+      .driver-filters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 8px;
+      }
+      .driver-input {
+        min-width: 180px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid rgba(148, 163, 184, 0.4);
+        background: rgba(15, 23, 42, 0.9);
+        color: #e5e7eb;
+        font-size: 13px;
+        outline: none;
+      }
+      .driver-input::placeholder {
+        color: #9ca3af;
+      }
+
+      .driver-pagination {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 4px 0;
+        font-size: 12px;
+        color: #9ca3af;
+      }
+      .driver-page-btn {
+        border-radius: 999px;
+        padding: 3px 9px;
+        border: 1px solid rgba(148, 163, 184, 0.5);
+        background: rgba(15, 23, 42, 0.9);
+        color: #e5e7eb;
+        cursor: pointer;
+      }
+      .driver-page-btn:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
+
+      /* 编辑弹窗 */
+      .driver-modal {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.78);
+        display: none;
+        justify-content: center;
+        align-items: center;
+        z-index: 2000;
+      }
+      .driver-modal.open {
+        display: flex;
+      }
+      .driver-modal-content {
+        width: 380px;
+        background: radial-gradient(
+          circle at top left,
+          rgba(37, 99, 235, 0.9) 0,
+          #020617 60%
+        );
+        border-radius: 20px;
+        border: 1px solid rgba(37, 99, 235, 0.75);
+        box-shadow: 0 20px 50px rgba(15, 23, 42, 0.95);
+        padding: 18px 20px 16px;
+      }
+      .driver-modal-title {
+        margin: 0 0 10px;
+        font-size: 16px;
+        font-weight: 600;
+        color: #e5e7eb;
+      }
+      .driver-field {
+        display: flex;
+        flex-direction: column;
+        margin-bottom: 10px;
+        font-size: 13px;
+        color: #cbd5f5;
+      }
+      .driver-field span {
+        margin-bottom: 3px;
+        color: #9ca3af;
+      }
+      .driver-field input,
+      .driver-field select {
+        border-radius: 10px;
+        border: 1px solid rgba(148, 163, 184, 0.5);
+        padding: 6px 10px;
+        background: rgba(15, 23, 42, 0.95);
+        color: #e5e7eb;
+        font-size: 13px;
+        outline: none;
+      }
+      .driver-modal-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        margin-top: 6px;
+      }
+      .driver-btn {
+        border-radius: 999px;
+        padding: 6px 14px;
+        font-size: 13px;
+        border: 1px solid rgba(148, 163, 184, 0.5);
+        background: rgba(15, 23, 42, 0.9);
+        color: #e5e7eb;
+        cursor: pointer;
+      }
+      .driver-btn-primary {
+        border: none;
+        background: linear-gradient(to right, #3b82f6, #2563eb);
+        color: #f9fafb;
+      }
+    </style>
+  </head>
+
+  <!-- ⭐ data-page 用于高亮菜单（统一 sidebar 会读这个） -->
+  <body class="admin-layout" data-page="drivers">
+    <!-- ✅ 统一后台布局 -->
+    <aside class="admin-sidebar">
+      <!-- ✅ 统一 sidebar：由 /admin/assets/js/admin_sidebar.js 注入 -->
+      <div id="adminSidebar"></div>
+    </aside>
+      <!-- 右侧主内容 -->
+      <div class="admin-main">
+        <header class="admin-topbar">
+          <button class="admin-btn admin-btn-ghost" data-toggle-sidebar>
+            ☰
+          </button>
+          <div class="admin-topbar-title">司机管理</div>
+          <div class="admin-topbar-spacer"></div>
+
+          <div class="admin-search">
+            <span class="admin-search-icon">🔍</span>
+            <input
+              type="text"
+              placeholder="搜索司机姓名 / 电话..."
+              id="topSearch"
+            />
+          </div>
+
+          <div class="admin-user">
+            <div class="admin-user-avatar">A</div>
+            <div class="admin-user-info">
+              <span class="admin-user-name">Admin</span>
+              <span class="admin-user-role">超级管理员</span>
+            </div>
+          </div>
+        </header>
+
+        <main class="admin-content">
+          <!-- 临时密码提示条（新增/重置后显示一次 + 自动复制） -->
+<div
+  id="tempPwdBar"
+  style="
+    display:none;
+    margin: 10px 0 14px;
+    padding: 10px 12px;
+    border-radius: 14px;
+    border: 1px solid rgba(59,130,246,.45);
+    background: rgba(15,23,42,.85);
+    color:#e5e7eb;
+    box-shadow: 0 8px 24px rgba(15,23,42,.35);
+  "
+>
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+    <div style="font-size:13px;color:#9ca3af;">临时密码（已自动复制）：</div>
+    <div id="tempPwdText" style="font-weight:700;letter-spacing:.5px;"></div>
+
+    <button id="copyTempPwdBtn" class="admin-btn admin-btn-ghost" type="button">
+      复制
+    </button>
+    <button id="closeTempPwdBtn" class="admin-btn admin-btn-ghost" type="button">
+      关闭
+    </button>
+
+    <div id="tempPwdTip" style="margin-left:auto;font-size:12px;color:#9ca3af;"></div>
+  </div>
+</div>
+          <!-- 顶部标题 + 按钮 -->
+          <div class="admin-page-header">
+            <div>
+              <div class="admin-page-title">司机列表</div>
+              <div class="admin-breadcrumb">后台 &gt; 司机管理</div>
+            </div>
+            <div class="admin-page-actions">
+              <button
+                class="admin-btn admin-btn-ghost"
+                id="refreshBtn"
+              >
+                ⟳ 刷新
+              </button>
+              <button class="admin-btn admin-btn-primary" id="addDriverBtn">
+              ＋ 新增司机
+              </button>
+            </div>
+          </div>
+
+          <!-- 上方统计卡片（静态展示） -->
+          <section class="admin-grid">
+            <article class="admin-card admin-card-ghost">
+              <div class="admin-card-title">在岗司机</div>
+              <div class="admin-card-value">—</div>
+              <div class="admin-card-sub">当前在线接单司机（暂未对接统计）</div>
+            </article>
+            <article class="admin-card admin-card-ghost">
+              <div class="admin-card-title">今日配送订单</div>
+              <div class="admin-card-value">—</div>
+              <div class="admin-card-sub">后续可按司机汇总统计</div>
+            </article>
+            <article class="admin-card admin-card-ghost">
+              <div class="admin-card-title">已完成订单</div>
+              <div class="admin-card-value">—</div>
+              <div class="admin-card-sub">
+                对接 /api/admin/driver-stats 后展示
+              </div>
+            </article>
+            <article class="admin-card admin-card-ghost">
+              <div class="admin-card-title">异常订单</div>
+              <div class="admin-card-value">—</div>
+              <div class="admin-card-sub">如无人接听、地址错误等</div>
+            </article>
+          </section>
+
+          <!-- 筛选 + 列表 -->
+          <section class="admin-table-card" style="margin-top: 12px">
+            <div class="admin-card-header">
+              <div>
+                <div class="admin-card-header-title">司机列表</div>
+                <div class="admin-card-header-sub">
+                  数据来自 /api/admin/drivers
+                </div>
+              </div>
+            </div>
+
+            <!-- 筛选条 -->
+            <div class="driver-filters">
+              <input
+                id="keyword"
+                type="text"
+                class="driver-input"
+                placeholder="按姓名 / 手机 / 车牌搜索"
+              />
+              <select id="statusFilter" class="driver-input">
+                <option value="">全部状态</option>
+                <option value="online">在线</option>
+                <option value="offline">离线</option>
+                <option value="disabled">停用</option>
+              </select>
+              <select id="regionFilter" class="driver-input">
+                <option value="">全部区域</option>
+                <option value="法拉盛">法拉盛</option>
+                <option value="Bayside">Bayside</option>
+                <option value="Fresh Meadows">Fresh Meadows</option>
+              </select>
+              <button
+                id="searchBtn"
+                class="admin-btn admin-btn-primary"
+                type="button"
+              >
+                搜索
+              </button>
+            </div>
+
+            <!-- 表格 -->
+            <div class="admin-table-wrapper" style="margin-top: 8px">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th>姓名</th>
+                    <th>手机号</th>
+                    <th>车型</th>
+                    <th>车牌</th>
+                    <th>负责区域</th>
+                    <th>状态</th>
+                    <th>今日单数</th>
+                    <th>总单数</th>
+                    <th>评分</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="driverTableBody"></tbody>
+              </table>
+            </div>
+            <!-- 分页区域（给 drivers.js 用） -->
+            <div class="driver-pagination" id="driverPagination"></div>
+            <!-- 分页 -->
+            <div
+          </section>
+        </main>
+      </div>
+    </div>
+    <!-- 编辑司机弹窗 -->
+     <!-- 编辑司机弹窗 -->
+<div class="driver-modal" id="editModal">
+  <div class="driver-modal-content">
+    <h2 class="driver-modal-title">编辑司机信息</h2>
+
+    <label class="driver-field">
+      <span>姓名</span>
+      <input id="editName" type="text" />
+    </label>
+
+    <label class="driver-field">
+      <span>手机号</span>
+      <input id="editPhone" type="text" />
+    </label>
+
+    <label class="driver-field">
+      <span>车型</span>
+      <input id="editVehicleType" type="text" />
+    </label>
+
+    <label class="driver-field">
+      <span>车牌号</span>
+      <input id="editPlateNumber" type="text" />
+    </label>
+
+    <label class="driver-field">
+      <span>负责区域</span>
+      <input id="editRegion" type="text" />
+    </label>
+
+    <label class="driver-field">
+      <span>状态</span>
+      <select id="editStatus">
+        <option value="online">在线</option>
+        <option value="offline">离线</option>
+        <option value="disabled">停用</option>
+      </select>
+    </label>
+
+    <div class="driver-modal-actions">
+      <button id="cancelEditBtn" type="button" class="driver-btn">取消</button>
+      <button id="saveDriverBtn" type="button" class="driver-btn driver-btn-primary">
+        保存
+      </button>
+    </div>
+  </div>
+</div>
+   <!-- 新增司机弹窗 -->
+<div class="driver-modal" id="addModal">
+  <div class="driver-modal-content">
+    <h2 class="driver-modal-title">新增司机</h2>
+
+    <label class="driver-field">
+      <span>姓名</span>
+      <input id="addName" type="text" placeholder="例如：王师傅" />
+    </label>
+
+    <label class="driver-field">
+      <span>手机号</span>
+      <input id="addPhone" type="text" placeholder="例如：18800001001" />
+    </label>
+
+    <label class="driver-field">
+      <span>车型</span>
+      <input id="addCarType" type="text" placeholder="轿车 / SUV / 面包车" />
+    </label>
+
+    <label class="driver-field">
+      <span>车牌</span>
+      <input id="addPlate" type="text" placeholder="NY-AB1234" />
+    </label>
+
+    <label class="driver-field">
+      <span>负责区域</span>
+      <input id="addZone" type="text" placeholder="Fresh Meadows / 法拉盛" />
+    </label>
+
+    <label class="driver-field">
+      <span>状态</span>
+      <select id="addStatus">
+        <option value="offline">离线</option>
+        <option value="online">在线</option>
+        <option value="suspended">停用</option>
+      </select>
+    </label>
+
+    <div class="driver-modal-actions">
+      <button id="cancelAddBtn" type="button" class="driver-btn">取消</button>
+      <button id="createDriverBtn" type="button" class="driver-btn driver-btn-primary">
+        创建
+      </button>
+    </div>
+  </div>
+</div>
+<script src="/admin/assets/js/admin_guard.js"></script>
+<script src="./assets/js/admin_auth_ui.js"></script>
+<!-- ✅ 统一 sidebar 注入脚本（必须加） -->
+    <script src="/admin/assets/js/admin_sidebar.js"></script>
+    <!-- 你的通用 admin 脚本 -->
+    <script src="assets/js/admin.js"></script>
+    <!-- 司机管理逻辑 -->
+    <script src="drivers.js"></script>
+  </body>
+</html>

@@ -1,0 +1,1248 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>营销中心 - 在鲜购拼好货后台</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="assets/css/admin.css" />
+
+    <!-- 营销中心深色主题（跟结算管理风格一致） -->
+    <style>
+      /* 顶部 4 个 KPI 卡片，风格类似结算管理 */
+      .mc-kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 16px;
+        margin-bottom: 18px;
+      }
+      @media (max-width: 1100px) {
+        .mc-kpi-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+      @media (max-width: 720px) {
+        .mc-kpi-grid {
+          grid-template-columns: minmax(0, 1fr);
+        }
+      }
+      .mc-kpi-card {
+        border-radius: 18px;
+        padding: 14px 16px;
+        background: radial-gradient(circle at top left, #1f2937, #020617);
+        border: 1px solid rgba(148, 163, 184, 0.35);
+        box-shadow: 0 18px 40px rgba(15, 23, 42, 0.65);
+      }
+      .mc-kpi-title {
+        font-size: 13px;
+        color: #9ca3af;
+        margin-bottom: 6px;
+      }
+      .mc-kpi-value {
+        font-size: 22px;
+        font-weight: 600;
+        color: #e5e7eb;
+        margin-bottom: 4px;
+      }
+      .mc-kpi-sub {
+        font-size: 11px;
+        color: #6b7280;
+      }
+
+      /* Tabs */
+      .mc-tabs {
+        display: inline-flex;
+        padding: 4px;
+        border-radius: 999px;
+        background: rgba(15, 23, 42, 0.9);
+        border: 1px solid rgba(75, 85, 99, 0.8);
+        gap: 4px;
+        margin-bottom: 16px;
+      }
+      .mc-tab-btn {
+        padding: 6px 14px;
+        border-radius: 999px;
+        border: none;
+        background: transparent;
+        cursor: pointer;
+        font-size: 12px;
+        color: #9ca3af;
+        white-space: nowrap;
+      }
+      .mc-tab-btn.active {
+        background: linear-gradient(135deg, #2563eb, #38bdf8);
+        color: #f9fafb;
+        box-shadow: 0 0 12px rgba(37, 99, 235, 0.8);
+      }
+      .mc-tab-pane {
+        display: none;
+      }
+      .mc-tab-pane.active {
+        display: block;
+      }
+
+      /* 深色卡片区域 */
+      .mc-card {
+        background: rgba(15, 23, 42, 0.96);
+        border-radius: 16px;
+        padding: 14px 16px;
+        border: 1px solid rgba(55, 65, 81, 0.9);
+        box-shadow: 0 16px 36px rgba(15, 23, 42, 0.8);
+        margin-bottom: 14px;
+      }
+      .mc-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+      .mc-card-title {
+        font-size: 14px;
+        font-weight: 500;
+        color: #e5e7eb;
+        margin-bottom: 2px;
+      }
+      .mc-card-sub {
+        font-size: 11px;
+        color: #6b7280;
+      }
+
+      .mc-form-row {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 8px;
+        flex-wrap: wrap;
+      }
+      .mc-form-row label {
+        font-size: 11px;
+        color: #9ca3af;
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+      }
+      .mc-form-row input,
+      .mc-form-row select,
+      .mc-form-row textarea {
+        padding: 6px 8px;
+        border-radius: 8px;
+        border: 1px solid #4b5563;
+        min-width: 120px;
+        font-size: 12px;
+        background: #020617;
+        color: #e5e7eb;
+      }
+      .mc-form-row input::placeholder,
+      .mc-form-row textarea::placeholder {
+        color: #4b5563;
+      }
+
+      .mc-btn-primary {
+        padding: 6px 16px;
+        border-radius: 999px;
+        border: none;
+        background: linear-gradient(135deg, #2563eb, #22c55e);
+        color: #f9fafb;
+        font-size: 12px;
+        cursor: pointer;
+        box-shadow: 0 0 10px rgba(56, 189, 248, 0.75);
+      }
+      .mc-btn-outline {
+        padding: 4px 10px;
+        border-radius: 999px;
+        border: 1px solid #6b7280;
+        background: transparent;
+        color: #e5e7eb;
+        font-size: 11px;
+        cursor: pointer;
+      }
+      .mc-btn-danger {
+        padding: 4px 10px;
+        border-radius: 999px;
+        border: none;
+        background: #ef4444;
+        color: #f9fafb;
+        font-size: 11px;
+        cursor: pointer;
+      }
+
+      .mc-table-wrapper {
+        overflow-x: auto;
+      }
+      .mc-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 11px;
+      }
+      .mc-table th,
+      .mc-table td {
+        border-bottom: 1px solid #1f2937;
+        padding: 6px 4px;
+        text-align: left;
+        white-space: nowrap;
+      }
+      .mc-table th {
+        color: #9ca3af;
+        font-weight: 500;
+      }
+      .mc-table td {
+        color: #e5e7eb;
+      }
+
+      .mc-pill {
+        display: inline-flex;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 11px;
+      }
+      .mc-pill-green {
+        background: rgba(34, 197, 94, 0.16);
+        color: #4ade80;
+      }
+      .mc-pill-gray {
+        background: rgba(148, 163, 184, 0.16);
+        color: #e5e7eb;
+      }
+
+      .mc-layout-2col {
+        display: grid;
+        grid-template-columns: 2fr 1.6fr;
+        gap: 16px;
+      }
+      @media (max-width: 1100px) {
+        .mc-layout-2col {
+          grid-template-columns: minmax(0, 1fr);
+        }
+      }
+
+      /* 秒杀商品搜索下拉 */
+      .mc-suggest-wrap {
+        position: relative;
+      }
+      .mc-suggest-list {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: #020617;
+        border-radius: 10px;
+        border: 1px solid #4b5563;
+        max-height: 220px;
+        overflow-y: auto;
+        box-shadow: 0 18px 40px rgba(15, 23, 42, 0.9);
+        z-index: 99;
+        display: none;
+      }
+      .mc-suggest-item {
+        padding: 6px 8px;
+        font-size: 12px;
+        color: #e5e7eb;
+        cursor: pointer;
+        border-bottom: 1px solid rgba(31, 41, 55, 0.9);
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        overflow: hidden;
+      }
+      .mc-suggest-item:hover {
+        background: rgba(37, 99, 235, 0.7);
+      }
+      .mc-suggest-empty {
+        padding: 6px 8px;
+        font-size: 12px;
+        color: #6b7280;
+      }
+    </style>
+  </head>
+
+  <body data-page="marketing">
+    <div class="admin-layout">
+      <!-- 侧边栏 -->
+      <aside class="admin-sidebar">
+      <!-- ✅ 统一 sidebar：由 /admin/assets/js/admin_sidebar.js 注入 -->
+      <div id="adminSidebar"></div>
+    </aside>
+      <!-- 主区域 -->
+      <div class="admin-main">
+        <header class="admin-topbar">
+          <button class="admin-btn admin-btn-ghost" data-toggle-sidebar>
+            ☰
+          </button>
+          <div class="admin-topbar-title">营销中心</div>
+          <div class="admin-topbar-spacer"></div>
+
+          <div class="admin-search">
+            <span class="admin-search-icon">🔍</span>
+            <input type="text" placeholder="搜索活动 / 优惠券..." />
+          </div>
+
+          <div class="admin-user">
+            <div class="admin-user-avatar">A</div>
+            <div class="admin-user-info">
+              <span class="admin-user-name">Admin</span>
+              <span class="admin-user-role">超级管理员</span>
+            </div>
+          </div>
+        </header>
+
+        <main class="admin-content">
+          <!-- 顶部标题 + 操作 -->
+          <div class="admin-page-header">
+            <div>
+              <div class="admin-page-title">营销总览</div>
+              <div class="admin-breadcrumb">后台 &gt; 营销中心</div>
+            </div>
+            <div class="admin-page-actions">
+              <button class="admin-btn admin-btn-ghost">导出活动数据</button>
+              <button class="admin-btn admin-btn-primary">＋ 创建营销活动</button>
+            </div>
+          </div>
+
+          <!-- 顶部 4 个统计卡片（示例） -->
+          <section class="mc-kpi-grid">
+            <article class="mc-kpi-card">
+              <div class="mc-kpi-title">进行中活动</div>
+              <div class="mc-kpi-value">3</div>
+              <div class="mc-kpi-sub">本周爆品日 / 首单券 / 拼运费活动</div>
+            </article>
+            <article class="mc-kpi-card">
+              <div class="mc-kpi-title">本月发放优惠券</div>
+              <div class="mc-kpi-value">1,280 张</div>
+              <div class="mc-kpi-sub">已核销 436 张 · 核销率 34.1%</div>
+            </article>
+            <article class="mc-kpi-card">
+              <div class="mc-kpi-title">营销拉动 GMV</div>
+              <div class="mc-kpi-value">$12,430</div>
+              <div class="mc-kpi-sub">占整体 GMV 的 19.6%</div>
+            </article>
+            <article class="mc-kpi-card">
+              <div class="mc-kpi-title">好友拼单订单数</div>
+              <div class="mc-kpi-value">86</div>
+              <div class="mc-kpi-sub">分享成交占比 26.5%</div>
+            </article>
+          </section>
+
+          <!-- Tabs + 内容 -->
+          <section class="mc-layout-2col">
+            <div>
+              <!-- Tabs 卡片 -->
+              <div class="mc-card" style="padding-bottom: 10px">
+                <div class="mc-card-header">
+                  <div>
+                    <div class="mc-card-title">营销规则配置</div>
+                    <div class="mc-card-sub">
+                      在这里统一配置优惠券 / 满减 / 拼运费 / 秒杀 / 积分等规则。
+                    </div>
+                  </div>
+                  <div class="mc-tabs">
+                    <button class="mc-tab-btn active" data-tab="coupon">
+                      优惠券
+                    </button>
+                    <button class="mc-tab-btn" data-tab="promotion">
+                      满减
+                    </button>
+                    <button class="mc-tab-btn" data-tab="share">
+                      拼运费
+                    </button>
+                    <button class="mc-tab-btn" data-tab="flash">
+                      秒杀
+                    </button>
+                    <button class="mc-tab-btn" data-tab="points">
+                      积分
+                    </button>
+                  </div>
+                </div>
+
+                <!-- ========== 优惠券 ========== -->
+                <section class="mc-tab-pane active" id="mc-tab-coupon">
+                  <article style="margin-bottom: 10px">
+                    <div class="mc-form-row">
+                      <label>
+                        名称
+                        <input id="coupon_title" placeholder="新客立减 $5" />
+                      </label>
+                      <label>
+                        类型
+                        <select id="coupon_type">
+                          <option value="cash">现金券</option>
+                          <option value="percentage">折扣券</option>
+                          <option value="fullcut">满减券</option>
+                          <option value="newUser">新客礼券</option>
+                        </select>
+                      </label>
+                      <label>
+                        金额/折扣
+                        <input
+                          id="coupon_amount"
+                          type="number"
+                          step="0.01"
+                          placeholder="5 或 10(%)"
+                        />
+                      </label>
+                      <label>
+                        使用门槛
+                        <input
+                          id="coupon_minSpend"
+                          type="number"
+                          step="0.01"
+                          placeholder="0 为无门槛"
+                        />
+                      </label>
+                    </div>
+                    <div class="mc-form-row">
+                      <label>
+                        生效时间
+                        <input id="coupon_validFrom" type="datetime-local" />
+                      </label>
+                      <label>
+                        结束时间
+                        <input id="coupon_validTo" type="datetime-local" />
+                      </label>
+                      <label>
+                        使用次数上限
+                        <input
+                          id="coupon_limitUse"
+                          type="number"
+                          placeholder="0 不限"
+                        />
+                      </label>
+                    </div>
+                    <button class="mc-btn-primary" onclick="createCoupon()">
+                      保存优惠券
+                    </button>
+                  </article>
+                </section>
+
+                <!-- ========== 满减 ========== -->
+                <section class="mc-tab-pane" id="mc-tab-promotion">
+                  <article style="margin-bottom: 10px">
+                    <div class="mc-form-row">
+                      <label>
+                        活动名称
+                        <input id="promo_name" placeholder="购物满30减5" />
+                      </label>
+                      <label>
+                        类型
+                        <select id="promo_ruleType">
+                          <option value="cart_fullcut">购物车满减</option>
+                          <option value="cart_discount">购物车折扣</option>
+                          <option value="category_discount">分类折扣</option>
+                        </select>
+                      </label>
+                      <label>
+                        门槛金额
+                        <input
+                          id="promo_threshold"
+                          type="number"
+                          step="0.01"
+                        />
+                      </label>
+                      <label>
+                        减免/折扣
+                        <input
+                          id="promo_discount"
+                          type="number"
+                          step="0.01"
+                        />
+                      </label>
+                    </div>
+                    <div class="mc-form-row">
+                      <label>
+                        生效时间
+                        <input id="promo_validFrom" type="datetime-local" />
+                      </label>
+                      <label>
+                        结束时间
+                        <input id="promo_validTo" type="datetime-local" />
+                      </label>
+                      <label style="flex: 1">
+                        备注
+                        <input
+                          id="promo_note"
+                          placeholder="如：周五爆品日专用"
+                        />
+                      </label>
+                    </div>
+                    <button class="mc-btn-primary" onclick="createPromotion()">
+                      保存活动
+                    </button>
+                  </article>
+                </section>
+
+                <!-- ========== 拼运费 ========== -->
+                <section class="mc-tab-pane" id="mc-tab-share">
+                  <article style="margin-bottom: 10px">
+                    <div class="mc-form-row">
+                      <label>
+                        单人运费
+                        <input id="share_baseFee" type="number" step="0.01" />
+                      </label>
+                      <label>
+                        拼成有效时间(分钟)
+                        <input id="share_expire" type="number" />
+                      </label>
+                    </div>
+                    <div class="mc-form-row">
+                      <label>
+                        2 人拼 / 每人
+                        <input id="share_p2" type="number" step="0.01" />
+                      </label>
+                      <label>
+                        3 人拼 / 每人
+                        <input id="share_p3" type="number" step="0.01" />
+                      </label>
+                      <label>
+                        4 人拼 / 每人
+                        <input id="share_p4" type="number" step="0.01" />
+                      </label>
+                    </div>
+                    <button class="mc-btn-primary" onclick="saveShareShipping()">
+                      保存配置
+                    </button>
+                  </article>
+                </section>
+
+                <!-- ========== 秒杀（爆品日） ========== -->
+                <section class="mc-tab-pane" id="mc-tab-flash">
+                  <article style="margin-bottom: 10px">
+                    <!-- 商品搜索 + 选择 -->
+                    <div class="mc-form-row">
+                      <label class="mc-suggest-wrap" style="flex: 1">
+                        选择商品（输入名称或 SKU 搜索）
+                        <input
+                          type="text"
+                          id="flashProductSearch"
+                          placeholder="输入商品名或 SKU 关键字"
+                          autocomplete="off"
+                        />
+                        <div
+                          id="flashSearchResults"
+                          class="mc-suggest-list"
+                        ></div>
+                      </label>
+                    </div>
+
+                    <!-- 隐藏的 productId，提交给后端用 -->
+                    <input type="hidden" id="flash_productId" />
+
+                    <!-- 显示当前已选商品 -->
+                    <p
+                      id="flashSelectedProductInfo"
+                      style="
+                        font-size: 12px;
+                        color: #9ca3af;
+                        margin: 2px 0 6px;
+                      "
+                    >
+                      未选择商品
+                    </p>
+
+                    <div class="mc-form-row">
+                      <label>
+                        秒杀价
+                        <input id="flash_price" type="number" step="0.01" />
+                      </label>
+                      <label>
+                        限购数量(0不限)
+                        <input id="flash_limit" type="number" />
+                      </label>
+                    </div>
+                    <div class="mc-form-row">
+                      <label>
+                        开始时间
+                        <input id="flash_start" type="datetime-local" />
+                      </label>
+                      <label>
+                        结束时间
+                        <input id="flash_end" type="datetime-local" />
+                      </label>
+                      <label>
+                        标签
+                        <input
+                          id="flash_tag"
+                          placeholder="周五爆品日 / 秒杀"
+                        />
+                      </label>
+                    </div>
+                    <button class="mc-btn-primary" onclick="createFlashSale()">
+                      保存秒杀
+                    </button>
+                  </article>
+                </section>
+
+                <!-- ========== 积分 ========== -->
+                <section class="mc-tab-pane" id="mc-tab-points">
+                  <article style="margin-bottom: 10px">
+                    <div class="mc-form-row">
+                      <label style="flex: 1">
+                        用户 ID
+                        <input
+                          id="points_userId"
+                          placeholder="User _id 或测试字符串"
+                        />
+                      </label>
+                      <button class="mc-btn-primary" onclick="loadPoints()">
+                        查询
+                      </button>
+                    </div>
+                    <p
+                      id="points_info"
+                      style="font-size: 12px; color: #9ca3af; margin-top: 4px"
+                    ></p>
+                    <div class="mc-form-row" style="margin-top: 8px">
+                      <label>
+                        数量（正数=增加，负数=扣减）
+                        <input id="points_amount" type="number" />
+                      </label>
+                      <label style="flex: 1">
+                        备注
+                        <input
+                          id="points_remark"
+                          placeholder="活动赠送 / 客诉补偿等"
+                        />
+                      </label>
+                    </div>
+                    <button class="mc-btn-primary" onclick="adjustPoints()">
+                      提交
+                    </button>
+                  </article>
+                </section>
+              </div>
+            </div>
+
+            <!-- 右侧：列表展示区 -->
+            <div>
+              <!-- 优惠券/活动列表 -->
+              <div class="mc-card">
+                <div class="mc-card-header">
+                  <div>
+                    <div class="mc-card-title">优惠券 & 活动列表</div>
+                    <div class="mc-card-sub">
+                      这里是当前所有的优惠券、满减活动、爆品日配置效果一览。
+                    </div>
+                  </div>
+                  <button class="mc-btn-outline" onclick="loadAllLists()">
+                    刷新
+                  </button>
+                </div>
+
+                <h3
+                  style="
+                    font-size: 12px;
+                    color: #9ca3af;
+                    margin: 4px 0 4px;
+                    font-weight: 400;
+                  "
+                >
+                  优惠券列表
+                </h3>
+                <div class="mc-table-wrapper" style="margin-bottom: 8px">
+                  <table class="mc-table">
+                    <thead>
+                      <tr>
+                        <th>名称</th>
+                        <th>类型</th>
+                        <th>金额</th>
+                        <th>门槛</th>
+                        <th>时间</th>
+                        <th>状态</th>
+                        <th>操作</th>
+                      </tr>
+                    </thead>
+                    <tbody id="coupon_tbody"></tbody>
+                  </table>
+                </div>
+
+                <h3
+                  style="
+                    font-size: 12px;
+                    color: #9ca3af;
+                    margin: 6px 0 4px;
+                    font-weight: 400;
+                  "
+                >
+                  满减活动
+                </h3>
+                <div class="mc-table-wrapper" style="margin-bottom: 8px">
+                  <table class="mc-table">
+                    <thead>
+                      <tr>
+                        <th>名称</th>
+                        <th>类型</th>
+                        <th>门槛</th>
+                        <th>优惠</th>
+                        <th>时间</th>
+                        <th>状态</th>
+                        <th>操作</th>
+                      </tr>
+                    </thead>
+                    <tbody id="promo_tbody"></tbody>
+                  </table>
+                </div>
+
+                <h3
+                  style="
+                    font-size: 12px;
+                    color: #9ca3af;
+                    margin: 6px 0 4px;
+                    font-weight: 400;
+                  "
+                >
+                  爆品日 / 秒杀
+                </h3>
+                <div class="mc-table-wrapper">
+                  <table class="mc-table">
+                    <thead>
+                      <tr>
+                        <th>商品</th>
+                        <th>秒杀价</th>
+                        <th>限购</th>
+                        <th>时间</th>
+                        <th>状态</th>
+                        <th>操作</th>
+                      </tr>
+                    </thead>
+                    <tbody id="flash_tbody"></tbody>
+                  </table>
+                </div>
+              </div>
+
+              <!-- 邀请统计 -->
+              <div class="mc-card">
+                <div class="mc-card-header">
+                  <div>
+                    <div class="mc-card-title">邀请裂变统计（示例数据）</div>
+                    <div class="mc-card-sub">
+                      后续可对接真实用户 & 邀请记录表；当前为内存版占位。
+                    </div>
+                  </div>
+                  <button class="mc-btn-outline" onclick="loadReferrals()">
+                    刷新邀请数据
+                  </button>
+                </div>
+                <div class="mc-table-wrapper">
+                  <table class="mc-table">
+                    <thead>
+                      <tr>
+                        <th>用户 ID</th>
+                        <th>邀请码</th>
+                        <th>邀请人数</th>
+                        <th>奖励记录</th>
+                      </tr>
+                    </thead>
+                    <tbody id="referral_tbody"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+    <script src="/admin/assets/js/admin_guard.js"></script>
+    <script src="./assets/js/admin_auth_ui.js"></script>
+    <script>
+      const API_BASE = "/api/admin/marketing";
+
+      // Tabs
+      document.querySelectorAll(".mc-tab-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          document
+            .querySelectorAll(".mc-tab-btn")
+            .forEach((b) => b.classList.remove("active"));
+          btn.classList.add("active");
+          const tab = btn.dataset.tab;
+          document
+            .querySelectorAll(".mc-tab-pane")
+            .forEach((p) => p.classList.remove("active"));
+          document.getElementById("mc-tab-" + tab).classList.add("active");
+        });
+      });
+
+      async function api(path, options = {}) {
+        const res = await fetch(API_BASE + path, {
+          headers: { "Content-Type": "application/json" },
+          ...options,
+        });
+        return res.json();
+      }
+
+      // ---------- 秒杀：商品搜索联想 ----------
+      const flashProductSearch = document.getElementById("flashProductSearch");
+      const flashSearchResults = document.getElementById("flashSearchResults");
+      const flashProductIdInput = document.getElementById("flash_productId");
+      const flashSelectedProductInfo = document.getElementById(
+        "flashSelectedProductInfo"
+      );
+
+      let flashSearchTimer = null;
+
+      function renderFlashSearchResults(items) {
+        if (!items || !items.length) {
+          flashSearchResults.style.display = "none";
+          flashSearchResults.innerHTML = "";
+          return;
+        }
+
+        flashSearchResults.innerHTML = "";
+
+        items.forEach((p) => {
+          const row = document.createElement("div");
+          row.className = "mc-suggest-item";
+          row.innerHTML = `
+            <div style="display:flex; align-items:center; gap:8px;">
+              ${
+                p.image
+                  ? `<img src="${p.image}" style="width:32px;height:32px;border-radius:6px;object-fit:cover;" />`
+                  : ""
+              }
+              <div>
+                <div style="font-weight:600;">${p.name}</div>
+                <div style="font-size:11px;color:#9ca3af;">
+                  ID: ${p.id || p._id || "-"} | SKU: ${
+            p.sku || "-"
+          } | 现价: $${(p.price || p.originPrice || 0).toFixed(2)}
+                </div>
+              </div>
+            </div>
+          `;
+
+          row.addEventListener("click", () => {
+            const realId = p.id || p._id || "";
+            flashProductIdInput.value = realId;
+            flashProductSearch.value = p.name || "";
+            flashSearchResults.style.display = "none";
+            flashSearchResults.innerHTML = "";
+
+            if (flashSelectedProductInfo) {
+              flashSelectedProductInfo.innerHTML = `
+                已选择商品：<strong>${p.name}</strong>
+                （ID: ${realId}，库存：${p.stock ?? 0}）
+              `;
+            }
+          });
+
+          flashSearchResults.appendChild(row);
+        });
+
+        flashSearchResults.style.display = "block";
+      }
+
+      if (flashProductSearch) {
+        flashProductSearch.addEventListener("input", () => {
+          const kw = flashProductSearch.value.trim();
+          flashProductIdInput.value = "";
+          if (flashSelectedProductInfo) {
+            flashSelectedProductInfo.textContent = "未选择商品";
+          }
+
+          if (flashSearchTimer) clearTimeout(flashSearchTimer);
+
+          if (!kw) {
+            flashSearchResults.style.display = "none";
+            flashSearchResults.innerHTML = "";
+            return;
+          }
+
+          flashSearchTimer = setTimeout(async () => {
+            try {
+               const res = await fetch(
+  `${API_BASE}/search-product?keyword=${encodeURIComponent(kw)}`
+);
+              const data = await res.json();
+              if (!data.success) {
+                console.warn("搜索商品失败:", data.message);
+                renderFlashSearchResults([]);
+                return;
+              }
+              renderFlashSearchResults(data.items || []);
+            } catch (err) {
+              console.error("搜索商品接口异常:", err);
+              renderFlashSearchResults([]);
+            }
+          }, 300);
+        });
+      }
+
+      // 点击页面其他地方时，收起下拉
+      document.addEventListener("click", (e) => {
+        if (
+          !flashProductSearch?.contains(e.target) &&
+          !flashSearchResults?.contains(e.target)
+        ) {
+          if (flashSearchResults) {
+            flashSearchResults.style.display = "none";
+          }
+        }
+      });
+
+      // ---------- 优惠券 ----------
+      async function loadCoupons() {
+        const data = await api("/coupons");
+        const tbody = document.getElementById("coupon_tbody");
+        tbody.innerHTML = "";
+        if (!data.success) return;
+        data.list.forEach((c) => {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td>${c.title}</td>
+            <td>${c.type}</td>
+            <td>${c.amount}</td>
+            <td>${c.minSpend}</td>
+            <td>
+              ${
+                c.validFrom
+                  ? new Date(c.validFrom).toLocaleDateString()
+                  : ""
+              } -
+              ${
+                c.validTo ? new Date(c.validTo).toLocaleDateString() : ""
+              }
+            </td>
+            <td>
+              <span class="mc-pill ${
+                c.status === "active" ? "mc-pill-green" : "mc-pill-gray"
+              }">${c.status}</span>
+            </td>
+            <td>
+              <button class="mc-btn-outline" onclick="toggleCoupon('${
+                c._id
+              }')">启/停</button>
+              <button class="mc-btn-danger" onclick="deleteCoupon('${
+                c._id
+              }')">删</button>
+            </td>
+          `;
+          tbody.appendChild(tr);
+        });
+      }
+
+      async function createCoupon() {
+        const body = {
+          title: document.getElementById("coupon_title").value,
+          type: document.getElementById("coupon_type").value,
+          amount: parseFloat(
+            document.getElementById("coupon_amount").value || "0"
+          ),
+          minSpend: parseFloat(
+            document.getElementById("coupon_minSpend").value || "0"
+          ),
+          validFrom: document.getElementById("coupon_validFrom").value,
+          validTo: document.getElementById("coupon_validTo").value,
+          limitUse: parseInt(
+            document.getElementById("coupon_limitUse").value || "0"
+          ),
+        };
+        const data = await api("/coupons", {
+          method: "POST",
+          body: JSON.stringify(body),
+        });
+        alert(data.success ? "创建成功" : data.message || "失败");
+        loadCoupons();
+      }
+
+      async function toggleCoupon(id) {
+        const data = await api(`/coupons/${id}/toggle`, { method: "PATCH" });
+        if (!data.success) alert(data.message || "操作失败");
+        loadCoupons();
+      }
+
+      async function deleteCoupon(id) {
+        if (!confirm("确定删除该优惠券？")) return;
+        await api(`/coupons/${id}`, { method: "DELETE" });
+        loadCoupons();
+      }
+
+      // ---------- 满减 ----------
+      async function loadPromotions() {
+        const data = await api("/promotions");
+        const tbody = document.getElementById("promo_tbody");
+        tbody.innerHTML = "";
+        if (!data.success) return;
+        data.list.forEach((p) => {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td>${p.name}</td>
+            <td>${p.ruleType}</td>
+            <td>${p.threshold}</td>
+            <td>${p.discount}</td>
+            <td>
+              ${
+                p.validFrom
+                  ? new Date(p.validFrom).toLocaleDateString()
+                  : ""
+              } -
+              ${
+                p.validTo ? new Date(p.validTo).toLocaleDateString() : ""
+              }
+            </td>
+            <td>
+              <span class="mc-pill ${
+                p.enabled ? "mc-pill-green" : "mc-pill-gray"
+              }">
+                ${p.enabled ? "启用" : "停用"}
+              </span>
+            </td>
+            <td>
+              <button class="mc-btn-outline" onclick="togglePromotion('${
+                p._id
+              }')">启/停</button>
+              <button class="mc-btn-danger" onclick="deletePromotion('${
+                p._id
+              }')">删</button>
+            </td>
+          `;
+          tbody.appendChild(tr);
+        });
+      }
+
+      async function createPromotion() {
+        const body = {
+          name: document.getElementById("promo_name").value,
+          ruleType: document.getElementById("promo_ruleType").value,
+          threshold: parseFloat(
+            document.getElementById("promo_threshold").value || "0"
+          ),
+          discount: parseFloat(
+            document.getElementById("promo_discount").value || "0"
+          ),
+          validFrom: document.getElementById("promo_validFrom").value,
+          validTo: document.getElementById("promo_validTo").value,
+          note: document.getElementById("promo_note").value,
+        };
+        const data = await api("/promotions", {
+          method: "POST",
+          body: JSON.stringify(body),
+        });
+        alert(data.success ? "创建成功" : data.message || "失败");
+        loadPromotions();
+      }
+
+      async function togglePromotion(id) {
+        const data = await api(`/promotions/${id}/toggle`, { method: "PATCH" });
+        if (!data.success) alert(data.message || "操作失败");
+        loadPromotions();
+      }
+
+      async function deletePromotion(id) {
+        if (!confirm("确定删除该活动？")) return;
+        await api(`/promotions/${id}`, { method: "DELETE" });
+        loadPromotions();
+      }
+
+      // ---------- 拼运费 ----------
+      async function loadShareShipping() {
+        const data = await api("/share-shipping");
+        if (!data.success) return;
+        const cfg = data.data;
+        document.getElementById("share_baseFee").value = cfg.baseFee ?? 4.99;
+        document.getElementById("share_expire").value =
+          cfg.expireMinutes ?? 15;
+        const s2 = cfg.steps?.find((s) => s.people === 2);
+        const s3 = cfg.steps?.find((s) => s.people === 3);
+        const s4 = cfg.steps?.find((s) => s.people === 4);
+        document.getElementById("share_p2").value = s2?.price ?? 1.99;
+        document.getElementById("share_p3").value = s3?.price ?? 0.99;
+        document.getElementById("share_p4").value = s4?.price ?? 0;
+      }
+
+      async function saveShareShipping() {
+        const body = {
+          baseFee: parseFloat(
+            document.getElementById("share_baseFee").value || "4.99"
+          ),
+          expireMinutes: parseInt(
+            document.getElementById("share_expire").value || "15"
+          ),
+          steps: [
+            {
+              people: 2,
+              price: parseFloat(
+                document.getElementById("share_p2").value || "1.99"
+              ),
+            },
+            {
+              people: 3,
+              price: parseFloat(
+                document.getElementById("share_p3").value || "0.99"
+              ),
+            },
+            {
+              people: 4,
+              price: parseFloat(
+                document.getElementById("share_p4").value || "0"
+              ),
+            },
+          ],
+        };
+        const data = await api("/share-shipping", {
+          method: "POST",
+          body: JSON.stringify(body),
+        });
+        alert(data.success ? "保存成功" : data.message || "失败");
+      }
+
+      // ---------- 秒杀 ----------
+      async function loadFlashSales() {
+        const data = await api("/flash-sales");
+        const tbody = document.getElementById("flash_tbody");
+        tbody.innerHTML = "";
+        if (!data.success) return;
+        data.list.forEach((f) => {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td>${f.productName || f.productId || ""}</td>
+            <td>${f.flashPrice}</td>
+            <td>${f.limitQty}</td>
+            <td>
+              ${f.start ? new Date(f.start).toLocaleString() : ""}<br/>
+              ${f.end ? new Date(f.end).toLocaleString() : ""}
+            </td>
+            <td>
+              <span class="mc-pill ${
+                f.enabled ? "mc-pill-green" : "mc-pill-gray"
+              }">
+                ${f.enabled ? "启用" : "停用"}
+              </span>
+            </td>
+            <td>
+              <button class="mc-btn-outline" onclick="toggleFlashSale('${
+                f._id
+              }')">启/停</button>
+              <button class="mc-btn-danger" onclick="deleteFlashSale('${
+                f._id
+              }')">删</button>
+            </td>
+          `;
+          tbody.appendChild(tr);
+        });
+      }
+
+      async function createFlashSale() {
+        const productId = (flashProductIdInput?.value || "").trim();
+        if (!productId) {
+          alert("请先通过上方搜索选择一个商品");
+          return;
+        }
+
+        const body = {
+          productId,
+          flashPrice: parseFloat(
+            document.getElementById("flash_price").value || "0"
+          ),
+          limitQty: parseInt(
+            document.getElementById("flash_limit").value || "0"
+          ),
+          start: document.getElementById("flash_start").value,
+          end: document.getElementById("flash_end").value,
+          tag: document.getElementById("flash_tag").value || "爆品日",
+        };
+        const data = await api("/flash-sales", {
+          method: "POST",
+          body: JSON.stringify(body),
+        });
+        alert(data.success ? "创建成功" : data.message || "失败");
+        loadFlashSales();
+      }
+
+      async function toggleFlashSale(id) {
+        const data = await api(`/flash-sales/${id}/toggle`, {
+          method: "PATCH",
+        });
+        if (!data.success) alert(data.message || "操作失败");
+        loadFlashSales();
+      }
+
+      async function deleteFlashSale(id) {
+        if (!confirm("确定删除该秒杀？")) return;
+        await api(`/flash-sales/${id}`, { method: "DELETE" });
+        loadFlashSales();
+      }
+
+      // ---------- 邀请 ----------
+      async function loadReferrals() {
+        const data = await api("/referrals");
+        const tbody = document.getElementById("referral_tbody");
+        tbody.innerHTML = "";
+        if (!data.success) return;
+        data.list.forEach((r) => {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td>${r.userId || ""}</td>
+            <td>${r.inviteCode}</td>
+            <td>${r.invitedUsers?.length || 0}</td>
+            <td>${r.rewards?.length || 0} 条</td>
+          `;
+          tbody.appendChild(tr);
+        });
+      }
+
+      // ---------- 积分 ----------
+      let currentPointsUserId = "";
+
+      async function loadPoints() {
+        const userId = document.getElementById("points_userId").value.trim();
+        if (!userId) {
+          alert("请输入用户ID");
+          return;
+        }
+        currentPointsUserId = userId;
+        const data = await api(`/points/${userId}`);
+        const info = document.getElementById("points_info");
+        if (!data.success) {
+          info.textContent = "查询失败";
+          return;
+        }
+        if (!data.data) {
+          info.textContent = "暂无积分记录，当前积分：0";
+        } else {
+          info.textContent = `当前积分：${data.data.points}`;
+        }
+      }
+
+      async function adjustPoints() {
+        const userId =
+          currentPointsUserId ||
+          document.getElementById("points_userId").value.trim();
+        if (!userId) {
+          alert("请先查询用户ID");
+          return;
+        }
+        const amount = parseInt(
+          document.getElementById("points_amount").value || "0"
+        );
+        const remark = document.getElementById("points_remark").value;
+        if (!amount) {
+          alert("请输入非0的数量");
+          return;
+        }
+        const path =
+          amount > 0 ? `/points/${userId}/earn` : `/points/${userId}/use`;
+        const data = await api(path, {
+          method: "POST",
+          body: JSON.stringify({ amount: Math.abs(amount), remark }),
+        });
+        alert(data.success ? "操作成功" : data.message || "失败");
+        loadPoints();
+      }
+
+      // 一键刷新所有列表
+      function loadAllLists() {
+        loadCoupons();
+        loadPromotions();
+        loadFlashSales();
+      }
+
+      // 初始化
+      (function init() {
+        loadCoupons();
+        loadPromotions();
+        loadShareShipping();
+        loadFlashSales();
+        loadReferrals();
+      })();
+    </script>
+ <!-- ✅ 统一 sidebar 注入脚本（必须加） -->
+    <script src="/admin/assets/js/admin_sidebar.js"></script>
+    <!-- 保留原有 admin.js（负责侧边栏高亮等） -->
+    <script src="assets/js/admin.js"></script>
+  </body>
+</html>

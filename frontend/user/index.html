@@ -1,0 +1,1238 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>在鲜购拼好货 - 首页</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <style>
+      :root {
+        --primary: #22c55e;
+        --primary-dark: #16a34a;
+        --accent: #f97316;
+        --bg: #f3f4f6;
+        --text-main: #111827;
+        --text-sub: #6b7280;
+        --card-bg: #ffffff;
+        --radius-lg: 18px;
+        --radius-md: 12px;
+        --shadow-sm: 0 4px 12px rgba(15, 23, 42, 0.08);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+        background: var(--bg);
+        color: var(--text-main);
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      /* 顶部导航 + 分类整体置顶 */
+      .top-nav {
+        position: sticky;
+        top: 0;
+        z-index: 40;
+        background: #ffffff;
+        box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08);
+      }
+
+      .top-nav-inner {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 10px 16px 6px;
+        display: grid;
+        grid-template-columns: 260px minmax(0, 1fr) 260px;
+        gap: 16px;
+        align-items: center;
+      }
+
+      @media (max-width: 900px) {
+        .top-nav-inner {
+          grid-template-columns: 1fr;
+          grid-auto-rows: auto;
+          row-gap: 8px;
+        }
+      }
+
+      .logo-area {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .logo-badge {
+        width: 32px;
+        height: 32px;
+        border-radius: 999px;
+        background: radial-gradient(circle at 30% 30%, #22c55e, #16a34a);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        font-weight: 700;
+        font-size: 18px;
+        box-shadow: 0 3px 8px rgba(16, 185, 129, 0.7);
+      }
+
+      .logo-text-main {
+        font-size: 18px;
+        font-weight: 700;
+      }
+
+      .logo-text-sub {
+        font-size: 11px;
+        color: var(--text-sub);
+      }
+
+      .search-area {
+        display: flex;
+        align-items: center;
+      }
+
+      .search-box {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        background: #f3f4f6;
+        border-radius: 999px;
+        padding: 7px 10px;
+        width: 100%;
+      }
+
+      .search-icon {
+        font-size: 14px;
+        color: var(--text-sub);
+      }
+
+      .search-input {
+        border: none;
+        background: transparent;
+        outline: none;
+        font-size: 13px;
+        width: 100%;
+      }
+
+      .search-input::placeholder {
+        color: #9ca3af;
+      }
+
+      .user-area {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        gap: 10px;
+        font-size: 13px;
+      }
+
+      .link-btn {
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid #e5e7eb;
+        background: #ffffff;
+        cursor: pointer;
+        font-size: 13px;
+      }
+
+      .link-btn.primary {
+        border-color: transparent;
+        background: #22c55e;
+        color: #ffffff;
+      }
+
+      .link-btn:hover {
+        filter: brightness(0.97);
+      }
+
+      .cart-icon {
+        position: relative;
+        width: 38px;
+        height: 38px;
+        border-radius: 999px;
+        background: #0f172a;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        color: #e5e7eb;
+      }
+
+      .cart-count-badge {
+        position: absolute;
+        top: -4px;
+        right: -4px;
+        background: #ef4444;
+        color: #fff;
+        font-size: 10px;
+        padding: 0 6px;
+        border-radius: 999px;
+        min-width: 20px;
+        text-align: center;
+        display: none;
+      }
+
+      /* 右上角个人头像（登录后显示） */
+      .user-profile {
+        display: none;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 8px;
+        border-radius: 999px;
+        background: #f3f4f6;
+        cursor: pointer;
+      }
+
+      .user-avatar {
+        width: 28px;
+        height: 28px;
+        border-radius: 999px;
+        background: linear-gradient(135deg, #22c55e, #16a34a);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #ffffff;
+        font-size: 14px;
+        font-weight: 600;
+      }
+
+      .user-name {
+        font-size: 12px;
+        color: var(--text-main);
+        max-width: 90px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      /* 顶部商品大类（连接后台分类） */
+      .category-bar {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 6px 16px 8px;
+        display: flex;
+        gap: 8px;
+        overflow-x: auto;
+        border-top: 1px solid #f3f4f6;
+      }
+
+      .category-bar::-webkit-scrollbar {
+        display: none;
+      }
+
+      .cat-pill {
+        flex-shrink: 0;
+        padding: 8px 14px;
+        border-radius: 999px;
+        border: 1px solid #e5e7eb;
+        background: #ffffff;
+        font-size: 14px;
+        color: #111827;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        box-shadow: 0 2px 6px rgba(15, 23, 42, 0.06);
+        transition: background 0.18s ease-out, transform 0.12s ease-out,
+          box-shadow 0.18s ease-out, border-color 0.18s ease-out;
+      }
+
+      .cat-pill:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 10px rgba(15, 23, 42, 0.09);
+      }
+
+      .cat-pill.active {
+        border-color: rgba(34, 197, 94, 0.9);
+        background: linear-gradient(135deg, #ecfdf3, #dcfce7);
+        color: #15803d;
+        font-weight: 700;
+      }
+
+      /* 主体布局 */
+      .page {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 14px 16px 32px;
+      }
+
+      .page-layout {
+        position: relative;
+      }
+
+      .page-main {
+        min-width: 0;
+      }
+
+      /* 顶部横幅 */
+      .banner-carousel {
+        position: relative;
+        overflow: hidden;
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-sm);
+        margin-bottom: 18px;
+        background: #22c55e;
+        min-height: 220px;
+        color: #f9fafb;
+        padding: 22px 22px 16px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+      }
+
+      .banner-title {
+        font-size: 24px;
+        font-weight: 700;
+        margin-bottom: 8px;
+      }
+
+      .banner-sub {
+        font-size: 14px;
+        opacity: 0.98;
+        margin-bottom: 12px;
+        max-width: 520px;
+      }
+
+      .banner-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        font-size: 11px;
+      }
+
+      .banner-tag {
+        padding: 3px 9px;
+        border-radius: 999px;
+        background: rgba(15, 23, 42, 0.25);
+      }
+
+      /* ===== 配送方式模块 ===== */
+      .delivery-mode {
+        margin: 10px 2px 6px;
+        padding: 12px;
+        border-radius: 12px;
+        background: #ffffff;
+        box-shadow: var(--shadow-sm);
+        border: 1px solid #e5e7eb;
+        display: flex;
+        gap: 12px;
+      }
+
+      .delivery-left {
+        flex: 0 0 260px;
+        min-width: 0;
+        border-right: 1px solid #e5e7eb;
+        padding-right: 10px;
+      }
+
+      .delivery-right {
+        flex: 1;
+        min-width: 0;
+        padding: 8px 10px;
+        border-radius: 10px;
+        background: #f9fafb;
+        border: 1px dashed #d1d5db;
+        font-size: 12px;
+        color: var(--text-sub);
+      }
+
+      @media (max-width: 800px) {
+        .delivery-mode {
+          flex-direction: column;
+        }
+        .delivery-left {
+          border-right: none;
+          border-bottom: 1px solid #e5e7eb;
+          padding-right: 0;
+          padding-bottom: 8px;
+        }
+      }
+
+      .delivery-mode-header {
+        margin-bottom: 8px;
+      }
+
+      .delivery-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--text-main);
+      }
+
+      .delivery-hint {
+        font-size: 12px;
+        color: var(--text-sub);
+        margin-top: 6px;
+      }
+
+      .delivery-options {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-top: 10px;
+      }
+
+      .delivery-pill {
+        padding: 8px 10px;
+        border-radius: 10px;
+        border: 1px solid #e5e7eb;
+        background: #f9fafb;
+        font-size: 13px;
+        color: var(--text-main);
+        cursor: pointer;
+        text-align: left;
+        transition: background 0.18s ease-out, border-color 0.18s ease-out,
+          color 0.18s ease-out, transform 0.12s ease-out;
+      }
+
+      .delivery-pill strong {
+        display: block;
+        margin-bottom: 2px;
+      }
+
+      .delivery-pill span {
+        font-size: 11px;
+        color: var(--text-sub);
+      }
+
+      .delivery-pill:hover {
+        background: #eef2ff;
+        border-color: #c7d2fe;
+        transform: translateY(-1px);
+      }
+
+      .delivery-pill.active {
+        background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+        border-color: transparent;
+        color: #ffffff;
+        font-weight: 600;
+      }
+
+      .delivery-pill.active span {
+        color: #e5e7eb;
+      }
+
+      .delivery-info-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text-main);
+        margin-bottom: 4px;
+      }
+
+      .delivery-info-list {
+        margin: 4px 0 0;
+        padding-left: 16px;
+      }
+
+      .delivery-info-list li {
+        margin-bottom: 2px;
+      }
+
+      .delivery-highlight {
+        color: #16a34a;
+        font-weight: 600;
+      }
+
+      .delivery-countdown {
+        font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+          "Courier New", monospace;
+        font-weight: 600;
+        color: #ef4444;
+      }
+
+      /* ZIP 检测条（左侧，给 index.js 用的那套 ID） */
+      .zip-row {
+        margin-top: 8px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .zip-label {
+        font-size: 12px;
+        color: var(--text-sub);
+        flex: 0 0 auto;
+      }
+      .zip-input {
+        flex: 1;
+        min-width: 0;
+        padding: 8px 10px;
+        border-radius: 10px;
+        border: 1px solid #e5e7eb;
+        outline: none;
+        font-size: 13px;
+        background: #fff;
+      }
+      .zip-input:focus {
+        border-color: rgba(34, 197, 94, 0.6);
+        box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.12);
+      }
+      .zip-btn {
+        flex: 0 0 auto;
+        padding: 8px 10px;
+        border-radius: 10px;
+        border: 1px solid #e5e7eb;
+        background: #fff;
+        cursor: pointer;
+        font-size: 13px;
+      }
+      .zip-btn:hover {
+        filter: brightness(0.98);
+      }
+      .zip-status {
+        margin-top: 6px;
+        font-size: 12px;
+        color: var(--text-sub);
+        line-height: 1.45;
+      }
+      .zip-status.ok {
+        color: #15803d;
+        font-weight: 600;
+      }
+      .zip-status.bad {
+        color: #b91c1c;
+        font-weight: 600;
+      }
+      /* ZIP 锁死样式（默认地址来源时） */
+.zip-locked,
+.zip-locked:focus {
+  background: #f3f4f6 !important;
+  color: #374151 !important;
+  cursor: not-allowed !important;
+  box-shadow: none !important;
+}
+.zip-locked::placeholder {
+  color: #9ca3af;
+}
+      /* 区块标题 */
+      .section-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        margin: 18px 2px 10px;
+      }
+      .section-title {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 22px;
+        font-weight: 700;
+        color: #16a34a;
+        letter-spacing: 0.03em;
+      }
+      .section-title .title-icon {
+        font-size: 24px;
+      }
+      .section-sub {
+        margin-top: 4px;
+        font-size: 13px;
+        color: var(--text-sub);
+      }
+.product-add-fixed{
+  width:100%;
+  margin-top:10px;
+  padding:10px 12px;
+  border:none;
+  border-radius:12px;
+  background:var(--primary);
+  color:#fff;
+  font-weight:700;
+  cursor:pointer;
+}
+.product-add-fixed:active{ transform:scale(0.99); }
+      /* 商品网格：每行最多 6 个 */
+      .product-grid {
+        display: grid;
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+        gap: 12px;
+      }
+      @media (max-width: 1300px) {
+        .product-grid {
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+      }
+      @media (max-width: 980px) {
+        .product-grid {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+      }
+      @media (max-width: 720px) {
+        .product-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+      @media (max-width: 480px) {
+        .product-grid {
+          grid-template-columns: minmax(0, 1fr);
+        }
+      }
+
+      /* 购物车抽屉 */
+      .cart-drawer-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.4);
+        display: none;
+        z-index: 45;
+      }
+      .cart-drawer-backdrop.active {
+        display: block;
+      }
+      .cart-drawer {
+        position: fixed;
+        top: 0;
+        right: 0;
+        width: 320px;
+        max-width: 90vw;
+        height: 100%;
+        background: #ffffff;
+        box-shadow: -2px 0 10px rgba(15, 23, 42, 0.2);
+        transform: translateX(100%);
+        transition: transform 0.22s ease-out;
+        z-index: 46;
+        display: flex;
+        flex-direction: column;
+      }
+      .cart-drawer.active {
+        transform: translateX(0);
+      }
+      .cart-header {
+        padding: 12px 14px;
+        border-bottom: 1px solid #e5e7eb;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .cart-title {
+        font-size: 15px;
+        font-weight: 600;
+      }
+      .cart-close {
+        border: none;
+        background: transparent;
+        font-size: 18px;
+        cursor: pointer;
+      }
+      .cart-body {
+        flex: 1;
+        padding: 10px 14px;
+        overflow-y: auto;
+        font-size: 13px;
+      }
+      .cart-empty {
+        font-size: 13px;
+        color: var(--text-sub);
+        margin-top: 20px;
+        text-align: center;
+      }
+      .cart-items-list {
+        margin-top: 8px;
+      }
+      .cart-footer {
+        border-top: 1px solid #e5e7eb;
+        padding: 10px 14px 12px;
+        font-size: 13px;
+      }
+      .line {
+        display: flex;
+        justify-content: space-between;
+        margin: 4px 0;
+      }
+      .btn-checkout {
+        margin-top: 8px;
+        width: 100%;
+        padding: 9px 10px;
+        border-radius: 999px;
+        border: none;
+        background: linear-gradient(135deg, #22c55e, #16a34a);
+        color: #ffffff;
+        font-weight: 600;
+        font-size: 14px;
+        cursor: pointer;
+      }
+
+      /* 顶部“已加入购物车”提示条 */
+      .add-cart-toast {
+        position: fixed;
+        top: 60px;
+        left: 50%;
+        transform: translateX(-50%) translateY(-16px);
+        background: #111827;
+        color: #f9fafb;
+        padding: 6px 14px;
+        border-radius: 999px;
+        font-size: 12px;
+        box-shadow: 0 8px 20px rgba(15, 23, 42, 0.4);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.25s ease, transform 0.25s ease;
+        z-index: 9999;
+        white-space: nowrap;
+      }
+      .add-cart-toast.show {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+      }
+
+      /* 分享弹窗（好友拼单） */
+      .share-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.45);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 60;
+      }
+      .share-backdrop.active {
+        display: flex;
+      }
+      .share-modal {
+        width: 320px;
+        max-width: 90vw;
+        background: #ffffff;
+        border-radius: 16px;
+        box-shadow: 0 20px 40px rgba(15, 23, 42, 0.4);
+        padding: 14px 14px 12px;
+        font-size: 13px;
+      }
+
+      /* 登录 / 注册弹窗（只保留一套） */
+      .auth-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.45);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 80;
+      }
+      .auth-backdrop.active {
+        display: flex;
+      }
+      .auth-modal {
+        width: 360px;
+        max-width: 92vw;
+        background: #ffffff;
+        border-radius: 18px;
+        box-shadow: 0 24px 60px rgba(15, 23, 42, 0.6);
+        padding: 16px 18px 14px;
+        font-size: 13px;
+      }
+
+      /* 左侧快捷入口栏 */
+      @media (min-width: 901px) {
+        .page {
+          padding-left: 80px;
+        }
+      }
+      .side-rail {
+        position: fixed;
+        left: 10px;
+        top: 140px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        z-index: 50;
+      }
+      .side-rail-item {
+        width: 64px;
+        border-radius: 18px;
+        border: 1px solid #e5e7eb;
+        background: linear-gradient(180deg, #ffffff, #f9fafb);
+        padding: 6px 4px;
+        font-size: 11px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        text-align: center;
+        box-shadow: 0 2px 6px rgba(15, 23, 42, 0.06);
+      }
+      @media (max-width: 900px) {
+        .side-rail {
+          display: none;
+        }
+        .page {
+          padding-left: 16px;
+        }
+      }
+    </style>
+
+    <link rel="stylesheet" href="./assets/css/main.css" />
+  </head>
+
+  <body>
+    <!-- 顶部导航 -->
+    <header class="top-nav">
+      <div class="top-nav-inner">
+        <div class="logo-area">
+          <div class="logo-badge">鲜</div>
+          <div>
+            <div class="logo-text-main">在鲜购拼好货</div>
+            <div class="logo-text-sub">Freshbuy · 社区网上超市</div>
+          </div>
+        </div>
+
+        <div class="search-area">
+          <div class="search-box">
+            <span class="search-icon">🔍</span>
+            <input
+              type="text"
+              class="search-input"
+              id="globalSearchInput"
+              placeholder="搜索商品、品牌、品类..."
+            />
+          </div>
+        </div>
+
+        <div class="user-area">
+          <button class="link-btn" id="loginBtn">登录</button>
+          <button class="link-btn primary" id="registerBtn">注册</button>
+
+          <div class="user-profile" id="userProfile">
+            <div class="user-avatar" id="userAvatar">我</div>
+            <span class="user-name" id="userNameLabel">我的账户</span>
+          </div>
+
+          <div class="cart-icon" id="cartIcon">
+            🛒
+            <span class="cart-count-badge" id="cartCount">0</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="category-bar" id="categoryBar"></div>
+    </header>
+
+    <div class="add-cart-toast" id="addCartToast">已加入购物车</div>
+
+    <!-- 分享弹窗（好友拼单） -->
+    <div class="share-backdrop" id="shareBackdrop">
+      <div class="share-modal">
+        <div style="font-size:14px;font-weight:700;margin-bottom:6px;">
+          好友拼单链接
+        </div>
+        <div style="font-size:12px;color:#6b7280;margin-bottom:8px;">
+          将链接发给好友，大家在同一个链接下单，系统会自动平摊配送费。
+        </div>
+        <div style="display:flex;gap:6px;margin-bottom:8px;">
+          <input type="text" id="shareInput" readonly style="flex:1;padding:6px 8px;border-radius:8px;border:1px solid #e5e7eb;font-size:12px;" />
+          <button id="shareCopyBtn" style="padding:6px 10px;border-radius:999px;border:none;background:#22c55e;color:#fff;font-size:12px;cursor:pointer;">复制</button>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#6b7280;">
+          <span>
+            有效期：
+            <span id="friendModalCountdown" style="font-family:monospace;color:#ef4444;font-weight:700;">--:--:--</span>
+          </span>
+          <button id="shareCloseBtn" style="border:none;background:transparent;color:#6b7280;cursor:pointer;">知道了</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 登录 / 注册弹窗（只保留一套，避免 ID 冲突） -->
+    <div class="auth-backdrop" id="authBackdrop">
+      <div class="auth-modal">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+          <div>
+            <div style="font-size:16px;font-weight:800;" id="authTitle">登录</div>
+            <div style="font-size:11px;color:#6b7280;">欢迎回来，在鲜购拼好货</div>
+          </div>
+          <button id="authCloseBtn" style="border:none;background:transparent;font-size:18px;color:#9ca3af;cursor:pointer;">✕</button>
+        </div>
+
+        <div style="display:flex;border-radius:999px;background:#f3f4f6;padding:3px;margin-bottom:10px;">
+          <button id="tabLogin" class="auth-tab active" data-mode="login" style="flex:1;border:none;background:#fff;border-radius:999px;padding:6px 0;cursor:pointer;">登录</button>
+          <button id="tabRegister" class="auth-tab" data-mode="register" style="flex:1;border:none;background:transparent;border-radius:999px;padding:6px 0;cursor:pointer;color:#6b7280;">注册</button>
+        </div>
+
+        <div id="loginPanel">
+          <div style="margin-bottom:8px;">
+            <div style="font-size:12px;margin-bottom:2px;">手机号码</div>
+            <input id="loginPhone" type="tel" style="width:100%;padding:7px 9px;border-radius:10px;border:1px solid #e5e7eb;" placeholder="请输入手机号"/>
+          </div>
+          <div style="margin-bottom:8px;">
+            <div style="font-size:12px;margin-bottom:2px;">登录密码</div>
+            <input id="loginPassword" type="password" style="width:100%;padding:7px 9px;border-radius:10px;border:1px solid #e5e7eb;" placeholder="请输入密码"/>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;">
+            <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#6b7280;">
+              <input type="checkbox" id="loginRemember"/> 记住我
+            </label>
+            <span style="font-size:11px;color:#22c55e;cursor:pointer;">忘记密码？</span>
+          </div>
+          <button id="loginSubmitBtn" style="width:100%;margin-top:10px;padding:9px 10px;border-radius:999px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:#fff;font-weight:700;cursor:pointer;">登录</button>
+        </div>
+
+        <div id="registerPanel" style="display:none;">
+          <div style="margin-bottom:8px;">
+            <div style="font-size:12px;margin-bottom:2px;">手机号码</div>
+            <input id="regPhone" type="tel" style="width:100%;padding:7px 9px;border-radius:10px;border:1px solid #e5e7eb;" placeholder="用于接收订单物流通知"/>
+          </div>
+          <div style="margin-bottom:8px;">
+            <div style="font-size:12px;margin-bottom:2px;">设置登录密码</div>
+            <input id="regPassword" type="password" style="width:100%;padding:7px 9px;border-radius:10px;border:1px solid #e5e7eb;" placeholder="至少 6 位，建议字母 + 数字"/>
+          </div>
+          <div style="margin-bottom:8px;">
+            <div style="font-size:12px;margin-bottom:2px;">邀请码（选填）</div>
+            <input id="regInvite" type="text" style="width:100%;padding:7px 9px;border-radius:10px;border:1px solid #e5e7eb;" placeholder="有好友邀请可填写，没有可留空"/>
+          </div>
+          <button id="registerSubmitBtn" style="width:100%;margin-top:10px;padding:9px 10px;border-radius:999px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:#fff;font-weight:700;cursor:pointer;">注册并登录</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 购物车抽屉 -->
+    <div class="cart-drawer-backdrop" id="cartBackdrop"></div>
+    <aside class="cart-drawer" id="cartDrawer">
+      <div class="cart-header">
+        <span class="cart-title">购物车</span>
+        <button class="cart-close" id="cartCloseBtn">✕</button>
+      </div>
+      <div class="cart-body">
+        <div class="cart-empty" id="cartEmptyText">购物车还是空的～</div>
+        <div class="cart-items-list" id="cartItemsList"></div>
+      </div>
+      <div class="cart-footer">
+        <div class="line">
+          <span>商品总数</span>
+          <span id="cartTotalItems">0 件</span>
+        </div>
+        <button class="btn-checkout" id="goCartBtn">进入购物车</button>
+      </div>
+    </aside>
+
+    <!-- 左侧快捷入口栏 -->
+    <aside class="side-rail">
+      <button class="side-rail-item" data-scroll="#rechargeSection" type="button">
+        <span>💰</span><span>充值入口</span>
+      </button>
+
+      <button class="side-rail-item" data-scroll="#hotpotSection" type="button">
+        <span>🔥</span><span>火锅</span>
+      </button>
+
+      <button class="side-rail-item" data-scroll="#familyPackSection" type="button">
+        <span>🏠</span><span>家庭包</span>
+      </button>
+
+      <button class="side-rail-item" data-scroll="#recipeSection" type="button">
+        <span>🆕</span><span>新品</span>
+      </button>
+
+      <button class="side-rail-item" data-scroll="#appDownloadSection" type="button">
+        <span>📲</span><span>App 下载</span>
+      </button>
+
+      <a
+        class="side-rail-item"
+        href="https://mp.weixin.qq.com/mp/kefu?biz=gh_50e7137dfb6b"
+        target="_blank"
+        rel="noreferrer"
+      >
+        <span>💬</span><span>联系客服</span>
+      </a>
+    </aside>
+
+    <!-- 页面主体 -->
+    <main class="page">
+      <div class="page-layout">
+        <div class="page-main">
+          <!-- 顶部横幅 -->
+          <section class="banner-carousel" id="hotpotSection">
+            <div class="banner-title">周五爆品日 · 只卖真正的爆品</div>
+            <div class="banner-sub">
+              每周五集中上线爆款单品，搭配区域团拼单配送 / 好友拼单配送，帮你把家庭日常消费做到更低。
+            </div>
+            <div class="banner-tags">
+              <span class="banner-tag">周五爆品日</span>
+              <span class="banner-tag">家庭必备专区</span>
+              <span class="banner-tag">畅销 TOP 50</span>
+              <span class="banner-tag">新品一周上新</span>
+            </div>
+          </section>
+
+          <!-- 配送方式模块 -->
+          <section class="delivery-mode">
+            <div class="delivery-left">
+              <div class="delivery-mode-header">
+                <div class="delivery-title">配送方式</div>
+
+                <!-- ✅ 左侧 ZIP（保持原 ID，不动 index.js） -->
+                <div class="zip-row">
+                  <span class="zip-label">ZIP</span>
+                  <input
+                    id="zipInput"
+                    class="zip-input"
+                    inputmode="numeric"
+                    maxlength="5"
+                    placeholder="输入 5 位邮编"
+                  />
+                  <button class="zip-btn" id="zipApplyBtn" type="button">
+                    查看配送
+                  </button>
+                </div>
+                <div id="zipStatus" class="zip-status">
+                  未选择配送区域（可自动识别，也可手动输入）
+                </div>
+
+                <div class="delivery-hint" id="deliveryHint">
+                  当前：区域团拼单配送 · 凑够成团免费配送
+                </div>
+              </div>
+
+              <div class="delivery-options">
+                <button class="delivery-pill" data-mode="next-day" type="button">
+                  <strong>次日配送</strong>
+                  <span>今天下单，明天送到家，适合少量临时补货</span>
+                </button>
+
+                <button class="delivery-pill" data-mode="friend-group" type="button">
+                  <strong>好友拼单配送</strong>
+                  <span>和好友一起拼运费 · 有效期到今晚 24:00</span>
+                </button>
+
+                <button class="delivery-pill active" data-mode="area-group" id="defaultAreaBtn" type="button">
+                  <strong>区域团拼单配送</strong>
+                  <span>同一小区一起拼单 · 成团后免费配送</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- ✅ 右侧：保留你想要的 ZIP box + deliveryInfoBody（但 id 不冲突） -->
+            <aside class="delivery-right" id="deliveryInfo">
+              <div class="zip-check" id="zipCheckBox" style="margin-bottom:10px;">
+                <div style="font-size:13px;font-weight:700;color:#111827;display:flex;align-items:center;gap:8px;">
+                  <span>📍</span>
+                  <span>输入 ZIP 自动匹配区域团</span>
+                </div>
+
+                <div style="margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                  <input
+                    id="zipInputRight"
+                    inputmode="numeric"
+                    maxlength="5"
+                    placeholder="例如：11365"
+                    style="flex:1;min-width:160px;padding:8px 10px;border-radius:10px;border:1px solid #e5e7eb;font-size:13px;outline:none;"
+                  />
+                  <button
+                    id="zipCheckBtn"
+                    style="padding:8px 12px;border-radius:10px;border:none;background:#22c55e;color:#fff;font-weight:700;cursor:pointer;font-size:13px;white-space:nowrap;"
+                    type="button"
+                  >
+                    查看配送
+                  </button>
+                  <button
+                    id="zipClearBtn"
+                    style="padding:8px 10px;border-radius:10px;border:1px solid #e5e7eb;background:#fff;color:#111827;font-weight:600;cursor:pointer;font-size:13px;white-space:nowrap;"
+                    type="button"
+                  >
+                    清除
+                  </button>
+                </div>
+
+                <div id="zipResult" style="margin-top:6px;font-size:12px;color:#6b7280;line-height:1.45;">
+                  请输入 ZIP 以确认是否覆盖该地区，并自动选择你的区域团配送。
+                </div>
+              </div>
+
+              <!-- index.js 如果有 renderDeliveryInfo() 会写这里；没有也不影响 -->
+              <div id="deliveryInfoBody"></div>
+            </aside>
+          </section>
+
+          <!-- 商品区块 -->
+          <section id="sectionHot" class="home-section">
+            <div class="section-header">
+              <div>
+                <div class="section-title"><span class="title-icon">🔥</span>周三爆品日</div>
+                <div class="section-sub">每周爆品 · 测试潜力单品</div>
+              </div>
+            </div>
+            <div class="product-grid" id="productGridHot"></div>
+          </section>
+
+          <section id="sectionDailySpecial" class="home-section">
+            <div class="section-header">
+              <div>
+                <div class="section-title"><span class="title-icon">💡</span>家庭必备</div>
+                <div class="section-sub">平时也能捡漏的小特价</div>
+              </div>
+            </div>
+            <div class="product-grid" id="productGridDaily"></div>
+          </section>
+
+          <section id="sectionNew" class="home-section">
+            <div class="section-header">
+              <div>
+                <div class="section-title"><span class="title-icon">🆕</span>新品上市</div>
+                <div class="section-sub">最近 7 天上新</div>
+              </div>
+            </div>
+            <div class="product-grid" id="productGridNew"></div>
+          </section>
+
+          <section id="sectionBest" class="home-section">
+            <div class="section-header">
+              <div>
+                <div class="section-title"><span class="title-icon">📈</span>畅销产品</div>
+                <div class="section-sub">大家都在买的 TOP 商品</div>
+              </div>
+            </div>
+            <div class="product-grid" id="productGridBest"></div>
+          </section>
+
+          <section id="sectionNormal" class="home-section">
+            <div class="section-header">
+              <div>
+                <div class="section-title"><span class="title-icon">🛒</span>全部商品</div>
+                <div class="section-sub">没有打标签的日常商品归这里</div>
+              </div>
+            </div>
+            <div class="product-grid" id="productGridNormal"></div>
+          </section>
+
+          <section class="app-download-section" id="appDownloadSection" style="margin-top:24px;padding:12px 14px;border-radius:12px;background:#fff;border:1px dashed #d1d5db;font-size:13px;color:#6b7280;">
+            <div style="font-size:14px;font-weight:700;margin-bottom:4px;color:#111827;">
+              在鲜购拼好货 · App 下载
+            </div>
+            <p style="margin:0;">
+              即将上线 iOS / Android 客户端，可提前预留下载按钮、二维码区域。也可以放微信小程序码。
+            </p>
+          </section>
+        </div>
+      </div>
+    </main>
+
+    <!-- ✅ 右侧 ZIP box 同步到左侧 ZIP（不改 index.js 也能工作） -->
+ <script>
+  (function () {
+    function val(el) {
+      return el ? String(el.value || "").trim() : "";
+    }
+
+    function computeLocked(leftInput) {
+      if (!leftInput) return false;
+      if (leftInput.dataset && leftInput.dataset.lockedByDefaultAddress === "1") return true;
+      return !!(leftInput.readOnly || leftInput.disabled);
+    }
+
+    function setRightLockedUI(locked, zip) {
+      var rightInput = document.getElementById("zipInputRight");
+      var checkBtn = document.getElementById("zipCheckBtn");
+      var clearBtn = document.getElementById("zipClearBtn");
+      var tip = document.getElementById("zipResult");
+
+      if (rightInput) {
+        if (locked) {
+          rightInput.value = String(zip || rightInput.value || "");
+          rightInput.readOnly = true;
+          rightInput.disabled = true;
+          rightInput.setAttribute("readonly", "readonly");
+          rightInput.setAttribute("disabled", "disabled");
+          rightInput.style.pointerEvents = "none";
+          rightInput.style.caretColor = "transparent";
+          rightInput.title = "已使用默认地址 ZIP（如需更改请到个人中心修改默认地址）";
+        } else {
+          rightInput.readOnly = false;
+          rightInput.disabled = false;
+          rightInput.removeAttribute("readonly");
+          rightInput.removeAttribute("disabled");
+          rightInput.style.pointerEvents = "";
+          rightInput.style.caretColor = "";
+          rightInput.title = "";
+        }
+      }
+
+      if (checkBtn) checkBtn.disabled = !!locked;
+      if (clearBtn) clearBtn.disabled = !!locked;
+
+      if (tip) {
+        tip.textContent = locked
+          ? ("已自动使用默认地址 ZIP：" + (zip || "--") + "（如需更换请到：我的账户 → 地址管理）")
+          : "请输入 ZIP 以确认是否覆盖该地区，并自动选择你的区域团配送。";
+      }
+    }
+
+    document.addEventListener("DOMContentLoaded", function () {
+      var leftInput = document.getElementById("zipInput");
+      var leftBtn = document.getElementById("zipApplyBtn");
+
+      var rightInput = document.getElementById("zipInputRight");
+      var checkBtn = document.getElementById("zipCheckBtn");
+      var clearBtn = document.getElementById("zipClearBtn");
+      var zipResult = document.getElementById("zipResult");
+
+      if (!leftInput || !rightInput || !checkBtn) return;
+
+      // ① 初始同步一次锁定状态
+      setRightLockedUI(computeLocked(leftInput), val(leftInput));
+
+      // ② 监听左侧是否被 index.js 锁/解锁（最关键）
+      var obs = new MutationObserver(function () {
+        var locked = computeLocked(leftInput);
+        setRightLockedUI(locked, val(leftInput));
+      });
+      obs.observe(leftInput, {
+        attributes: true,
+        attributeFilter: ["disabled", "readonly", "style", "data-locked-by-default-address"],
+      });
+
+      // ③ 兜底：有些情况 dataset 改动不触发 attributeFilter（浏览器差异），加个轻量轮询
+      var last = "";
+      setInterval(function () {
+        var locked = computeLocked(leftInput);
+        var key = (locked ? "1" : "0") + "|" + val(leftInput);
+        if (key !== last) {
+          last = key;
+          setRightLockedUI(locked, val(leftInput));
+        }
+      }, 400);
+
+      // ④ 右侧点击：同步到左侧并触发左侧规则
+      checkBtn.addEventListener("click", function () {
+        if (computeLocked(leftInput)) {
+          if (zipResult) zipResult.textContent = "默认地址 ZIP 已锁定（不可修改）";
+          return;
+        }
+
+        var z = val(rightInput);
+        if (leftInput) leftInput.value = z;
+        if (leftBtn) leftBtn.click();
+
+        if (zipResult) zipResult.textContent = z ? ("已提交 ZIP：" + z + "（右侧已同步左侧规则）") : "请输入 ZIP";
+      });
+
+      rightInput.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") checkBtn.click();
+      });
+
+      if (clearBtn) {
+        clearBtn.addEventListener("click", function () {
+          if (computeLocked(leftInput)) {
+            if (zipResult) zipResult.textContent = "默认地址 ZIP 已锁定（不可清除）";
+            return;
+          }
+          rightInput.value = "";
+          leftInput.value = "";
+          if (zipResult) zipResult.textContent = "已清除 ZIP（右侧已同步左侧规则）";
+        });
+      }
+    });
+  })();
+</script>
+    <!-- 公共购物车脚本 + 首页逻辑 -->
+    <script src="assets/js/cart.js"></script>
+    <script src="assets/js/index.js"></script>
+
+    <!-- 你的 footer / auth 客户端脚本（保持你原逻辑，但放在 body 内正确位置） -->
+    <script src="/user/components/footer.js"></script>
+    <script src="/assets/js/auth_client.js"></script>
+  </body>
+</html>

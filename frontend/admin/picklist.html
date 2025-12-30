@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>配货管理 - 在鲜购拼好货后台</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="assets/css/admin.css" />
+    <style>
+      .picklist-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+      .picklist-filters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+      }
+      .picklist-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+      .picklist-table th,
+      .picklist-table td {
+        border: 1px solid rgba(148, 163, 184, 0.6);
+        padding: 6px 8px;
+      }
+      .picklist-table th {
+        background: rgba(15, 23, 42, 0.9);
+        color: #e5e7eb;
+      }
+      .picklist-summary {
+        font-size: 12px;
+        color: #9ca3af;
+        margin-top: 8px;
+      }
+    </style>
+  </head>
+
+  <body data-page="picklist">
+    <div class="admin-layout">
+      <!-- 左侧侧边栏，和 orders.html 基本一致，多一个“配货管理” -->
+      <aside class="admin-sidebar">
+      <!-- ✅ 统一 sidebar：由 /admin/assets/js/admin_sidebar.js 注入 -->
+      <div id="adminSidebar"></div>
+    </aside>
+      <!-- 右侧主区域 -->
+      <div class="admin-main">
+        <!-- 顶部栏 -->
+        <header class="admin-topbar">
+          <button
+            class="admin-btn admin-btn-ghost admin-topbar-toggle"
+            data-toggle-sidebar
+          >
+            ☰
+          </button>
+          <div class="admin-topbar-title">配货管理</div>
+          <div class="admin-topbar-spacer"></div>
+
+          <div class="admin-user">
+            <div class="admin-user-avatar">A</div>
+            <div class="admin-user-info">
+              <span class="admin-user-name">Admin</span>
+              <span class="admin-user-role">超级管理员</span>
+            </div>
+          </div>
+        </header>
+
+        <!-- 内容 -->
+        <main class="admin-content">
+          <div class="admin-page-header">
+            <div>
+              <div class="admin-page-title">配货汇总</div>
+              <div class="admin-breadcrumb">后台 &gt; 配货管理</div>
+            </div>
+            <div class="admin-page-actions">
+              <button class="admin-btn admin-btn-ghost" id="btnRefreshPicklist">
+                ⟳ 刷新
+              </button>
+              <button class="admin-btn admin-btn-primary" id="btnPrintPicklist">
+                🖨 打印配货单
+              </button>
+            </div>
+          </div>
+
+          <section class="admin-card admin-card-ghost">
+            <div class="picklist-header">
+              <div class="picklist-filters">
+                <span style="font-size: 13px; color: #9ca3af">仅统计：区域团拼单订单</span>
+
+                <!-- 区域选择 -->
+                <select id="picklistZone" class="admin-input">
+                  <!-- JS 填充：全部区域 / Fresh Meadows / Flushing / ... -->
+                </select>
+
+                <!-- 周次选择：本周截单 / 上周截单 -->
+                <select id="picklistWeek" class="admin-input">
+                  <!-- JS 填充 -->
+                </select>
+              </div>
+
+              <div class="picklist-filters">
+                <span id="picklistInfo" class="picklist-summary">
+                  加载中...
+                </span>
+              </div>
+            </div>
+
+            <div class="admin-card">
+              <table class="picklist-table" id="picklistTable">
+                <thead>
+                  <tr>
+                    <th style="width: 120px">商品ID</th>
+                    <th>商品名称</th>
+                    <th style="width: 120px">规格</th>
+                    <th style="width: 80px">单位</th>
+                    <th style="width: 100px">总数量</th>
+                    <th style="width: 120px">预估金额</th>
+                  </tr>
+                </thead>
+                <tbody id="picklistTbody">
+                  <tr>
+                    <td colspan="6" style="text-align:center;">正在加载...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+    <script src="/admin/assets/js/admin_guard.js"></script>
+    <script src="./assets/js/admin_auth_ui.js"></script>
+    <!-- ✅ 统一 sidebar 注入脚本（必须加） -->
+    <script src="/admin/assets/js/admin_sidebar.js"></script>
+    <script src="assets/js/admin.js"></script>
+    <script src="assets/js/picklist.js"></script>
+  </body>
+</html>

@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>后台人工充值 - 在鲜购拼好货后台</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <!-- ✅ 统一后台样式 -->
+    <link rel="stylesheet" href="assets/css/admin.css" />
+
+    <!-- ✅ 本页少量补充样式（不破坏主题） -->
+    <style>
+      .recharge-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 12px;
+      }
+      @media (max-width: 980px) {
+        .recharge-grid {
+          grid-template-columns: minmax(0, 1fr);
+        }
+      }
+
+      .muted {
+        color: #94a3b8;
+        font-size: 12px;
+      }
+
+      .form-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin-top: 10px;
+      }
+      @media (max-width: 560px) {
+        .form-row {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .admin-input,
+      .admin-select,
+      .admin-textarea {
+        width: 100%;
+      }
+      .admin-textarea {
+        min-height: 84px;
+        resize: vertical;
+      }
+
+      .top-alert {
+        display: none;
+        margin: 10px 0 14px;
+        padding: 10px 12px;
+        border-radius: 14px;
+        border: 1px solid rgba(59, 130, 246, 0.35);
+        background: rgba(15, 23, 42, 0.65);
+        color: #e5e7eb;
+        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.35);
+        white-space: pre-wrap;
+      }
+      .top-alert.success {
+        border-color: rgba(34, 197, 94, 0.35);
+        background: rgba(34, 197, 94, 0.08);
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 3px 10px;
+        border-radius: 999px;
+        font-size: 12px;
+        border: 1px solid rgba(148, 163, 184, 0.35);
+        background: rgba(15, 23, 42, 0.35);
+        color: #e5e7eb;
+      }
+      .pill.good {
+        border-color: rgba(34, 197, 94, 0.35);
+        background: rgba(34, 197, 94, 0.10);
+      }
+      .pill.bad {
+        border-color: rgba(239, 68, 68, 0.35);
+        background: rgba(239, 68, 68, 0.10);
+      }
+
+      .mini-kv {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-top: 10px;
+      }
+
+      .table-subtext {
+        font-size: 12px;
+        color: #94a3b8;
+        margin-top: 2px;
+      }
+
+      .btn-inline {
+        padding: 6px 10px !important;
+        border-radius: 12px !important;
+      }
+
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+          "Liberation Mono", "Courier New", monospace;
+        font-size: 12px;
+      }
+    </style>
+  </head>
+
+  <!-- ✅ 用 data-page 高亮菜单（确保 sidebar 里有 data-link="recharge"） -->
+  <body class="admin-layout" data-page="recharge">
+    <!-- ✅ 统一侧边栏：由 admin_sidebar.js 注入 -->
+    <aside class="admin-sidebar">
+      <div id="adminSidebar"></div>
+    </aside>
+
+    <div class="admin-main">
+      <!-- ✅ 统一 topbar -->
+      <header class="admin-topbar">
+        <button class="admin-btn admin-btn-ghost" data-toggle-sidebar>☰</button>
+        <div class="admin-topbar-title">后台人工充值</div>
+        <div class="admin-topbar-spacer"></div>
+
+        <button class="admin-btn admin-btn-ghost" id="btnWhoAmI" type="button">
+          我是谁
+        </button>
+        <button class="admin-btn admin-btn-ghost" id="btnGoDashboard" type="button">
+          ← 返回后台
+        </button>
+        <button class="admin-btn admin-btn-ghost" id="btnLogout" type="button">
+          退出登录
+        </button>
+
+        <div class="admin-user">
+          <div class="admin-user-avatar">A</div>
+          <div class="admin-user-info">
+            <span class="admin-user-name">Admin</span>
+            <span class="admin-user-role">超级管理员</span>
+          </div>
+        </div>
+      </header>
+
+      <main class="admin-content">
+        <div class="admin-page-header">
+          <div>
+            <div class="admin-page-title">人工充值（后台入账）</div>
+            <div class="admin-breadcrumb">后台 &gt; 运营 &gt; 后台充值</div>
+          </div>
+          <div class="admin-page-actions">
+            <button class="admin-btn admin-btn-primary" id="btnRecharge" type="button">
+              确认充值
+            </button>
+            <button class="admin-btn admin-btn-ghost" id="btnFillDemo" type="button">
+              填充示例
+            </button>
+            <button class="admin-btn admin-btn-ghost" id="btnQuery" type="button">
+              查询记录
+            </button>
+          </div>
+        </div>
+
+        <div id="topAlert" class="top-alert"></div>
+
+        <div class="recharge-grid">
+          <!-- 左：充值操作 -->
+          <section class="admin-card admin-card-ghost">
+            <div class="admin-card-header">
+              <div>
+                <div class="admin-card-header-title">1) 给用户充值（入账 + 写记录）</div>
+                <div class="admin-card-header-sub">
+                  接口：<code>POST /api/admin/recharge</code>（需要 admin token）
+                </div>
+              </div>
+            </div>
+
+            <div class="admin-card-body">
+              <div class="form-row">
+                <div>
+                  <div class="muted" style="margin-bottom: 6px">用户手机号（优先）</div>
+                  <input id="inPhone" class="admin-input" placeholder="例如 7184195513" />
+                  <div class="muted" style="margin-top: 6px">
+                    phone / userId 二选一即可
+                  </div>
+                </div>
+
+                <div>
+                  <div class="muted" style="margin-bottom: 6px">用户 userId（可选）</div>
+                  <input id="inUserId" class="admin-input" placeholder="Mongo ObjectId（可空）" />
+                  <div class="muted" style="margin-top: 6px">
+                    如果填了 userId，会优先按 userId 找用户
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-row">
+                <div>
+                  <div class="muted" style="margin-bottom: 6px">充值金额（USD）</div>
+                  <input
+                    id="inAmount"
+                    class="admin-input"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="例如 50"
+                  />
+                </div>
+
+                <div>
+                  <div class="muted" style="margin-bottom: 6px">入账方式 payMethod</div>
+                  <select id="inPayMethod" class="admin-select">
+                    <option value="admin">admin（后台人工）</option>
+                    <option value="cash">cash（现金）</option>
+                    <option value="zelle">zelle</option>
+                    <option value="test">test</option>
+                  </select>
+                  <div class="muted" style="margin-top: 6px">
+                    你后端若固定写 admin，这里也不影响入账
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-row">
+                <div>
+                  <div class="muted" style="margin-bottom: 6px">赠送/说明 bonus（可选）</div>
+                  <input id="inBonus" class="admin-input" placeholder="例如 送 $5 优惠券 / 充值活动" />
+                </div>
+
+                <div>
+                  <div class="muted" style="margin-bottom: 6px">备注 remark（可选）</div>
+                  <input id="inRemark" class="admin-input" placeholder="例如 客户现金充值，已确认" />
+                </div>
+              </div>
+
+              <div class="muted" style="margin-top: 12px">
+                ✅ 成功充值后：用户端 <code>/api/wallet/me</code> 会看到余额变化；用户端 <code>/api/recharge/my</code> 会看到记录。
+              </div>
+
+              <div style="margin-top: 12px; display: flex; gap: 10px; flex-wrap: wrap;">
+                <button class="admin-btn admin-btn-primary" id="btnRecharge2" type="button">
+                  确认充值
+                </button>
+                <button class="admin-btn admin-btn-ghost" id="btnFillDemo2" type="button">
+                  填充示例
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <!-- 右：结果与记录列表 -->
+          <aside class="admin-card admin-card-ghost">
+            <div class="admin-card-header">
+              <div>
+                <div class="admin-card-header-title">2) 查询结果 & 记录列表</div>
+                <div class="admin-card-header-sub" id="resultHint">—</div>
+              </div>
+            </div>
+
+            <div class="admin-card-body">
+              <div class="form-row" style="margin-top: 0">
+                <div>
+                  <div class="muted" style="margin-bottom: 6px">查询手机号</div>
+                  <input id="qPhone" class="admin-input" placeholder="例如 7184195513" />
+                </div>
+                <div>
+                  <div class="muted" style="margin-bottom: 6px">查询 userId</div>
+                  <input id="qUserId" class="admin-input" placeholder="Mongo ObjectId（可空）" />
+                </div>
+              </div>
+
+              <div class="form-row">
+                <div>
+                  <div class="muted" style="margin-bottom: 6px">limit</div>
+                  <input id="qLimit" class="admin-input" type="number" min="1" max="200" value="50" />
+                </div>
+                <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;">
+                  <button class="admin-btn admin-btn-primary" id="btnQuery2" type="button">
+                    查询记录
+                  </button>
+                  <span class="muted">
+                    接口：<code>GET /api/admin/recharge/list</code>
+                  </span>
+                </div>
+              </div>
+
+              <div class="mini-kv">
+                <div>
+                  <div class="muted">最近一次操作：用户</div>
+                  <div id="boxUser" class="pill">—</div>
+                </div>
+                <div>
+                  <div class="muted">钱包余额（来自后端返回 walletBalance）</div>
+                  <div id="boxBalance" class="pill good">$0.00</div>
+                </div>
+              </div>
+
+              <div class="admin-table-wrapper" style="margin-top: 12px;">
+                <table class="admin-table">
+                  <thead>
+                    <tr>
+                      <th style="width:160px;">时间</th>
+                      <th style="width:90px;">金额</th>
+                      <th style="width:90px;">方式</th>
+                      <th style="width:90px;">状态</th>
+                      <th>备注</th>
+                      <th style="width:110px;">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tbody">
+                    <tr>
+                      <td colspan="6" class="muted">
+                        请先查询记录（若后端未实现 list 接口，会提示你）
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="muted" style="margin-top: 10px; line-height: 1.5;">
+                批注：如果你还没做 list/void 接口，这页会给清晰的 “未实现” 提示，不会让你摸不着头脑。
+              </div>
+            </div>
+          </aside>
+        </div>
+      </main>
+    </div>
+<script src="/admin/assets/js/admin_guard.js"></script>
+<script src="./assets/js/admin_auth_ui.js"></script>    
+<!-- ✅ 统一 sidebar 注入（必须） -->
+    <script src="/admin/assets/js/admin_sidebar.js"></script>
+    <!-- ✅ 你的通用 admin 脚本（折叠/高亮） -->
+    <script src="assets/js/admin.js"></script>
+
+    <script>
+      // =========================
+      // token & api
+      // =========================
+      function getToken() {
+        return (
+          localStorage.getItem("freshbuy_token") ||
+          localStorage.getItem("admin_token") ||
+          localStorage.getItem("adminToken") ||
+          localStorage.getItem("token") ||
+          localStorage.getItem("auth_token") ||
+          localStorage.getItem("jwt") ||
+          ""
+        );
+      }
+
+      function showAlert(msg, ok) {
+        const el = document.getElementById("topAlert");
+        el.style.display = "block";
+        el.className = "top-alert" + (ok ? " success" : "");
+        el.textContent = msg;
+      }
+
+      function fmtMoney(n) {
+        const x = Number(n);
+        if (!isFinite(x)) return "$0.00";
+        return "$" + x.toFixed(2);
+      }
+
+      function fmtTime(ts) {
+        if (!ts) return "--";
+        const d = new Date(ts);
+        if (isNaN(d.getTime())) return String(ts);
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, "0");
+        const day = String(d.getDate()).padStart(2, "0");
+        const hh = String(d.getHours()).padStart(2, "0");
+        const mm = String(d.getMinutes()).padStart(2, "0");
+        return `${y}-${m}-${day} ${hh}:${mm}`;
+      }
+
+      async function apiFetch(path, options = {}) {
+        const token = getToken();
+        if (!token) {
+          const err = new Error("未登录：缺少 token（请先登录后台，或检查 localStorage）");
+          err.code = "NO_TOKEN";
+          throw err;
+        }
+
+        const headers = new Headers(options.headers || {});
+        headers.set("Authorization", "Bearer " + token);
+        if (!headers.has("Content-Type") && !(options.body instanceof FormData)) {
+          headers.set("Content-Type", "application/json");
+        }
+
+        const res = await fetch(path, {
+          credentials: "include",
+          ...options,
+          headers
+        });
+
+        const text = await res.text();
+        let json = {};
+        try { json = text ? JSON.parse(text) : {}; } catch { json = {}; }
+
+        if (!res.ok) {
+          const err = new Error(json.message || json.msg || `HTTP ${res.status}`);
+          err.status = res.status;
+          err.payload = json;
+          throw err;
+        }
+
+        if (json && json.success === false) {
+          const err = new Error(json.message || json.msg || "请求失败");
+          err.status = 200;
+          err.payload = json;
+          throw err;
+        }
+
+        return json;
+      }
+
+      // =========================
+      // render table
+      // =========================
+      function safeText(s) {
+        return String(s ?? "").replace(/[<>&"]/g, (c) => ({ "<":"&lt;", ">":"&gt;", "&":"&amp;", "\"":"&quot;" }[c]));
+      }
+
+      function renderRecords(records) {
+        const tb = document.getElementById("tbody");
+        tb.innerHTML = "";
+
+        if (!Array.isArray(records) || !records.length) {
+          tb.innerHTML = `<tr><td colspan="6" class="muted">暂无记录</td></tr>`;
+          return;
+        }
+
+        records.forEach((r) => {
+          const id = r.id || r._id || "";
+          const time = fmtTime(r.createdAt || r.created_at);
+          const amount = fmtMoney(r.amount);
+          const payMethod = r.payMethod || "--";
+          const status = String(r.status || "").toLowerCase();
+          const remark = (r.remark || "") + (r.bonus ? (" | bonus: " + r.bonus) : "");
+
+          const statusPill =
+            status === "void"
+              ? `<span class="pill bad">void</span>`
+              : `<span class="pill good">${safeText(status || "done")}</span>`;
+
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td>${safeText(time)}</td>
+            <td>${safeText(amount)}</td>
+            <td>${safeText(payMethod)}</td>
+            <td>${statusPill}</td>
+            <td class="table-subtext">${safeText(remark)}</td>
+            <td>
+              ${
+                status === "done" && id
+                  ? `<button class="admin-btn admin-btn-ghost btn-inline" data-void="${safeText(id)}" type="button">作废</button>`
+                  : `<span class="muted">—</span>`
+              }
+            </td>
+          `;
+          tb.appendChild(tr);
+        });
+      }
+
+      // =========================
+      // query list
+      // =========================
+      async function queryList() {
+        const phone = document.getElementById("qPhone").value.trim();
+        const userId = document.getElementById("qUserId").value.trim();
+        const limit = Math.min(Math.max(Number(document.getElementById("qLimit").value || 50), 1), 200);
+
+        if (!phone && !userId) {
+          showAlert("请填写 phone 或 userId 进行查询", false);
+          return;
+        }
+
+        const qs = new URLSearchParams();
+        if (phone) qs.set("phone", phone);
+        if (userId) qs.set("userId", userId);
+        qs.set("limit", String(limit));
+
+        showAlert("正在查询记录…", true);
+
+        try {
+          const r = await apiFetch("/api/admin/recharge/list?" + qs.toString(), { method: "GET" });
+
+          document.getElementById("resultHint").textContent =
+            `共 ${r.total ?? (r.records?.length || 0)} 条记录`;
+
+          const showUser = (phone ? ("phone: " + phone) : "") + (userId ? (" userId: " + userId) : "");
+          document.getElementById("boxUser").textContent = showUser || "—";
+
+          renderRecords(r.records || []);
+          showAlert("查询完成", true);
+        } catch (e) {
+          if (e.status === 404) {
+            renderRecords([]);
+            document.getElementById("resultHint").textContent = "后端未实现 /api/admin/recharge/list";
+            showAlert(
+              "查询失败：后端未实现 GET /api/admin/recharge/list\n" +
+              "如果你需要后台查看记录，我可以直接给你补全这个接口。",
+              false
+            );
+            return;
+          }
+          showAlert("查询失败：" + e.message, false);
+        }
+      }
+
+      // =========================
+      // do recharge
+      // =========================
+      async function doRecharge() {
+        const phone = document.getElementById("inPhone").value.trim();
+        const userId = document.getElementById("inUserId").value.trim();
+        const amount = Number(document.getElementById("inAmount").value || 0);
+        const payMethod = document.getElementById("inPayMethod").value.trim();
+        const bonus = document.getElementById("inBonus").value.trim();
+        const remark = document.getElementById("inRemark").value.trim();
+
+        if (!phone && !userId) {
+          showAlert("请填写 phone 或 userId（至少一个）", false);
+          return;
+        }
+        if (!Number.isFinite(amount) || amount <= 0) {
+          showAlert("amount 必须 > 0", false);
+          return;
+        }
+
+        if (!confirm(`确认充值 $${amount.toFixed(2)} ？\n方式：${payMethod}\n目标：${phone || userId}`)) return;
+
+        showAlert("正在充值…", true);
+
+        const payload = { amount, payMethod, bonus, remark };
+        if (phone) payload.phone = phone;
+        if (userId) payload.userId = userId;
+
+        try {
+          const r = await apiFetch("/api/admin/recharge", {
+            method: "POST",
+            body: JSON.stringify(payload),
+          });
+
+          const u = r.user || {};
+          const rec = r.record || {};
+          const walletBalance = Number(r.walletBalance ?? 0) || 0;
+
+          document.getElementById("boxUser").textContent =
+            `name: ${u.name || "-"} | phone: ${u.phone || "-"}`;
+          document.getElementById("boxBalance").textContent = fmtMoney(walletBalance);
+
+          showAlert(
+            `充值成功 ✅\n` +
+              `用户：${u.name || "-"} (${u.phone || "-"})\n` +
+              `入账：${fmtMoney(rec.amount ?? amount)}\n` +
+              `方式：${payMethod}\n` +
+              `余额：${fmtMoney(walletBalance)}`,
+            true
+          );
+
+          // 自动带入查询条件，尝试刷新记录（没有 list 就会提示）
+          document.getElementById("qPhone").value = u.phone || phone || "";
+          document.getElementById("qUserId").value = u.id || userId || "";
+          queryList().catch(() => {});
+        } catch (e) {
+          showAlert("充值失败：" + e.message, false);
+        }
+      }
+
+      // =========================
+      // void recharge (optional)
+      // =========================
+      async function voidRecharge(rechargeId) {
+        if (!rechargeId) return;
+
+        const remark = prompt("请输入作废原因（会写入 remark）", "客户退款/录入错误");
+        if (remark === null) return;
+
+        if (!confirm("确认作废这笔充值并冲正余额？")) return;
+
+        showAlert("正在作废…", true);
+
+        try {
+          const r = await apiFetch(`/api/admin/recharge/${encodeURIComponent(rechargeId)}/void`, {
+            method: "POST",
+            body: JSON.stringify({ remark }),
+          });
+
+          queryList().catch(() => {});
+          showAlert(
+            `已作废 ✅\n余额：${fmtMoney(r.wallet?.balance ?? r.walletBalance ?? 0)}\nremark：${r.recharge?.remark || ""}`,
+            true
+          );
+        } catch (e) {
+          if (e.status === 404) {
+            showAlert(
+              "作废失败：后端未实现 POST /api/admin/recharge/:id/void\n" +
+                "如果你需要作废冲正，我可以把后端 void 接口补全并对齐你现有 Recharge 模型。",
+              false
+            );
+            return;
+          }
+          showAlert("作废失败：" + e.message, false);
+        }
+      }
+
+      // =========================
+      // top buttons
+      // =========================
+      document.getElementById("btnGoDashboard").addEventListener("click", () => {
+        window.location.href = "/admin/dashboard.html";
+      });
+
+      document.getElementById("btnWhoAmI").addEventListener("click", async () => {
+        try {
+          const r = await apiFetch("/api/auth/me", { method: "GET" });
+          showAlert("当前登录信息：\n" + JSON.stringify(r.user || r.data || r, null, 2), true);
+        } catch (e) {
+          showAlert("获取登录信息失败：" + e.message, false);
+        }
+      });
+
+      document.getElementById("btnLogout").addEventListener("click", () => {
+        if (!confirm("确定退出登录？")) return;
+        localStorage.removeItem("freshbuy_token");
+        localStorage.removeItem("admin_token");
+        localStorage.removeItem("adminToken");
+        localStorage.removeItem("token");
+        localStorage.removeItem("auth_token");
+        localStorage.removeItem("jwt");
+        alert("已退出");
+        window.location.href = "/admin/login.html";
+      });
+
+      // =========================
+      // bind
+      // =========================
+      document.getElementById("btnRecharge").addEventListener("click", doRecharge);
+      document.getElementById("btnRecharge2").addEventListener("click", doRecharge);
+
+      document.getElementById("btnQuery").addEventListener("click", queryList);
+      document.getElementById("btnQuery2").addEventListener("click", queryList);
+
+      function fillDemo() {
+        document.getElementById("inPhone").value = "7184195513";
+        document.getElementById("inUserId").value = "";
+        document.getElementById("inAmount").value = "50";
+        document.getElementById("inPayMethod").value = "admin";
+        document.getElementById("inBonus").value = "";
+        document.getElementById("inRemark").value = "后台人工充值";
+        showAlert("已填充示例。点击「确认充值」即可。", true);
+      }
+      document.getElementById("btnFillDemo").addEventListener("click", fillDemo);
+      document.getElementById("btnFillDemo2").addEventListener("click", fillDemo);
+
+      // 表格内作废按钮（事件委托）
+      document.getElementById("tbody").addEventListener("click", (e) => {
+        const btn = e.target.closest("button[data-void]");
+        if (!btn) return;
+        voidRecharge(btn.getAttribute("data-void"));
+      });
+
+      // init
+      window.addEventListener("DOMContentLoaded", () => {
+        const token = getToken();
+        if (!token) {
+          showAlert("未检测到 token。请先登录后台（确保 localStorage 有 freshbuy_token/admin_token/token）。", false);
+        } else {
+          showAlert("已检测到 token ✅ 可以开始后台充值。", true);
+        }
+      });
+    </script>
+  </body>
+</html>

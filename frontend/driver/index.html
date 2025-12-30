@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>司机端 · 配送任务与地图导航 - 在鲜购拼好货</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <link rel="stylesheet" href="assets/css/driver.css" />
+  </head>
+
+  <body>
+    <div class="driver-layout">
+      <header class="driver-header">
+        <div>
+          <div class="driver-title">今日配送任务</div>
+          <div class="driver-subtitle" id="driverDateText"></div>
+        </div>
+        <button class="driver-btn driver-btn-ghost" id="btnRefresh">
+          ⟳ 刷新任务
+        </button>
+      </header>
+
+      <main class="driver-main">
+        <!-- 起点设置条 -->
+        <section class="driver-card">
+          <div class="driver-card-header">
+            <div>
+              <div class="driver-card-title">起点设置</div>
+              <div class="driver-card-subtitle">
+                默认起点：199-26 48th Ave, Fresh Meadows, NY 11365（司机可修改）
+              </div>
+            </div>
+          </div>
+          <div
+            style="
+              margin-top: 8px;
+              display: flex;
+              gap: 8px;
+              align-items: center;
+              padding: 0 12px 8px 12px;
+            "
+          >
+            <span
+              style="
+                font-size: 13px;
+                color: #e5e7eb;
+                white-space: nowrap;
+              "
+              >起点地址：</span
+            >
+            <input
+              id="driverOriginInput"
+              type="text"
+              placeholder="例如：199-26 48th Ave, Fresh Meadows, NY 11365"
+              style="
+                flex: 1;
+                min-width: 180px;
+                padding: 4px 8px;
+                border-radius: 6px;
+                border: 1px solid rgba(148, 163, 184, 0.7);
+                background: rgba(15, 23, 42, 0.9);
+                color: #e5e7eb;
+                font-size: 12px;
+              "
+            />
+            <button
+              class="driver-btn driver-btn-ghost"
+              id="btnSaveOrigin"
+              style="white-space: nowrap"
+            >
+              💾 保存起点
+            </button>
+          </div>
+        </section>
+
+        <!-- 上：地图 + 路线信息 -->
+        <section class="driver-card">
+          <div class="driver-card-header">
+            <div>
+              <div class="driver-card-title">地图 &amp; 最优路线</div>
+              <div class="driver-card-subtitle" id="routeSummary">
+                正在加载 Google 地图...
+              </div>
+            </div>
+            <button
+              class="driver-btn driver-btn-primary"
+              id="btnOpenRouteInMaps"
+            >
+              🧭 一键在 Google Maps 打开整条路线
+            </button>
+          </div>
+          <div id="driverMap" class="driver-map"></div>
+        </section>
+
+        <!-- 下：订单列表（会按优化后的顺序排序） -->
+        <section class="driver-card">
+          <div class="driver-card-header">
+  <div class="driver-card-title">今日配送列表</div>
+  <div class="driver-card-header-right">
+    <span id="ordersSummary" class="driver-card-sub">今日共 0 单</span>
+    <button
+      id="btnStartAllDeliveries"
+      class="driver-btn driver-btn-primary driver-btn-sm"
+      style="margin-left: 8px;"
+    >
+      开始配送
+    </button>
+  </div>
+</div>
+          <div id="driverOrdersList" class="driver-orders-list">
+            <!-- 订单卡片由 JS 渲染 -->
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <!-- 先加载 Google Maps JS（注意替换你的 key） -->
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyA6GEAhetFXnP-y9iYaE7oewv-mLKrELN0"></script>
+    <!-- 再加载司机端应用逻辑 -->
+    <script src="assets/js/driver_app.js"></script>
+  </body>
+</html>

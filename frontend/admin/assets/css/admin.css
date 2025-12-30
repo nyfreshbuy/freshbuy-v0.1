@@ -1,0 +1,563 @@
+:root {
+  --admin-bg: #0f172a;
+  --admin-bg-soft: #020617;
+  --admin-card: #0b1220;
+  --admin-primary: #2563eb;
+  --admin-primary-soft: rgba(37, 99, 235, 0.15);
+  --admin-border: #1e293b;
+  --admin-text: #e5e7eb;
+  --admin-text-soft: #9ca3af;
+  --admin-danger: #f97373;
+  --admin-success: #22c55e;
+  --admin-warning: #eab308;
+  --radius-lg: 16px;
+  --radius-md: 10px;
+  --shadow-soft: 0 18px 45px rgba(15, 23, 42, 0.85);
+  --sidebar-width: 240px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, sans-serif;
+  color: var(--admin-text);
+  background: radial-gradient(circle at top, #1f2937 0, #020617 45%, #000 100%);
+}
+
+/* ======= 布局 ======= */
+
+.admin-layout {
+  display: grid;
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+/* ======= 左侧侧边栏 ======= */
+
+.admin-sidebar {
+  background: linear-gradient(180deg, #020617 0%, #020617 40%, #020617 100%);
+  border-right: 1px solid var(--admin-border);
+  padding: 18px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+}
+
+.admin-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 6px 10px;
+}
+
+.admin-logo-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 14px;
+  background: radial-gradient(circle at 20% 20%, #60a5fa, #2563eb, #4b5563);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 18px;
+  color: #f9fafb;
+  box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.5),
+    0 12px 30px rgba(15, 23, 42, 0.85);
+}
+
+.admin-logo-text-main {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.admin-logo-text-sub {
+  font-size: 11px;
+  color: var(--admin-text-soft);
+}
+
+/* 菜单分组标题 */
+
+.admin-nav-section-title {
+  margin: 12px 8px 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #64748b;
+}
+
+/* 菜单列表 */
+
+.admin-nav {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.admin-nav-item {
+}
+
+.admin-nav-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  text-decoration: none;
+  color: var(--admin-text-soft);
+  font-size: 14px;
+  transition: all 0.18s ease-out;
+  position: relative;
+}
+
+.admin-nav-link-icon {
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+}
+
+.admin-nav-link:hover {
+  background: rgba(15, 23, 42, 0.9);
+  color: var(--admin-text);
+}
+
+.admin-nav-link.active {
+  background: radial-gradient(circle at top left, #1d4ed8, #020617);
+  color: #f9fafb;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.8);
+}
+
+.admin-nav-link.active .admin-nav-link-icon {
+  border-color: rgba(191, 219, 254, 0.85);
+  background: rgba(37, 99, 235, 0.25);
+}
+
+/* 底部小块 */
+
+.admin-sidebar-footer {
+  margin-top: auto;
+  padding: 12px 8px 4px;
+  border-top: 1px solid rgba(15, 23, 42, 0.9);
+  font-size: 11px;
+  color: #6b7280;
+}
+
+/* ======= 主区域 / 顶部栏 ======= */
+
+.admin-main {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.admin-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  backdrop-filter: blur(14px);
+  background: linear-gradient(
+    90deg,
+    rgba(15, 23, 42, 0.92),
+    rgba(15, 23, 42, 0.75),
+    rgba(15, 23, 42, 0.9)
+  );
+  border-bottom: 1px solid rgba(31, 41, 55, 0.9);
+  padding: 10px 18px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.admin-topbar-title {
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.admin-topbar-spacer {
+  flex: 1;
+}
+
+/* 顶部菜单按钮（移动端） */
+
+.admin-topbar-toggle {
+  display: none;
+  border-radius: 999px;
+  padding: 6px 10px;
+  border: 1px solid rgba(75, 85, 99, 0.9);
+  background: rgba(15, 23, 42, 0.95);
+  color: #e5e7eb;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+/* 搜索框 */
+
+.admin-search {
+  position: relative;
+  max-width: 260px;
+  width: 100%;
+}
+
+.admin-search input {
+  width: 100%;
+  padding: 6px 10px 6px 26px;
+  border-radius: 999px;
+  border: 1px solid rgba(55, 65, 81, 0.9);
+  background: radial-gradient(circle at top, #020617, #020617);
+  color: var(--admin-text);
+  font-size: 13px;
+}
+
+.admin-search input::placeholder {
+  color: #6b7280;
+}
+
+.admin-search-icon {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 11px;
+  color: #6b7280;
+}
+
+/* 用户菜单 */
+
+.admin-user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 8px;
+  border-left: 1px solid rgba(55, 65, 81, 0.9);
+}
+
+.admin-user-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.7);
+  background: radial-gradient(circle at top, #1d4ed8, #020617);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+}
+
+.admin-user-info {
+  display: flex;
+  flex-direction: column;
+  font-size: 11px;
+}
+
+.admin-user-name {
+  font-size: 12px;
+}
+
+.admin-user-role {
+  color: #9ca3af;
+}
+
+/* ======= 内容区域 ======= */
+
+.admin-content {
+  padding: 18px 18px 24px;
+  flex: 1;
+}
+
+.admin-page-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.admin-page-title {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.admin-breadcrumb {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.admin-page-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* 按钮 */
+
+.admin-btn {
+  border-radius: 999px;
+  padding: 6px 12px;
+  border: 1px solid rgba(75, 85, 99, 0.9);
+  background: rgba(15, 23, 42, 0.95);
+  color: #e5e7eb;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease-out;
+}
+
+.admin-btn:hover {
+  filter: brightness(1.05);
+}
+
+.admin-btn-primary {
+  border-color: rgba(37, 99, 235, 0.9);
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+}
+
+.admin-btn-ghost {
+  background: transparent;
+}
+
+.admin-btn-danger {
+  border-color: rgba(239, 68, 68, 0.9);
+  background: rgba(127, 29, 29, 0.9);
+}
+
+/* 卡片布局 */
+
+.admin-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.admin-card {
+  background: radial-gradient(circle at top left, #020617, #020617);
+  border-radius: var(--radius-lg);
+  padding: 14px 14px 12px;
+  border: 1px solid rgba(30, 64, 175, 0.8);
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.9);
+  position: relative;
+  overflow: hidden;
+}
+
+.admin-card-ghost {
+  border-color: rgba(31, 41, 55, 0.9);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.85);
+}
+
+.admin-card-title {
+  font-size: 12px;
+  color: #9ca3af;
+  margin-bottom: 4px;
+}
+
+.admin-card-value {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.admin-card-sub {
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+/* 小标签 / 芯片 */
+
+.admin-chip {
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.7);
+  background: rgba(15, 23, 42, 0.9);
+}
+
+.admin-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 8px;
+  font-size: 11px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(55, 65, 81, 0.95);
+}
+
+.admin-tag-success {
+  border-color: rgba(34, 197, 94, 0.85);
+  color: #bbf7d0;
+}
+
+.admin-tag-warning {
+  border-color: rgba(234, 179, 8, 0.85);
+  color: #facc15;
+}
+
+/* 内容两列 */
+
+.admin-2col {
+  display: grid;
+  grid-template-columns: 1.6fr 1.1fr;
+  gap: 14px;
+}
+
+.admin-table-card {
+  background: radial-gradient(circle at top, #020617, #020617);
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(31, 41, 55, 0.95);
+  padding: 12px 12px 8px;
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.9);
+}
+
+.admin-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.admin-card-header-title {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.admin-card-header-sub {
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+/* 表格 */
+
+.admin-table-wrapper {
+  overflow-x: auto;
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.admin-table th,
+.admin-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid rgba(31, 41, 55, 0.95);
+  white-space: nowrap;
+}
+
+.admin-table th {
+  text-align: left;
+  font-weight: 500;
+  color: #9ca3af;
+}
+
+.admin-table tr:last-child td {
+  border-bottom: none;
+}
+
+.admin-table-actions {
+  display: flex;
+  gap: 6px;
+}
+
+/* 分页 */
+
+.admin-pagination {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 11px;
+}
+
+.admin-pagination button {
+  min-width: 26px;
+}
+
+/* 简单输入框样式 */
+
+.admin-input,
+.admin-select {
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(55, 65, 81, 0.9);
+  background: rgba(15, 23, 42, 0.95);
+  color: var(--admin-text);
+  font-size: 12px;
+}
+
+/* ======= 响应式 ======= */
+
+@media (max-width: 960px) {
+  .admin-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    transform: translateX(-100%);
+    transition: transform 0.22s ease-out;
+    z-index: 40;
+    width: 230px;
+  }
+
+  .admin-sidebar.is-open {
+    transform: translateX(0);
+  }
+
+  .admin-main {
+    margin-left: 0;
+  }
+
+  .admin-topbar {
+    padding-inline: 12px;
+  }
+
+  .admin-content {
+    padding-inline: 12px;
+  }
+
+  .admin-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-2col {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-topbar-toggle {
+    display: inline-flex;
+  }
+}
+
+@media (max-width: 640px) {
+  .admin-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-page-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

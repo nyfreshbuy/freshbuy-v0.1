@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>自提点管理 - 在鲜购拼好货后台</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="assets/css/admin.css" />
+  </head>
+
+  <body data-page="pickups">
+    <div class="admin-layout">
+      <aside class="admin-sidebar">
+      <!-- ✅ 统一 sidebar：由 /admin/assets/js/admin_sidebar.js 注入 -->
+      <div id="adminSidebar"></div>
+    </aside>
+      <div class="admin-main">
+        <header class="admin-topbar">
+          <button class="admin-btn admin-btn-ghost" data-toggle-sidebar>☰</button>
+          <div class="admin-topbar-title">自提点管理</div>
+          <div class="admin-topbar-spacer"></div>
+
+          <div class="admin-search">
+            <span class="admin-search-icon">🔍</span>
+            <input type="text" placeholder="搜索自提点 / 地址..." />
+          </div>
+
+          <div class="admin-user">
+            <div class="admin-user-avatar">A</div>
+            <div class="admin-user-info">
+              <span class="admin-user-name">Admin</span>
+              <span class="admin-user-role">超级管理员</span>
+            </div>
+          </div>
+        </header>
+
+        <main class="admin-content">
+          <div class="admin-page-header">
+            <div>
+              <div class="admin-page-title">自提点列表</div>
+              <div class="admin-breadcrumb">后台 &gt; 自提点管理</div>
+            </div>
+            <div class="admin-page-actions">
+              <button class="admin-btn admin-btn-ghost">⟳ 刷新</button>
+              <button class="admin-btn admin-btn-primary">＋ 新增自提点</button>
+            </div>
+          </div>
+
+          <section class="admin-grid">
+            <article class="admin-card admin-card-ghost">
+              <div class="admin-card-title">自提点数量</div>
+              <div class="admin-card-value">12</div>
+              <div class="admin-card-sub">Flushing / Fresh Meadows / Bayside 等</div>
+            </article>
+            <article class="admin-card admin-card-ghost">
+              <div class="admin-card-title">本周自提订单</div>
+              <div class="admin-card-value">286</div>
+              <div class="admin-card-sub">占总订单 41.2%</div>
+            </article>
+            <article class="admin-card admin-card-ghost">
+              <div class="admin-card-title">最忙自提点</div>
+              <div class="admin-card-value">Flushing Main St</div>
+              <div class="admin-card-sub">本周 86 单</div>
+            </article>
+            <article class="admin-card admin-card-ghost">
+              <div class="admin-card-title">待开通自提点</div>
+              <div class="admin-card-value">3</div>
+              <div class="admin-card-sub">审核中的团长申请</div>
+            </article>
+          </section>
+
+          <section class="admin-table-card" style="margin-top: 12px">
+            <div class="admin-card-header">
+              <div>
+                <div class="admin-card-header-title">自提点列表</div>
+                <div class="admin-card-header-sub">
+                  后续对接 /api/admin/pickups · 绑定团长 / 配送时间段 / 地址坐标。
+                </div>
+              </div>
+            </div>
+
+            <div class="admin-table-wrapper">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th>自提点ID</th>
+                    <th>名称</th>
+                    <th>绑定团长</th>
+                    <th>地址</th>
+                    <th>开放时间</th>
+                    <th>本周订单</th>
+                    <th>状态</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>PUP-001</td>
+                    <td>Flushing Main St 自提点</td>
+                    <td>王团长</td>
+                    <td>Main St &amp; Franklin Ave</td>
+                    <td>17:00 - 21:00</td>
+                    <td>86</td>
+                    <td><span class="admin-tag admin-tag-success">启用</span></td>
+                  </tr>
+                  <tr>
+                    <td>PUP-002</td>
+                    <td>Fresh Meadows 社区自提点</td>
+                    <td>Liqi</td>
+                    <td>Utopia Pkwy &amp; 73 Ave</td>
+                    <td>18:00 - 21:00</td>
+                    <td>54</td>
+                    <td><span class="admin-tag admin-tag-success">启用</span></td>
+                  </tr>
+                  <tr>
+                    <td>PUP-003</td>
+                    <td>Bayside 社区自提点</td>
+                    <td>Amy</td>
+                    <td>Bell Blvd &amp; 42 Ave</td>
+                    <td>17:30 - 20:30</td>
+                    <td>32</td>
+                    <td><span class="admin-tag admin-tag-warning">筹备中</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+    <script src="/admin/assets/js/admin_guard.js"></script>
+    <script src="./assets/js/admin_auth_ui.js"></script>
+    <!-- ✅ 统一 sidebar 注入脚本（必须加） -->
+    <script src="/admin/assets/js/admin_sidebar.js"></script>
+    <script src="assets/js/admin.js"></script>
+  </body>
+</html>

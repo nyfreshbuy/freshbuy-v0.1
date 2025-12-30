@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>在鲜购拼好货 - 后台仪表盘</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="assets/css/admin.css" />
+  </head>
+
+  <!-- ⭐ data-page 用于高亮菜单 -->
+  <body data-page="dashboard">
+    <div class="admin-layout">
+      <!-- 左侧侧边栏 -->
+      <aside class="admin-sidebar">
+        <div id="adminSidebar"></div>
+      </aside>
+
+      <!-- 右侧主区域 -->
+      <div class="admin-main">
+        <!-- 顶部栏 -->
+        <header class="admin-topbar">
+          <!-- ⭐ 加上 admin-topbar-toggle，配合 CSS 在小屏显示 -->
+          <button class="admin-btn admin-btn-ghost admin-topbar-toggle" data-toggle-sidebar>
+            ☰
+          </button>
+
+          <div class="admin-topbar-title">仪表盘</div>
+          <div class="admin-topbar-spacer"></div>
+
+          <div class="admin-search">
+            <span class="admin-search-icon">🔍</span>
+            <input type="text" placeholder="搜索订单 / 用户 / 商品..." />
+          </div>
+
+          <div class="admin-user">
+            <div class="admin-user-avatar">A</div>
+            <div class="admin-user-info">
+              <span class="admin-user-name">Admin</span>
+              <span class="admin-user-role">超级管理员</span>
+            </div>
+          </div>
+        </header>
+
+        <!-- 内容 -->
+        <main class="admin-content">
+          <!-- 页面标题 -->
+          <div class="admin-page-header">
+            <div>
+              <div class="admin-page-title">今日概览</div>
+              <div class="admin-breadcrumb">后台 &gt; 仪表盘</div>
+            </div>
+
+            <div class="admin-page-actions">
+              <button class="admin-btn admin-btn-ghost" id="btn-refresh">⟳ 刷新数据</button>
+              <button class="admin-btn admin-btn-primary">⬇ 导出今日报表</button>
+            </div>
+          </div>
+
+          <!-- 指标卡片 -->
+          <section class="admin-grid">
+            <article class="admin-card">
+              <div class="admin-card-title">今日 GMV</div>
+              <div class="stat-value" id="stat-revenue">$0</div>
+              <div class="admin-card-sub">较昨日 +18.2%</div>
+            </article>
+
+            <article class="admin-card admin-card-ghost">
+              <div class="admin-card-title">今日订单数</div>
+              <div class="admin-card-value" id="stat-orders">0</div>
+              <div class="admin-card-sub">待配送 42 · 自提 96</div>
+            </article>
+
+            <article class="admin-card admin-card-ghost">
+              <div class="admin-card-title">新注册用户</div>
+              <div class="admin-card-value" id="stat-users">0</div>
+              <div class="admin-card-sub">团长邀请 31 · 自然 17</div>
+            </article>
+
+            <article class="admin-card admin-card-ghost">
+              <div class="admin-card-title">拼单进行中</div>
+              <div class="admin-card-value" id="stat-groups">0</div>
+              <div class="admin-card-sub">预计今晚 9:00 截止</div>
+            </article>
+          </section>
+
+          <!-- 表格、图表区域 -->
+          <section class="admin-2col">
+            <!-- 左：订单表格 -->
+            <section class="admin-table-card">
+              <div class="admin-card-header">
+                <div>
+                  <div class="admin-card-header-title">最新订单</div>
+                  <div class="admin-card-header-sub">最近 10 笔订单（已支付）</div>
+                </div>
+                <button class="admin-btn admin-btn-ghost" onclick="location.href='orders.html'">
+                  查看全部订单 →
+                </button>
+              </div>
+
+              <div class="admin-table-wrapper">
+                <table class="admin-table">
+                  <thead>
+                    <tr>
+                      <th>订单号</th>
+                      <th>用户</th>
+                      <th>金额</th>
+                      <th>配送方式</th>
+                      <th>状态</th>
+                      <th>司机</th>
+                      <th>派单</th>
+                    </tr>
+                  </thead>
+                  <tbody id="recentOrdersTbody">
+                    <tr>
+                      <td colspan="7" style="color:#9ca3af;">加载中...</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="admin-pagination">
+                <span>共 326 笔</span>
+                <button class="admin-btn admin-btn-ghost">«</button>
+                <button class="admin-btn admin-btn-primary">1</button>
+                <button class="admin-btn admin-btn-ghost">2</button>
+                <button class="admin-btn admin-btn-ghost">3</button>
+                <button class="admin-btn admin-btn-ghost">»</button>
+              </div>
+            </section>
+
+            <!-- 右：占位卡片（后面可以嵌图表） -->
+            <section class="admin-table-card">
+              <div class="admin-card-header">
+                <div>
+                  <div class="admin-card-header-title">拼单进度一览</div>
+                  <div class="admin-card-header-sub">后续可以接 Chart.js 图表</div>
+                </div>
+              </div>
+              <p style="font-size:12px;color:#9ca3af;margin-top:2px;line-height:1.5;">
+                占位说明：后续接入接口后，这里可以展示
+                <strong>拼单达成率、热门爆品、团长表现</strong> 等可视化图表，用于快速查看运营情况。
+              </p>
+            </section>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <!-- ✅ 通用 UI 行为（侧边栏折叠等） -->
+    <script src="assets/js/admin.js"></script>
+
+    <!-- ✅ 先做管理员守卫（统一） -->
+    <script src="/admin/assets/js/admin_guard.js"></script>
+    <script src="./assets/js/admin_auth_ui.js"></script>
+    <!-- ✅ 再注入 sidebar（高亮 data-page） -->
+    <script src="/admin/assets/js/admin_sidebar.js"></script>
+
+    <script>
+      // =========================
+      // 1) token 工具 & apiFetch（保留，用于本页请求接口）
+      // =========================
+      function getAdminToken() {
+        return (
+          localStorage.getItem("freshbuy_token") ||
+          localStorage.getItem("admin_token") ||
+          localStorage.getItem("token") ||
+          localStorage.getItem("auth_token") ||
+          ""
+        );
+      }
+
+      async function apiFetch(path, options = {}) {
+        const token = getAdminToken();
+        const headers = new Headers(options.headers || {});
+        if (token) headers.set("Authorization", "Bearer " + token);
+        if (!headers.has("Content-Type") && !(options.body instanceof FormData)) {
+          headers.set("Content-Type", "application/json");
+        }
+
+        const res = await fetch(path, { ...options, headers, credentials: "include" });
+        const text = await res.text();
+        let json = {};
+        try { json = text ? JSON.parse(text) : {}; } catch { json = {}; }
+
+        if (!res.ok) throw new Error(json.message || json.msg || ("HTTP " + res.status));
+        if (json && json.success === false) throw new Error(json.message || json.msg || "请求失败");
+        return json;
+      }
+
+      // =========================
+      // 2) 仪表盘 summary（DB）
+      // =========================
+      async function loadDashboardSummary() {
+        try {
+          const data = await apiFetch("/api/admin/dashboard/summary", { method: "GET" });
+          const d = data.data || {};
+
+          const revenueEl = document.getElementById("stat-revenue");
+          if (revenueEl) revenueEl.textContent = `$${Number(d.revenueToday || 0).toFixed(2)}`;
+
+          const orderEl = document.getElementById("stat-orders");
+          if (orderEl) orderEl.textContent = d.orderToday ?? d.orderTotal ?? 0;
+
+          const userEl = document.getElementById("stat-users");
+          if (userEl) userEl.textContent = d.userTotal ?? 0;
+
+          const groupEl = document.getElementById("stat-groups");
+          if (groupEl) groupEl.textContent = d.groupsActive ?? 0;
+        } catch (err) {
+          console.error("仪表盘 summary 加载失败:", err);
+        }
+      }
+
+      // =========================
+      // 3) 最新订单（DB）
+      // =========================
+      function money(n) {
+        const x = Number(n);
+        return "$" + (isFinite(x) ? x.toFixed(2) : "0.00");
+      }
+
+      function statusTag(status) {
+        const s = String(status || "").toLowerCase();
+        if (["done", "delivered", "completed", "finished"].includes(s)) {
+          return `<span class="admin-tag admin-tag-success">已完成</span>`;
+        }
+        if (["shipping", "assigned", "dispatching", "delivering"].includes(s)) {
+          return `<span class="admin-tag admin-tag-warning">配送中</span>`;
+        }
+        if (["cancel", "cancelled", "canceled"].includes(s)) {
+          return `<span class="admin-tag admin-tag-danger">已取消</span>`;
+        }
+        if (["pending", "unpaid", "created"].includes(s)) {
+          return `<span class="admin-tag admin-tag-warning">待配送</span>`;
+        }
+        return `<span class="admin-tag">` + (status || "未知") + `</span>`;
+      }
+
+      function escapeHtml(s) {
+        return String(s || "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+
+      async function loadRecentOrders() {
+        const tbody = document.getElementById("recentOrdersTbody");
+        if (!tbody) return;
+
+        try {
+          tbody.innerHTML = `<tr><td colspan="7" style="color:#9ca3af;">加载中...</td></tr>`;
+
+          const r = await apiFetch("/api/admin/dashboard/recent-orders?limit=10", { method: "GET" });
+          const list = r.orders || r.data || r.items || r.list || [];
+
+          if (!Array.isArray(list) || list.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="7" style="color:#9ca3af;">暂无订单</td></tr>`;
+            return;
+          }
+
+          tbody.innerHTML = "";
+          list.forEach((o) => {
+            const orderNo = o.orderNo || o.no || o.order_number || o.id || "--";
+            const userName = o.userName || o.user || o.customerName || "—";
+            const amount = money(o.amount ?? o.totalAmount ?? o.total ?? 0);
+            const deliveryType = o.deliveryType || o.mode || o.delivery_type || "—";
+            const statusHtml = statusTag(o.status);
+
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+              <td>#${escapeHtml(orderNo)}</td>
+              <td>${escapeHtml(userName)}</td>
+              <td>${escapeHtml(amount)}</td>
+              <td>${escapeHtml(deliveryType)}</td>
+              <td>${statusHtml}</td>
+              <td><span style="color:#9ca3af;">—</span></td>
+              <td><span style="color:#9ca3af;">—</span></td>
+            `;
+            tbody.appendChild(tr);
+          });
+        } catch (err) {
+          console.error("最新订单加载失败:", err);
+          tbody.innerHTML = `<tr><td colspan="7" style="color:#ef4444;">加载失败：${escapeHtml(err.message || "")}</td></tr>`;
+        }
+      }
+
+      // =========================
+      // 4) 页面入口：先统一 admin_guard，再加载数据
+      // =========================
+      window.addEventListener("DOMContentLoaded", async () => {
+        // ✅ 统一守卫：不是 admin 会自动跳 login
+        if (window.adminGuard) {
+          const ok = await window.adminGuard();
+          if (!ok) return;
+        }
+
+        await loadDashboardSummary();
+        await loadRecentOrders();
+
+        const btn = document.getElementById("btn-refresh");
+        if (btn) {
+          btn.addEventListener("click", async () => {
+            await loadDashboardSummary();
+            await loadRecentOrders();
+          });
+        }
+      });
+    </script>
+  </body>
+</html>

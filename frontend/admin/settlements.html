@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>结算管理 - 在鲜购拼好货后台</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="assets/css/admin.css" />
+  </head>
+
+  <body data-page="settlements">
+    <div class="admin-layout">
+       <!-- ✅ 统一侧边栏：由 admin_sidebar.js 注入 -->
+    <aside class="admin-sidebar">
+      <div id="adminSidebar"></div>
+    </aside>
+      <div class="admin-main">
+        <header class="admin-topbar">
+          <button class="admin-btn admin-btn-ghost" data-toggle-sidebar>☰</button>
+          <div class="admin-topbar-title">结算管理</div>
+          <div class="admin-topbar-spacer"></div>
+
+          <div class="admin-user">
+            <div class="admin-user-avatar">A</div>
+            <div class="admin-user-info">
+              <span class="admin-user-name">Admin</span>
+              <span class="admin-user-role">超级管理员</span>
+            </div>
+          </div>
+        </header>
+
+        <main class="admin-content">
+          <div class="admin-page-header">
+            <div>
+              <div class="admin-page-title">结算总览</div>
+              <div class="admin-breadcrumb">后台 &gt; 结算管理</div>
+            </div>
+
+            <div class="admin-page-actions">
+              <button class="admin-btn admin-btn-ghost" id="btnExport">导出本期结算</button>
+              <button class="admin-btn admin-btn-primary" id="btnMarkAllPaid">一键标记已打款</button>
+            </div>
+          </div>
+
+          <section class="admin-grid">
+            <article class="admin-card admin-card-ghost">
+              <div class="admin-card-title">待结算团长佣金</div>
+              <div class="admin-card-value" id="leaderPendingAmount">$0.00</div>
+              <div class="admin-card-sub">本周应结算若干位团长</div>
+            </article>
+            <article class="admin-card admin-card-ghost">
+              <div class="admin-card-title">待结算司机费用</div>
+              <div class="admin-card-value" id="driverPendingAmount">$0.00</div>
+              <div class="admin-card-sub">按单 + 日薪混合模式</div>
+            </article>
+            <article class="admin-card admin-card-ghost">
+              <div class="admin-card-title">本月已结算</div>
+              <div class="admin-card-value" id="monthSettledAmount">$0.00</div>
+              <div class="admin-card-sub">团长 + 司机 汇总</div>
+            </article>
+            <article class="admin-card admin-card-ghost">
+              <div class="admin-card-title">本期结算周期</div>
+              <div class="admin-card-value">11-18 ~ 11-24</div>
+              <div class="admin-card-sub">每周自动汇总一次（示例）</div>
+            </article>
+          </section>
+
+          <section class="admin-2col" style="margin-top: 12px">
+            <!-- 团长结算 -->
+            <section class="admin-table-card">
+              <div class="admin-card-header">
+                <div>
+                  <div class="admin-card-header-title">团长结算</div>
+                  <div class="admin-card-header-sub">
+                    对接 /api/admin/leader-settlements · 支持导出 / 标记已打款。
+                  </div>
+                </div>
+              </div>
+
+              <div class="admin-table-wrapper">
+                <table class="admin-table">
+                  <thead>
+                    <tr>
+                      <th>结算ID</th>
+                      <th>团长</th>
+                      <th>周期</th>
+                      <th>订单数</th>
+                      <th>结算金额</th>
+                      <th>状态</th>
+                    </tr>
+                  </thead>
+                  <tbody id="leaderSettlementTbody">
+                    <!-- JS 动态填充 -->
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <!-- 司机结算 -->
+            <section class="admin-table-card">
+              <div class="admin-card-header">
+                <div>
+                  <div class="admin-card-header-title">司机结算</div>
+                  <div class="admin-card-header-sub">
+                    对接 /api/admin/driver-settlements · 支持按天 / 按周结算。
+                  </div>
+                </div>
+              </div>
+
+              <div class="admin-table-wrapper">
+                <table class="admin-table">
+                  <thead>
+                    <tr>
+                      <th>结算ID</th>
+                      <th>司机</th>
+                      <th>日期</th>
+                      <th>完成订单</th>
+                      <th>结算金额</th>
+                      <th>状态</th>
+                    </tr>
+                  </thead>
+                  <tbody id="driverSettlementTbody">
+                    <!-- JS 动态填充 -->
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </section>
+        </main>
+      </div>
+    </div>
+<script src="/admin/assets/js/admin_guard.js"></script>
+<script src="./assets/js/admin_auth_ui.js"></script>    
+<script src="assets/js/admin.js"></script>
+    <script>
+      let leaderSummary = null;
+      let driverSummary = null;
+
+      function formatMoney(num) {
+        if (num === undefined || num === null) return "$0.00";
+        return "$" + Number(num).toFixed(2);
+      }
+
+      function formatDateTime(val) {
+        if (!val) return "-";
+        return new Date(val).toLocaleDateString();
+      }
+
+      function formatStatusLabel(status) {
+        if (status === "pending") {
+          return '<span class="admin-tag admin-tag-warning">待打款</span>';
+        }
+        if (status === "settled") {
+          return '<span class="admin-tag admin-tag-success">已打款</span>';
+        }
+        return status || "-";
+      }
+
+      function updateSummaryCards() {
+        if (leaderSummary) {
+          document.getElementById("leaderPendingAmount").textContent =
+            formatMoney(leaderSummary.pendingAmount || 0);
+        }
+        if (driverSummary) {
+          document.getElementById("driverPendingAmount").textContent =
+            formatMoney(driverSummary.pendingAmount || 0);
+        }
+        if (leaderSummary && driverSummary) {
+          const totalMonth =
+            Number(leaderSummary.settledThisMonth || 0) +
+            Number(driverSummary.settledThisMonth || 0);
+          document.getElementById("monthSettledAmount").textContent =
+            formatMoney(totalMonth);
+        }
+      }
+
+      async function loadLeaderSettlements() {
+        try {
+          const res = await fetch("/api/admin/leader-settlements?page=1&pageSize=5");
+          const data = await res.json();
+          if (!data.success) {
+            console.error("团长结算加载失败:", data.message);
+            return;
+          }
+
+          leaderSummary = data.summary || null;
+          updateSummaryCards();
+
+          const tbody = document.getElementById("leaderSettlementTbody");
+          tbody.innerHTML = "";
+
+          if (!data.list || !data.list.length) {
+            const tr = document.createElement("tr");
+            tr.innerHTML =
+              '<td colspan="6" style="text-align:center;">暂无团长结算数据</td>';
+            tbody.appendChild(tr);
+            return;
+          }
+
+          data.list.forEach((item) => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+              <td>LS-${item.id.toString().padStart(3, "0")}</td>
+              <td>
+                <div>${item.leaderName || "-"}</div>
+                <div class="table-subtext">${item.leaderPhone || ""}</div>
+              </td>
+              <td>${formatDateTime(item.periodStart)} ~ ${formatDateTime(
+              item.periodEnd
+            )}</td>
+              <td>${item.orderCount || 0}</td>
+              <td>${formatMoney(item.amount)}</td>
+              <td>${formatStatusLabel(item.status)}</td>
+            `;
+            tbody.appendChild(tr);
+          });
+        } catch (err) {
+          console.error("团长结算加载异常:", err);
+        }
+      }
+
+      async function loadDriverSettlements() {
+        try {
+          const res = await fetch("/api/admin/driver-settlements?page=1&pageSize=5");
+          const data = await res.json();
+          if (!data.success) {
+            console.error("司机结算加载失败:", data.message);
+            return;
+          }
+
+          driverSummary = data.summary || null;
+          updateSummaryCards();
+
+          const tbody = document.getElementById("driverSettlementTbody");
+          tbody.innerHTML = "";
+
+          if (!data.list || !data.list.length) {
+            const tr = document.createElement("tr");
+            tr.innerHTML =
+              '<td colspan="6" style="text-align:center;">暂无司机结算数据</td>';
+            tbody.appendChild(tr);
+            return;
+          }
+
+          data.list.forEach((item) => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+              <td>DS-${item.id.toString().padStart(3, "0")}</td>
+              <td>
+                <div>${item.driverName || "-"}</div>
+                <div class="table-subtext">${item.driverPhone || ""}</div>
+              </td>
+              <td>${formatDateTime(item.date)}</td>
+              <td>${item.orderCount || 0}</td>
+              <td>${formatMoney(item.amount)}</td>
+              <td>${formatStatusLabel(item.status)}</td>
+            `;
+            tbody.appendChild(tr);
+          });
+        } catch (err) {
+          console.error("司机结算加载异常:", err);
+        }
+      }
+
+      async function markAllPaid() {
+        try {
+          const res = await fetch(
+            "/api/admin/leader-settlements/mark-all-paid",
+            { method: "PATCH" }
+          );
+          const data = await res.json();
+          if (!data.success) {
+            alert(data.message || "操作失败");
+            return;
+          }
+          alert("已标记 " + (data.count || 0) + " 条团长结算为已打款");
+          // 重新加载数据 & 汇总
+          await loadLeaderSettlements();
+          await loadDriverSettlements();
+        } catch (err) {
+          console.error("一键标记已打款异常:", err);
+          alert("操作失败");
+        }
+      }
+
+      document.addEventListener("DOMContentLoaded", () => {
+        loadLeaderSettlements();
+        loadDriverSettlements();
+
+        document
+          .getElementById("btnMarkAllPaid")
+          .addEventListener("click", markAllPaid);
+
+        document.getElementById("btnExport").addEventListener("click", () => {
+          alert("内存版暂时只做展示，导出功能可以以后接 Excel。");
+        });
+      });
+    </script>
+    <!-- ✅ 统一 sidebar 注入（必须加） -->
+    <script src="/admin/assets/js/admin_sidebar.js"></script>
+  </body>
+</html>

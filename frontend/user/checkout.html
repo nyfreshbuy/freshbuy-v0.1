@@ -1,0 +1,1477 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>结算 - 在鲜购拼好货</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      :root {
+        --primary: #22c55e;
+        --primary-dark: #16a34a;
+        --bg: #f3f4f6;
+        --text-main: #111827;
+        --text-sub: #6b7280;
+        --card-bg: #ffffff;
+        --radius-lg: 18px;
+        --radius-md: 12px;
+        --shadow-sm: 0 4px 12px rgba(15, 23, 42, 0.08);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+          Arial, "Noto Sans", sans-serif;
+        background: var(--bg);
+        color: var(--text-main);
+      }
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+      header {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        background: #ffffff;
+        box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08);
+      }
+      .top-bar {
+        max-width: 1000px;
+        margin: 0 auto;
+        padding: 10px 14px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .top-left {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .logo-badge {
+        width: 30px;
+        height: 30px;
+        border-radius: 999px;
+        background: radial-gradient(circle at 30% 30%, #22c55e, #16a34a);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        font-weight: 700;
+        font-size: 18px;
+        box-shadow: 0 3px 8px rgba(16, 185, 129, 0.7);
+      }
+      .title-main {
+        font-size: 17px;
+        font-weight: 700;
+      }
+      .title-sub {
+        font-size: 11px;
+        color: var(--text-sub);
+      }
+      .btn {
+        border-radius: 999px;
+        border: 1px solid #e5e7eb;
+        background: #ffffff;
+        padding: 6px 10px;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .btn.primary {
+        border-color: transparent;
+        background: linear-gradient(135deg, #22c55e, #16a34a);
+        color: #ffffff;
+        font-weight: 700;
+      }
+      .btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+      .container {
+        max-width: 1000px;
+        margin: 12px auto 24px;
+        padding: 0 14px;
+      }
+      .page-title {
+        font-size: 20px;
+        font-weight: 700;
+        margin: 8px 0 12px;
+      }
+      .layout {
+        display: grid;
+        grid-template-columns: minmax(0, 2.2fr) minmax(0, 1fr);
+        gap: 16px;
+      }
+      @media (max-width: 768px) {
+        .layout {
+          grid-template-columns: minmax(0, 1fr);
+        }
+      }
+      .card {
+        background: var(--card-bg);
+        border-radius: var(--radius-md);
+        box-shadow: var(--shadow-sm);
+        padding: 12px;
+      }
+      .muted {
+        color: var(--text-sub);
+        font-size: 12px;
+      }
+      .items {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .item {
+        display: grid;
+        grid-template-columns: 60px minmax(0, 1fr) 90px;
+        gap: 10px;
+        align-items: center;
+        font-size: 13px;
+      }
+      @media (max-width: 600px) {
+        .item {
+          grid-template-columns: 50px minmax(0, 1fr);
+          grid-template-rows: auto auto;
+        }
+      }
+      .thumb {
+        width: 100%;
+        padding-top: 100%;
+        border-radius: 10px;
+        background: #f3f4f6;
+        position: relative;
+        overflow: hidden;
+      }
+      .thumb img {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      .name {
+        font-size: 14px;
+        font-weight: 700;
+      }
+      .price {
+        color: var(--primary-dark);
+        font-weight: 700;
+      }
+      .sub {
+        font-size: 11px;
+        color: var(--text-sub);
+        margin-top: 2px;
+      }
+      .right {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 6px;
+      }
+      .row {
+        display: flex;
+        justify-content: space-between;
+        margin: 6px 0;
+        font-size: 14px;
+      }
+      .row.muted {
+        font-size: 13px;
+        color: var(--text-sub);
+      }
+      .total {
+        font-weight: 800;
+        font-size: 16px;
+      }
+      .form {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-top: 10px;
+      }
+      .input,
+      .textarea {
+        width: 100%;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 10px 12px;
+        font-size: 14px;
+        outline: none;
+        background: #fff;
+      }
+      .textarea {
+        min-height: 84px;
+        resize: vertical;
+      }
+      .actions {
+        display: flex;
+        gap: 10px;
+        margin-top: 12px;
+      }
+      .actions .btn {
+        flex: 1;
+        padding: 12px 14px;
+        border-radius: 14px;
+        font-size: 15px;
+      }
+      .alert {
+        background: #fff7ed;
+        border: 1px solid #fed7aa;
+        color: #9a3412;
+        padding: 10px 12px;
+        border-radius: 12px;
+        font-size: 13px;
+        margin-bottom: 10px;
+      }
+      .success {
+        background: #ecfdf5;
+        border: 1px solid #a7f3d0;
+        color: #065f46;
+      }
+      .hr {
+        height: 1px;
+        background: #eef2f7;
+        margin: 10px 0;
+      }
+      .mini {
+        font-size: 12px;
+        padding: 6px 8px;
+        border-radius: 10px;
+        border: 1px solid #e5e7eb;
+        background: #fff;
+        cursor: pointer;
+      }
+      .mini:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+      .mini.active {
+        border-color: #16a34a;
+        box-shadow: 0 0 0 2px rgba(22, 163, 74, 0.18);
+      }
+
+      .stripe-box {
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 10px 12px;
+        background: #fff;
+      }
+      #cardErrors {
+        margin-top: 6px;
+      }
+    </style>
+  </head>
+
+  <body>
+    <header>
+      <div class="top-bar">
+        <div class="top-left">
+          <div class="logo-badge">鲜</div>
+          <div>
+            <div class="title-main">在鲜购拼好货</div>
+            <div class="title-sub">结算</div>
+          </div>
+        </div>
+
+        <div class="top-right">
+          <button class="btn" onclick="window.location.href='/user/cart.html'">← 返回购物车</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="container">
+      <h1 class="page-title">订单结算</h1>
+
+      <div id="topAlert" class="alert" style="display: none"></div>
+
+      <div class="layout">
+        <!-- 左：商品列表 -->
+        <section class="card">
+          <div style="display: flex; justify-content: space-between; gap: 10px">
+            <div>
+              <div style="font-weight: 800">商品清单</div>
+              <div class="muted" id="modeTip">—</div>
+            </div>
+            <div class="muted" id="itemsCount">0 件</div>
+          </div>
+
+          <div class="hr"></div>
+
+          <div id="itemsList" class="items"></div>
+
+          <div class="hr"></div>
+
+          <div class="muted">
+            提示：钱包支付走 /api/orders/checkout；Stripe 支付走 /api/pay/stripe/order-intent。
+          </div>
+        </section>
+
+        <!-- 右：收货信息 + 金额 -->
+        <aside class="card">
+          <div style="font-weight: 800">收货信息</div>
+
+          <div class="form" id="shippingFormV2">
+            <div class="muted" style="line-height: 1.4">
+              Street Address 输入后请从下拉建议中选择，完成验证并生成坐标（placeId + lat/lng）。
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px">
+              <div>
+                <div class="muted" style="margin: 4px 0">名 (First Name)</div>
+                <input id="firstName" class="input" placeholder="例如：Ming" />
+              </div>
+              <div>
+                <div class="muted" style="margin: 4px 0">姓 (Last Name)</div>
+                <input id="lastName" class="input" placeholder="例如：Li" />
+              </div>
+            </div>
+
+            <div>
+              <div class="muted" style="margin: 4px 0">电话 (Phone)</div>
+              <input id="shipPhone" class="input" placeholder="例如：+1 917..." />
+            </div>
+
+            <div>
+              <div class="muted" style="margin: 4px 0">街道地址 (Street Address)</div>
+              <input id="street" class="input" placeholder="例如：199-26 48th Ave" />
+              <div class="muted" style="margin-top: 6px; display: flex; justify-content: space-between; gap: 10px">
+                <span>提示：请从下拉中选中地址（验证必需）。</span>
+                <button class="mini" id="btnClearAddr" type="button">清空地址</button>
+              </div>
+            </div>
+
+            <div>
+              <div class="muted" style="margin: 4px 0">公寓号 (Apt / Suite)（可选）</div>
+              <input id="apt" class="input" placeholder="例如：Apt 2B（可不填）" />
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px">
+              <div>
+                <div class="muted" style="margin: 4px 0">城市 (City)</div>
+                <input id="city" class="input" placeholder="例如：Fresh Meadows" />
+              </div>
+              <div>
+                <div class="muted" style="margin: 4px 0">州 (State)</div>
+                <select id="state" class="input">
+                  <option value="">请选择</option>
+                  <option value="NY">NY</option>
+                  <option value="NJ">NJ</option>
+                  <option value="CT">CT</option>
+                  <option value="PA">PA</option>
+                </select>
+              </div>
+              <div>
+                <div class="muted" style="margin: 4px 0">邮编 (ZIP)</div>
+                <input id="zip" class="input" placeholder="例如：11365" />
+              </div>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 10px; margin-top: 4px">
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer">
+                <input id="setAsDefault" type="checkbox" />
+                <span class="muted">设为默认地址</span>
+              </label>
+            </div>
+
+            <div>
+              <div class="muted" style="margin: 4px 0">备注（可选）</div>
+              <textarea id="note" class="textarea" placeholder="门口放置、按门铃、联系号码等"></textarea>
+            </div>
+
+            <input id="addrLat" type="hidden" />
+            <input id="addrLng" type="hidden" />
+            <input id="addrFullText" type="hidden" />
+            <input id="addrPlaceId" type="hidden" />
+          </div>
+
+          <div class="hr"></div>
+
+          <div style="font-weight: 800">金额明细</div>
+          <div class="row muted">
+            <span>商品件数</span>
+            <span id="sumQty">0</span>
+          </div>
+          <div class="row muted">
+            <span>商品小计</span>
+            <span id="sumSubtotal">$0.00</span>
+          </div>
+          <div class="row muted">
+            <span>预计配送费</span>
+            <span id="sumShipping">$0.00</span>
+          </div>
+
+          <div class="row muted">
+            <span>纽约销售税</span>
+            <span id="sumTax">$0.00</span>
+          </div>
+          <div class="row muted">
+            <span>平台服务费（2%）</span>
+            <span id="sumService">$0.00</span>
+          </div>
+          <div class="row muted">
+            <span>小费（可选）</span>
+            <span id="sumTip">$0.00</span>
+          </div>
+
+          <div class="hr"></div>
+          <div style="font-weight: 800">给配送员小费（可选）</div>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px">
+            <button class="mini tip-btn active" data-tip="0" type="button">0</button>
+            <button class="mini tip-btn" data-tip="4.99" type="button">$4.99</button>
+            <button class="mini tip-btn" data-tip="7.99" type="button">$7.99</button>
+            <button class="mini tip-btn" data-tip="9.99" type="button">$9.99</button>
+            <input
+              id="customTip"
+              class="input"
+              style="width: 90px; padding: 6px 8px; font-size: 12px"
+              placeholder="自定义"
+            />
+          </div>
+          <div class="muted" style="margin-top: 6px; line-height: 1.4">
+            提示：选择/输入小费后，右侧金额会实时更新。
+          </div>
+
+          <div class="hr"></div>
+          <div class="row">
+            <span>预计需支付</span>
+            <span class="total" id="sumGrand">$0.00</span>
+          </div>
+
+          <div class="hr"></div>
+
+          <div style="font-weight: 800">支付方式</div>
+
+          <div class="row muted">
+            <span>钱包余额</span>
+            <span id="walletBalanceText">—</span>
+          </div>
+          <div class="muted" id="walletHint" style="margin-top: 4px; line-height: 1.4">请选择支付方式后提交订单。</div>
+
+          <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 10px">
+            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer">
+              <input type="radio" name="payMethod" value="wallet" id="payWallet" checked />
+              <div>
+                <div style="font-weight: 700">钱包余额支付</div>
+                <div class="muted">余额足够时可直接完成支付并下单（不收平台服务费）</div>
+              </div>
+            </label>
+
+            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer">
+              <input type="radio" name="payMethod" value="stripe" id="payStripe" />
+              <div>
+                <div style="font-weight: 700">信用卡 / Apple Pay（Stripe）</div>
+                <div class="muted">需要走 Stripe 时会收平台服务费（2%）</div>
+              </div>
+            </label>
+
+            <button class="btn" id="btnGoRecharge" type="button" style="display: none">去充值</button>
+          </div>
+
+          <div id="stripeArea" style="display: none; margin-top: 10px">
+            <div class="muted" style="margin-bottom: 6px">卡信息（Stripe）</div>
+            <div class="stripe-box" id="paymentElement"></div>
+            <div class="muted" id="cardErrors"></div>
+          </div>
+
+          <div id="checkoutDeliveryModeBox"></div>
+
+          <div class="actions">
+            <button class="btn" onclick="window.location.href='/user/index.html'">返回继续选购</button>
+            <button class="btn primary" id="btnPlaceOrder" type="button">提交订单</button>
+          </div>
+
+          <div class="muted" style="margin-top: 10px" id="ruleHint">—</div>
+        </aside>
+      </div>
+    </main>
+
+    <!-- ✅ 必须先加载 cart.js：否则结算页不更新配送费/区域团 -->
+    <script src="/assets/js/cart.js"></script>
+
+    <script>
+      // ========= 工具 =========
+      function money(n) {
+        return "$" + Number(n || 0).toFixed(2);
+      }
+      function safeJsonParse(str, fallback) {
+        try {
+          return JSON.parse(str);
+        } catch {
+          return fallback;
+        }
+      }
+      function showAlert(msg, ok) {
+        const el = document.getElementById("topAlert");
+        el.style.display = "block";
+        el.className = "alert" + (ok ? " success" : "");
+        el.textContent = msg;
+      }
+      function hideAlert() {
+        const el = document.getElementById("topAlert");
+        el.style.display = "none";
+      }
+
+      const LS_DEFAULT_ADDR_KEY = "defaultAddress_v2";
+      const PREF_MODE_KEY = "freshbuy_pref_mode";
+      const ZONE_LS_KEY = "freshbuy_zone";
+      const CART_LS_KEY = "fresh_cart_v1";
+
+      function getToken() {
+        return (
+          localStorage.getItem("freshbuy_token") ||
+          localStorage.getItem("token") ||
+          localStorage.getItem("auth_token") ||
+          ""
+        );
+      }
+
+      function safeNum(v, fallback = 0) {
+        const n = Number(v);
+        return Number.isFinite(n) ? n : fallback;
+      }
+
+      // ========= ✅ 税/服务费/小费 =========
+      // NYC 常用 8.875%，先按这个；以后可按 ZIP 精确
+      const NY_TAX_RATE = 0.08875;
+      const SERVICE_FEE_RATE = 0.02;
+
+      // 小费状态（按钮/自定义会更新）
+      let currentTip = 0;
+
+      // ✅ 缓存钱包余额：用于判断“钱包足够就不收平台服务费”
+      let lastWalletBalance = null;
+
+      function getPayMethod() {
+        return document.querySelector('input[name="payMethod"]:checked')?.value || "wallet";
+      }
+
+      function calcFinalAmount(snapshot) {
+        if (!snapshot) return { tax: 0, serviceFee: 0, tip: 0, grand: 0 };
+
+        const items = Array.isArray(snapshot.items) ? snapshot.items : [];
+        const subtotal = safeNum(snapshot.subtotal, 0);
+        const shipping = safeNum(snapshot.shipping, 0);
+
+        // 1) taxable 小计（✅ 兼容 taxable / hasTax）
+        let taxableAmount = 0;
+        for (const it of items) {
+          const qty = safeNum(it.qty, 1);
+          const price = safeNum(it.priceNum ?? it.price, 0);
+          const taxable =
+            it.taxable === true ||
+            it.taxable === "true" ||
+            it.hasTax === true ||
+            it.hasTax === "true";
+          if (taxable) taxableAmount += price * qty;
+        }
+
+        // 2) 只有 NY 才算税（目前按州判断）
+        const state = (document.getElementById("state")?.value || "").trim();
+        const tax = state === "NY" ? taxableAmount * NY_TAX_RATE : 0;
+
+        // 3) 平台服务费规则：
+        // - 钱包支付且余额足够覆盖（不含服务费）→ 服务费=0
+        // - 只要需要走 Stripe（余额不足或用户选 Stripe）→ 服务费= subtotal * 2%
+        const payMethod = getPayMethod(); // wallet | stripe
+        const baseGrand = subtotal + shipping + tax + currentTip;
+
+        const willNeedStripe =
+          payMethod === "stripe" ||
+          (typeof lastWalletBalance === "number" && lastWalletBalance < baseGrand);
+
+        const serviceFee = willNeedStripe ? subtotal * SERVICE_FEE_RATE : 0;
+
+        // 4) 总计
+        const grand = baseGrand + serviceFee;
+
+        return {
+          tax: Number(tax.toFixed(2)),
+          serviceFee: Number(serviceFee.toFixed(2)),
+          tip: Number(currentTip.toFixed(2)),
+          grand: Number(grand.toFixed(2)),
+          taxableAmount: Number(taxableAmount.toFixed(2)),
+        };
+      }
+
+      function renderExtra(extra) {
+        document.getElementById("sumTax").textContent = money(extra.tax);
+        document.getElementById("sumService").textContent = money(extra.serviceFee);
+        document.getElementById("sumTip").textContent = money(extra.tip);
+        document.getElementById("sumGrand").textContent = money(extra.grand);
+      }
+
+      // ========= 区域配置：给结算页计算用（与 cart.js 同口径） =========
+      const DEFAULT_ZONE = {
+        id: "zone_freshmeadows",
+        name: "Fresh Meadows",
+        enabled: true,
+        normal: { enabled: true, shippingFee: 4.99, minAmount: 49.99, note: "次日配送需满 $49.99，运费 $4.99" },
+        groupDay: {
+          enabled: true,
+          freeThreshold: 49.99,
+          shippingFee: 4.99,
+          note: "区域团购：满 $49.99 免运费，未满收取 $4.99 运费",
+        },
+        friendGroup: { enabled: true, minAmount: 29, shippingFee: 4.99, note: "好友拼单：分享链接一起下单，系统将按人数平摊运费" },
+      };
+
+      function normalizeZone(z) {
+        if (!z || typeof z !== "object") return DEFAULT_ZONE;
+        return {
+          ...DEFAULT_ZONE,
+          ...z,
+          normal: { ...DEFAULT_ZONE.normal, ...(z.normal || {}) },
+          groupDay: { ...DEFAULT_ZONE.groupDay, ...(z.groupDay || {}) },
+          friendGroup: { ...DEFAULT_ZONE.friendGroup, ...(z.friendGroup || {}) },
+        };
+      }
+
+      function getZoneFromLS() {
+        const raw = localStorage.getItem(ZONE_LS_KEY);
+        const z = raw ? safeJsonParse(raw, null) : null;
+        return normalizeZone(z || DEFAULT_ZONE);
+      }
+
+      // ========= 商品判断（与 cart.js 兼容） =========
+      function isDealLike(p) {
+        if (!p) return false;
+        if (p.isDeal === true || p.isSpecial === true || p.isHot === true) return true;
+        if (String(p.tag || "").includes("爆品")) return true;
+        if (String(p.type || "").toLowerCase() === "hot") return true;
+        return false;
+      }
+
+      function pickImageUrl(item, index) {
+        const raw =
+          (item.image && String(item.image).trim()) ||
+          (item.imageUrl && String(item.imageUrl).trim()) ||
+          (item.cover && String(item.cover).trim()) ||
+          (Array.isArray(item.images) && item.images[0] ? String(item.images[0]).trim() : "") ||
+          "";
+        if (!raw) return "https://picsum.photos/seed/" + encodeURIComponent(item.id || item._id || "x" + index) + "/200/200";
+        if (/^https?:\/\//i.test(raw)) return raw;
+        if (raw.startsWith("/")) return location.origin + raw;
+        return raw;
+      }
+
+      // ========= 从 Cart / localStorage 取 items =========
+      function getItemsFromCart() {
+        try {
+          if (window.Cart && typeof window.Cart.getState === "function") {
+            const st = window.Cart.getState();
+            const items = Array.isArray(st?.items) ? st.items : [];
+            return items.map((it) => {
+              const p = it.product || {};
+              return {
+                ...p,
+                qty: Number(it.qty || 1),
+              };
+            });
+          }
+        } catch {}
+
+        const raw = localStorage.getItem(CART_LS_KEY);
+        const cart = raw ? safeJsonParse(raw, null) : null;
+        const items = Array.isArray(cart?.items) ? cart.items : [];
+        return items.map((it) => ({ ...(it.product || {}), qty: Number(it.qty || 1) }));
+      }
+
+      function calcSubtotal(items) {
+        return items.reduce((sum, it) => {
+          const qty = Number(it.qty || 1);
+          const price = Number(it.priceNum ?? it.price ?? 0);
+          return sum + price * qty;
+        }, 0);
+      }
+
+      function getPreferredMode() {
+        const v = String(localStorage.getItem(PREF_MODE_KEY) || "groupDay").trim();
+        if (v === "area-group") return "groupDay";
+        if (v === "next-day") return "normal";
+        if (v === "friend-group") return "friendGroup";
+        if (v === "groupDay" || v === "normal" || v === "friendGroup" || v === "dealsDay") return v;
+        return "groupDay";
+      }
+
+      // ========= 核心：结算页重算（跟 cart.js 规则一致） =========
+      function computeCheckoutSnapshot() {
+        const zone = getZoneFromLS();
+        const items = getItemsFromCart();
+        if (!items.length) return null;
+
+        const totalQty = items.reduce((s, it) => s + Number(it.qty || 0), 0);
+        const subtotal = calcSubtotal(items);
+
+        const hasDeal = items.some((it) => isDealLike(it));
+        const hasNonDeal = items.some((it) => !isDealLike(it));
+
+        let mode = getPreferredMode();
+        let shipping = 0;
+        let canSubmit = true;
+        let ruleHint = "";
+
+        // 1) 纯爆品：✅ 改为 dealsDay（后端 rules：dealsDay 只能包含爆品）
+        if (hasDeal && !hasNonDeal) {
+          mode = "dealsDay";
+          shipping = 0;
+          ruleHint = "规则：纯爆品订单为爆品日配送，本单免运费，可结算。";
+        }
+        // 2) 混合：强制 groupDay，按门槛（未满可结算但收运费）
+        else if (hasDeal && hasNonDeal) {
+          mode = "groupDay";
+          const th = safeNum(zone.groupDay?.freeThreshold, 49.99);
+          const fee = safeNum(zone.groupDay?.shippingFee, 4.99);
+          shipping = subtotal >= th ? 0 : fee;
+          ruleHint =
+            subtotal >= th
+              ? `规则：爆品+普通已满 $${th.toFixed(2)}，区域团免运费，可结算。`
+              : `规则：爆品+普通按区域团规则：未满 $${th.toFixed(2)} 收取运费 $${fee.toFixed(2)}，可结算。`;
+        }
+        // 3) 全是非爆：根据偏好 normal / friendGroup / groupDay
+        else {
+          const pref = getPreferredMode();
+
+          if (pref === "normal" && zone.normal?.enabled) {
+            mode = "normal";
+            const min = safeNum(zone.normal?.minAmount, 49.99);
+            const fee = safeNum(zone.normal?.shippingFee, 4.99);
+            shipping = fee;
+            canSubmit = subtotal >= min;
+            ruleHint = canSubmit
+              ? `规则：次日配送满 $${min.toFixed(2)} 可结算，运费 $${fee.toFixed(2)}。`
+              : `规则：次日配送需满 $${min.toFixed(2)} 才能结算（未满不可结算）。`;
+          } else if (pref === "friendGroup" && zone.friendGroup?.enabled) {
+            mode = "friendGroup";
+            const min = safeNum(zone.friendGroup?.minAmount, 29);
+            const fee = safeNum(zone.friendGroup?.shippingFee, 4.99);
+            shipping = fee;
+            canSubmit = subtotal >= min;
+            ruleHint = canSubmit
+              ? `规则：好友拼单最低 $${min.toFixed(2)} 可结算，运费将按人数分摊（此处先显示基础运费 $${fee.toFixed(2)}）。`
+              : `规则：好友拼单需满 $${min.toFixed(2)} 才能结算（未满不可结算）。`;
+          } else {
+            mode = "groupDay";
+            const th = safeNum(zone.groupDay?.freeThreshold, 49.99);
+            const fee = safeNum(zone.groupDay?.shippingFee, 4.99);
+            shipping = subtotal >= th ? 0 : fee;
+            ruleHint =
+              subtotal >= th
+                ? `规则：区域团满 $${th.toFixed(2)} 免运费，可结算。`
+                : `规则：区域团未满 $${th.toFixed(2)} 收取运费 $${fee.toFixed(2)}，可结算。`;
+          }
+        }
+
+        try {
+          localStorage.setItem(PREF_MODE_KEY, mode);
+        } catch {}
+
+        const grand = subtotal + shipping;
+
+        return {
+          mode,
+          zone,
+          items,
+          totalQty,
+          subtotal: Number(subtotal.toFixed(2)),
+          shipping: Number(shipping.toFixed(2)),
+          grand: Number(grand.toFixed(2)),
+          canSubmit,
+          ruleHint,
+        };
+      }
+
+      function modeText(mode, zoneName) {
+        if (mode === "groupDay") return "区域团拼单配送" + (zoneName ? `（${zoneName}）` : "");
+        if (mode === "friendGroup") return "好友拼单配送";
+        if (mode === "normal") return "次日配送";
+        if (mode === "dealsDay") return "爆品日配送";
+        return mode;
+      }
+
+      // ========= 渲染 =========
+      function render(snapshot) {
+        const itemsList = document.getElementById("itemsList");
+        const itemsCount = document.getElementById("itemsCount");
+        const modeTip = document.getElementById("modeTip");
+        const sumQty = document.getElementById("sumQty");
+        const sumSubtotal = document.getElementById("sumSubtotal");
+        const sumShipping = document.getElementById("sumShipping");
+        const ruleHint = document.getElementById("ruleHint");
+        const btnPlaceOrder = document.getElementById("btnPlaceOrder");
+
+        itemsList.innerHTML = "";
+        const items = snapshot.items || [];
+
+        itemsCount.textContent = (snapshot.totalQty || 0) + " 件";
+        modeTip.textContent = "配送方式：" + modeText(snapshot.mode, snapshot.zone?.name || "");
+
+        items.forEach((item, index) => {
+          const qty = Number(item.qty || 1);
+          const price = Number(item.priceNum || item.price || 0);
+
+          const imgUrl = pickImageUrl(item, index);
+          const fallback = "https://picsum.photos/seed/" + encodeURIComponent(item.id || item._id || "x" + index) + "/200/200";
+
+          const showTax = item.taxable === true || item.hasTax === true;
+
+          const el = document.createElement("div");
+          el.className = "item";
+          el.innerHTML = `
+            <div class="thumb">
+              <img src="${imgUrl}" alt="${(item.name || "").replace(/"/g, "&quot;")}"
+                   onerror="this.onerror=null;this.src='${fallback}';" />
+            </div>
+            <div>
+              <div class="name">${item.name || ""}</div>
+              <div class="sub">
+                单价 <span class="price">${money(price)}</span> · 数量 ${qty}
+                ${isDealLike(item) ? " · 爆品" : ""}
+                ${showTax ? " · 需税" : ""}
+              </div>
+              <div class="sub">商品编号：${item.id || item._id || "--"}</div>
+            </div>
+            <div class="right">
+              <div class="sub">小计</div>
+              <div style="font-weight:800">${money(price * qty)}</div>
+            </div>
+          `;
+          itemsList.appendChild(el);
+        });
+
+        sumQty.textContent = String(snapshot.totalQty || 0);
+        sumSubtotal.textContent = money(snapshot.subtotal || 0);
+        sumShipping.textContent = money(snapshot.shipping || 0);
+
+        ruleHint.textContent = snapshot.ruleHint || "—";
+
+        btnPlaceOrder.disabled = !snapshot.canSubmit;
+
+        if (!snapshot.canSubmit) {
+          showAlert("当前未满足最低消费条件，暂不可提交订单。请返回购物车调整商品数量/金额。", false);
+        } else {
+          hideAlert();
+        }
+      }
+
+      // ========= 钱包余额 =========
+      async function fetchWalletBalance() {
+        const token = getToken();
+        if (!token) return null;
+
+        const candidates = ["/api/users/me", "/api/user/me", "/api/wallet/me", "/api/wallet", "/api/recharge/balance"];
+        for (const url of candidates) {
+          try {
+            const res = await fetch(url, { headers: { Authorization: "Bearer " + token }, cache: "no-store" });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) continue;
+
+            const v =
+              data.walletBalance ??
+              data.balance ??
+              data.wallet ??
+              data.user?.walletBalance ??
+              data.user?.balance ??
+              data.data?.walletBalance ??
+              data.data?.balance;
+
+            if (v != null && Number.isFinite(Number(v))) return Number(v);
+          } catch {}
+        }
+        return null;
+      }
+
+      function setWalletUI(balance, needPay) {
+        const balEl = document.getElementById("walletBalanceText");
+        const hintEl = document.getElementById("walletHint");
+        const btnRecharge = document.getElementById("btnGoRecharge");
+
+        if (balEl) balEl.textContent = balance == null ? "—" : money(balance);
+
+        if (balance == null) {
+          if (hintEl) hintEl.textContent = "未读取到钱包余额（可能未登录或余额接口未接好）。";
+          if (btnRecharge) btnRecharge.style.display = "none";
+          return;
+        }
+
+        if (balance < needPay) {
+          if (hintEl) hintEl.textContent = `余额不足：需要 ${money(needPay)}，当前 ${money(balance)}。请选择 Stripe 或先充值。`;
+          if (btnRecharge) btnRecharge.style.display = "inline-block";
+        } else {
+          if (hintEl) hintEl.textContent = `余额充足：可直接钱包支付 ${money(needPay)}（不收平台服务费）。`;
+          if (btnRecharge) btnRecharge.style.display = "none";
+        }
+      }
+
+      // ========= 表单 =========
+      function getFormUS() {
+        const firstName = document.getElementById("firstName").value.trim();
+        const lastName = document.getElementById("lastName").value.trim();
+        const phone = document.getElementById("shipPhone").value.trim();
+        const street1 = document.getElementById("street").value.trim();
+        const apt = document.getElementById("apt").value.trim();
+        const city = document.getElementById("city").value.trim();
+        const state = document.getElementById("state").value.trim();
+        const zip = document.getElementById("zip").value.trim();
+        const note = document.getElementById("note").value.trim();
+        const lat = Number(document.getElementById("addrLat").value);
+        const lng = Number(document.getElementById("addrLng").value);
+        const fullText = document.getElementById("addrFullText").value.trim();
+        const placeId = document.getElementById("addrPlaceId").value.trim();
+        return { firstName, lastName, phone, street1, apt, city, state, zip, note, lat, lng, fullText, placeId };
+      }
+
+      function addrLineUS() {
+        const f = getFormUS();
+        const addrLine = [f.street1, f.apt].filter(Boolean).join(", ");
+        const full = [addrLine, f.city, f.state, f.zip].filter(Boolean).join(", ");
+        return { addrLine, full };
+      }
+
+      function saveDefaultLocal(a) {
+        localStorage.setItem(LS_DEFAULT_ADDR_KEY, JSON.stringify(a));
+      }
+      function loadDefaultLocal() {
+        const a = safeJsonParse(localStorage.getItem(LS_DEFAULT_ADDR_KEY) || "null", null);
+        if (!a) return;
+        if (a.firstName != null) document.getElementById("firstName").value = a.firstName;
+        if (a.lastName != null) document.getElementById("lastName").value = a.lastName;
+        if (a.phone != null) document.getElementById("shipPhone").value = a.phone;
+        if (a.street1 != null) document.getElementById("street").value = a.street1;
+        if (a.apt != null) document.getElementById("apt").value = a.apt;
+        if (a.city != null) document.getElementById("city").value = a.city;
+        if (a.state != null) document.getElementById("state").value = a.state;
+        if (a.zip != null) document.getElementById("zip").value = a.zip;
+        if (typeof a.lat === "number") document.getElementById("addrLat").value = String(a.lat);
+        if (typeof a.lng === "number") document.getElementById("addrLng").value = String(a.lng);
+        if (a.fullText) document.getElementById("addrFullText").value = String(a.fullText);
+        if (a.placeId) document.getElementById("addrPlaceId").value = String(a.placeId);
+      }
+
+      async function fetchDefaultAddressFromDB() {
+        const token = getToken();
+        if (!token) return null;
+        const res = await fetch("/api/addresses/my", { headers: { Authorization: "Bearer " + token }, cache: "no-store" });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.success) return null;
+        const d = data.defaultAddress || null;
+        if (!d) return null;
+        return {
+          firstName: d.firstName || "",
+          lastName: d.lastName || "",
+          phone: d.phone || "",
+          street1: d.street1 || "",
+          apt: d.apt || "",
+          city: d.city || "",
+          state: d.state || "",
+          zip: d.zip || "",
+          lat: typeof d.lat === "number" ? d.lat : undefined,
+          lng: typeof d.lng === "number" ? d.lng : undefined,
+          fullText: d.formattedAddress || "",
+          placeId: d.placeId || "",
+        };
+      }
+
+      async function checkZipSupported(zip) {
+        const res = await fetch("/api/addresses/check-zip", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ zip }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.success) throw new Error(data.message || "Check zip failed");
+        return data.supported === true;
+      }
+
+      function clearAddressSelection() {
+        document.getElementById("addrLat").value = "";
+        document.getElementById("addrLng").value = "";
+        document.getElementById("addrFullText").value = "";
+        document.getElementById("addrPlaceId").value = "";
+      }
+
+      function initPlaces() {
+        if (!(window.google && google.maps && google.maps.places)) return;
+
+        const input = document.getElementById("street");
+        const ac = new google.maps.places.Autocomplete(input, {
+          types: ["address"],
+          componentRestrictions: { country: "us" },
+          fields: ["place_id", "address_components", "formatted_address", "geometry"],
+        });
+
+        ac.addListener("place_changed", () => {
+          const p = ac.getPlace();
+          if (!p || !p.place_id) return;
+
+          document.getElementById("addrPlaceId").value = p.place_id;
+
+          const getComp = (type) => {
+            const cs = p.address_components || [];
+            const c = cs.find((x) => (x.types || []).includes(type));
+            return c ? (c.short_name || c.long_name) : "";
+          };
+
+          const streetNumber = getComp("street_number");
+          const route = getComp("route");
+          const city =
+            getComp("locality") ||
+            getComp("sublocality") ||
+            getComp("sublocality_level_1") ||
+            getComp("administrative_area_level_3");
+          const state = getComp("administrative_area_level_1");
+          const zip = getComp("postal_code");
+
+          const street1 = [streetNumber, route].filter(Boolean).join(" ").trim();
+          if (street1) document.getElementById("street").value = street1;
+          if (city) document.getElementById("city").value = city;
+          if (state) document.getElementById("state").value = state;
+          if (zip) document.getElementById("zip").value = zip;
+
+          const lat = p.geometry?.location?.lat?.();
+          const lng = p.geometry?.location?.lng?.();
+          if (typeof lat === "number") document.getElementById("addrLat").value = String(lat);
+          if (typeof lng === "number") document.getElementById("addrLng").value = String(lng);
+
+          const formatted = p.formatted_address || "";
+          const full = addrLineUS().full;
+          document.getElementById("addrFullText").value = formatted || full;
+
+          refreshAll();
+        });
+
+        input.addEventListener("input", () => {
+          clearAddressSelection();
+          refreshAll();
+        });
+      }
+
+      async function verifyAddress() {
+        const f = getFormUS();
+        const { full } = addrLineUS();
+        if (!f.street1 || !f.city || !f.state || !f.zip) {
+          showAlert("请完整填写：Street / City / State / ZIP。", false);
+          return false;
+        }
+        const lat = Number(document.getElementById("addrLat").value);
+        const lng = Number(document.getElementById("addrLng").value);
+        const placeId = document.getElementById("addrPlaceId").value.trim();
+        if (!placeId || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+          showAlert("请在 Street Address 输入后，从下拉建议中选择一个地址（用于验证）。", false);
+          return false;
+        }
+        const ok = await checkZipSupported(f.zip);
+        if (!ok) {
+          showAlert("该 ZIP 暂不支持配送。", false);
+          return false;
+        }
+        document.getElementById("addrFullText").value = document.getElementById("addrFullText").value || full;
+        return true;
+      }
+
+      async function saveAsDefaultAddress() {
+        const token = getToken();
+        if (!token) return;
+        const ok = await verifyAddress();
+        if (!ok) return;
+
+        const f = getFormUS();
+        const { addrLine, full } = addrLineUS();
+
+        const lat = Number(document.getElementById("addrLat").value);
+        const lng = Number(document.getElementById("addrLng").value);
+        const placeId = document.getElementById("addrPlaceId").value.trim();
+        const formattedAddress = document.getElementById("addrFullText").value || full;
+
+        const payload = {
+          address: {
+            contactName: [f.firstName, f.lastName].filter(Boolean).join(" ").trim(),
+            contactPhone: f.phone,
+            addressLine: addrLine,
+            city: f.city,
+            state: f.state,
+            zip: f.zip,
+            placeId,
+            formattedAddress,
+            lat,
+            lng,
+            note: f.note || "",
+          },
+        };
+
+        const res = await fetch("/api/addresses/default", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+          body: JSON.stringify(payload),
+        });
+
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.success) return;
+
+        saveDefaultLocal({
+          firstName: f.firstName,
+          lastName: f.lastName,
+          phone: f.phone,
+          street1: f.street1,
+          apt: f.apt,
+          city: f.city,
+          state: f.state,
+          zip: f.zip,
+          lat,
+          lng,
+          fullText: formattedAddress,
+          placeId,
+        });
+      }
+
+      // ========= Stripe =========
+      let stripe = null;
+      let elements = null;
+      let paymentElement = null;
+      let stripeReady = false;
+
+      async function initStripeUI() {
+        try {
+          const res = await fetch("/api/pay/stripe/publishable-key", { cache: "no-store" });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || !data.success || !data.key) {
+            stripeReady = false;
+            return;
+          }
+          stripe = Stripe(data.key);
+          stripeReady = true;
+        } catch {
+          stripeReady = false;
+        }
+      }
+
+      async function mountStripeElements(clientSecret) {
+        if (!stripeReady || !stripe) throw new Error("Stripe 未初始化（publishable key 未获取到）");
+        elements = stripe.elements({ clientSecret });
+        paymentElement = elements.create("payment");
+        const mountEl = document.getElementById("paymentElement");
+        mountEl.innerHTML = "";
+        paymentElement.mount(mountEl);
+      }
+
+      function setStripeAreaVisible(v) {
+        const box = document.getElementById("stripeArea");
+        box.style.display = v ? "block" : "none";
+      }
+
+      // ========= 下单 =========
+      async function placeOrder() {
+        const snapshot = computeCheckoutSnapshot();
+        if (!snapshot) return showAlert("购物车为空，无法下单。", false);
+
+        const token = getToken();
+        if (!token) return showAlert("未登录：没有 token。请先登录再下单。", false);
+
+        if (!snapshot.canSubmit) return showAlert("未满足最低消费条件，暂不可下单。", false);
+
+        const f = getFormUS();
+        if (!f.firstName || !f.lastName || !f.phone) return showAlert("请填写 First Name / Last Name / Phone。", false);
+        if (!f.street1 || !f.city || !f.state || !f.zip) return showAlert("请完整填写 Street / City / State / ZIP。", false);
+
+        const lat = Number(document.getElementById("addrLat").value);
+        const lng = Number(document.getElementById("addrLng").value);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return showAlert("请从 Places 下拉选择地址（生成坐标）。", false);
+
+        if (document.getElementById("setAsDefault").checked) {
+          try {
+            await saveAsDefaultAddress();
+          } catch {}
+        }
+
+        const { addrLine, full } = addrLineUS();
+        const fullText = document.getElementById("addrFullText").value || full;
+        const placeId = document.getElementById("addrPlaceId").value.trim();
+
+        // ✅ 最终金额（含税/服务费/小费）
+        const extra = calcFinalAmount(snapshot);
+
+        const payload = {
+          mode: snapshot.mode,
+          zoneId: snapshot.zone?.id || "",
+          zoneName: snapshot.zone?.name || "",
+          items: (snapshot.items || []).map((it) => {
+            const isTax = it.taxable === true || it.hasTax === true;
+            return {
+              productId: it._id || it.id,
+              name: it.name,
+              qty: Number(it.qty || 1),
+              price: Number(it.priceNum || it.price || 0),
+              image:
+                it.image ||
+                it.imageUrl ||
+                it.cover ||
+                (Array.isArray(it.images) ? it.images[0] : "") ||
+                "",
+              isSpecial: !!isDealLike(it),
+
+              // ✅ 同时发 taxable + hasTax（后端/前端都能识别）
+              taxable: isTax,
+              hasTax: isTax,
+            };
+          }),
+          shipping: {
+            firstName: f.firstName,
+            lastName: f.lastName,
+            phone: f.phone,
+            street1: f.street1,
+            apt: f.apt || "",
+            city: f.city,
+            state: f.state,
+            zip: f.zip,
+            addressLine: addrLine,
+            fullText,
+            placeId: placeId || "",
+            lat,
+            lng,
+            note: f.note || "",
+          },
+
+          // ✅ 给后端参考（最终以你后端为准）
+          pricing: {
+            subtotal: Number(snapshot.subtotal || 0),
+            shippingFee: Number(snapshot.shipping || 0),
+            taxableAmount: Number(extra.taxableAmount || 0),
+            tax: Number(extra.tax || 0),
+            serviceFee: Number(extra.serviceFee || 0),
+            tip: Number(extra.tip || 0),
+            total: Number(extra.grand || 0),
+            taxRate: (document.getElementById("state")?.value || "") === "NY" ? NY_TAX_RATE : 0,
+            serviceRate: SERVICE_FEE_RATE,
+          },
+
+          source: "web_checkout",
+        };
+
+        const method = getPayMethod();
+        const btn = document.getElementById("btnPlaceOrder");
+
+        try {
+          btn.disabled = true;
+
+          if (method === "wallet") {
+            showAlert("钱包支付：正在提交订单…", true);
+            const res = await fetch("/api/orders/checkout", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+              body: JSON.stringify(payload),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data.success) {
+              btn.disabled = false;
+              return showAlert(data.message || "下单失败", false);
+            }
+
+            try {
+              localStorage.setItem(CART_LS_KEY, JSON.stringify({ items: [], mode: "groupDay" }));
+            } catch {}
+            showAlert("下单成功（钱包支付）✅ 正在跳转…", true);
+            setTimeout(() => (window.location.href = "/user/user_center.html"), 500);
+            return;
+          }
+
+          if (method === "stripe") {
+            if (!stripeReady) {
+              btn.disabled = false;
+              return showAlert("Stripe 未准备好：请检查后端 /api/pay/stripe/publishable-key", false);
+            }
+
+            showAlert("Stripe：正在创建支付…", true);
+            const res = await fetch("/api/pay/stripe/order-intent", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+              body: JSON.stringify(payload),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data.success || !data.clientSecret) {
+              btn.disabled = false;
+              return showAlert(data.message || "创建 Stripe 支付失败", false);
+            }
+
+            setStripeAreaVisible(true);
+            await mountStripeElements(data.clientSecret);
+
+            showAlert("Stripe：请完成支付确认…", true);
+            const result = await stripe.confirmPayment({
+              elements,
+              confirmParams: {},
+              redirect: "if_required",
+            });
+
+            if (result.error) {
+              btn.disabled = false;
+              document.getElementById("cardErrors").textContent = result.error.message || "支付失败";
+              return showAlert(result.error.message || "支付失败", false);
+            }
+
+            document.getElementById("cardErrors").textContent = "";
+            showAlert("支付成功 ✅ 正在清空购物车并跳转…", true);
+
+            try {
+              localStorage.setItem(CART_LS_KEY, JSON.stringify({ items: [], mode: "groupDay" }));
+            } catch {}
+            setTimeout(() => (window.location.href = "/user/user_center.html"), 600);
+            return;
+          }
+
+          btn.disabled = false;
+          showAlert("未知支付方式", false);
+        } catch (e) {
+          console.error(e);
+          btn.disabled = false;
+          showAlert(e.message || "网络异常：无法提交订单", false);
+        }
+      }
+
+      // ========= 统一刷新入口 =========
+      function refreshAll() {
+        const snapshot = computeCheckoutSnapshot();
+        if (!snapshot) {
+          showAlert("没有可结算的商品，请先去购物车添加商品。", false);
+          document.getElementById("btnPlaceOrder").disabled = true;
+          document.getElementById("itemsList").innerHTML = '<div class="muted">空</div>';
+          document.getElementById("itemsCount").textContent = "0 件";
+          document.getElementById("modeTip").textContent = "—";
+          document.getElementById("sumQty").textContent = "0";
+          document.getElementById("sumSubtotal").textContent = "$0.00";
+          document.getElementById("sumShipping").textContent = "$0.00";
+          document.getElementById("sumTax").textContent = "$0.00";
+          document.getElementById("sumService").textContent = "$0.00";
+          document.getElementById("sumTip").textContent = "$0.00";
+          document.getElementById("sumGrand").textContent = "$0.00";
+          document.getElementById("ruleHint").textContent = "—";
+          return null;
+        }
+
+        render(snapshot);
+
+        // 先用当前 lastWalletBalance 计算一遍（可能为 null）
+        const extra = calcFinalAmount(snapshot);
+        renderExtra(extra);
+
+        // 取钱包余额后再二次刷新（✅ 让“服务费是否为0”立即变正确）
+        fetchWalletBalance().then((bal) => {
+          lastWalletBalance = bal == null ? null : Number(bal);
+
+          const snapshot2 = computeCheckoutSnapshot();
+          const extra2 = calcFinalAmount(snapshot2);
+          renderExtra(extra2);
+
+          setWalletUI(lastWalletBalance, Number(extra2.grand || 0));
+        });
+
+        return snapshot;
+      }
+
+      // ========= 启动 =========
+      window.addEventListener("DOMContentLoaded", async () => {
+        // 小费按钮绑定
+        const tipButtons = Array.from(document.querySelectorAll(".tip-btn"));
+        const customTip = document.getElementById("customTip");
+
+        tipButtons.forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const v = safeNum(btn.dataset.tip, 0);
+            customTip.value = "";
+            currentTip = v;
+            tipButtons.forEach((b) => b.classList.toggle("active", b === btn));
+            refreshAll();
+          });
+        });
+
+        customTip.addEventListener("input", (e) => {
+          const v = safeNum(e.target.value, 0);
+          currentTip = Math.max(0, v);
+          tipButtons.forEach((b) => b.classList.remove("active"));
+          refreshAll();
+        });
+
+        // 地址 state/zip 改变会影响税：刷新
+        document.getElementById("state").addEventListener("change", refreshAll);
+        document.getElementById("zip").addEventListener("input", () => refreshAll());
+
+        // 先刷新一次（读取 cart + mode + zone）
+        refreshAll();
+
+        // 钱包充值按钮
+        document.getElementById("btnGoRecharge").addEventListener("click", () => {
+          window.location.href = "/user/recharge.html";
+        });
+
+        // stripe 初始化
+        await initStripeUI();
+
+        // radio 切换
+        const onPaySwitch = () => {
+          const m = getPayMethod();
+          setStripeAreaVisible(m === "stripe");
+          refreshAll();
+        };
+        document.getElementById("payWallet").addEventListener("change", onPaySwitch);
+        document.getElementById("payStripe").addEventListener("change", onPaySwitch);
+
+        // 默认地址
+        loadDefaultLocal();
+        fetchDefaultAddressFromDB()
+          .then((a) => {
+            if (!a) return;
+            document.getElementById("firstName").value = a.firstName || "";
+            document.getElementById("lastName").value = a.lastName || "";
+            document.getElementById("shipPhone").value = a.phone || "";
+            document.getElementById("street").value = a.street1 || "";
+            document.getElementById("apt").value = a.apt || "";
+            document.getElementById("city").value = a.city || "";
+            document.getElementById("state").value = a.state || "";
+            document.getElementById("zip").value = a.zip || "";
+            if (typeof a.lat === "number") document.getElementById("addrLat").value = String(a.lat);
+            if (typeof a.lng === "number") document.getElementById("addrLng").value = String(a.lng);
+            if (a.fullText) document.getElementById("addrFullText").value = String(a.fullText);
+            if (a.placeId) document.getElementById("addrPlaceId").value = String(a.placeId);
+            saveDefaultLocal(a);
+            refreshAll();
+          })
+          .catch(() => {});
+
+        // Places
+        const t = setInterval(() => {
+          if (window.google && google.maps && google.maps.places) {
+            clearInterval(t);
+            initPlaces();
+          }
+        }, 120);
+        setTimeout(() => clearInterval(t), 8000);
+
+        document.getElementById("btnClearAddr").addEventListener("click", () => {
+          document.getElementById("street").value = "";
+          document.getElementById("apt").value = "";
+          document.getElementById("city").value = "";
+          document.getElementById("state").value = "";
+          document.getElementById("zip").value = "";
+          clearAddressSelection();
+          refreshAll();
+        });
+
+        document.getElementById("btnPlaceOrder").addEventListener("click", () => placeOrder());
+
+        // 监听配送方式/购物车变更
+        window.addEventListener("freshbuy:deliveryModeChanged", () => refreshAll());
+        window.addEventListener("freshcart:updated", () => refreshAll());
+      });
+    </script>
+
+    <script src="/user/components/footer.js"></script>
+
+    <!-- Stripe.js（必须） -->
+    <script src="https://js.stripe.com/v3/"></script>
+
+    <!-- Google Maps Places -->
+    <script
+      src="https://maps.googleapis.com/maps/api/js?key=AIzaSyC57HNDru9utidXTSdDzpErvNvhYBpU-lU&libraries=places&loading=async"
+    ></script>
+  </body>
+</html>

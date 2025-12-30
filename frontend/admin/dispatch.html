@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>派单与路线 - 在鲜购拼好货后台</title>
+
+  <!-- ✅ 统一后台样式（让它和其它后台页面一致：布局/侧边栏/主内容） -->
+  <link rel="stylesheet" href="assets/css/admin.css" />
+
+  <!-- ✅ 这页自己的暗色卡片风格（保留你原来的） -->
+  <style>
+    :root{
+      --bg:#0b1220;
+      --card:#0f1b33;
+      --card2:#0d1730;
+      --text:#e5e7eb;
+      --muted:#94a3b8;
+      --line:rgba(255,255,255,.08);
+      --primary:#3b82f6;
+      --good:#22c55e;
+      --warn:#f59e0b;
+      --bad:#ef4444;
+      --radius:16px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",Arial,sans-serif;
+      background: radial-gradient(1200px 800px at 30% 10%, rgba(59,130,246,.18), transparent 55%),
+                  radial-gradient(900px 600px at 80% 20%, rgba(34,197,94,.12), transparent 55%),
+                  linear-gradient(180deg, #071022, #060a14 60%, #050812);
+      color:var(--text);
+    }
+
+    /* ✅ 关键：让页面内容放到 admin-main 里时也能正常撑开 */
+    .wrap{max-width:1200px;margin:0 auto;padding:18px 18px 60px}
+
+    .top{
+      display:flex;gap:12px;align-items:center;justify-content:space-between;
+      padding:14px 14px;border:1px solid var(--line);border-radius:var(--radius);
+      background:linear-gradient(180deg, rgba(15,27,51,.92), rgba(10,16,32,.92));
+      box-shadow:0 18px 60px rgba(0,0,0,.35);
+      position:sticky;top:10px;z-index:3;
+      backdrop-filter: blur(10px);
+    }
+    .top-left{display:flex;flex-direction:column;gap:6px}
+    .title{font-size:18px;font-weight:800;letter-spacing:.5px}
+    .sub{font-size:12px;color:var(--muted)}
+    .controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+    .input, select{
+      background:rgba(255,255,255,.04);
+      border:1px solid var(--line);
+      color:var(--text);
+      padding:10px 12px;
+      border-radius:12px;
+      outline:none;
+      min-width:170px;
+    }
+    .btn{
+      border:1px solid var(--line);
+      background:rgba(255,255,255,.04);
+      color:var(--text);
+      padding:10px 12px;border-radius:12px;
+      cursor:pointer;
+      transition:.15s;
+      font-weight:700;
+    }
+    .btn:hover{transform:translateY(-1px);border-color:rgba(255,255,255,.18)}
+    .btn.primary{background:rgba(59,130,246,.18);border-color:rgba(59,130,246,.35)}
+    .btn.good{background:rgba(34,197,94,.16);border-color:rgba(34,197,94,.35)}
+    .btn.warn{background:rgba(245,158,11,.14);border-color:rgba(245,158,11,.35)}
+    .grid{
+      display:grid;
+      grid-template-columns: 380px 1fr;
+      gap:14px;
+      margin-top:14px;
+    }
+    .panel{
+      border:1px solid var(--line);
+      border-radius:var(--radius);
+      background:linear-gradient(180deg, rgba(15,27,51,.78), rgba(9,14,28,.78));
+      box-shadow:0 18px 60px rgba(0,0,0,.32);
+      overflow:hidden;
+    }
+    .panel-hd{
+      padding:12px 14px;
+      border-bottom:1px solid var(--line);
+      display:flex;align-items:center;justify-content:space-between;gap:10px;
+    }
+    .panel-hd .h{font-weight:900}
+    .panel-bd{padding:12px 14px}
+    .pill{
+      font-size:12px;
+      padding:4px 10px;border-radius:999px;
+      border:1px solid var(--line);
+      color:var(--muted);
+      background:rgba(255,255,255,.03);
+      white-space:nowrap;
+    }
+    .batch-list{display:flex;flex-direction:column;gap:10px}
+    .batch{
+      padding:12px 12px;
+      border:1px solid var(--line);
+      border-radius:14px;
+      background:linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.02));
+      cursor:pointer;
+      transition:.15s;
+    }
+    .batch:hover{transform:translateY(-1px);border-color:rgba(255,255,255,.18)}
+    .batch.active{border-color:rgba(59,130,246,.55);box-shadow:0 10px 35px rgba(59,130,246,.16)}
+    .batch-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .batch-key{font-weight:900}
+    .muted{color:var(--muted);font-size:12px}
+    .kv{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+    .table{
+      width:100%;
+      border-collapse:collapse;
+      overflow:hidden;
+    }
+    .table th, .table td{
+      border-bottom:1px solid var(--line);
+      padding:10px 8px;
+      font-size:13px;
+      vertical-align:top;
+    }
+    .table th{color:var(--muted);font-weight:800;text-align:left}
+    .tag{
+      font-size:12px;padding:3px 8px;border-radius:999px;
+      border:1px solid var(--line);
+      display:inline-flex;gap:6px;align-items:center;
+      background:rgba(255,255,255,.03);
+      color:var(--text);
+      white-space:nowrap;
+    }
+    .tag.good{border-color:rgba(34,197,94,.35);background:rgba(34,197,94,.10)}
+    .tag.warn{border-color:rgba(245,158,11,.35);background:rgba(245,158,11,.10)}
+    .tag.bad{border-color:rgba(239,68,68,.35);background:rgba(239,68,68,.10)}
+    .right-tools{
+      display:flex;gap:10px;align-items:center;flex-wrap:wrap;
+      margin-bottom:12px;
+    }
+    .note{
+      font-size:12px;color:var(--muted);
+      margin-top:8px;
+      line-height:1.5;
+    }
+    .small{
+      font-size:12px;color:var(--muted);
+    }
+    .addr{line-height:1.45}
+    .mono{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace}
+  </style>
+</head>
+
+<!-- ✅ 关键：用 admin-layout 结构 + data-page 让统一 sidebar 高亮 -->
+<body class="admin-layout" data-page="dispatch">
+
+  <!-- ✅ 统一 Sidebar（不再写死菜单） -->
+  <aside class="admin-sidebar">
+    <div id="adminSidebar"></div>
+  </aside>
+
+  <!-- ✅ 放到 admin-main 里，保持后台布局一致 -->
+  <main class="admin-main">
+    <div class="wrap">
+      <div class="top">
+        <div class="top-left">
+          <div class="title">派单与路线（按批次 batchKey）</div>
+          <div class="sub">流程：选日期 → 选批次 → 看路线顺序 routeIndex → 选司机 → 一键分配</div>
+        </div>
+
+        <div class="controls">
+          <input id="date" class="input" type="date" />
+          <select id="status" class="input" title="订单状态过滤">
+            <option value="paid,packing,shipping">默认：paid/packing/shipping</option>
+            <option value="pending,paid,packing,shipping">包含 pending</option>
+            <option value="paid,packing">只看已付+配货</option>
+            <option value="all">全部（不推荐）</option>
+          </select>
+          <button id="btnLoad" class="btn primary">加载批次</button>
+          <button id="btnReloadOrders" class="btn">刷新当前批次</button>
+          <!-- ✅ 统一相对路径（你页面本来是 /admin/orders.html，这里用同目录更稳） -->
+          <a class="btn" href="orders.html" style="text-decoration:none;display:inline-flex;align-items:center;">返回订单列表</a>
+        </div>
+      </div>
+
+      <div class="grid">
+        <div class="panel">
+          <div class="panel-hd">
+            <div class="h">批次列表</div>
+            <span id="batchSummary" class="pill">—</span>
+          </div>
+          <div class="panel-bd">
+            <div id="batchList" class="batch-list"></div>
+            <div class="note">
+              批次来自：<span class="mono">GET /api/admin/dispatch/batches?date=YYYY-MM-DD</span><br/>
+              只要订单有 <span class="mono">dispatch.batchKey</span> 或 <span class="mono">fulfillment.batchKey</span> 就会出现。
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-hd">
+            <div class="h">批次订单与路线</div>
+            <span id="currentBatch" class="pill">未选择批次</span>
+          </div>
+          <div class="panel-bd">
+            <div class="right-tools">
+              <select id="drivers" class="input" multiple size="1" style="min-width:240px">
+                <option value="">加载中…</option>
+              </select>
+              <button id="btnAssign" class="btn good">一键分配给选中司机</button>
+              <span id="assignHint" class="small">支持多选（按住 Ctrl/Command 选择多个），会轮询平均分配。</span>
+            </div>
+
+            <div class="note" style="margin-top:0">
+              司机列表：<span class="mono">GET /api/admin/dispatch/drivers</span><br/>
+              订单列表：<span class="mono">GET /api/admin/dispatch/batch/orders?batchKey=...</span>
+            </div>
+
+            <div style="overflow:auto;margin-top:12px;border:1px solid var(--line);border-radius:14px;">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width:64px;">顺序</th>
+                    <th style="width:140px;">订单号</th>
+                    <th style="width:110px;">状态</th>
+                    <th style="width:120px;">配送方式</th>
+                    <th>地址</th>
+                    <th style="width:170px;">司机</th>
+                    <th style="width:90px;">金额</th>
+                  </tr>
+                </thead>
+                <tbody id="ordersTbody">
+                  <tr><td colspan="7" class="muted">请选择左侧一个批次</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="note" id="debugBox"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+ <script src="/admin/assets/js/admin_guard.js"></script>
+ <script src="./assets/js/admin_auth_ui.js"></script> 
+ <!-- ✅ 统一 sidebar 脚本（必须） -->
+  <script src="/admin/assets/js/admin_sidebar.js"></script>
+
+  <script>
+  (() => {
+    const elDate = document.getElementById("date");
+    const elStatus = document.getElementById("status");
+    const elBatchList = document.getElementById("batchList");
+    const elBatchSummary = document.getElementById("batchSummary");
+    const elCurrentBatch = document.getElementById("currentBatch");
+    const elDrivers = document.getElementById("drivers");
+    const elOrdersTbody = document.getElementById("ordersTbody");
+    const elDebug = document.getElementById("debugBox");
+
+    const btnLoad = document.getElementById("btnLoad");
+    const btnReloadOrders = document.getElementById("btnReloadOrders");
+    const btnAssign = document.getElementById("btnAssign");
+
+    let state = {
+      batches: [],
+      activeBatchKey: "",
+      drivers: [],
+      orders: []
+    };
+
+    // =========================
+    // ✅ token（兼容你后台常见 key）
+    // =========================
+    function getAdminToken() {
+      return (
+        localStorage.getItem("freshbuy_token") ||
+        localStorage.getItem("adminToken") ||
+        localStorage.getItem("admin_token") ||
+        localStorage.getItem("token") ||
+        localStorage.getItem("auth_token") ||
+        localStorage.getItem("jwt") ||
+        ""
+      );
+    }
+
+    function authHeaders(extra) {
+      const token = getAdminToken();
+      const h = { ...(extra || {}) };
+      if (token) h["Authorization"] = "Bearer " + token;
+      return h;
+    }
+
+    async function apiGet(url) {
+      const r = await fetch(url, {
+        method: "GET",
+        headers: authHeaders(),
+        credentials: "include"
+      });
+      const data = await r.json().catch(() => ({}));
+      const errMsg = data.message || data.msg || `请求失败：${r.status}`;
+      if (!r.ok || data.success === false) {
+        if (r.status === 401 || /未登录|token/i.test(errMsg)) {
+          throw new Error("未登录：请先在后台登录（缺少 token）。如果已登录，请刷新或重新登录。");
+        }
+        throw new Error(errMsg);
+      }
+      return data;
+    }
+
+    async function apiPost(url, body) {
+      const r = await fetch(url, {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        credentials: "include",
+        body: JSON.stringify(body || {})
+      });
+      const data = await r.json().catch(() => ({}));
+      const errMsg = data.message || data.msg || `请求失败：${r.status}`;
+      if (!r.ok || data.success === false) {
+        if (r.status === 401 || /未登录|token/i.test(errMsg)) {
+          throw new Error("未登录：请先在后台登录（缺少 token）。如果已登录，请刷新或重新登录。");
+        }
+        throw new Error(errMsg);
+      }
+      return data;
+    }
+
+    // =========================
+    // UI helpers
+    // =========================
+    function todayYMD() {
+      const d = new Date();
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2,"0");
+      const day = String(d.getDate()).padStart(2,"0");
+      return `${y}-${m}-${day}`;
+    }
+
+    function money(n) {
+      const x = Number(n || 0);
+      return "$" + (Math.round(x * 100) / 100).toFixed(2);
+    }
+
+    function tagStatus(s) {
+      const v = String(s || "");
+      if (["paid"].includes(v)) return `<span class="tag good">已支付</span>`;
+      if (["packing"].includes(v)) return `<span class="tag warn">配货中</span>`;
+      if (["shipping"].includes(v)) return `<span class="tag warn">配送中</span>`;
+      if (["pending"].includes(v)) return `<span class="tag">待处理</span>`;
+      if (["done","completed"].includes(v)) return `<span class="tag good">完成</span>`;
+      if (["cancel","cancelled"].includes(v)) return `<span class="tag bad">取消</span>`;
+      return `<span class="tag">${v || "-"}</span>`;
+    }
+
+    function safeText(s) {
+      return String(s ?? "").replace(/[<>&"]/g, (c) => ({ "<":"&lt;", ">":"&gt;", "&":"&amp;", "\"":"&quot;" }[c]));
+    }
+
+    // =========================
+    // data loaders
+    // =========================
+    async function loadDrivers() {
+      try {
+        const data = await apiGet("/api/admin/dispatch/drivers");
+        state.drivers = data.list || [];
+
+        if (!state.drivers.length) {
+          elDrivers.innerHTML = `<option value="">（暂无司机用户）</option>`;
+          return;
+        }
+
+        elDrivers.innerHTML = state.drivers
+          .map(d => `<option value="${safeText(d.id)}">${safeText(d.nickname || "driver")} ${safeText(d.phone || "")}</option>`)
+          .join("");
+
+      } catch (e) {
+        elDrivers.innerHTML = `<option value="">加载司机失败：${safeText(e.message)}</option>`;
+      }
+    }
+
+    function renderBatches() {
+      const list = state.batches || [];
+      elBatchSummary.textContent = `共 ${list.length} 个批次`;
+
+      if (!list.length) {
+        elBatchList.innerHTML = `<div class="muted">该日期没有批次（确认订单的 deliveryDate 在该日期，且存在 dispatch.batchKey / fulfillment.batchKey）</div>`;
+        return;
+      }
+
+      elBatchList.innerHTML = list.map(b => {
+        const active = b.batchKey === state.activeBatchKey ? "active" : "";
+        const zone = b.zoneId || "-";
+        const assigned = Number(b.assignedCount || 0);
+        const count = Number(b.count || 0);
+        const driverCount = Number(b.driverCount || 0);
+
+        return `
+          <div class="batch ${active}" data-bk="${safeText(b.batchKey)}">
+            <div class="batch-row">
+              <div class="batch-key mono">${safeText(b.batchKey)}</div>
+            </div>
+            <div class="kv">
+              <span class="pill">zone: ${safeText(zone)}</span>
+              <span class="pill">订单: <b>${count}</b></span>
+              <span class="pill">已派: <b>${assigned}</b></span>
+              <span class="pill">司机: <b>${driverCount}</b></span>
+              <span class="pill">GMV: <b>${money(b.totals?.totalAmount || 0)}</b></span>
+            </div>
+          </div>
+        `;
+      }).join("");
+
+      [...elBatchList.querySelectorAll(".batch")].forEach(el => {
+        el.addEventListener("click", async () => {
+          const bk = el.getAttribute("data-bk") || "";
+          if (!bk) return;
+          state.activeBatchKey = bk;
+          renderBatches();
+          await loadBatchOrders(bk);
+        });
+      });
+    }
+
+    function renderOrders() {
+      const orders = state.orders || [];
+      if (!state.activeBatchKey) {
+        elOrdersTbody.innerHTML = `<tr><td colspan="7" class="muted">请选择左侧一个批次</td></tr>`;
+        return;
+      }
+      if (!orders.length) {
+        elOrdersTbody.innerHTML = `<tr><td colspan="7" class="muted">该批次没有订单（或状态筛选导致为空）</td></tr>`;
+        return;
+      }
+
+      elOrdersTbody.innerHTML = orders.map(o => {
+        const addr = o.address?.fullText || o.addressText || "";
+        const driverId = o.driverId ? String(o.driverId) : "";
+        const driverName = (() => {
+          if (!driverId) return `<span class="muted">未分配</span>`;
+          const d = state.drivers.find(x => x.id === driverId);
+          if (!d) return `<span class="muted mono">${safeText(driverId.slice(-6))}</span>`;
+          return `<span>${safeText(d.nickname || "driver")} <span class="muted">${safeText(d.phone || "")}</span></span>`;
+        })();
+
+        return `
+          <tr>
+            <td><span class="tag">${Number(o.routeIndex || 0) || "-"}</span></td>
+            <td class="mono">${safeText(o.orderNo || "")}</td>
+            <td>${tagStatus(o.status)}</td>
+            <td><span class="tag">${safeText(o.deliveryMode || "-")}</span></td>
+            <td class="addr">${safeText(addr)}</td>
+            <td>${driverName}</td>
+            <td>${money(o.totalAmount || 0)}</td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    async function loadBatches() {
+      const date = elDate.value || todayYMD();
+      const statusVal = elStatus.value || "paid,packing,shipping";
+      const query = statusVal === "all" ? "" : `&status=${encodeURIComponent(statusVal)}`;
+
+      elDebug.textContent = "";
+      elBatchList.innerHTML = `<div class="muted">加载中...</div>`;
+      state.batches = [];
+      state.activeBatchKey = "";
+      state.orders = [];
+      elCurrentBatch.textContent = "未选择批次";
+      renderOrders();
+
+      try {
+        const data = await apiGet(`/api/admin/dispatch/batches?date=${encodeURIComponent(date)}${query}`);
+        state.batches = data.list || [];
+        renderBatches();
+      } catch (e) {
+        elBatchList.innerHTML = `<div class="muted">加载失败：${safeText(e.message)}</div>`;
+        elBatchSummary.textContent = "—";
+        elDebug.textContent = e.message;
+      }
+    }
+
+    async function loadBatchOrders(batchKey) {
+      const statusVal = elStatus.value || "paid,packing,shipping";
+      const query = statusVal === "all" ? "" : `&status=${encodeURIComponent(statusVal)}`;
+
+      elCurrentBatch.textContent = batchKey;
+      elOrdersTbody.innerHTML = `<tr><td colspan="7" class="muted">加载订单中...</td></tr>`;
+      elDebug.textContent = "";
+
+      try {
+        const data = await apiGet(`/api/admin/dispatch/batch/orders?batchKey=${encodeURIComponent(batchKey)}${query}`);
+        state.orders = data.orders || [];
+        renderOrders();
+        elDebug.textContent = `当前批次：${batchKey} | 订单数：${state.orders.length}`;
+      } catch (e) {
+        state.orders = [];
+        renderOrders();
+        elDebug.textContent = `加载订单失败：${e.message}`;
+      }
+    }
+
+    function getSelectedDriverIds() {
+      const opts = [...elDrivers.options];
+      return opts.filter(o => o.selected && o.value).map(o => o.value);
+    }
+
+    async function assignBatch() {
+      if (!state.activeBatchKey) {
+        alert("请先选择一个批次");
+        return;
+      }
+      const driverIds = getSelectedDriverIds();
+      if (!driverIds.length) {
+        alert("请至少选择 1 个司机（可多选）");
+        return;
+      }
+
+      const statusVal = elStatus.value || "paid,packing,shipping";
+      const status = statusVal === "all"
+        ? ["paid","packing","shipping","pending","done","cancel","cancelled","completed"]
+        : statusVal.split(",").map(s => s.trim()).filter(Boolean);
+
+      btnAssign.disabled = true;
+      btnAssign.textContent = "分配中...";
+
+      try {
+        await apiPost("/api/admin/dispatch/batch/assign", {
+          batchKey: state.activeBatchKey,
+          driverIds,
+          status
+        });
+        await loadBatchOrders(state.activeBatchKey);
+        alert("分配成功 ✅");
+      } catch (e) {
+        alert("分配失败：" + e.message);
+      } finally {
+        btnAssign.disabled = false;
+        btnAssign.textContent = "一键分配给选中司机";
+      }
+    }
+
+    // =========================
+    // init
+    // =========================
+    elDate.value = todayYMD();
+    btnLoad.addEventListener("click", loadBatches);
+    btnReloadOrders.addEventListener("click", () => state.activeBatchKey && loadBatchOrders(state.activeBatchKey));
+    btnAssign.addEventListener("click", assignBatch);
+
+    const t = getAdminToken();
+    if (!t) {
+      elDebug.textContent = "检测到本地没有 token：请先打开 /admin/login.html 登录后台，然后再回来刷新本页。";
+      // ✅ 你也可以直接跳转登录（如果你想强制）
+      // location.href = "/admin/login.html";
+    }
+
+    loadDrivers().then(loadBatches);
+  })();
+  </script>
+</body>
+</html>

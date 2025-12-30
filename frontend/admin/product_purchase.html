@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>进货 / 成本管理 - 在鲜购拼好货后台</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="assets/css/admin.css" />
+    <style>
+      .form-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+      .field-block {
+        flex: 1 1 260px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .field-label {
+        font-size: 12px;
+        color: #e5e7eb;
+      }
+      .field-help {
+        font-size: 11px;
+        color: #9ca3af;
+      }
+      .form-row input,
+      .form-row select {
+        flex: 1 1 auto;
+        padding: 4px 8px;
+        border-radius: 10px;
+        border: 1px solid rgba(148, 163, 184, 0.6);
+        background: rgba(15, 23, 42, 0.9);
+        color: #e5e7eb;
+        font-size: 12px;
+        min-height: 32px;
+      }
+      .mini-badge {
+        display: inline-flex;
+        padding: 2px 6px;
+        border-radius: 999px;
+        background: rgba(148, 163, 184, 0.2);
+        font-size: 10px;
+        color: #e5e7eb;
+      }
+    </style>
+  </head>
+  <body data-page="product-purchase">
+    <div class="admin-layout">
+      <!-- 侧边栏 -->
+      <aside class="admin-sidebar">
+      <!-- ✅ 统一 sidebar：由 /admin/assets/js/admin_sidebar.js 注入 -->
+      <div id="adminSidebar"></div>
+    </aside>
+      <!-- 主区域 -->
+      <div class="admin-main">
+        <header class="admin-topbar">
+          <button class="admin-btn admin-btn-ghost" data-toggle-sidebar>☰</button>
+          <div class="admin-topbar-title">进货 / 成本管理</div>
+          <div class="admin-topbar-spacer"></div>
+          <div class="admin-user">
+            <div class="admin-user-avatar">A</div>
+            <div class="admin-user-info">
+              <span class="admin-user-name">Admin</span>
+              <span class="admin-user-role">超级管理员</span>
+            </div>
+          </div>
+        </header>
+
+        <main class="admin-content">
+          <!-- 选择商品 -->
+          <section class="admin-card admin-card-ghost">
+            <div class="admin-card-title">
+              选择商品
+              <span class="mini-badge" id="selectedProductInfo">未选择商品</span>
+            </div>
+            <div style="margin-top:8px;">
+              <div class="form-row">
+                <div class="field-block">
+                  <div class="field-label">商品</div>
+                  <select id="purchase_productSelect">
+                    <option value="">请选择商品</option>
+                  </select>
+                  <div class="field-help">
+                    列表来自 <code>/api/admin/products</code>，选择后再填写进货信息。
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- 进货 / 成本表单 -->
+          <section class="admin-card admin-card-ghost" style="margin-top:12px;">
+            <div class="admin-card-title">录入本次进货</div>
+            <div style="margin-top:8px;">
+              <!-- 金额与数量 -->
+              <div class="form-row">
+                <div class="field-block">
+                  <div class="field-label">整箱进货价（每箱）</div>
+                  <input
+                    id="pp_boxPrice"
+                    type="number"
+                    step="0.01"
+                    placeholder="例如：120，表示每箱 120 美金"
+                  />
+                  <div class="field-help">这里是每一箱的价格。</div>
+                </div>
+
+                <div class="field-block">
+                  <div class="field-label">本次进货箱数</div>
+                  <input
+                    id="pp_boxCount"
+                    type="number"
+                    step="1"
+                    placeholder="例如：10"
+                  />
+                  <div class="field-help">本次进了多少箱。</div>
+                </div>
+
+                <div class="field-block">
+                  <div class="field-label">每箱几包</div>
+                  <input
+                    id="pp_unitsPerBox"
+                    type="number"
+                    step="1"
+                    placeholder="例如：10"
+                  />
+                  <div class="field-help">每箱里面有多少包。</div>
+                </div>
+
+                <div class="field-block">
+                  <div class="field-label">本次进货总数量</div>
+                  <input id="pp_totalQty" type="number" step="1" readonly />
+                  <div class="field-help">= 箱数 × 每箱数量（系统自动计算）。</div>
+                </div>
+              </div>
+
+              <!-- 成本 + 毛利 + 零售价 -->
+              <div class="form-row">
+                <div class="field-block">
+                  <div class="field-label">单包成本价（自动）</div>
+                  <input id="pp_unitCost" type="number" step="0.0001" readonly />
+                  <div class="field-help">= 整箱价 ÷ 每箱数量。</div>
+                </div>
+
+                <div class="field-block">
+                  <div class="field-label">毛利率 %</div>
+                  <input
+                    id="pp_margin"
+                    type="number"
+                    step="1"
+                    value="40"
+                    placeholder="例如：40"
+                  />
+                  <div class="field-help">40 代表 40% 毛利，可以自己调整。</div>
+                </div>
+
+                <div class="field-block">
+                  <div class="field-label">零售价（可编辑）</div>
+                  <input
+                    id="pp_retailPrice"
+                    type="number"
+                    step="0.01"
+                    placeholder="自动计算，也可以手动改"
+                  />
+                  <div class="field-help">
+                    系统会根据成本和毛利率给一个建议价，你可以直接修改。
+                  </div>
+                </div>
+
+                <div class="field-block">
+                  <div class="field-label">本次进货总成本（只读）</div>
+                  <input id="pp_totalCost" type="number" step="0.01" readonly />
+                  <div class="field-help">= 单包成本 × 总数量。</div>
+                </div>
+              </div>
+
+              <!-- 供应商 + 过期日 -->
+              <div class="form-row">
+                <div class="field-block">
+                  <div class="field-label">进货公司 / 供应商</div>
+                  <input
+                    id="pp_supplier"
+                    placeholder="例如：XX 食品批发 / XX 农场"
+                  />
+                  <div class="field-help">方便以后查对应供货商。</div>
+                </div>
+
+                <div class="field-block">
+                  <div class="field-label">该批次过期时间（可选）</div>
+                  <input id="pp_expiry" type="date" />
+                  <div class="field-help">可用于后续做临期提醒。</div>
+                </div>
+
+                <div class="field-block">
+                  <div class="field-label">该批次未售完库存（初始=总数量）</div>
+                  <input id="pp_remainingQty" type="number" step="1" readonly />
+                  <div class="field-help">
+                    保存时默认等于本次进货总数量，后续出货时可在后端逐步扣减。
+                  </div>
+                </div>
+              </div>
+
+              <!-- 按钮 -->
+              <div style="margin-top:4px; display:flex; gap:8px;">
+                <button class="admin-btn admin-btn-ghost" type="button" id="pp_btnCalcRetail">
+                  🧮 重新根据毛利率计算零售价
+                </button>
+                <button class="admin-btn admin-btn-primary" type="button" id="pp_btnSaveBatch">
+                  📦 保存本次进货（叠加库存 + 记录批次）
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <!-- 批次记录 -->
+          <section class="admin-table-card" style="margin-top:12px;">
+            <div class="admin-card-header">
+              <div>
+                <div class="admin-card-header-title">该商品的进货批次记录</div>
+                <div class="admin-card-header-sub">
+                  从 <code>/api/admin/products/:id/purchase-batches</code> 拉取数据。
+                </div>
+              </div>
+              <div id="pp_batchSummary" style="font-size:12px;color:#e5e7eb;">
+                当前无批次记录
+              </div>
+            </div>
+
+            <div class="admin-table-wrapper">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th>时间</th>
+                    <th>供应商</th>
+                    <th>整箱价</th>
+                    <th>箱数</th>
+                    <th>每箱数量</th>
+                    <th>单包成本</th>
+                    <th>总数量</th>
+                    <th>未售完</th>
+                    <th>零售价</th>
+                    <th>过期日期</th>
+                  </tr>
+                </thead>
+                <tbody id="pp_batchTableBody">
+                  <tr><td colspan="10">请选择上方商品后查看记录</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+    <script src="/admin/assets/js/admin_guard.js"></script>
+    <script src="./assets/js/admin_auth_ui.js"></script>
+    <script src="assets/js/admin.js"></script>
+    <script>
+      let pp_products = [];
+      let pp_currentProductId = null;
+
+      function pp_formatDate(dtStr) {
+        if (!dtStr) return "—";
+        const d = new Date(dtStr);
+        if (Number.isNaN(d.getTime())) return "—";
+        const pad = (n) => (n < 10 ? "0" + n : "" + n);
+        return (
+          d.getFullYear() +
+          "-" +
+          pad(d.getMonth() + 1) +
+          "-" +
+          pad(d.getDate()) +
+          " " +
+          pad(d.getHours()) +
+          ":" +
+          pad(d.getMinutes())
+        );
+      }
+
+      function pp_calcDerivedFields() {
+        const boxPrice = Number(document.getElementById("pp_boxPrice").value || 0);
+        const boxCount = Number(document.getElementById("pp_boxCount").value || 0);
+        const unitsPerBox = Number(
+          document.getElementById("pp_unitsPerBox").value || 0
+        );
+        const totalQtyEl = document.getElementById("pp_totalQty");
+        const unitCostEl = document.getElementById("pp_unitCost");
+        const totalCostEl = document.getElementById("pp_totalCost");
+        const remainingEl = document.getElementById("pp_remainingQty");
+
+        let totalQty = 0;
+        let unitCost = 0;
+        let totalCost = 0;
+
+        if (unitsPerBox > 0) {
+          unitCost = boxPrice / unitsPerBox;
+        }
+        if (boxCount > 0 && unitsPerBox > 0) {
+          totalQty = boxCount * unitsPerBox;
+        }
+        totalCost = unitCost * totalQty;
+
+        totalQtyEl.value = totalQty || "";
+        unitCostEl.value = unitCost ? unitCost.toFixed(4) : "";
+        totalCostEl.value = totalCost ? totalCost.toFixed(2) : "";
+        remainingEl.value = totalQty || "";
+      }
+
+      function pp_calcRetailFromMargin() {
+        const unitCost = Number(document.getElementById("pp_unitCost").value || 0);
+        const marginPercent = Number(
+          document.getElementById("pp_margin").value || 40
+        );
+        const retailEl = document.getElementById("pp_retailPrice");
+        if (!unitCost || unitCost <= 0) {
+          alert("请先填好整箱价和每箱数量，让系统算出单包成本价。");
+          return;
+        }
+        if (!marginPercent || marginPercent <= 0 || marginPercent >= 100) {
+          alert("毛利率必须在 0~100 之间，例如 40。");
+          return;
+        }
+        const rate = marginPercent / 100;
+        const retail = unitCost / (1 - rate);
+        retailEl.value = (Math.round(retail * 100) / 100).toFixed(2);
+      }
+
+      async function pp_loadProducts() {
+        const sel = document.getElementById("purchase_productSelect");
+        sel.innerHTML = '<option value="">正在加载商品...</option>';
+        try {
+          const res = await fetch("/api/admin/products");
+          const data = await res.json();
+          if (!data.success) {
+            sel.innerHTML =
+              '<option value="">商品加载失败：' +
+              (data.message || "未知错误") +
+              "</option>";
+            return;
+          }
+          const list = data.list || data.products || [];
+          pp_products = list;
+          if (!list.length) {
+            sel.innerHTML = '<option value="">暂无商品</option>';
+            return;
+          }
+          sel.innerHTML = '<option value="">请选择商品</option>';
+          list.forEach((p) => {
+            const opt = document.createElement("option");
+            opt.value = p.id;
+            opt.textContent =
+              p.name + (p.sku ? "（SKU: " + p.sku + "）" : "");
+            sel.appendChild(opt);
+          });
+
+          // 如果 URL 上带 ?productId=xxx 就自动选中
+          const url = new URL(window.location.href);
+          const pid = url.searchParams.get("productId");
+          if (pid) {
+            sel.value = pid;
+            pp_onProductChange();
+          }
+        } catch (e) {
+          console.error(e);
+          sel.innerHTML = '<option value="">请求错误，请检查接口</option>';
+        }
+      }
+
+      async function pp_loadBatches(productId) {
+        const tbody = document.getElementById("pp_batchTableBody");
+        const summary = document.getElementById("pp_batchSummary");
+        tbody.innerHTML = '<tr><td colspan="10">正在加载批次记录...</td></tr>';
+        try {
+          const res = await fetch(
+            "/api/admin/products/" + productId + "/purchase-batches"
+          );
+          const data = await res.json();
+          if (!data.success) {
+            tbody.innerHTML =
+              '<tr><td colspan="10">加载失败：' +
+              (data.message || "未知错误") +
+              "</td></tr>";
+            summary.textContent = "当前无批次记录";
+            return;
+          }
+          const list = data.list || [];
+          if (!list.length) {
+            tbody.innerHTML =
+              '<tr><td colspan="10">当前商品暂无进货批次记录</td></tr>';
+            summary.textContent = "当前无批次记录";
+            return;
+          }
+
+          let totalRemain = 0;
+          tbody.innerHTML = "";
+          list.forEach((b) => {
+            const tr = document.createElement("tr");
+            totalRemain += Number(b.remainingQty || 0);
+
+            tr.innerHTML = `
+              <td>${pp_formatDate(b.createdAt)}</td>
+              <td>${b.supplier || "—"}</td>
+              <td>$${Number(b.boxPrice || 0).toFixed(2)}</td>
+              <td>${b.boxCount || 0}</td>
+              <td>${b.unitsPerBox || 0}</td>
+              <td>$${Number(b.unitCost || 0).toFixed(4)}</td>
+              <td>${b.totalQty || 0}</td>
+              <td>${b.remainingQty || 0}</td>
+              <td>$${Number(b.retailPrice || 0).toFixed(2)}</td>
+              <td>${b.expiryDate ? b.expiryDate.slice(0, 10) : "—"}</td>
+            `;
+            tbody.appendChild(tr);
+          });
+
+          summary.textContent =
+            "共 " + list.length + " 个批次，合计未售完库存 " + totalRemain;
+        } catch (e) {
+          console.error(e);
+          tbody.innerHTML =
+            '<tr><td colspan="10">请求出错，请检查 /purchase-batches 接口</td></tr>';
+          summary.textContent = "当前无批次记录";
+        }
+      }
+
+      function pp_onProductChange() {
+        const sel = document.getElementById("purchase_productSelect");
+        const id = sel.value;
+        const info = document.getElementById("selectedProductInfo");
+        pp_currentProductId = id || null;
+        if (!id) {
+          info.textContent = "未选择商品";
+          document.getElementById("pp_batchTableBody").innerHTML =
+            '<tr><td colspan="10">请选择上方商品后查看记录</td></tr>';
+          document.getElementById("pp_batchSummary").textContent = "当前无批次记录";
+          return;
+        }
+        const p = pp_products.find((x) => x.id === id);
+        info.textContent = p
+          ? `已选：${p.name}（库存：${p.stock || 0}，原价：$${Number(
+              p.originPrice || 0
+            ).toFixed(2)}）`
+          : "已选商品ID：" + id;
+        // 初始化表单
+        document.getElementById("pp_boxPrice").value = "";
+        document.getElementById("pp_boxCount").value = "";
+        document.getElementById("pp_unitsPerBox").value = "";
+        document.getElementById("pp_totalQty").value = "";
+        document.getElementById("pp_unitCost").value = "";
+        document.getElementById("pp_totalCost").value = "";
+        document.getElementById("pp_supplier").value = "";
+        document.getElementById("pp_expiry").value = "";
+        document.getElementById("pp_remainingQty").value = "";
+        document.getElementById("pp_margin").value = "40";
+        document.getElementById("pp_retailPrice").value =
+          p && p.originPrice ? p.originPrice : "";
+
+        pp_loadBatches(id);
+      }
+
+      async function pp_saveBatch() {
+        if (!pp_currentProductId) {
+          alert("请先选择一个商品");
+          return;
+        }
+        const boxPrice = Number(document.getElementById("pp_boxPrice").value || 0);
+        const boxCount = Number(document.getElementById("pp_boxCount").value || 0);
+        const unitsPerBox = Number(
+          document.getElementById("pp_unitsPerBox").value || 0
+        );
+        const totalQty = Number(document.getElementById("pp_totalQty").value || 0);
+        const unitCost = Number(document.getElementById("pp_unitCost").value || 0);
+        const totalCost = Number(document.getElementById("pp_totalCost").value || 0);
+        const marginPercent = Number(
+          document.getElementById("pp_margin").value || 40
+        );
+        const retailPriceRaw =
+          document.getElementById("pp_retailPrice").value || "";
+        const supplier = document.getElementById("pp_supplier").value.trim();
+        const expiryVal = document.getElementById("pp_expiry").value;
+
+        if (!boxPrice || boxPrice <= 0) {
+          alert("请填写正确的整箱进货价");
+          return;
+        }
+        if (!boxCount || boxCount <= 0 || !unitsPerBox || unitsPerBox <= 0) {
+          alert("请填写本次进货箱数和每箱数量（都要大于 0）");
+          return;
+        }
+        if (!totalQty || totalQty <= 0) {
+          alert("本次进货总数量为 0，请检查箱数和每箱数量");
+          return;
+        }
+        if (!unitCost || unitCost <= 0) {
+          alert("单包成本计算有问题，请检查整箱价和每箱数量");
+          return;
+        }
+
+        let retailPrice = Number(retailPriceRaw);
+        if (!retailPrice || retailPrice <= 0) {
+          // 如果零售价没填，就根据毛利率算一个
+          if (!marginPercent || marginPercent <= 0 || marginPercent >= 100) {
+            alert(
+              "零售价未填写且毛利率不合法，请填一个零售价或者有效毛利率（0~100）"
+            );
+            return;
+          }
+          const rate = marginPercent / 100;
+          retailPrice = unitCost / (1 - rate);
+        }
+
+        const body = {
+          boxPrice,
+          boxCount,
+          unitsPerBox,
+          totalQty,
+          unitCost,
+          totalCost,
+          retailPrice,
+          marginPercent,
+          supplier,
+          expiryDate: expiryVal ? new Date(expiryVal).toISOString() : null,
+        };
+
+        try {
+          const res = await fetch(
+            "/api/admin/products/" +
+              pp_currentProductId +
+              "/purchase-batches",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(body),
+            }
+          );
+          const data = await res.json();
+          if (!data.success) {
+            alert("保存进货批次失败：" + (data.message || "未知错误"));
+            return;
+          }
+          alert("进货批次已保存，库存已叠加，商品原价已更新为新零售价。");
+
+          // 重新拉一次商品，更新右上角信息（库存、原价）
+          await pp_loadProducts();
+          const sel = document.getElementById("purchase_productSelect");
+          sel.value = pp_currentProductId;
+          pp_onProductChange();
+        } catch (e) {
+          console.error(e);
+          alert(
+            "请求失败，请检查 /api/admin/products/:id/purchase-batches POST 接口"
+          );
+        }
+      }
+
+      window.addEventListener("DOMContentLoaded", () => {
+        pp_loadProducts();
+
+        document
+          .getElementById("purchase_productSelect")
+          .addEventListener("change", pp_onProductChange);
+
+        document
+          .getElementById("pp_boxPrice")
+          .addEventListener("input", pp_calcDerivedFields);
+        document
+          .getElementById("pp_boxCount")
+          .addEventListener("input", pp_calcDerivedFields);
+        document
+          .getElementById("pp_unitsPerBox")
+          .addEventListener("input", pp_calcDerivedFields);
+
+        document
+          .getElementById("pp_btnCalcRetail")
+          .addEventListener("click", pp_calcRetailFromMargin);
+
+        document
+          .getElementById("pp_btnSaveBatch")
+          .addEventListener("click", pp_saveBatch);
+      });
+    </script>
+  <!-- ✅ 统一 sidebar 注入脚本（必须加） -->
+    <script src="/admin/assets/js/admin_sidebar.js"></script>
+</body>
+</html>

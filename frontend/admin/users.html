@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>用户管理 - Freshbuy Admin</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <!-- 如果你原来有 admin.css，可以保留这一行 -->
+    <link rel="stylesheet" href="assets/css/admin.css" />
+
+    <style>
+      /* ===== 整体深色后台风格（类似你截图） ===== */
+      :root {
+        --bg-main: #020617;
+        --bg-elevated: rgba(15, 23, 42, 0.96);
+        --bg-elevated-soft: rgba(15, 23, 42, 0.9);
+        --accent: #3b82f6;
+        --accent-soft: rgba(59, 130, 246, 0.12);
+        --accent-green: #22c55e;
+        --accent-yellow: #facc15;
+        --border-subtle: rgba(148, 163, 184, 0.4);
+        --text-main: #e5e7eb;
+        --text-sub: #9ca3af;
+        --radius-lg: 20px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+        background: radial-gradient(circle at top left, #0f172a 0, #020617 55%);
+        color: var(--text-main);
+        -webkit-font-smoothing: antialiased;
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      /* ===== 布局：左侧侧边栏 + 右侧主内容 ===== */
+      .admin-layout {
+        display: flex;
+        min-height: 100vh;
+      }
+
+      .admin-sidebar {
+        width: 240px;
+        background: radial-gradient(
+          circle at top left,
+          #020617 0,
+          #020617 30%,
+          #020617 100%
+        );
+        border-right: 1px solid rgba(15, 23, 42, 0.9);
+        padding: 18px 18px 24px;
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+      }
+
+      .sidebar-logo {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 4px 6px;
+      }
+
+      .sidebar-logo-badge {
+        width: 36px;
+        height: 36px;
+        border-radius: 999px;
+        background: radial-gradient(circle at 30% 0, #3b82f6 0, #1d4ed8 45%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #e5f2ff;
+        font-weight: 700;
+        font-size: 18px;
+      }
+
+      .sidebar-logo-text {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+
+      .sidebar-logo-text-main {
+        font-size: 16px;
+        font-weight: 600;
+      }
+
+      .sidebar-logo-text-sub {
+        font-size: 11px;
+        color: var(--text-sub);
+      }
+
+      .sidebar-section-title {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.15em;
+        color: rgba(148, 163, 184, 0.9);
+        margin: 8px 6px 4px;
+      }
+
+      .sidebar-nav {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .sidebar-link {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        margin: 0 4px;
+        border-radius: 999px;
+        font-size: 14px;
+        color: #e5e7eb;
+        opacity: 0.8;
+        transition: 0.15s ease;
+      }
+
+      .sidebar-link span.icon-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 999px;
+        background: rgba(148, 163, 184, 0.6);
+      }
+
+      .sidebar-link:hover {
+        background: rgba(15, 23, 42, 0.85);
+        opacity: 1;
+      }
+
+      .sidebar-link.active {
+        background: radial-gradient(circle at top left, #1d4ed8 0, #020617 80%);
+        opacity: 1;
+        box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.5);
+      }
+
+      .sidebar-footer {
+        margin-top: auto;
+        padding-top: 10px;
+        border-top: 1px solid rgba(15, 23, 42, 0.9);
+        font-size: 11px;
+        color: rgba(148, 163, 184, 0.85);
+      }
+
+      /* ===== 右侧主内容 ===== */
+      .admin-main {
+        flex: 1;
+        padding: 18px 26px 26px;
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+      }
+
+      .main-topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+      }
+
+      .main-title-block {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .main-title {
+        font-size: 22px;
+        font-weight: 600;
+      }
+
+      .main-subtitle {
+        font-size: 13px;
+        color: var(--text-sub);
+      }
+
+      .main-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .search-input {
+        background: rgba(15, 23, 42, 0.9);
+        border-radius: 999px;
+        border: 1px solid rgba(148, 163, 184, 0.3);
+        padding: 6px 12px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .search-input input {
+        background: transparent;
+        border: none;
+        outline: none;
+        color: var(--text-main);
+        font-size: 13px;
+        width: 180px;
+      }
+
+      .search-input input::placeholder {
+        color: rgba(148, 163, 184, 0.75);
+      }
+
+      .btn-pill {
+        border-radius: 999px;
+        padding: 6px 14px;
+        font-size: 13px;
+        border: 1px solid rgba(148, 163, 184, 0.35);
+        background: rgba(15, 23, 42, 0.9);
+        color: var(--text-main);
+        cursor: pointer;
+      }
+
+      .btn-primary {
+        border-radius: 999px;
+        padding: 6px 16px;
+        font-size: 13px;
+        border: none;
+        cursor: pointer;
+        background: linear-gradient(to right, #3b82f6, #2563eb);
+        color: white;
+        box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.4),
+          0 10px 30px rgba(15, 23, 42, 0.9);
+      }
+
+      .btn-primary:hover {
+        filter: brightness(1.05);
+      }
+
+      /* ===== 内容区域卡片 ===== */
+      .content-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      .card {
+        background: var(--bg-elevated-soft);
+        border-radius: var(--radius-lg);
+        border: 1px solid rgba(15, 23, 42, 0.95);
+        box-shadow: 0 18px 45px rgba(15, 23, 42, 0.9);
+        padding: 18px 18px 16px;
+      }
+
+      .card-header-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+      }
+
+      .card-title-block {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+      }
+
+      .card-title {
+        font-size: 16px;
+        font-weight: 600;
+      }
+
+      .card-subtitle {
+        font-size: 12px;
+        color: var(--text-sub);
+      }
+
+      .pill-soft {
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-size: 11px;
+        background: rgba(15, 23, 42, 0.9);
+        border: 1px solid rgba(148, 163, 184, 0.35);
+        color: rgba(148, 163, 184, 0.9);
+      }
+
+      .filters-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .input-dark {
+        background: rgba(15, 23, 42, 0.9);
+        border-radius: 999px;
+        border: 1px solid rgba(148, 163, 184, 0.35);
+        padding: 6px 12px;
+        font-size: 13px;
+        color: var(--text-main);
+        min-width: 150px;
+        outline: none;
+      }
+
+      .input-dark::placeholder {
+        color: rgba(148, 163, 184, 0.75);
+      }
+
+      /* ===== 表格 ===== */
+      .table-wrapper {
+        margin-top: 6px;
+        border-radius: 18px;
+        border: 1px solid rgba(15, 23, 42, 0.95);
+        overflow: hidden;
+        background: radial-gradient(
+          circle at top left,
+          rgba(15, 23, 42, 0.95) 0,
+          rgba(15, 23, 42, 1) 40%
+        );
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+
+      thead {
+        background: radial-gradient(
+          circle at top left,
+          rgba(37, 99, 235, 0.35) 0,
+          rgba(15, 23, 42, 0.98) 45%
+        );
+      }
+
+      th,
+      td {
+        padding: 10px 14px;
+        text-align: left;
+      }
+
+      th {
+        font-weight: 500;
+        color: rgba(226, 232, 240, 0.95);
+        border-bottom: 1px solid rgba(30, 64, 175, 0.75);
+      }
+
+      tbody tr:nth-child(even) td {
+        background: rgba(15, 23, 42, 0.96);
+      }
+
+      tbody tr:nth-child(odd) td {
+        background: rgba(15, 23, 42, 0.99);
+      }
+
+      tbody tr:hover td {
+        background: rgba(30, 64, 175, 0.45);
+      }
+
+      .badge-role {
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 11px;
+        border: 1px solid rgba(148, 163, 184, 0.5);
+      }
+
+      .badge-role.leader {
+        border-color: rgba(52, 211, 153, 0.7);
+        color: #a7f3d0;
+        background: rgba(22, 163, 74, 0.15);
+      }
+
+      .badge-role.driver {
+        border-color: rgba(59, 130, 246, 0.7);
+        color: #bfdbfe;
+        background: rgba(37, 99, 235, 0.16);
+      }
+
+      .badge-role.admin {
+        border-color: rgba(249, 115, 22, 0.8);
+        color: #fed7aa;
+        background: rgba(248, 113, 22, 0.14);
+      }
+
+      .status-pill {
+        padding: 2px 10px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 500;
+      }
+
+      .status-pill.active {
+        background: rgba(34, 197, 94, 0.24);
+        color: #bbf7d0;
+      }
+
+      .status-pill.disabled {
+        background: rgba(148, 163, 184, 0.25);
+        color: #e5e7eb;
+      }
+
+      .link-btn {
+        background: none;
+        border: none;
+        color: #60a5fa;
+        cursor: pointer;
+        padding: 4px 4px;
+        font-size: 12px;
+      }
+
+      .link-btn + .link-btn {
+        margin-left: 4px;
+      }
+
+      /* ===== 分页 ===== */
+      .pagination {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 4px 4px;
+        font-size: 12px;
+      }
+
+      .pager-btn {
+        border-radius: 999px;
+        padding: 3px 9px;
+        border: 1px solid rgba(148, 163, 184, 0.5);
+        background: rgba(15, 23, 42, 0.9);
+        color: var(--text-main);
+        cursor: pointer;
+      }
+
+      .pager-btn:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
+
+      /* ===== 弹窗（沿用深色风格） ===== */
+      .modal {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.75);
+        display: none;
+        justify-content: center;
+        align-items: center;
+        z-index: 2000;
+      }
+
+      .modal.open {
+        display: flex;
+      }
+
+      .modal-content {
+        width: 380px;
+        background: radial-gradient(
+          circle at top left,
+          rgba(30, 64, 175, 0.9) 0,
+          #020617 65%
+        );
+        border-radius: 22px;
+        border: 1px solid rgba(37, 99, 235, 0.65);
+        box-shadow: 0 20px 50px rgba(15, 23, 42, 0.95);
+        padding: 18px 20px 16px;
+      }
+
+      .modal-title {
+        margin: 0 0 10px;
+        font-size: 16px;
+        font-weight: 600;
+      }
+
+      .field {
+        display: flex;
+        flex-direction: column;
+        margin-bottom: 12px;
+        font-size: 13px;
+      }
+
+      .field span {
+        margin-bottom: 4px;
+        color: var(--text-sub);
+      }
+
+      .field .input-dark {
+        border-radius: 10px;
+        width: 100%;
+      }
+
+      .modal-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        margin-top: 6px;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="admin-layout">
+      <!-- 侧边栏 -->
+      <aside class="admin-sidebar">
+      <!-- ✅ 统一 sidebar：由 /admin/assets/js/admin_sidebar.js 注入 -->
+      <div id="adminSidebar"></div>
+    </aside>
+      <!-- 主内容 -->
+      <main class="admin-main">
+        <!-- 顶部条 -->
+        <div class="main-topbar">
+          <div class="main-title-block">
+            <div class="main-title">用户管理</div>
+            <div class="main-subtitle">
+              查看并管理后台用户 / 团长 / 司机 / 普通客户
+            </div>
+          </div>
+          <div class="main-actions">
+            <div class="search-input">
+              <span style="font-size: 13px; color: #64748b">🔍</span>
+              <input
+                type="text"
+                placeholder="搜索订单 / 用户 / 商品..."
+              />
+            </div>
+            <button class="btn-pill" id="refreshBtn">刷新数据</button>
+          </div>
+        </div>
+
+        <!-- 内容区 -->
+        <div class="content-grid">
+          <!-- 筛选卡片 -->
+          <section class="card">
+            <div class="card-header-row">
+              <div class="card-title-block">
+                <div class="card-title">筛选用户</div>
+                <div class="card-subtitle">
+                  支持按角色 / 状态 / 关键词快速查询
+                </div>
+              </div>
+              <div class="pill-soft">本页数据来自内存 · 仅测试使用</div>
+            </div>
+
+            <div class="filters-row">
+              <input
+                id="keyword"
+                type="text"
+                class="input-dark"
+                placeholder="按姓名 / 手机搜索"
+              />
+
+              <select id="roleFilter" class="input-dark">
+                <option value="">全部角色</option>
+                <option value="customer">普通用户</option>
+                <option value="leader">团长</option>
+                <option value="driver">司机</option>
+                <option value="admin">管理员</option>
+              </select>
+
+              <select id="statusFilter" class="input-dark">
+                <option value="">全部状态</option>
+                <option value="active">正常</option>
+                <option value="disabled">禁用</option>
+              </select>
+
+              <button id="searchBtn" class="btn-primary">搜索</button>
+              <button class="btn btn-outline" id="btnCreateUser">＋ 创建用户</button>
+            </div>
+          </section>
+
+          <!-- 用户列表卡片 -->
+          <section class="card">
+            <div class="card-header-row">
+              <div class="card-title-block">
+                <div class="card-title">用户列表</div>
+                <div class="card-subtitle">
+                  可查看最近注册用户、团长、司机等信息
+                </div>
+              </div>
+            </div>
+
+            <div class="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th>姓名</th>
+                    <th>手机号</th>
+                    <th>角色</th>
+                    <th>状态</th>
+                    <th>订单数</th>
+                    <th>累计消费</th>
+                    <th>注册时间</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="userTableBody"></tbody>
+              </table>
+            </div>
+
+            <div id="pagination" class="pagination"></div>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <!-- 编辑弹窗 -->
+    <div class="modal" id="editModal">
+      <div class="modal-content">
+        <h2 class="modal-title">编辑用户</h2>
+
+        <label class="field">
+          <span>姓名</span>
+          <input id="editName" type="text" class="input-dark" />
+        </label>
+
+        <label class="field">
+          <span>手机号</span>
+          <input id="editPhone" type="text" class="input-dark" />
+        </label>
+
+        <label class="field">
+          <span>角色</span>
+          <select id="editRole" class="input-dark">
+            <option value="customer">普通用户</option>
+            <option value="leader">团长</option>
+            <option value="driver">司机</option>
+            <option value="admin">管理员</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>状态</span>
+          <select id="editStatus" class="input-dark">
+            <option value="active">正常</option>
+            <option value="disabled">禁用</option>
+          </select>
+        </label>
+
+        <div class="modal-actions">
+          <button id="cancelEditBtn" class="btn-pill">取消</button>
+          <button id="saveUserBtn" class="btn-primary">保存</button>
+        </div>
+      </div>
+    </div>
+<!-- 创建用户弹窗（✅ 复用 editModal 的 modal-content 样式） -->
+<div class="modal" id="createModal">
+  <div class="modal-content">
+    <h2 class="modal-title">创建用户</h2>
+
+    <label class="field">
+      <span>姓名</span>
+      <input id="createName" type="text" class="input-dark" placeholder="如：linqi dai" />
+    </label>
+
+    <label class="field">
+      <span>手机号</span>
+      <input id="createPhone" type="text" class="input-dark" placeholder="10位手机号（仅数字）" />
+    </label>
+
+    <label class="field">
+      <span>角色</span>
+      <select id="createRole" class="input-dark">
+        <option value="customer">普通用户</option>
+        <option value="leader">团长</option>
+        <option value="driver">司机</option>
+        <option value="admin">管理员</option>
+      </select>
+    </label>
+
+    <label class="field">
+      <span>状态</span>
+      <select id="createStatus" class="input-dark">
+        <option value="active">正常</option>
+        <option value="disabled">禁用</option>
+      </select>
+    </label>
+
+    <label class="field">
+      <span>初始密码（可选）</span>
+      <input id="createPassword" type="text" class="input-dark" placeholder="留空则系统生成" />
+    </label>
+
+    <div id="createHint" style="display:none; margin-top:8px; color:#bbf7d0; font-size:12px;"></div>
+
+    <div class="modal-actions">
+      <button id="cancelCreateBtn" class="btn-pill">取消</button>
+      <button id="createUserBtn" class="btn-primary">创建</button>
+    </div>
+  </div>
+</div>
+<script src="/admin/assets/js/admin_guard.js"></script>
+<script src="./assets/js/admin_auth_ui.js"></script>  
+<!-- 功能脚本（沿用你现在的 users.js） -->
+    <script src="users.js"></script>
+   <!-- ✅ 统一 sidebar 注入脚本（必须加） -->
+    <script src="/admin/assets/js/admin_sidebar.js"></script>  
+  </body>
+</html>

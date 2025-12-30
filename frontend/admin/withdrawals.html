@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>提现管理 - 在鲜购拼好货后台</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- ✅ 统一后台样式：注意这里用同级 assets，不要 ../ -->
+    <link rel="stylesheet" href="assets/css/admin.css" />
+
+    <!-- ✅ 只补一点点本页样式（不破坏主题） -->
+    <style>
+      .filter-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: center;
+      }
+      .admin-select.small {
+        padding: 6px 10px;
+        border-radius: 10px;
+        font-size: 12px;
+      }
+      .table-subtext {
+        font-size: 12px;
+        color: #94a3b8;
+        margin-top: 2px;
+      }
+      .pagination-info {
+        font-size: 12px;
+        color: #94a3b8;
+        margin: 0 10px;
+      }
+      .admin-button.admin-button-xs {
+        padding: 6px 10px;
+        border-radius: 10px;
+        font-size: 12px;
+      }
+    </style>
+  </head>
+
+  <!-- ✅ 用 data-page 高亮：withdrawals -->
+  <body class="admin-layout" data-page="withdrawals">
+    <!-- ✅ 统一侧边栏：由 admin_sidebar.js 注入 -->
+    <aside class="admin-sidebar">
+      <div id="adminSidebar"></div>
+    </aside>
+
+    <div class="admin-main">
+      <!-- ✅ 统一 topbar（跟 drivers/orders 那套一致） -->
+      <header class="admin-topbar">
+        <button class="admin-btn admin-btn-ghost" data-toggle-sidebar>☰</button>
+        <div class="admin-topbar-title">提现管理</div>
+        <div class="admin-topbar-spacer"></div>
+
+        <a class="admin-btn admin-btn-ghost" href="settlements.html">← 返回结算</a>
+
+        <div class="admin-user">
+          <div class="admin-user-avatar">A</div>
+          <div class="admin-user-info">
+            <span class="admin-user-name">Admin</span>
+            <span class="admin-user-role">超级管理员</span>
+          </div>
+        </div>
+      </header>
+
+      <main class="admin-content">
+        <div class="admin-page-header">
+          <div>
+            <div class="admin-page-title">提现管理</div>
+            <div class="admin-breadcrumb">后台 &gt; 结算管理 &gt; 提现管理</div>
+          </div>
+          <div class="admin-page-actions">
+            <button id="btnFilterTop" class="admin-btn admin-btn-primary" type="button">
+              筛选
+            </button>
+            <button id="btnCreateDemoTop" class="admin-btn admin-btn-ghost" type="button">
+              生成测试数据
+            </button>
+          </div>
+        </div>
+
+        <!-- ✅ 筛选 -->
+        <section class="admin-card admin-card-ghost">
+          <div class="admin-card-header">
+            <div>
+              <div class="admin-card-header-title">筛选条件</div>
+              <div class="admin-card-header-sub">按团长 / 状态 / 日期范围筛选</div>
+            </div>
+          </div>
+          <div class="admin-card-body">
+            <div class="filter-row">
+              <input id="searchLeader" class="admin-input" placeholder="团长姓名 / 手机号" />
+              <select id="statusFilter" class="admin-select">
+                <option value="">全部状态</option>
+                <option value="pending">待审核</option>
+                <option value="approved">已通过待打款</option>
+                <option value="paid">已打款</option>
+                <option value="rejected">已拒绝</option>
+              </select>
+              <input id="startDate" type="date" class="admin-input" />
+              <input id="endDate" type="date" class="admin-input" />
+
+              <button id="btnFilter" class="admin-btn admin-btn-primary" type="button">筛选</button>
+              <button id="btnCreateDemo" class="admin-btn admin-btn-ghost" type="button">
+                生成测试数据
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ✅ 列表 -->
+        <section class="admin-table-card" style="margin-top: 12px">
+          <div class="admin-card-header">
+            <div>
+              <div class="admin-card-header-title">提现申请列表</div>
+              <div class="admin-card-header-sub">数据来自 /api/admin/withdrawals</div>
+            </div>
+          </div>
+
+          <div class="admin-card-body">
+            <div class="admin-table-wrapper">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th style="width: 90px">ID</th>
+                    <th style="width: 170px">团长</th>
+                    <th style="width: 170px">申请时间</th>
+                    <th style="width: 110px">金额</th>
+                    <th style="width: 110px">方式</th>
+                    <th>收款信息</th>
+                    <th style="width: 120px">状态</th>
+                    <th style="width: 180px">备注</th>
+                    <th style="width: 190px">操作</th>
+                  </tr>
+                </thead>
+                <tbody id="withdrawalTableBody"></tbody>
+              </table>
+            </div>
+
+            <div class="admin-pagination" id="pagination" style="margin-top: 10px;"></div>
+          </div>
+        </section>
+      </main>
+    </div>
+<script src="/admin/assets/js/admin_guard.js"></script>
+<script src="./assets/js/admin_auth_ui.js"></script>
+<!-- ✅ 统一 sidebar 注入（必须加） -->
+    <script src="/admin/assets/js/admin_sidebar.js"></script>
+    <!-- ✅ 你的通用 admin 脚本（侧边栏折叠/高亮等） -->
+    <script src="assets/js/admin.js"></script>
+
+    <script>
+      let currentPage = 1;
+      const pageSize = 10;
+
+      // =========================
+      // ✅ 后台 token（跟你 dispatch.html 那套一致）
+      // =========================
+      function getAdminToken() {
+        return (
+          localStorage.getItem("freshbuy_token") ||
+          localStorage.getItem("admin_token") ||
+          localStorage.getItem("adminToken") ||
+          localStorage.getItem("token") ||
+          localStorage.getItem("auth_token") ||
+          localStorage.getItem("jwt") ||
+          ""
+        );
+      }
+      function authHeaders(extra) {
+        const token = getAdminToken();
+        const h = { ...(extra || {}) };
+        if (token) h["Authorization"] = "Bearer " + token;
+        return h;
+      }
+      async function apiFetch(url, opt) {
+        const r = await fetch(url, {
+          credentials: "include",
+          ...(opt || {}),
+          headers: authHeaders((opt && opt.headers) || {}),
+        });
+        const data = await r.json().catch(() => ({}));
+        const errMsg = data.message || data.msg || `请求失败：${r.status}`;
+        if (!r.ok || data.success === false) {
+          if (r.status === 401 || /未登录|token/i.test(errMsg)) {
+            throw new Error("未登录：请先在后台登录（缺少 token）。");
+          }
+          throw new Error(errMsg);
+        }
+        return data;
+      }
+
+      // =========================
+      // utils
+      // =========================
+      function formatMoney(num) {
+        if (num === undefined || num === null) return "-";
+        return "$" + Number(num).toFixed(2);
+      }
+      function formatDateTime(val) {
+        if (!val) return "-";
+        try {
+          return new Date(val).toLocaleString();
+        } catch {
+          return String(val);
+        }
+      }
+      function formatStatus(status) {
+        switch (status) {
+          case "pending":
+            return "待审核";
+          case "approved":
+            return "已通过待打款";
+          case "paid":
+            return "已打款";
+          case "rejected":
+            return "已拒绝";
+          default:
+            return status || "-";
+        }
+      }
+
+      // =========================
+      // data
+      // =========================
+      async function loadWithdrawals(page = 1) {
+        currentPage = page;
+        const leaderName = document.getElementById("searchLeader").value.trim();
+        const status = document.getElementById("statusFilter").value;
+        const startDate = document.getElementById("startDate").value;
+        const endDate = document.getElementById("endDate").value;
+
+        const params = new URLSearchParams({ page, pageSize });
+        if (leaderName) params.append("leaderName", leaderName);
+        if (status) params.append("status", status);
+        if (startDate) params.append("startDate", startDate);
+        if (endDate) params.append("endDate", endDate);
+
+        try {
+          const data = await apiFetch("/api/admin/withdrawals?" + params.toString(), { method: "GET" });
+          renderTable(data.list || []);
+          renderPagination(data.page || page, data.pageSize || pageSize, data.total || 0);
+        } catch (err) {
+          console.error(err);
+          alert(err.message || "加载失败");
+        }
+      }
+
+      function renderTable(list) {
+        const tbody = document.getElementById("withdrawalTableBody");
+        tbody.innerHTML = "";
+        if (!list.length) {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `<td colspan="9" style="text-align:center;color:#94a3b8;">暂无数据</td>`;
+          tbody.appendChild(tr);
+          return;
+        }
+
+        list.forEach((item) => {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td>${item.id || item._id || "-"}</td>
+            <td>
+              <div>${item.leaderName || "-"}</div>
+              <div class="table-subtext">${item.leaderPhone || ""}</div>
+            </td>
+            <td>${formatDateTime(item.createdAt)}</td>
+            <td>${formatMoney(item.amount)}</td>
+            <td>${item.method || "-"}</td>
+            <td>${item.accountInfo || "-"}</td>
+            <td>${formatStatus(item.status)}</td>
+            <td>${item.adminRemark || "-"}</td>
+            <td>
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                <select class="admin-select small" data-id="${item.id || item._id}" data-type="statusSelect">
+                  <option value="pending" ${item.status === "pending" ? "selected" : ""}>待审核</option>
+                  <option value="approved" ${item.status === "approved" ? "selected" : ""}>已通过待打款</option>
+                  <option value="paid" ${item.status === "paid" ? "selected" : ""}>已打款</option>
+                  <option value="rejected" ${item.status === "rejected" ? "selected" : ""}>已拒绝</option>
+                </select>
+                <button class="admin-btn admin-btn-ghost" data-id="${item.id || item._id}" data-type="saveStatus" type="button">
+                  保存
+                </button>
+              </div>
+            </td>
+          `;
+          tbody.appendChild(tr);
+        });
+
+        tbody.querySelectorAll('button[data-type="saveStatus"]').forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const id = btn.getAttribute("data-id");
+            const select = tbody.querySelector(
+              'select[data-type="statusSelect"][data-id="' + id + '"]'
+            );
+            const newStatus = select ? select.value : "";
+            updateWithdrawalStatus(id, { status: newStatus });
+          });
+        });
+      }
+
+      function renderPagination(page, pageSize, total) {
+        const container = document.getElementById("pagination");
+        const totalPage = Math.ceil(total / pageSize) || 1;
+
+        container.innerHTML = `
+          <button class="admin-btn admin-btn-ghost" ${page <= 1 ? "disabled" : ""} data-page="${page - 1}" type="button">上一页</button>
+          <span class="pagination-info">第 ${page} / ${totalPage} 页，共 ${total} 条</span>
+          <button class="admin-btn admin-btn-ghost" ${page >= totalPage ? "disabled" : ""} data-page="${page + 1}" type="button">下一页</button>
+        `;
+
+        container.querySelectorAll("button[data-page]").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const p = Number(btn.getAttribute("data-page"));
+            if (!Number.isNaN(p)) loadWithdrawals(p);
+          });
+        });
+      }
+
+      async function updateWithdrawalStatus(id, payload) {
+        if (!id) return;
+        try {
+          await apiFetch("/api/admin/withdrawals/" + id + "/status", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload || {}),
+          });
+          alert("状态已更新");
+          loadWithdrawals(currentPage);
+        } catch (err) {
+          console.error(err);
+          alert(err.message || "更新失败");
+        }
+      }
+
+      async function createDemoData() {
+        try {
+          const demoList = [
+            {
+              leaderName: "王团长",
+              leaderPhone: "18800000001",
+              amount: 120,
+              method: "zelle",
+              accountInfo: "demo@zelle.com",
+              status: "pending",
+            },
+            {
+              leaderName: "李团长",
+              leaderPhone: "18800000002",
+              amount: 80,
+              method: "bank",
+              accountInfo: "Chase xxxx1234",
+              status: "approved",
+            },
+          ];
+
+          for (const item of demoList) {
+            await apiFetch("/api/admin/withdrawals", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(item),
+            });
+          }
+          alert("已生成测试数据");
+          loadWithdrawals(1);
+        } catch (err) {
+          console.error(err);
+          alert(err.message || "生成测试数据失败");
+        }
+      }
+
+      document.addEventListener("DOMContentLoaded", () => {
+        // 顶部按钮同步触发
+        const btnFilterTop = document.getElementById("btnFilterTop");
+        const btnCreateDemoTop = document.getElementById("btnCreateDemoTop");
+        if (btnFilterTop) btnFilterTop.addEventListener("click", () => loadWithdrawals(1));
+        if (btnCreateDemoTop) btnCreateDemoTop.addEventListener("click", createDemoData);
+
+        document.getElementById("btnFilter").addEventListener("click", () => loadWithdrawals(1));
+        document.getElementById("btnCreateDemo").addEventListener("click", createDemoData);
+
+        // ✅ 没 token 给提示（不阻止渲染，但会报未登录）
+        const t = getAdminToken();
+        if (!t) {
+          console.warn("No admin token found. Please login at /admin/login.html");
+        }
+
+        loadWithdrawals(1);
+      });
+    </script>
+  </body>
+</html>
