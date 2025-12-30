@@ -2,7 +2,7 @@
 // 路由挂载通常是：app.use("/api/admin", adminRouter);
 
 import express from "express";
-import Product from "../models/Product.js";
+import Product from "../models/product.js";
 // 如果你有管理员鉴权，可打开：import { requireAdmin } from "../middlewares/admin.js";
 
 const router = express.Router();
