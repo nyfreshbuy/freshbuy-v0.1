@@ -2,50 +2,48 @@
 import express from "express";
 import Zone from "../models/Zone.js";
 
-const router = express.Router();
-
 console.log("🚀public_zones.js 已加载");
 
-// GET /api/zones/by-zip?zip=11365
-router.get("/by-zip", async (req, res) => {
+const router = express.Router();
+router.use(express.json());
+
+// GET /api/public/zones/ping
+router.get("/ping", (req, res) => {
+  res.json({ ok: true, name: "public_zones", time: new Date().toISOString() });
+});
+
+// GET /api/public/zones
+router.get("/", async (req, res) => {
   try {
-    const zip = String(req.query.zip || "").trim();
+    const docs = await Zone.find({}).sort({ updatedAt: -1 }).lean();
 
-    if (!/^\d{5}$/.test(zip)) {
-      return res.status(400).json({ ok: false, message: "invalid zip" });
-    }
+    const zones = docs.map((z) => {
+      const zips =
+        z.zips ||
+        z.zipWhitelist ||
+        z.zipWhiteList ||
+        z.zipList ||
+        [];
 
-    const zone = await Zone.findOne({ zipWhitelist: zip }).select(
-      "_id name zipWhitelist deliveryModes cutoffTime deliveryDays note"
-    );
-
-    // ✅ 不支持配送：返回 ok:true，但 deliverable:false（这不是“接口失败”）
-    if (!zone) {
-      return res.json({
-        ok: true,
-        deliverable: false,
-        zip,
-        reason: "该邮编暂不支持配送",
-      });
-    }
-
-    return res.json({
-      ok: true,
-      deliverable: true,
-      zip,
-      zone: {
-        id: zone._id.toString(),
-        name: zone.name,
-        zipWhitelist: zone.zipWhitelist || [],
-        deliveryModes: zone.deliveryModes || [],
-        cutoffTime: zone.cutoffTime || "",
-        deliveryDays: zone.deliveryDays || [],
-        note: zone.note || "",
-      },
+      return {
+        _id: String(z._id),
+        id: String(z._id),
+        name: z.name || z.zoneName || "",
+        note: z.note || z.zoneNote || "",
+        zips: Array.isArray(zips) ? zips.map(String) : [],
+        polygon: z.polygon || z.polygonPaths || null,
+        updatedAt: z.updatedAt || null,
+      };
     });
+
+    res.json({ success: true, zones });
   } catch (err) {
-    console.error("GET /api/zones/by-zip error:", err);
-    res.status(500).json({ ok: false, message: "server error" });
+    console.error("❌ public_zones error:", err?.message || err);
+    res.status(500).json({
+      success: false,
+      message: "Failed to load zones",
+      error: err?.message || String(err),
+    });
   }
 });
 

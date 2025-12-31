@@ -8,21 +8,14 @@ import fs from "fs";
 import multer from "multer";
 
 import { connectDB } from "./db.js";
+
+// =======================
+// 路由导入
+// =======================
 import authMongoRouter from "./routes/auth_mongo.js";
-
-console.log("JWT_SECRET loaded?", !!process.env.JWT_SECRET);
-console.log("ENV MONGODB_URI exists?", Boolean(process.env.MONGODB_URI));
-console.log(
-  "ENV MONGODB_URI host preview:",
-  (process.env.MONGODB_URI || "").split("@")[1]?.split("/")[0]
-);
-console.log("🔥 当前运行的 server.js 来自 =====> ", url.fileURLToPath(import.meta.url));
-
 import adminAuthRouter from "./routes/admin_auth.js";
 
-// =======================
-// 路由导入（非司机端部分）
-// =======================
+// 你项目里现有路由（按你原本导入保留）
 import publicZonesRouter from "./routes/public_zones.js";
 import ordersRouter from "./routes/orders.js";
 import adminRouter from "./routes/admin.js";
@@ -38,12 +31,12 @@ import adminSettlementsRouter from "./routes/admin_settlements.js";
 
 import adminSettingsMemory from "./routes/admin_settings.js";
 import adminDashboardrouter from "./routes/admin_dashboard.js";
-import productsRouter from "./routes/products.js"; // 通用商品接口
-import frontendProductsRouter from "./routes/frontendProducts.js"; // 前台首页专区接口
+import productsRouter from "./routes/products.js";
+import frontendProductsRouter from "./routes/frontendProducts.js";
 import categoriesRouter from "./routes/categories.js";
 
 import driverRouter from "./routes/driver.js";
-import driverOrdersRouter from "./routes/driver_orders.js"; // ✅ DB版司机订单路由
+import driverOrdersRouter from "./routes/driver_orders.js";
 
 import addressesRouter from "./routes/addresses.js";
 import rechargeRouter from "./routes/recharge.js";
@@ -70,7 +63,16 @@ import stripePayRouter from "./routes/pay_stripe.js";
 const __filename = url.fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-console.log("🔥 admin_orders DB router loaded");
+// =======================
+// 启动日志（保留你原来的）
+// =======================
+console.log("JWT_SECRET loaded?", !!process.env.JWT_SECRET);
+console.log("ENV MONGODB_URI exists?", Boolean(process.env.MONGODB_URI));
+console.log(
+  "ENV MONGODB_URI host preview:",
+  (process.env.MONGODB_URI || "").split("@")[1]?.split("/")[0]
+);
+console.log("🔥 当前运行的 server.js 来自 =====> ", url.fileURLToPath(import.meta.url));
 
 // =======================
 // 创建 app
@@ -81,57 +83,119 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // =======================
-// API 预挂载（你原本的顺序我尽量不动）
+// API 路由挂载（先挂具体的，再挂“/api”大网兜）
 // =======================
+
+// ---- 基础工具 / 公共 ----
 app.use("/api/geocode", geocodeRouter);
 console.log("✅ geocode 已挂载到 /api/geocode");
 
-app.use("/api", productsSimpleRouter);
-app.use("/api/zones", publicZonesRouter);
-app.use("/api/public", publicGeoRouter);
+// ✅ Public zones（你要的真实入口）
+// 访问：/api/public/zones 以及 /api/public/zones/ping
+app.use("/api/public/zones", publicZonesRouter);
+console.log("✅ public_zones 已挂载到 /api/public/zones");
 
+// ✅ ZIP 检测（避免跟 zones 列表冲突）
+// 访问：/api/zones/check?zip=xxxxx 以及 /api/zones/check/ping
+app.use("/api/zones/check", zonesCheckRouter);
+console.log("✅ zones_check 已挂载到 /api/zones/check");
+
+// 你原来的 public 路由（保留）
+app.use("/api/public", publicGeoRouter);
+app.use("/api/public", publicServiceRouter);
+
+// ---- 地址 / 充值 / 优惠券 ----
 app.use("/api/addresses", addressesRouter);
 app.use("/api/recharge", rechargeRouter);
 app.use("/api/coupons", couponsRouter);
 
+console.log("✅ addresses 已挂载到 /api/addresses");
+console.log("✅ recharge 已挂载到 /api/recharge");
+console.log("✅ coupons 已挂载到 /api/coupons");
+
+// ---- 登录 / OTP ----
 app.use("/api/auth", authMongoRouter);
+console.log("✅ auth_mongo 已挂载到 /api/auth");
+
 app.use("/api/auth-otp", authOtpRouter);
 
-app.use("/api/public", publicServiceRouter);
-
+// ---- 用户 ----
 app.use("/api/users", userProfileRouter);
 app.use("/api/users", usersRouter);
+app.use("/api/user", userMeRouter);
 
+// ---- 支付 ----
 app.use("/api/payments", paymentsRouter);
 app.use("/api/pay/stripe", stripePayRouter);
 
-app.use("/api/zones", zonesCheckRouter);
-app.use("/api/user", userMeRouter);
+// ---- 司机 ----
+app.use("/api/driver", driverRouter);
+app.use("/api/driver/orders", driverOrdersRouter);
 
-// 通用中间件
+// ---- 后台 ----
 app.use("/api/admin/dashboard", adminDashboardrouter);
 app.use("/api/admin/zones", adminZonesRouter);
 console.log("✅ admin_zones 已挂载到 /api/admin/zones");
 
-// 司机基础信息路由（driver.js）
-app.use("/api/driver", driverRouter);
-
-// ✅ 司机订单（DB版）统一走这里
-app.use("/api/driver/orders", driverOrdersRouter);
-
 app.use("/api/admin/auth", adminAuthRouter);
 console.log("✅ admin_auth 已挂载到 /api/admin/auth");
+
+app.use("/api/admin/dispatch", adminDispatchRouter);
+
+app.use("/api/site-config", siteConfigRouter);
+
+// 后台：管理员充值
+app.use("/api/admin", adminRechargeRouter);
+console.log("✅ admin_recharge 已挂载到 /api/admin");
+
+// 营销中心
+app.use("/api/admin", adminMarketingRouter);
+console.log("✅ admin_marketing 已挂载到 /api/admin");
+
+// 后台订单管理
+app.use("/api/admin/orders", adminOrdersRouter);
+
+// 后台商品管理
+app.use("/api/admin/products", adminProductsRouter);
+
+// 司机管理
+app.use("/api/admin", adminDriversRouter);
+
+// ✅ 用户管理：MongoDB
+app.use("/api/admin/users", adminUsersMongoRouter);
+
+// 后台结算
+app.use("/api/admin/settlements", adminSettlementsRouter);
+//（你原本重复挂了一次 settlements，这里我不重复挂第二次，避免潜在副作用）
+
+// 后台通用 admin 功能
+app.use("/api/admin", adminRouter);
+
+// 钱包
+app.use("/api/wallet", walletRouter);
+console.log("✅ wallet 已挂载到 /api/wallet");
+
+// ---- 下单 ----
+app.use("/api/orders", ordersRouter);
+
+// ---- 通用商品 / 分类 ----
+app.use("/api/products", productsRouter);
+app.use("/api/frontend/products", frontendProductsRouter);
+app.use("/api/categories", categoriesRouter);
+
+// ---- 系统设置 ----
+app.use("/api/admin/settings", adminSettingsMemory);
+
+// ✅ 最后再挂 /api 大网兜（避免拦截上面所有更具体的接口）
+app.use("/api", productsSimpleRouter);
 
 // =======================
 // 司机端：照片上传配置（保留目录 + multer）
 // =======================
-app.use("/api/site-config", siteConfigRouter);
 
 // 上传根目录：backend/uploads
 const uploadsRoot = path.join(__dirname, "../uploads");
 const deliveryPhotosDir = path.join(uploadsRoot, "delivery_photos");
-
-app.use("/api/admin/dispatch", adminDispatchRouter);
 
 // 确保目录存在
 if (!fs.existsSync(deliveryPhotosDir)) {
@@ -139,7 +203,7 @@ if (!fs.existsSync(deliveryPhotosDir)) {
   console.log("📁 已创建送达照片目录:", deliveryPhotosDir);
 }
 
-// 配置 multer 存储司机送达照片（注意：真正的 photo API 建议写在 routes/driver_orders.js 内）
+// 配置 multer 存储司机送达照片
 const deliveryPhotoStorage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, deliveryPhotosDir),
   filename: (req, file, cb) => {
@@ -151,7 +215,7 @@ const deliveryPhotoStorage = multer.diskStorage({
 const uploadDeliveryPhoto = multer({ storage: deliveryPhotoStorage });
 
 // =======================
-// 1) 静态文件：前端页面 + assets + 上传图片
+// 静态文件：前端页面 + assets + 上传图片
 // =======================
 
 // 前端根目录：backend/src → ../../frontend
@@ -161,20 +225,15 @@ console.log("静态前端目录:", frontendPath);
 // A. 整个 frontend 暴露出来（支持 /user /admin /driver 等）
 app.use(express.static(frontendPath));
 
-console.log("✅ addresses 已挂载到 /api/addresses");
-console.log("✅ recharge 已挂载到 /api/recharge");
-console.log("✅ coupons 已挂载到 /api/coupons");
-
 // B. /assets → 用户端静态资源目录（CSS/JS/图片）
 app.use("/assets", express.static(path.join(frontendPath, "user/assets")));
 
-console.log("✅ admin_recharge 已挂载到 /api/admin");
-// 后台：管理员充值
-app.use("/api/admin", adminRechargeRouter);
-
-// C. /uploads → 后台上传商品图片 + 司机送达照片（backend/uploads/...）
+// C. /uploads → 后台上传商品图片 + 司机送达照片
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
+// =======================
+// 测试接口
+// =======================
 app.get("/api/whoami-server", (req, res) => {
   res.json({
     ok: true,
@@ -183,58 +242,8 @@ app.get("/api/whoami-server", (req, res) => {
     time: new Date().toISOString(),
   });
 });
-console.log("✅ auth_mongo 已挂载到 /api/auth");
 
-// =======================
-// 2) 各种 API 路由挂载（一定要在 /api 404 之前）
-// =======================
-
-// 通用商品接口（如 /api/products、/api/products/:id）
-app.use("/api/products", productsRouter);
-
-// 前台首页商品专区接口
-app.use("/api/frontend/products", frontendProductsRouter);
-
-// 分类接口
-app.use("/api/categories", categoriesRouter);
-
-app.use("/api/admin/settlements", adminSettlementsRouter);
-app.use("/api/admin", adminDriversRouter);
-
-// 系统设置
-app.use("/api/admin/settings", adminSettingsMemory);
-
-// 营销中心（营销规则配置）
-app.use("/api/admin", adminMarketingRouter);
-console.log("✅ admin_marketing 已挂载到 /api/admin");
-
-// 用户下单相关
-app.use("/api/orders", ordersRouter);
-
-// 后台订单管理
-app.use("/api/admin/orders", adminOrdersRouter);
-
-// 后台商品管理
-app.use("/api/admin/products", adminProductsRouter);
-
-// ✅ 用户管理：只用 MongoDB 真实数据
-app.use("/api/admin/users", adminUsersMongoRouter);
-
-// 后台通用 admin 功能
-app.use("/api/admin", adminRouter);
-
-// 钱包
-app.use("/api/wallet", walletRouter);
-console.log("✅ wallet 已挂载到 /api/wallet");
-
-//（你原本重复挂了一次 settlements，这里保留不改）
-app.use("/api/admin/settlements", adminSettlementsRouter);
-
-// =======================
-// 2.1 司机端 API（保留 test-ping，其余内存版已删除）
-// =======================
-
-// 测试：GET /api/driver/test-ping
+// 司机端 test ping
 app.get("/api/driver/test-ping", (req, res) => {
   res.json({
     success: true,
@@ -242,32 +251,13 @@ app.get("/api/driver/test-ping", (req, res) => {
   });
 });
 
-/**
- * ✅ 重要说明：
- * 以前 server.js 里的这些“内存司机订单接口”已删除：
- * - GET  /api/driver/orders/today
- * - PATCH /api/driver/orders/start-all
- * - PATCH /api/driver/orders/:id/start
- * - PATCH /api/driver/orders/:id/complete
- * - POST /api/driver/orders/:id/photo（内存版）
- *
- * 现在统一由 routes/driver_orders.js（MongoDB版）提供。
- *
- * 如果你需要“上传照片”接口：
- * ✅ 建议加到 routes/driver_orders.js 里，并复用本文件的 uploads 目录规则：
- *   - 保存文件后把 relPath 写到 Order.deliveryPhotoUrl
- *   - relPath 形如：/uploads/delivery_photos/xxx.jpg
- */
-
-// =======================
-// 3) 一些通用测试接口
-// =======================
+// 通用 debug
 app.get("/api/debug-settings", (req, res) => {
   res.json({ success: true, msg: "来自 server.js 的 debug-settings 测试接口" });
 });
 
 // =======================
-// 4) 页面路由：用户首页 + 后台首页
+// 页面路由：用户首页 + 后台首页
 // =======================
 
 // 用户端首页
@@ -287,7 +277,7 @@ app.get("/admin/:page", (req, res) => {
 });
 
 // =======================
-// 5) 未匹配的 API 路由，统一返回 404 JSON
+// 未匹配的 API 路由，统一返回 404 JSON（必须最后）
 // =======================
 app.use("/api", (req, res) => {
   console.log("❌ API 404 捕获:", req.originalUrl);
@@ -298,7 +288,7 @@ app.use("/api", (req, res) => {
 });
 
 // =======================
-// 6) 启动服务（先连 Mongo 再启动）
+// 启动服务（先连 Mongo 再启动）
 // =======================
 const PORT = process.env.PORT || 3000;
 
