@@ -36,9 +36,7 @@ import adminUsersMongoRouter from "./routes/admin_users_mongo.js";
 import order from "./models/order.js";
 import adminMarketingRouter from "./routes/admin_marketing.js";
 import adminSettlementsRouter from "./routes/admin_settlements.js";
-import adminWithdrawalsRouter from "./routes/admin_withdrawals_memory.js";
-import adminLeaderSettlementsRouter from "./routes/admin_leader_settlements_memory.js";
-import adminDriverSettlementsRouter from "./routes/admin_driver_settlements_memory.js";
+
 import adminSettingsMemory from "./routes/admin_settings.js";
 import adminDashboardrouter from "./routes/admin_dashboard.js";
 import productsRouter from "./routes/products.js"; // 通用商品接口
@@ -177,9 +175,6 @@ app.use("/api/frontend/products", frontendProductsRouter);
 // 分类接口
 app.use("/api/categories", categoriesRouter);
 app.use("/api/admin/settlements", adminSettlementsRouter);
-app.use("/api/admin/withdrawals", adminWithdrawalsRouter);
-app.use("/api/admin/leader-settlements", adminLeaderSettlementsRouter);
-app.use("/api/admin/driver-settlements", adminDriverSettlementsRouter);
 app.use("/api/admin", adminDriversRouter);
 // 系统设置
 app.use("/api/admin/settings", adminSettingsMemory);
