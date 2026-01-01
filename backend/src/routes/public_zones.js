@@ -7,15 +7,21 @@ console.log("🚀public_zones.js 已加载");
 const router = express.Router();
 router.use(express.json());
 
-// 小工具：统一 zone 的 zip 字段兼容
+// 小工具：统一 zone 的 zip 字段兼容（✅ 只取“非空数组”，避免 zips:[] 覆盖 zipWhitelist）
 function pickZips(z) {
-  return (
-    z.zips ||
-    z.zipWhitelist ||
-    z.zipWhiteList ||
-    z.zipList ||
-    []
-  );
+  const candidates = [
+    z.zips,
+    z.zipWhitelist,
+    z.zipWhiteList,
+    z.zipList,
+  ];
+
+  for (const arr of candidates) {
+    if (Array.isArray(arr) && arr.length > 0) {
+      return arr.map(String);
+    }
+  }
+  return [];
 }
 function normalizeZone(z) {
   const zips = pickZips(z);
