@@ -1238,5 +1238,29 @@
     <!-- 你的 footer / auth 客户端脚本（保持你原逻辑，但放在 body 内正确位置） -->
     <script src="/user/components/footer.js"></script>
     <script src="/assets/js/auth_client.js"></script>
+   <!--Start of Tawk.to Script-->
+<script type="text/javascript">
+var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date();
+(function(){
+var s1=document.createElement("script"),s0=document.getElementsByTagName("script")[0];
+s1.async=true;
+s1.src='https://embed.tawk.to/695611bc0a00df198198dcc1/1jds3aig5';
+s1.charset='UTF-8';
+s1.setAttribute('crossorigin','*');
+s0.parentNode.insertBefore(s1,s0);
+})();
+</script>
+<!--End of Tawk.to Script-->
+<script>
+Tawk_API = Tawk_API || {};
+Tawk_API.onLoad = function(){
+  Tawk_API.setAttributes({
+    name: localStorage.getItem("freshbuy_login_nickname") || "访客",
+    phone: localStorage.getItem("freshbuy_login_phone") || "",
+    role: localStorage.getItem("freshbuy_role") || "guest"
+  }, function(error){});
+};
+</script>
+
   </body>
 </html>

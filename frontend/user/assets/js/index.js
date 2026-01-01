@@ -1296,8 +1296,8 @@ async function initZipAutoZone() {
 // =========================
 window.addEventListener("DOMContentLoaded", async () => {
   loadCategories();
-  loadHomeProductsFromSimple();
-
+  await loadHomeProductsFromSimple(); // ✅ 改：加 await
+  bindGlobalSearch(); 
   await initAuthUIFromStorage();
   await applyZipFromDefaultAddressIfLoggedIn();
 
@@ -1317,3 +1317,92 @@ window.addEventListener("DOMContentLoaded", async () => {
     renderDeliveryInfo("area-group");
   }
 });
+// =========================
+// 🔍 搜索实现：过滤首页商品
+// =========================
+function doSearch(keyword) {
+  const kw = String(keyword || "").trim().toLowerCase();
+
+  // 没有商品数据就不搜
+  const list = Array.isArray(window.allProducts) ? window.allProducts : [];
+  if (!list.length) {
+    console.warn("doSearch: allProducts 为空，先等商品加载完成");
+    return;
+  }
+
+  // 目标：把结果渲染到 “全部商品” 区块（productGridNormal）
+  const gridAll = document.getElementById("productGridNormal");
+  if (!gridAll) return;
+
+  // 清空搜索：恢复“全部商品”（只恢复这一块，简单可靠）
+  if (!kw) {
+    const nonHot = list.filter((p) => !isHotProduct(p));
+    gridAll.innerHTML = "";
+    nonHot.forEach((p) => gridAll.appendChild(createProductCard(p, "")));
+    return;
+  }
+
+  // 命中字段：name/desc/tag/type/category/subCategory/mainCategory/section/tags/labels
+  const hit = (p) => {
+    const fields = [
+      p?.name,
+      p?.desc,
+      p?.tag,
+      p?.type,
+      p?.category,
+      p?.subCategory,
+      p?.mainCategory,
+      p?.subcategory,
+      p?.section,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+
+    const arr1 = Array.isArray(p?.tags) ? p.tags.join(" ").toLowerCase() : "";
+    const arr2 = Array.isArray(p?.labels) ? p.labels.join(" ").toLowerCase() : "";
+
+    return (fields + " " + arr1 + " " + arr2).includes(kw);
+  };
+
+  const matched = list.filter(hit);
+
+  gridAll.innerHTML = "";
+
+  if (!matched.length) {
+    gridAll.innerHTML = `<div style="padding:12px;font-size:13px;color:#6b7280;">没有找到「${keyword}」相关商品</div>`;
+  } else {
+    matched.forEach((p) => gridAll.appendChild(createProductCard(p, "")));
+  }
+
+  // 滚动到“全部商品”区域（如果你首页有这个 id）
+  try {
+    const sec = document.getElementById("sectionAll") || document.getElementById("productGridNormal");
+    if (sec) sec.scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch {}
+}
+// =========================
+// 🔍 顶部搜索栏（globalSearchInput）
+// =========================
+function bindGlobalSearch() {
+  const input = document.getElementById("globalSearchInput");
+  if (!input) {
+    console.warn("❌ 未找到 #globalSearchInput");
+    return;
+  }
+
+  console.log("✅ 搜索栏已绑定");
+
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      doSearch(input.value);
+    }
+  });
+
+  input.addEventListener("input", () => {
+    if (!input.value.trim()) {
+      doSearch("");
+    }
+  });
+}
