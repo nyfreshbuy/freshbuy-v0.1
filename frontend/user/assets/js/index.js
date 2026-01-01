@@ -1182,21 +1182,23 @@ async function resolveZoneByZipFromDB(zip) {
 
   try {
     const r = await fetch(
-      `/api/zones/by-zip?zip=${encodeURIComponent(z)}&ts=${Date.now()}`,
-      { cache: "no-store" }
-    );
+  `/api/public/zones/by-zip?zip=${encodeURIComponent(z)}&ts=${Date.now()}`,
+  { cache: "no-store" }
+);
     const j = await r.json().catch(() => ({}));
     console.log("[by-zip resp]", j);
 
-    if (j?.deliverable === true && j?.zone) {
-      return { ok: true, deliverable: true, zip: z, zone: j.zone };
-    }
+    iconst supported = (j?.supported === true) || (j?.deliverable === true);
+
+if (supported && j?.zone) {
+  return { ok: true, deliverable: true, zip: z, zone: j.zone };
+}
     return {
-      ok: Boolean(j?.ok),
-      deliverable: false,
-      zip: z,
-      reason: j?.reason || j?.message || "该邮编暂不支持配送",
-    };
+  ok: Boolean(j?.ok || j?.success),
+  deliverable: false,
+  zip: z,
+  reason: j?.reason || j?.message || "该邮编暂不支持配送",
+};
   } catch (e) {
     console.error("resolveZoneByZipFromDB error:", e);
     return { ok: false, deliverable: false, zip: z, reason: "server error" };
