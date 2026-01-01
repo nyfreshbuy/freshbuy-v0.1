@@ -93,6 +93,7 @@ console.log("✅ geocode 已挂载到 /api/geocode");
 // ✅ Public zones（你要的真实入口）
 // 访问：/api/public/zones 以及 /api/public/zones/ping
 app.use("/api/public/zones", publicZonesRouter);
+app.use("/api/zones", publicZonesRouter); // ✅ 兼容 /api/zones/by-zip
 console.log("✅ public_zones 已挂载到 /api/public/zones");
 
 // ✅ ZIP 检测（避免跟 zones 列表冲突）
