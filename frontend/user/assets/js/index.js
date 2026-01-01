@@ -1188,7 +1188,7 @@ async function resolveZoneByZipFromDB(zip) {
     const j = await r.json().catch(() => ({}));
     console.log("[by-zip resp]", j);
 
-    iconst supported = (j?.supported === true) || (j?.deliverable === true);
+    const supported = (j?.supported === true) || (j?.deliverable === true);
 
 if (supported && j?.zone) {
   return { ok: true, deliverable: true, zip: z, zone: j.zone };
