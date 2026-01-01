@@ -2,19 +2,69 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <title>Freshbuy 后台 - Zone 管理</title>
+  <title>Freshbuy 后台 - Zone 管理（ZIP模式）</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <!-- ✅ 统一后台主题 -->
   <link rel="stylesheet" href="assets/css/admin.css" />
 
-  <!-- ✅ 本页补充样式：保留你原来的左右布局 + 地图全屏 -->
+  <!-- ✅ 本页补充样式：保留你原来的左右布局（右侧不再是地图） -->
   <style>
-    /* 让本页使用 admin.css 的暗色布局，但保留你原来的“左表单右地图”结构 */
     .zone-wrap { display:flex; height: calc(100vh - 56px); } /* 56px 预留 topbar */
     .zone-left { width: 380px; border-right: 1px solid rgba(148,163,184,.16); padding: 16px; overflow:auto; }
     .zone-right { flex:1; position:relative; }
-    #map { position:absolute; inset:0; border-radius: 16px; overflow:hidden; }
+
+    /* 右侧改成提示面板 */
+    .zip-only-panel{
+      position:absolute; inset:0;
+      border-radius: 16px;
+      background: rgba(2,6,23,.35);
+      border: 1px solid rgba(148,163,184,.16);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding: 20px;
+      overflow:auto;
+    }
+    .zip-only-card{
+      max-width: 560px;
+      width: 100%;
+      padding: 18px 18px;
+      border-radius: 16px;
+      background: rgba(2,6,23,.55);
+      border: 1px solid rgba(148,163,184,.18);
+      box-shadow: 0 10px 28px rgba(0,0,0,.25);
+    }
+    .zip-only-title{
+      margin: 0 0 8px;
+      font-size: 16px;
+      font-weight: 900;
+      color: #e5e7eb;
+    }
+    .zip-only-desc{
+      margin: 0 0 14px;
+      color: #94a3b8;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+    .zip-only-list{
+      margin: 0;
+      padding-left: 18px;
+      color: #cbd5e1;
+      font-size: 12px;
+      line-height: 1.7;
+    }
+    .zip-only-badge{
+      display:inline-block;
+      margin-top: 12px;
+      font-size: 12px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(34,197,94,.14);
+      border: 1px solid rgba(34,197,94,.25);
+      color:#bbf7d0;
+      font-weight: 800;
+    }
 
     .zone-h2 { margin:0 0 12px; font-size:16px; font-weight:800; color:#e5e7eb; }
     .zone-row { margin-bottom:10px; }
@@ -51,11 +101,6 @@
     }
 
     .zone-list { margin-top:14px; border-top: 1px solid rgba(148,163,184,.16); padding-top:12px; }
-    .zone-card { border: 1px solid rgba(148,163,184,.18); border-radius: 14px; padding: 10px; margin-bottom: 10px; background: rgba(2,6,23,.35); }
-    .zone-card .title { font-weight:800; color:#e5e7eb; }
-    .zone-card .sub { font-size:12px; color:#94a3b8; margin-top:4px; }
-    .zone-card .mini { display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; }
-    .zone-badge { font-size:12px; padding:4px 8px; border-radius:999px; background: rgba(148,163,184,.10); color:#cbd5e1; border:1px solid rgba(148,163,184,.16); }
 
     .zone-top-actions { display:flex; gap:10px; align-items:center; justify-content:space-between; margin-bottom:12px; }
     .zone-back { white-space:nowrap; }
@@ -64,12 +109,12 @@
     @media (max-width: 980px) {
       .zone-wrap { flex-direction: column; height:auto; }
       .zone-left { width:100%; border-right:none; border-bottom:1px solid rgba(148,163,184,.16); }
-      .zone-right { height: 62vh; }
+      .zone-right { height: 48vh; }
+      .zip-only-panel{ position:relative; inset:auto; height:48vh; }
     }
   </style>
 </head>
 
-<!-- ✅ data-page 用于侧边栏高亮 -->
 <body class="admin-layout" data-page="zones">
   <!-- ✅ 统一侧边栏：由 admin_sidebar.js 注入 -->
   <aside class="admin-sidebar">
@@ -77,10 +122,10 @@
   </aside>
 
   <div class="admin-main">
-    <!-- ✅ 顶部栏（统一后台风格） -->
+    <!-- ✅ 顶部栏 -->
     <header class="admin-topbar">
       <button class="admin-btn admin-btn-ghost" data-toggle-sidebar>☰</button>
-      <div class="admin-topbar-title">配送区域 Zone</div>
+      <div class="admin-topbar-title">配送区域 Zone（ZIP模式）</div>
       <div class="admin-topbar-spacer"></div>
 
       <a class="admin-btn admin-btn-ghost zone-back" href="dashboard.html" id="btnBackTop">← 返回后台</a>
@@ -89,11 +134,11 @@
     <main class="admin-content" style="padding-top: 12px;">
       <section class="admin-card admin-card-ghost" style="padding:0; overflow:hidden;">
         <div class="zone-wrap">
+
           <!-- 左：表单 -->
           <div class="zone-left">
             <div class="zone-top-actions">
               <div class="zone-h2">配送区域 Zone 管理</div>
-              <!-- ✅ 返回按钮（保留你原来的逻辑：支持 ?back=xxx） -->
               <button class="zone-btn zone-back" id="btnBack" title="返回后台">← 返回</button>
             </div>
 
@@ -108,7 +153,7 @@
             </div>
 
             <div class="zone-row">
-              <label>Zip（可选，逗号分隔，如 11365,11366）</label>
+              <label>Zip（必填，用逗号分隔，如 11365,11366）</label>
               <input
                 id="zoneZips"
                 placeholder="11365,11366"
@@ -116,9 +161,9 @@
                 autocomplete="postal-code"
               />
               <div class="zone-hint" style="margin-top:8px;">
-                提示：只填 Zip 也可以保存。<br/>
-                如果你没有手动画多边形，系统会用 Zip 自动定位并画一个「近似矩形范围」（不是精确邮编边界）。<br/>
-                多个 Zip 会合并成一个大框（例如 11365,11366）。
+                ZIP 模式说明：本页不使用地图/多边形。<br/>
+                系统只根据 Zip 白名单判断是否支持配送。<br/>
+                例：输入 11365,11366 保存后，前台查询 ZIP 命中即为支持。
               </div>
             </div>
 
@@ -130,15 +175,16 @@
             <div class="zone-btns">
               <button class="zone-btn primary" id="btnSave">保存 / 更新</button>
               <button class="zone-btn ghost" id="btnNew">新建模式</button>
-              <button class="zone-btn ghost" id="btnClearPoly">清除当前多边形</button>
+              <!-- ❌ ZIP-only：移除清除多边形按钮 -->
+              <!-- <button class="zone-btn ghost" id="btnClearPoly">清除当前多边形</button> -->
             </div>
 
             <div class="zone-hint">
               操作：<br/>
-              1) 你可以直接输入 Zip 自动生成矩形（推荐）<br/>
-              2) 或在地图上用“多边形工具”画出区域<br/>
-              3) 填 Zone ID + 名称<br/>
-              4) 点“保存/更新”写入数据库<br/>
+              1) 填 Zone ID + Zone 名称<br/>
+              2) 填 ZIP（逗号分隔）<br/>
+              3) 点“保存/更新”写入数据库<br/>
+              4) 在下方列表点“编辑”，可回填并更新 ZIP
             </div>
 
             <div class="zone-list">
@@ -147,51 +193,51 @@
             </div>
           </div>
 
-          <!-- 右：地图 -->
+          <!-- 右：ZIP-only 提示面板（不加载地图） -->
           <div class="zone-right">
-            <div id="map"></div>
+            <div class="zip-only-panel">
+              <div class="zip-only-card">
+                <h3 class="zip-only-title">ZIP-only 模式已启用</h3>
+                <p class="zip-only-desc">
+                  为了避免 Google 地图 Key/限制导致后台功能不可用，本页面已关闭地图加载。
+                  你仍然可以正常新增/编辑/删除 Zone 的 ZIP 白名单。
+                </p>
+                <ul class="zip-only-list">
+                  <li>前台判断配送：通过 <code>/api/zones/by-zip?zip=xxxxx</code> 命中 Zone.zips</li>
+                  <li>建议：每个 Zone 放一组相邻 ZIP，方便你后续扩区</li>
+                  <li>如果你以后想恢复地图，再把 maps script 加回来即可</li>
+                </ul>
+                <div class="zip-only-badge">✅ 不加载地图也能编辑保存</div>
+              </div>
+            </div>
           </div>
+
         </div>
       </section>
     </main>
   </div>
- <script src="/admin/assets/js/admin_guard.js"></script>
- <script src="./assets/js/admin_auth_ui.js"></script>
- <!-- ✅ 统一 sidebar 注入（必须加） -->
+
+  <!-- ✅ 登录保护 / UI -->
+  <script src="/admin/assets/js/admin_guard.js"></script>
+  <script src="./assets/js/admin_auth_ui.js"></script>
+
+  <!-- ✅ sidebar 注入 -->
   <script src="/admin/assets/js/admin_sidebar.js"></script>
-  <!-- 你的通用 admin 脚本（侧边栏收起/高亮等） -->
   <script src="assets/js/admin.js"></script>
 
-  <!-- ✅ Google Maps key（建议后面改成后端下发；先按你现在的方式保留） -->
-  <script>
-    window.__GOOGLE_MAPS_KEY__ = "AIzaSyADGsracEoQMevCS00LQ3b-DsAhgsJ_04Y";
-  </script>
-
-  <!-- ✅ 你的业务逻辑脚本（保持不变） -->
+  <!-- ✅ 业务逻辑脚本（注意：你需要把 admin_zones.js 改成 ZIP-only，不要再依赖地图） -->
   <script src="./assets/js/admin_zones.js"></script>
 
-  <!-- Google Maps -->
+  <!-- ✅ 返回后台：支持 ?back=xxx（不传则默认 dashboard.html） -->
   <script>
-    const s = document.createElement("script");
-    s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(window.__GOOGLE_MAPS_KEY__)}&libraries=drawing`;
-    s.async = true;
-    s.defer = true;
-    s.onload = () => window.initZonesMap && window.initZonesMap();
-    document.head.appendChild(s);
-
-    // ✅ 返回后台：支持 ?back=xxx（不传则默认 dashboard.html）
     document.addEventListener("DOMContentLoaded", () => {
       const btn = document.getElementById("btnBack");
       const topBack = document.getElementById("btnBackTop");
       const qs = new URLSearchParams(location.search);
       const back = qs.get("back") || "dashboard.html";
 
-      if (btn) {
-        btn.addEventListener("click", () => (window.location.href = back));
-      }
-      if (topBack) {
-        topBack.setAttribute("href", back);
-      }
+      if (btn) btn.addEventListener("click", () => (window.location.href = back));
+      if (topBack) topBack.setAttribute("href", back);
     });
   </script>
 </body>
