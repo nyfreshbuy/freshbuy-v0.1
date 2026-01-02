@@ -423,12 +423,12 @@
       });
 
       // ✅ 去结算：生成快照 freshbuy_checkout_v1（不改 cart.js）
-      document.getElementById("btnCheckout").addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        e.preventDefault();
-        const btn = document.getElementById("btnCheckout");
-        if (btn && btn.disabled) return;
+   document.getElementById("btnCheckout").addEventListener("click", (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  e.stopImmediatePropagation(); // ✅ 关键：阻止其它 click 监听器再抢
+  const btn = document.getElementById("btnCheckout");
+  if (btn && btn.disabled) return;
 
         const st = window.Cart && typeof Cart.getState === "function" ? Cart.getState() : null;
         const itemsRaw = st && Array.isArray(st.items) ? st.items : [];
