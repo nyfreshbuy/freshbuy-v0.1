@@ -1234,56 +1234,36 @@
     <!-- 你的 footer / auth 客户端脚本（保持你原逻辑，但放在 body 内正确位置） -->
     <script src="/user/components/footer.js"></script>
     <script src="/assets/js/auth_client.js"></script>
+<!-- ✅【可选】手机端右下角“💬 客服”按钮（如果你要全部隐藏，可以保留但隐藏） -->
+<button id="mobileTawkBtn" type="button" aria-label="客服">💬 客服</button>
 
-    <!-- ✅【新增】手机端右下角“💬 客服”按钮（带“客服”字样） -->
-    <button id="mobileTawkBtn" type="button" aria-label="客服">💬 客服</button>
+<style>
+  /* ✅ 如果你现在要“全部隐藏客服入口”，就直接把自定义按钮也隐藏 */
+  #mobileTawkBtn { display: none !important; }
 
-    <!-- ✅【新增】按钮样式 + PC/手机显示控制 + 隐藏 Tawk 默认浮标 -->
-    <style>
-      /* 手机端显示自定义“客服”按钮；电脑端不显示 */
-      #mobileTawkBtn {
-        position: fixed;
-        right: 16px;
-        bottom: 92px;
-        z-index: 999999;
+  /* ✅ 强制隐藏 Tawk 默认入口容器 */
+  #tawkchat-container { display: none !important; }
+</style>
 
-        display: none; /* 默认隐藏，手机端再显示 */
-        border: none;
-        border-radius: 999px;
-        padding: 10px 14px;
+<!--Start of Tawk.to Script-->
+<script type="text/javascript">
+  var Tawk_API = Tawk_API || {},
+    Tawk_LoadStart = new Date();
+  (function () {
+    var s1 = document.createElement("script"),
+      s0 = document.getElementsByTagName("script")[0];
+    s1.async = true;
+    s1.src = "https://embed.tawk.to/695611bc0a00df198198dcc1/1jds3aig5";
+    s1.charset = "UTF-8";
+    s1.setAttribute("crossorigin", "*");
+    s0.parentNode.insertBefore(s1, s0);
+  })();
+</script>
+<!--End of Tawk.to Script-->
 
-        font-size: 14px;
-        font-weight: 700;
-        background: #2563eb;
-        color: #fff;
-
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
-        cursor: pointer;
-        -webkit-tap-highlight-color: transparent;
-      }
-
-      @media (max-width: 1023px) {
-        #mobileTawkBtn {
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-        }
-      }
-
-      @media (min-width: 1024px) {
-        #mobileTawkBtn {
-          display: none;
-        }
-      }
-
-      /* 隐藏 Tawk 默认蓝色浮标（否则会出现两个入口） */
-      #tawkchat-container {
-        display: none !important;
-      }
-    </style>
 <script>
   /* =====================================================
-     Tawk：只隐藏（PC + Mobile），不禁用、不 remove
+     ✅ Tawk：只隐藏，不禁用，不 remove（全端隐藏）
      ===================================================== */
 
   // ✅ 用户属性注入（只保留一次）
@@ -1300,33 +1280,9 @@
   };
 
   (function () {
-    // 👉 如果你以后想主动打开聊天，这个还能用
-    function openTawk() {
-      if (window.Tawk_API && typeof window.Tawk_API.maximize === "function") {
-        window.Tawk_API.maximize();
-      }
-    }
-
-    // PC 左侧固定栏按钮（存在就绑定）
-    var pcBtn = document.getElementById("btnSupport");
-    if (pcBtn) {
-      pcBtn.addEventListener("click", function (e) {
-        e.preventDefault();
-        openTawk();
-      });
-    }
-
-    // 手机端自定义“客服”按钮
-    var mBtn = document.getElementById("mobileTawkBtn");
-    if (mBtn) {
-      mBtn.addEventListener("click", function () {
-        openTawk();
-      });
-    }
-
-    // ===== 核心：只隐藏，不删除 =====
+    // ===== 核心：只隐藏（不 remove）=====
     function hideTawkUI() {
-      // 1️⃣ 主容器
+      // 1) 主容器
       var c = document.getElementById("tawkchat-container");
       if (c) {
         c.style.display = "none";
@@ -1334,7 +1290,7 @@
         c.style.pointerEvents = "none";
       }
 
-      // 2️⃣ 所有 Tawk iframe（浮标/气泡通常在 iframe 里）
+      // 2) 所有 tawk iframe
       document.querySelectorAll("iframe").forEach(function (iframe) {
         var src = iframe.getAttribute("src") || "";
         var title = (iframe.getAttribute("title") || "").toLowerCase();
@@ -1345,7 +1301,7 @@
         }
       });
 
-      // 3️⃣ 兜底：任何 id / class 含 tawk 的元素（但不动你自己的按钮）
+      // 3) 兜底：id/class 含 tawk 的元素（不动你自己的按钮）
       document.querySelectorAll("[id],[class]").forEach(function (el) {
         if (el.id === "mobileTawkBtn") return;
         var id = (el.id || "").toLowerCase();
@@ -1358,10 +1314,10 @@
       });
     }
 
-    // 页面一加载就先隐藏一次
+    // 立即执行一次
     hideTawkUI();
 
-    // Tawk 是异步注入 → 监听 DOM 变化持续隐藏
+    // 异步插入 -> MutationObserver 持续隐藏（30 秒）
     var observer = new MutationObserver(function () {
       hideTawkUI();
     });
@@ -1374,12 +1330,12 @@
       });
     }
 
-    // 30 秒后停止监听（避免性能问题）
     setTimeout(function () {
       observer.disconnect();
     }, 30000);
   })();
 </script>
+
 </body>
 </html>
 
