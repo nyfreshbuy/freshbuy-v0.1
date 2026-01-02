@@ -640,9 +640,14 @@ console.log("✅ cart.js loaded on", location.pathname);
   // ==============================
 
   function getAuthToken() {
-    return localStorage.getItem("freshbuy_token") || localStorage.getItem("token") || "";
-  }
-
+  return (
+    localStorage.getItem("freshbuy_token") ||
+    localStorage.getItem("jwt") ||          // ✅ 补上
+    localStorage.getItem("token") ||
+    localStorage.getItem("auth_token") ||
+    ""
+  );
+}
   function pickDefaultAddressFromList(list) {
     const arr = Array.isArray(list) ? list : [];
     if (!arr.length) return null;
@@ -879,17 +884,20 @@ console.log("✅ cart.js loaded on", location.pathname);
         }
       });
     }
-
-    const checkoutBtn = document.querySelector("[data-cart-checkout-btn]");
-    if (checkoutBtn) {
-      checkoutBtn.addEventListener("click", async (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        await quickCheckout();
-      });
-    }
-  }
-
+const checkoutBtn = document.querySelector("[data-cart-checkout-btn]");
+if (checkoutBtn) {
+  checkoutBtn.addEventListener(
+    "click",
+    (e) => {
+      // 让 cart.html 自己的逻辑接管（生成快照 + 跳转）
+      // ✅ cart.js 这里不再做任何跳转/下单
+      e.preventDefault();
+      e.stopPropagation();
+    },
+    true
+  );
+} 
+}  // ✅ 补上：关闭 bindCartDOMEventsPage
   // ==============================
   // 12. 顶部抽屉渲染（header UI）
   // ==============================

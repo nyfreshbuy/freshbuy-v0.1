@@ -425,6 +425,8 @@
       // ✅ 去结算：生成快照 freshbuy_checkout_v1（不改 cart.js）
       document.getElementById("btnCheckout").addEventListener("click", (e) => {
         e.preventDefault();
+        e.stopPropagation();
+        e.preventDefault();
         const btn = document.getElementById("btnCheckout");
         if (btn && btn.disabled) return;
 
