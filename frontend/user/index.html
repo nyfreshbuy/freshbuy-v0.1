@@ -1359,5 +1359,98 @@
     }, 250);
   })();
 </script>
+<script>
+  // ✅ 保留你原来的用户属性注入
+  Tawk_API = Tawk_API || {};
+  Tawk_API.onLoad = function () {
+    Tawk_API.setAttributes(
+      {
+        name: localStorage.getItem("freshbuy_login_nickname") || "访客",
+        phone: localStorage.getItem("freshbuy_login_phone") || "",
+        role: localStorage.getItem("freshbuy_role") || "guest",
+      },
+      function (error) {}
+    );
+  };
+
+  (function () {
+    function openTawk() {
+      if (window.Tawk_API && typeof window.Tawk_API.maximize === "function") {
+        window.Tawk_API.maximize();
+        return true;
+      }
+      return false;
+    }
+
+    // ✅ PC 左侧固定栏按钮打开 Tawk
+    var pcBtn = document.getElementById("btnSupport");
+    if (pcBtn) {
+      pcBtn.addEventListener("click", function (e) {
+        e.preventDefault();
+        if (!openTawk()) setTimeout(openTawk, 400);
+      });
+    }
+
+    // ✅ 手机右下角“💬 客服”按钮打开 Tawk
+    var mBtn = document.getElementById("mobileTawkBtn");
+    if (mBtn) {
+      mBtn.addEventListener("click", function () {
+        if (!openTawk()) setTimeout(openTawk, 400);
+      });
+    }
+
+    // =========================================
+    // ✅ 终极隐藏：彻底移除 Tawk 默认 launcher（蓝色圆球/气泡）
+    // 思路：Tawk 异步插入 DOM + iframe，我们用 remove() + MutationObserver 封死
+    // =========================================
+    function killTawkLaunchers() {
+      // 1) 主容器（最常见）
+      var c = document.getElementById("tawkchat-container");
+      if (c) c.remove();
+
+      // 2) 任何 src 指向 tawk 的 iframe（一些版本用 iframe 画 launcher）
+      document.querySelectorAll("iframe").forEach(function (iframe) {
+        var src = iframe.getAttribute("src") || "";
+        var title = (iframe.getAttribute("title") || "").toLowerCase();
+        if (src.indexOf("tawk.to") >= 0 || title.indexOf("tawk") >= 0) {
+          iframe.remove();
+        }
+      });
+
+      // 3) 一些版本会生成额外容器（兜底）
+      document.querySelectorAll("div,button,a").forEach(function (el) {
+        var cls = (el.className || "").toString().toLowerCase();
+        var id = (el.id || "").toString().toLowerCase();
+        if (cls.indexOf("tawk") >= 0 || id.indexOf("tawk") >= 0) {
+          // ⚠️ 别误删你的自定义按钮
+          if (el.id === "mobileTawkBtn") return;
+          // 只删看起来像浮层/入口的
+          el.remove();
+        }
+      });
+    }
+
+    // 立即执行一次
+    killTawkLaunchers();
+
+    // Tawk 会反复插入 → 用观察者实时干掉
+    var observer = new MutationObserver(function () {
+      killTawkLaunchers();
+    });
+
+    if (document.body) {
+      observer.observe(document.body, { childList: true, subtree: true });
+    } else {
+      window.addEventListener("load", function () {
+        observer.observe(document.body, { childList: true, subtree: true });
+      });
+    }
+
+    // 30 秒后停止监听（够覆盖加载期）
+    setTimeout(function () {
+      observer.disconnect();
+    }, 30000);
+  })();
+</script>
 </body>
 </html>
