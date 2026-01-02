@@ -1227,66 +1227,127 @@
     });
   })();
 </script>
-    <!-- 公共购物车脚本 + 首页逻辑 -->
+        <!-- 公共购物车脚本 + 首页逻辑 -->
     <script src="assets/js/cart.js"></script>
     <script src="assets/js/index.js"></script>
 
     <!-- 你的 footer / auth 客户端脚本（保持你原逻辑，但放在 body 内正确位置） -->
     <script src="/user/components/footer.js"></script>
     <script src="/assets/js/auth_client.js"></script>
-   <!-- 🔴【新增】手机端右下角“客服”按钮（就在这里） -->
-<button id="mobileTawkBtn" type="button" aria-label="客服">💬 客服</button>
+
+    <!-- ✅【新增】手机端右下角“💬 客服”按钮（带“客服”字样） -->
+    <button id="mobileTawkBtn" type="button" aria-label="客服">💬 客服</button>
+
+    <!-- ✅【新增】按钮样式 + PC/手机显示控制 + 隐藏 Tawk 默认浮标 -->
+    <style>
+      /* 手机端显示自定义“客服”按钮；电脑端不显示 */
+      #mobileTawkBtn {
+        position: fixed;
+        right: 16px;
+        bottom: 92px;
+        z-index: 999999;
+
+        display: none; /* 默认隐藏，手机端再显示 */
+        border: none;
+        border-radius: 999px;
+        padding: 10px 14px;
+
+        font-size: 14px;
+        font-weight: 700;
+        background: #2563eb;
+        color: #fff;
+
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      @media (max-width: 1023px) {
+        #mobileTawkBtn {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+        }
+      }
+
+      @media (min-width: 1024px) {
+        #mobileTawkBtn {
+          display: none;
+        }
+      }
+
+      /* 隐藏 Tawk 默认蓝色浮标（否则会出现两个入口） */
+      #tawkchat-container {
+        display: none !important;
+      }
+    </style>
+
     <!--Start of Tawk.to Script-->
-<script type="text/javascript">
-var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date();
-(function(){
-var s1=document.createElement("script"),s0=document.getElementsByTagName("script")[0];
-s1.async=true;
-s1.src='https://embed.tawk.to/695611bc0a00df198198dcc1/1jds3aig5';
-s1.charset='UTF-8';
-s1.setAttribute('crossorigin','*');
-s0.parentNode.insertBefore(s1,s0);
-})();
-</script>
-<!--End of Tawk.to Script-->
-<script>
-Tawk_API = Tawk_API || {};
-Tawk_API.onLoad = function(){
-  Tawk_API.setAttributes({
-    name: localStorage.getItem("freshbuy_login_nickname") || "访客",
-    phone: localStorage.getItem("freshbuy_login_phone") || "",
-    role: localStorage.getItem("freshbuy_role") || "guest"
-  }, function(error){});
-};
-/* 🔴【新增】PC / Mobile 打开 Tawk + 隐藏默认浮标 */
-(function () {
-  function openTawk() {
-    if (window.Tawk_API && typeof window.Tawk_API.maximize === "function") {
-      window.Tawk_API.maximize();
-      return true;
-    }
-    return false;
-  }
+    <script type="text/javascript">
+      var Tawk_API = Tawk_API || {},
+        Tawk_LoadStart = new Date();
+      (function () {
+        var s1 = document.createElement("script"),
+          s0 = document.getElementsByTagName("script")[0];
+        s1.async = true;
+        s1.src = "https://embed.tawk.to/695611bc0a00df198198dcc1/1jds3aig5";
+        s1.charset = "UTF-8";
+        s1.setAttribute("crossorigin", "*");
+        s0.parentNode.insertBefore(s1, s0);
+      })();
+    </script>
+    <!--End of Tawk.to Script-->
 
-  // PC 左侧固定栏按钮
-  document.getElementById("btnSupport")?.addEventListener("click", () => {
-    if (!openTawk()) setTimeout(openTawk, 400);
-  });
+    <script>
+      // ✅ 保留你原来的用户属性注入
+      Tawk_API = Tawk_API || {};
+      Tawk_API.onLoad = function () {
+        Tawk_API.setAttributes(
+          {
+            name: localStorage.getItem("freshbuy_login_nickname") || "访客",
+            phone: localStorage.getItem("freshbuy_login_phone") || "",
+            role: localStorage.getItem("freshbuy_role") || "guest",
+          },
+          function (error) {}
+        );
+      };
 
-  // 手机右下角“客服”按钮
-  document.getElementById("mobileTawkBtn")?.addEventListener("click", () => {
-    if (!openTawk()) setTimeout(openTawk, 400);
-  });
+      // ✅ PC / Mobile 打开 Tawk + 隐藏默认浮标（双保险）
+      (function () {
+        function openTawk() {
+          if (window.Tawk_API && typeof window.Tawk_API.maximize === "function") {
+            window.Tawk_API.maximize();
+            return true;
+          }
+          return false;
+        }
 
-  // 隐藏 Tawk 默认浮标（避免重复）
-  let tries = 0;
-  const timer = setInterval(() => {
-    const el = document.getElementById("tawkchat-container");
-    if (el) el.style.display = "none";
-    tries++;
-    if (tries > 30) clearInterval(timer);
-  }, 300);
-})();
-</script>
-</body>
+        // PC 左侧固定栏按钮（你侧边栏需要有 id="btnSupport"）
+        var pcBtn = document.getElementById("btnSupport");
+        if (pcBtn) {
+          pcBtn.addEventListener("click", function (e) {
+            e.preventDefault();
+            if (!openTawk()) setTimeout(openTawk, 400);
+          });
+        }
+
+        // 手机右下角“💬 客服”按钮
+        var mBtn = document.getElementById("mobileTawkBtn");
+        if (mBtn) {
+          mBtn.addEventListener("click", function () {
+            if (!openTawk()) setTimeout(openTawk, 400);
+          });
+        }
+
+        // 隐藏 Tawk 默认浮标（Tawk 异步插入，所以定时多次隐藏）
+        var tries = 0;
+        var timer = setInterval(function () {
+          var el = document.getElementById("tawkchat-container");
+          if (el) el.style.display = "none";
+          tries++;
+          if (tries > 40) clearInterval(timer);
+        }, 250);
+      })();
+    </script>
+  </body>
 </html>
