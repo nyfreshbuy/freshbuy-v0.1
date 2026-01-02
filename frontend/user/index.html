@@ -768,22 +768,6 @@
   display: none !important;
 }
 /* 手机端右下角自定义客服按钮（PC隐藏，手机显示） */
-#mobileTawkBtn{
-  position: fixed;
-  right: 16px;
-  bottom: 24px;
-  z-index: 999999;
-  display: none;
-  border: none;
-  border-radius: 999px;
-  padding: 10px 14px;
-  font-size: 14px;
-  font-weight: 700;
-  background: #2563eb;
-  color: #fff;
-  box-shadow: 0 10px 30px rgba(0,0,0,.18);
-  cursor: pointer;
-}
 @media (max-width: 1023px){
   #mobileTawkBtn{ display: inline-flex; align-items:center; gap:8px; }
 }
@@ -824,7 +808,14 @@
         <div class="user-area">
           <button class="link-btn" id="loginBtn">登录</button>
           <button class="link-btn primary" id="registerBtn">注册</button>
-
+          <button
+    id="mobileTawkBtn"
+    class="link-btn"
+    type="button"
+    style="border-color:#2563eb;color:#2563eb;font-weight:600;"
+  >
+    💬 联系客服
+  </button>
           <div class="user-profile" id="userProfile">
             <div class="user-avatar" id="userAvatar">我</div>
             <span class="user-name" id="userNameLabel">我的账户</span>
@@ -1273,7 +1264,6 @@ s1.setAttribute('crossorigin','*');
 s0.parentNode.insertBefore(s1,s0);
 })();
 </script>
-<button id="mobileTawkBtn" type="button">💬 客服</button>
 <!--End of Tawk.to Script-->
 <script src="/assets/js/tawk_custom.js"></script>
   </body>
