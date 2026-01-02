@@ -489,7 +489,30 @@
 
     <!-- ✅ 必须先加载 cart.js：否则结算页不更新配送费/区域团 -->
     <script src="/assets/js/cart.js"></script>
+<script>
+  // ✅ 捕获运行时错误（含文件 + 行号）
+  window.addEventListener("error", function (e) {
+    const msg = [
+      "JS Error:",
+      e.message,
+      "file: " + (e.filename || ""),
+      "line: " + (e.lineno || ""),
+      "col: " + (e.colno || "")
+    ].join("\n");
+    alert(msg);
+  });
 
+  // ✅ 捕获 Promise/async 报错（fetch 常见）
+  window.addEventListener("unhandledrejection", function (e) {
+    const r = e.reason;
+    const msg = [
+      "Unhandled Rejection:",
+      (r && (r.message || String(r))) || "unknown",
+      (r && r.stack) ? r.stack : ""
+    ].join("\n");
+    alert(msg);
+  });
+</script>
     <script>
       // ========= 工具 =========
       function money(n) {

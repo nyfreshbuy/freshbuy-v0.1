@@ -866,25 +866,50 @@ console.log("✅ cart.js loaded on", location.pathname);
   // ==============================
   // 11. 绑定购物车页事件
   // ==============================
+function bindCartDOMEventsPage() {
+  // 1) 列表 +/- 删除
+  const listEl = document.querySelector("[data-cart-items]");
+  if (listEl) {
+    listEl.addEventListener("click", (e) => {
+      const target = e.target;
+      const id = target.getAttribute("data-id");
+      if (!id) return;
 
-  function bindCartDOMEventsPage() {
-    const listEl = document.querySelector("[data-cart-items]");
-    if (listEl) {
-      listEl.addEventListener("click", (e) => {
-        const target = e.target;
-        const id = target.getAttribute("data-id");
-        if (!id) return;
+      if (target.classList.contains("cart-btn-plus")) {
+        Cart.changeQty(id, 1);
+      } else if (target.classList.contains("cart-btn-minus")) {
+        Cart.changeQty(id, -1);
+      } else if (target.classList.contains("cart-btn-remove")) {
+        Cart.removeItem(id);
+      }
+    });
+  }
 
-        if (target.classList.contains("cart-btn-plus")) {
-          Cart.changeQty(id, 1);
-        } else if (target.classList.contains("cart-btn-minus")) {
-          Cart.changeQty(id, -1);
-        } else if (target.classList.contains("cart-btn-remove")) {
-          Cart.removeItem(id);
-        }
-      });
-    }
-}  // ✅ 补上：关闭 bindCartDOMEventsPage
+  // 2) ✅ 去结算按钮
+  const checkoutBtn =
+    document.querySelector("[data-cart-checkout-btn]") ||
+    document.getElementById("btnCheckout");
+
+  if (checkoutBtn) {
+    checkoutBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+
+      // 如果按钮被逻辑禁用，就不处理
+      if (checkoutBtn.disabled) return;
+
+      // cart.html -> 跳到 checkout.html
+      const path = String(location.pathname || "");
+      const isCheckoutPage = path.includes("checkout");
+
+      if (isCheckoutPage) {
+        // 如果你结算页也复用这个按钮：直接下单
+        quickCheckout();
+      } else {
+        window.location.href = "/user/checkout.html";
+      }
+    });
+  }
+}
   // ==============================
   // 12. 顶部抽屉渲染（header UI）
   // ==============================
