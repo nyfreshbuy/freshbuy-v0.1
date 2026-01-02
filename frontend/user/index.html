@@ -767,6 +767,31 @@
 #zipCheckBox {
   display: none !important;
 }
+/* 手机端右下角自定义客服按钮（PC隐藏，手机显示） */
+#mobileTawkBtn{
+  position: fixed;
+  right: 16px;
+  bottom: 92px;
+  z-index: 999999;
+  display: none;
+  border: none;
+  border-radius: 999px;
+  padding: 10px 14px;
+  font-size: 14px;
+  font-weight: 700;
+  background: #2563eb;
+  color: #fff;
+  box-shadow: 0 10px 30px rgba(0,0,0,.18);
+  cursor: pointer;
+}
+@media (max-width: 1023px){
+  #mobileTawkBtn{ display: inline-flex; align-items:center; gap:8px; }
+}
+@media (min-width: 1024px){
+  #mobileTawkBtn{ display: none; }
+}
+/* 隐藏默认蓝色浮标容器（CSS兜底） */
+#tawkchat-container{ display:none !important; }
     </style>
 
     <link rel="stylesheet" href="./assets/css/main.css" />
@@ -1248,17 +1273,79 @@ s1.setAttribute('crossorigin','*');
 s0.parentNode.insertBefore(s1,s0);
 })();
 </script>
+<button id="mobileTawkBtn" type="button">💬 客服</button>
 <!--End of Tawk.to Script-->
 <script>
-Tawk_API = Tawk_API || {};
-Tawk_API.onLoad = function(){
-  Tawk_API.setAttributes({
-    name: localStorage.getItem("freshbuy_login_nickname") || "访客",
-    phone: localStorage.getItem("freshbuy_login_phone") || "",
-    role: localStorage.getItem("freshbuy_role") || "guest"
-  }, function(error){});
-};
+  // 1) 保留你原来的用户属性注入
+  window.Tawk_API = window.Tawk_API || {};
+  window.Tawk_API.onLoad = function () {
+    try {
+      window.Tawk_API.setAttributes(
+        {
+          name: localStorage.getItem("freshbuy_login_nickname") || "访客",
+          phone: localStorage.getItem("freshbuy_login_phone") || "",
+          role: localStorage.getItem("freshbuy_role") || "guest",
+        },
+        function () {}
+      );
+    } catch (e) {}
+  };
+
+  // 2) 打开聊天
+  function openTawk() {
+    if (window.Tawk_API && typeof window.Tawk_API.maximize === "function") {
+      window.Tawk_API.maximize();
+      return true;
+    }
+    return false;
+  }
+
+  // 3) 绑定按钮 + 隐藏默认浮标（PC+手机）
+  (function () {
+    // 左侧固定栏按钮
+    var pcBtn = document.getElementById("btnSupport");
+    if (pcBtn) {
+      pcBtn.addEventListener("click", function (e) {
+        e.preventDefault();
+        if (!openTawk()) setTimeout(openTawk, 400);
+      });
+    }
+
+    // ✅ 在这里放唯一一个手机按钮（不要在别处重复）
+    // 你需要把按钮放在 body 底部（见下面“按钮放哪”）
+    var mBtn = document.getElementById("mobileTawkBtn");
+    if (mBtn) {
+      mBtn.addEventListener("click", function () {
+        if (!openTawk()) setTimeout(openTawk, 400);
+      });
+    }
+
+    // 隐藏默认浮标（异步插入，所以多次隐藏）
+    var tries = 0;
+    var timer = setInterval(function () {
+      // 常见容器
+      var c = document.getElementById("tawkchat-container");
+      if (c) {
+        c.style.display = "none";
+        c.style.visibility = "hidden";
+        c.style.pointerEvents = "none";
+      }
+
+      // 一些版本用 iframe 渲染入口
+      document.querySelectorAll("iframe").forEach(function (iframe) {
+        var src = iframe.getAttribute("src") || "";
+        var title = (iframe.getAttribute("title") || "").toLowerCase();
+        if (src.indexOf("tawk.to") >= 0 || title.indexOf("tawk") >= 0) {
+          iframe.style.display = "none";
+          iframe.style.visibility = "hidden";
+          iframe.style.pointerEvents = "none";
+        }
+      });
+
+      tries++;
+      if (tries > 60) clearInterval(timer);
+    }, 250);
+  })();
 </script>
-<button id="mobileTawkBtn" type="button">💬 客服</button>
   </body>
 </html>
