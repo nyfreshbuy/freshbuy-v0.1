@@ -84,13 +84,16 @@ router.post("/register", async (req, res) => {
         message: "缺少参数",
       });
     }
+    // ✅ 方案A：上线期先不强制短信（用环境变量开关控制）
+const REQUIRE_SMS = process.env.REQUIRE_SMS_SIGNUP === "1";
 
-    // ✅ 短信校验（如果你以后想关闭，可在这里改）
-    const v = verifySignupToken(signupToken, phone);
-    if (!v.ok) {
-      return res.status(401).json({ success: false, message: v.message });
-    }
-
+if (REQUIRE_SMS) {
+  const v = verifySignupToken(signupToken, phone);
+  if (!v.ok) {
+    // 语义上更像参数/验证未完成，用 400 更直观
+    return res.status(400).json({ success: false, message: v.message });
+  }
+}
     const exists = await User.findOne({ phone });
     if (exists) {
       return res.status(400).json({
