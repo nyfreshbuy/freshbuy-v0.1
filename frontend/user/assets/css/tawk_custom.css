@@ -1,0 +1,39 @@
+/* =========================
+   Tawk - PC 左侧栏入口 + 手机右下角自定义“客服”按钮
+   ========================= */
+
+/* 1) 全端隐藏 Tawk 默认浮标（我们用自定义按钮统一入口） */
+#tawkchat-container {
+  display: none !important;
+}
+
+/* 2) 自定义右下角“客服”按钮：只在手机端显示 */
+#mobileTawkBtn {
+  position: fixed;
+  right: 16px;
+  bottom: 92px; /* 避开 iPhone 底部栏/你其它浮层，可微调 */
+  z-index: 99999;
+  display: none;
+
+  border: none;
+  border-radius: 999px;
+  padding: 10px 14px;
+  font-size: 14px;
+  font-weight: 700;
+
+  background: #1d4ed8; /* 你也可以换成品牌色 */
+  color: #fff;
+
+  box-shadow: 0 10px 30px rgba(0,0,0,.18);
+  cursor: pointer;
+}
+
+/* 手机端显示，电脑端隐藏 */
+@media (max-width: 1023px) {
+  #mobileTawkBtn { display: inline-flex; align-items: center; gap: 8px; }
+}
+
+/* 电脑端隐藏（因为你要放到左侧固定栏的“联系客服”） */
+@media (min-width: 1024px) {
+  #mobileTawkBtn { display: none; }
+}

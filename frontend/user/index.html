@@ -934,14 +934,10 @@
         <span>📲</span><span>App 下载</span>
       </button>
 
-      <a
-        class="side-rail-item"
-        href="https://mp.weixin.qq.com/mp/kefu?biz=gh_50e7137dfb6b"
-        target="_blank"
-        rel="noreferrer"
-      >
-        <span>💬</span><span>联系客服</span>
-      </a>
+      <!-- ✅ 电脑端：打开 Tawk -->
+<a class="side-rail-item only-pc" href="javascript:void(0)" id="btnSupport">
+  <span>💬</span><span>联系客服</span>
+</a>
     </aside>
 
     <!-- 页面主体 -->
@@ -1238,7 +1234,9 @@
     <!-- 你的 footer / auth 客户端脚本（保持你原逻辑，但放在 body 内正确位置） -->
     <script src="/user/components/footer.js"></script>
     <script src="/assets/js/auth_client.js"></script>
-   <!--Start of Tawk.to Script-->
+   <!-- 🔴【新增】手机端右下角“客服”按钮（就在这里） -->
+<button id="mobileTawkBtn" type="button" aria-label="客服">💬 客服</button>
+    <!--Start of Tawk.to Script-->
 <script type="text/javascript">
 var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date();
 (function(){
@@ -1260,7 +1258,35 @@ Tawk_API.onLoad = function(){
     role: localStorage.getItem("freshbuy_role") || "guest"
   }, function(error){});
 };
-</script>
+/* 🔴【新增】PC / Mobile 打开 Tawk + 隐藏默认浮标 */
+(function () {
+  function openTawk() {
+    if (window.Tawk_API && typeof window.Tawk_API.maximize === "function") {
+      window.Tawk_API.maximize();
+      return true;
+    }
+    return false;
+  }
 
-  </body>
+  // PC 左侧固定栏按钮
+  document.getElementById("btnSupport")?.addEventListener("click", () => {
+    if (!openTawk()) setTimeout(openTawk, 400);
+  });
+
+  // 手机右下角“客服”按钮
+  document.getElementById("mobileTawkBtn")?.addEventListener("click", () => {
+    if (!openTawk()) setTimeout(openTawk, 400);
+  });
+
+  // 隐藏 Tawk 默认浮标（避免重复）
+  let tries = 0;
+  const timer = setInterval(() => {
+    const el = document.getElementById("tawkchat-container");
+    if (el) el.style.display = "none";
+    tries++;
+    if (tries > 30) clearInterval(timer);
+  }, 300);
+})();
+</script>
+</body>
 </html>
