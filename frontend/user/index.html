@@ -1298,56 +1298,66 @@
     </script>
     <!--End of Tawk.to Script-->
 
-    <script>
-      // ✅ 保留你原来的用户属性注入
-      Tawk_API = Tawk_API || {};
-      Tawk_API.onLoad = function () {
-        Tawk_API.setAttributes(
-          {
-            name: localStorage.getItem("freshbuy_login_nickname") || "访客",
-            phone: localStorage.getItem("freshbuy_login_phone") || "",
-            role: localStorage.getItem("freshbuy_role") || "guest",
-          },
-          function (error) {}
-        );
-      };
+<script>
+  // ✅ 保留你原来的用户属性注入
+  Tawk_API = Tawk_API || {};
+  Tawk_API.onLoad = function () {
+    Tawk_API.setAttributes(
+      {
+        name: localStorage.getItem("freshbuy_login_nickname") || "访客",
+        phone: localStorage.getItem("freshbuy_login_phone") || "",
+        role: localStorage.getItem("freshbuy_role") || "guest",
+      },
+      function (error) {}
+    );
+  };
 
-      // ✅ PC / Mobile 打开 Tawk + 隐藏默认浮标（双保险）
-      (function () {
-        function openTawk() {
-          if (window.Tawk_API && typeof window.Tawk_API.maximize === "function") {
-            window.Tawk_API.maximize();
-            return true;
-          }
-          return false;
-        }
+  // ✅ PC / Mobile 打开 Tawk + 隐藏默认浮标（双保险）+ 隐藏页面内“客服”气泡
+  (function () {
+    function openTawk() {
+      if (window.Tawk_API && typeof window.Tawk_API.maximize === "function") {
+        window.Tawk_API.maximize();
+        return true;
+      }
+      return false;
+    }
 
-        // PC 左侧固定栏按钮（你侧边栏需要有 id="btnSupport"）
-        var pcBtn = document.getElementById("btnSupport");
-        if (pcBtn) {
-          pcBtn.addEventListener("click", function (e) {
-            e.preventDefault();
-            if (!openTawk()) setTimeout(openTawk, 400);
-          });
-        }
+    // PC 左侧固定栏按钮（你侧边栏需要有 id="btnSupport"）
+    var pcBtn = document.getElementById("btnSupport");
+    if (pcBtn) {
+      pcBtn.addEventListener("click", function (e) {
+        e.preventDefault();
+        if (!openTawk()) setTimeout(openTawk, 400);
+      });
+    }
 
-        // 手机右下角“💬 客服”按钮
-        var mBtn = document.getElementById("mobileTawkBtn");
-        if (mBtn) {
-          mBtn.addEventListener("click", function () {
-            if (!openTawk()) setTimeout(openTawk, 400);
-          });
-        }
+    // 手机右下角“💬 客服”按钮
+    var mBtn = document.getElementById("mobileTawkBtn");
+    if (mBtn) {
+      mBtn.addEventListener("click", function () {
+        if (!openTawk()) setTimeout(openTawk, 400);
+      });
+    }
 
-        // 隐藏 Tawk 默认浮标（Tawk 异步插入，所以定时多次隐藏）
-        var tries = 0;
-        var timer = setInterval(function () {
-          var el = document.getElementById("tawkchat-container");
-          if (el) el.style.display = "none";
-          tries++;
-          if (tries > 40) clearInterval(timer);
-        }, 250);
-      })();
-    </script>
-  </body>
+    // ✅ 隐藏 Tawk 默认右下角浮标 + 页面内嵌“客服”气泡（Tawk 异步插入，所以定时多次隐藏）
+    var tries = 0;
+    var timer = setInterval(function () {
+      // 1) 默认右下角浮标容器
+      var el = document.getElementById("tawkchat-container");
+      if (el) el.style.display = "none";
+
+      // 2) 页面内的“客服”小气泡（你截图里那个）
+      var bubble =
+        document.querySelector(".tawk-minimized-container") ||
+        document.querySelector(".tawk-chat-bubble") ||
+        document.querySelector(".tawk-button-container") ||
+        document.querySelector(".tawk-bubble-container");
+      if (bubble) bubble.style.display = "none";
+
+      tries++;
+      if (tries > 60) clearInterval(timer);
+    }, 250);
+  })();
+</script>
+</body>
 </html>
