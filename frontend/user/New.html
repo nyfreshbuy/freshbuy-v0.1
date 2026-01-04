@@ -1,59 +1,56 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>新品上市 - 在鲜购拼好货</title>
+<head>
+  <meta charset="UTF-8" />
+  <title>新品上市 - 在鲜购</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/user/assets/css/main.css?v=10" />
+</head>
 
-    <!-- 复用你现有 main.css -->
-    <link rel="stylesheet" href="./assets/css/main.css" />
-  </head>
-
-  <body>
-    <!-- 顶部：简单返回 -->
-    <div class="top-nav">
-      <div class="top-nav-inner">
-        <div class="logo-area">
-          <a href="./index.html" class="link-btn">← 返回首页</a>
-          <div>
-            <div class="logo-text-main">新品上市</div>
-            <div class="logo-text-sub">New Arrivals</div>
-          </div>
+<body>
+  <header class="top-nav">
+    <div class="top-nav-inner">
+      <div class="logo-area" onclick="location.href='/user/index.html'" style="cursor:pointer;">
+        <div class="logo-badge">鲜</div>
+        <div>
+          <div class="logo-text-main">新品上市</div>
+          <div style="font-size:11px;color:#6b7280;">最近 7 天上新</div>
         </div>
+      </div>
 
-        <div class="search-area">
-          <div class="search-box">
-            <span class="search-icon">🔎</span>
-            <input
-              id="newSearchInput"
-              class="search-input"
-              placeholder="搜索新品：苹果 / 牛奶 / 洗衣液..."
-            />
-          </div>
-        </div>
-
-        <div class="user-area">
-          <a class="link-btn" href="./cart.html">购物车</a>
+      <div class="right-actions">
+        <div class="cart-icon" id="cartIcon">
+          🛒
+          <span class="cart-count-badge" id="cartCount">0</span>
         </div>
       </div>
     </div>
 
-    <main class="page">
-      <div class="section-header">
-        <div>
-          <div class="section-title">
-            <span class="title-icon">🆕</span> 新品上市
-          </div>
-          <div class="section-sub">按“新品/新上架”标签或 isNew/isNewArrival 字段自动筛选</div>
-        </div>
+    <div class="filter-wrap">
+      <div class="filter-bar" id="filterBar"></div>
+      <div class="sort-box">
+        <span>排序</span>
+        <select class="sort-select" id="sortSelect">
+          <option value="sales_desc">销量高 → 低</option>
+          <option value="price_asc">价格低 → 高</option>
+          <option value="price_desc">价格高 → 低</option>
+        </select>
       </div>
+    </div>
+  </header>
 
-      <section>
-        <div class="product-grid" id="productGridNew"></div>
-      </section>
-    </main>
+  <main class="page">
+    <div class="page-title">
+      <div>
+        <h2>🆕 新品上市</h2>
+        <div class="sub">只展示最近 7 天上新商品</div>
+      </div>
+    </div>
 
-    <!-- 新品页逻辑 -->
-    <script src="./assets/js/New.js"></script>
-  </body>
+    <div class="product-grid" id="newGrid"></div>
+  </main>
+
+  <script src="/user/assets/js/cart.js?v=10"></script>
+  <script src="/user/assets/js/New.js?v=10"></script>
+</body>
 </html>

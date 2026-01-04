@@ -1,221 +1,174 @@
-console.log("New page loaded");
+console.log("New.js loaded");
 
-// =========================
-// 工具：兼容后端各种字段
-// =========================
+let FILTERS = [{ key: "all", name: "全部" }];
+let ALL = [];
+let newAll = [];
+let activeCat = "all";
+
 function isTrueFlag(v) {
   return v === true || v === "true" || v === 1 || v === "1";
 }
 
-function hasKeyword(p, keyword) {
-  if (!p) return false;
-  const kw = String(keyword).toLowerCase();
-  const norm = (v) => (v ? String(v).toLowerCase() : "");
+function getCategoryKey(p) {
+  return String(
+    p?.categoryKey ||
+    p?.category_key ||
+    p?.catKey ||
+    p?.category ||
+    p?.mainCategory ||
+    p?.section ||
+    ""
+  ).trim();
+}
 
-  const fields = [
-    p.tag,
-    p.type,
-    p.category,
-    p.subCategory,
-    p.mainCategory,
-    p.subcategory,
-    p.section,
-  ];
-  if (fields.some((f) => norm(f).includes(kw))) return true;
+const CATEGORY_NAME_MAP = {
+  fresh: "生鲜果蔬",
+  meat: "肉禽海鲜",
+  snacks: "零食饮品",
+  staples: "粮油主食",
+  seasoning: "调味酱料",
+  frozen: "冷冻食品",
+  household: "日用清洁",
+};
 
-  if (Array.isArray(p.tags) && p.tags.some((t) => norm(t).includes(kw))) return true;
-  if (Array.isArray(p.labels) && p.labels.some((t) => norm(t).includes(kw))) return true;
+function getCategoryLabel(key) {
+  return CATEGORY_NAME_MAP[key] || key;
+}
+
+function buildFiltersFromProducts(list) {
+  const set = new Set();
+  list.forEach((p) => {
+    const k = getCategoryKey(p);
+    if (k) set.add(k);
+  });
+
+  const preferred = ["fresh","meat","snacks","staples","seasoning","frozen","household"];
+  const keys = Array.from(set).sort((a, b) => {
+    const ia = preferred.indexOf(a);
+    const ib = preferred.indexOf(b);
+    if (ia === -1 && ib === -1) return a.localeCompare(b);
+    if (ia === -1) return 1;
+    if (ib === -1) return -1;
+    return ia - ib;
+  });
+
+  return [{ key: "all", name: "全部" }].concat(
+    keys.map((k) => ({ key: k, name: getCategoryLabel(k) }))
+  );
+}
+
+function daysBetween(a, b) {
+  return Math.floor((a - b) / (24 * 3600 * 1000));
+}
+
+function parseDateMaybe(v) {
+  if (!v) return null;
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/* ✅ 新品判定（不改后端） */
+function isNewProduct(p) {
+  const tag = String(p?.tag || "");
+  if (isTrueFlag(p?.isNew) || isTrueFlag(p?.isNewArrival) || isTrueFlag(p?.isNewProduct)) return true;
+  if (tag.includes("新品") || tag.toLowerCase().includes("new")) return true;
+
+  // 有 newUntil/newExpireAt/newExpiresAt：还没过期算新品
+  const until = parseDateMaybe(p?.newUntil || p?.newExpireAt || p?.newExpiresAt);
+  if (until && until.getTime() >= Date.now()) return true;
+
+  // 用 createdAt 判断 7 天内
+  const created = parseDateMaybe(p?.createdAt || p?.created_at);
+  if (created) {
+    const diff = daysBetween(new Date(), created);
+    if (diff >= 0 && diff <= 7) return true;
+  }
 
   return false;
 }
 
-// ✅ 新品判断（跟你首页一致：isNew/isNewArrival 或关键词 + 可选过期时间）
-function isNewProduct(p) {
-  const flag =
-    isTrueFlag(p.isNew) ||
-    isTrueFlag(p.isNewArrival) ||
-    hasKeyword(p, "新品") ||
-    hasKeyword(p, "新上架") ||
-    hasKeyword(p, "new");
-
-  if (!flag) return false;
-
-  const dateStr = p.newUntil || p.newExpireAt || p.newExpiresAt;
-  if (!dateStr) return true;
-
-  const d = new Date(dateStr);
-  if (Number.isNaN(d.getTime())) return true;
-  return d.getTime() >= Date.now();
+function matchCat(p, catKey) {
+  if (catKey === "all") return true;
+  return getCategoryKey(p) === catKey;
 }
 
-// =========================
-// 兜底卡片（如果页面没引入 createProductCard 也不白屏）
-// =========================
-function fallbackCard(p) {
-  const el = document.createElement("article");
-  el.className = "product-card";
-
-  const pid = String(p._id || p.id || p.sku || "").trim();
-  const priceNum = Number(p.price ?? p.flashPrice ?? p.specialPrice ?? 0);
-  const originNum = Number(p.originPrice ?? p.price ?? 0);
-  const finalPrice = priceNum || originNum || 0;
-
-  const imageUrl =
-    p.image && String(p.image).trim()
-      ? String(p.image).trim()
-      : `https://picsum.photos/seed/${encodeURIComponent(pid || p.name || "fb")}/500/400`;
-
-  el.innerHTML = `
-    <div class="product-image-wrap">
-      <span class="special-badge">NEW</span>
-      <img src="${imageUrl}" class="product-image" alt="${p.name || ""}" />
-    </div>
-    <div class="product-name">${p.name || ""}</div>
-    <div class="product-desc">${p.desc || ""}</div>
-    <div class="product-price-row">
-      <span class="product-price">$${finalPrice.toFixed(2)}</span>
-    </div>
-    <div class="product-tagline">${(p.tag || p.category || "").slice(0, 18)}</div>
-  `;
-
-  el.addEventListener("click", () => {
-    if (!pid) return;
-    window.location.href = "product_detail.html?id=" + encodeURIComponent(pid);
-  });
-
-  return el;
-}
-
-// =========================
-// 加载新品
-// =========================
-let ALL = [];
-
-async function loadNewProducts() {
-  const grid = document.getElementById("newGrid");
-  if (!grid) {
-    console.warn("❌ 未找到 #newGrid，请检查 New.html 的容器 id");
-    return;
+function getNum(p, keys, def = 0) {
+  for (const k of keys) {
+    const n = Number(p?.[k]);
+    if (!Number.isNaN(n) && n !== 0) return n;
   }
-
-  grid.innerHTML = "";
-
-  try {
-    const res = await fetch("/api/products-simple", { cache: "no-store" });
-    const data = await res.json().catch(() => ({}));
-
-    const list = Array.isArray(data)
-      ? data
-      : Array.isArray(data.items)
-      ? data.items
-      : Array.isArray(data.products)
-      ? data.products
-      : Array.isArray(data.list)
-      ? data.list
-      : [];
-
-    ALL = list;
-
-    const newList = list.filter(isNewProduct);
-
-    if (!newList.length) {
-      grid.innerHTML =
-        '<div style="padding:12px;color:#6b7280;font-size:14px;">暂无新品上市商品</div>';
-      return;
-    }
-
-    const makeCard =
-      typeof window.createProductCard === "function"
-        ? (p) => window.createProductCard(p, "NEW")
-        : (p) => fallbackCard(p);
-
-    newList.forEach((p) => grid.appendChild(makeCard(p)));
-  } catch (err) {
-    console.error("加载新品失败：", err);
-    grid.innerHTML =
-      '<div style="padding:12px;color:#b00020;font-size:14px;">加载失败，请稍后重试</div>';
-  }
+  return def;
+}
+function getPrice(p) {
+  return getNum(p, ["price", "specialPrice", "originPrice"], 0);
+}
+function getSales(p) {
+  return getNum(p, ["sales", "sold", "orderCount"], 0);
+}
+function sortList(list, sortKey) {
+  const arr = [...list];
+  if (sortKey === "price_asc") arr.sort((a, b) => getPrice(a) - getPrice(b));
+  else if (sortKey === "price_desc") arr.sort((a, b) => getPrice(b) - getPrice(a));
+  else arr.sort((a, b) => getSales(b) - getSales(a));
+  return arr;
 }
 
-// =========================
-// 搜索（只在新品列表里搜）
-// =========================
-function bindSearch() {
-  const input = document.getElementById("newSearchInput");
-  if (!input) return;
+function renderFilters() {
+  const bar = document.getElementById("filterBar");
+  if (!bar) return;
+  bar.innerHTML = "";
 
-  input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      doSearch(input.value);
-    }
-  });
-
-  input.addEventListener("input", () => {
-    if (!input.value.trim()) doSearch("");
+  FILTERS.forEach((f) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "filter-pill" + (f.key === activeCat ? " active" : "");
+    btn.textContent = f.name;
+    btn.onclick = () => {
+      activeCat = f.key;
+      bar.querySelectorAll(".filter-pill").forEach((x) => x.classList.remove("active"));
+      btn.classList.add("active");
+      renderList();
+    };
+    bar.appendChild(btn);
   });
 }
 
-function doSearch(keyword) {
+function renderList() {
   const grid = document.getElementById("newGrid");
+  const sortSel = document.getElementById("sortSelect");
   if (!grid) return;
 
-  const kw = String(keyword || "").trim().toLowerCase();
-
-  const base = ALL.filter(isNewProduct);
-
-  if (!kw) {
-    grid.innerHTML = "";
-    base.forEach((p) =>
-      grid.appendChild(
-        typeof window.createProductCard === "function"
-          ? window.createProductCard(p, "NEW")
-          : fallbackCard(p)
-      )
-    );
-    return;
-  }
-
-  const hit = (p) => {
-    const fields = [
-      p?.name,
-      p?.desc,
-      p?.tag,
-      p?.type,
-      p?.category,
-      p?.subCategory,
-      p?.mainCategory,
-      p?.subcategory,
-      p?.section,
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase();
-
-    const arr1 = Array.isArray(p?.tags) ? p.tags.join(" ").toLowerCase() : "";
-    const arr2 = Array.isArray(p?.labels) ? p.labels.join(" ").toLowerCase() : "";
-
-    return (fields + " " + arr1 + " " + arr2).includes(kw);
-  };
-
-  const matched = base.filter(hit);
+  let list = newAll.filter((p) => matchCat(p, activeCat));
+  list = sortList(list, sortSel?.value || "sales_desc");
 
   grid.innerHTML = "";
-  if (!matched.length) {
-    grid.innerHTML = `<div style="padding:12px;color:#6b7280;font-size:14px;">没有找到「${keyword}」相关新品</div>`;
+  if (!list.length) {
+    grid.innerHTML = `<div style="color:#6b7280;">暂无新品</div>`;
     return;
   }
 
-  matched.forEach((p) =>
-    grid.appendChild(
-      typeof window.createProductCard === "function"
-        ? window.createProductCard(p, "NEW")
-        : fallbackCard(p)
-    )
-  );
+  list.forEach((p) => grid.appendChild(createProductCard(p, "NEW")));
+}
+
+async function loadProducts() {
+  const res = await fetch("/api/products-simple", { cache: "no-store" });
+  const data = await res.json().catch(() => ({}));
+  const list = Array.isArray(data) ? data : data.products || data.items || data.list || [];
+
+  ALL = list;
+  newAll = ALL.filter(isNewProduct);
+
+  FILTERS = buildFiltersFromProducts(newAll);
+
+  renderFilters();
+  renderList();
 }
 
 window.addEventListener("DOMContentLoaded", () => {
-  bindSearch();
-  loadNewProducts();
+  document.getElementById("sortSelect")?.addEventListener("change", renderList);
+  loadProducts().catch((e) => {
+    console.error("New page load failed", e);
+    const grid = document.getElementById("newGrid");
+    if (grid) grid.innerHTML = `<div style="color:#b91c1c;">加载失败</div>`;
+  });
 });

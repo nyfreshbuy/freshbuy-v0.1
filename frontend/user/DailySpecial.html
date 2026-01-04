@@ -4,13 +4,56 @@
   <meta charset="UTF-8" />
   <title>家庭必备 - 在鲜购</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="stylesheet" href="./assets/css/main.css" />
+  <link rel="stylesheet" href="/user/assets/css/main.css?v=10" />
 </head>
+
 <body>
-  <div class="page">
-    <h2 style="margin:8px 0 12px;">💡 家庭必备</h2>
-    <div class="product-grid" id="productGridDaily"></div>
-  <script src="./assets/js/cart.js"></script>
-  <script src="./assets/js/DailySpecial.js"></script>
+
+  <!-- 顶部导航 -->
+  <header class="top-nav">
+    <div class="top-nav-inner">
+      <div class="logo-area" onclick="location.href='/user/index.html'" style="cursor:pointer;">
+        <div class="logo-badge">鲜</div>
+        <div>
+          <div class="logo-text-main">家庭必备</div>
+          <div style="font-size:11px;color:#6b7280;">高频刚需 · 日常囤货</div>
+        </div>
+      </div>
+
+      <div class="right-actions">
+        <div class="cart-icon" id="cartIcon">
+          🛒
+          <span class="cart-count-badge" id="cartCount">0</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 筛选条 -->
+    <div class="filter-wrap">
+      <div class="filter-bar" id="filterBar"></div>
+      <div class="sort-box">
+        <span>排序</span>
+        <select class="sort-select" id="sortSelect">
+          <option value="sales_desc">销量高 → 低</option>
+          <option value="price_asc">价格低 → 高</option>
+          <option value="price_desc">价格高 → 低</option>
+        </select>
+      </div>
+    </div>
+  </header>
+
+  <main class="page">
+    <div class="page-title">
+      <div>
+        <h2>💡 家庭必备商品</h2>
+        <div class="sub">只展示家庭必备标签商品</div>
+      </div>
+    </div>
+
+    <div class="product-grid" id="dailySpecialGrid"></div>
+  </main>
+
+  <script src="/user/assets/js/cart.js?v=10"></script>
+  <script src="/user/assets/js/DailySpecial.js?v=10"></script>
 </body>
 </html>

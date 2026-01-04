@@ -1,57 +1,56 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>畅销商品 - 在鲜购拼好货</title>
+<head>
+  <meta charset="UTF-8" />
+  <title>畅销产品 - 在鲜购</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/user/assets/css/main.css?v=10" />
+</head>
 
-    <!-- 复用你现有 main.css -->
-    <link rel="stylesheet" href="./assets/css/main.css" />
-  </head>
-
-  <body>
-    <div class="top-nav">
-      <div class="top-nav-inner">
-        <div class="logo-area">
-          <a href="./index.html" class="link-btn">← 返回首页</a>
-          <div>
-            <div class="logo-text-main">畅销商品</div>
-            <div class="logo-text-sub">Best Sellers</div>
-          </div>
+<body>
+  <header class="top-nav">
+    <div class="top-nav-inner">
+      <div class="logo-area" onclick="location.href='/user/index.html'" style="cursor:pointer;">
+        <div class="logo-badge">鲜</div>
+        <div>
+          <div class="logo-text-main">畅销产品</div>
+          <div style="font-size:11px;color:#6b7280;">大家都在买的 TOP 商品</div>
         </div>
+      </div>
 
-        <div class="search-area">
-          <div class="search-box">
-            <span class="search-icon">🔎</span>
-            <input
-              id="bestSearchInput"
-              class="search-input"
-              placeholder="搜索畅销：牛奶 / 饺子 / 洗衣液..."
-            />
-          </div>
-        </div>
-
-        <div class="user-area">
-          <a class="link-btn" href="./cart.html">购物车</a>
+      <div class="right-actions">
+        <div class="cart-icon" id="cartIcon">
+          🛒
+          <span class="cart-count-badge" id="cartCount">0</span>
         </div>
       </div>
     </div>
 
-    <main class="page">
-      <div class="section-header">
-        <div>
-          <div class="section-title">
-            <span class="title-icon">🔥</span> 畅销商品
-          </div>
-          <div class="section-sub">按“畅销/热销/top”标签或 isBest/isBestSeller 字段自动筛选</div>
-        </div>
+    <div class="filter-wrap">
+      <div class="filter-bar" id="filterBar"></div>
+      <div class="sort-box">
+        <span>排序</span>
+        <select class="sort-select" id="sortSelect">
+          <option value="sales_desc">销量高 → 低</option>
+          <option value="price_asc">价格低 → 高</option>
+          <option value="price_desc">价格高 → 低</option>
+        </select>
       </div>
+    </div>
+  </header>
 
-      <section>
-         <div class="product-grid" id="productGridBest"></div>
-      </section>
-    </main>
+  <main class="page">
+    <div class="page-title">
+      <div>
+        <h2>📈 畅销产品</h2>
+        <div class="sub">只展示畅销/热销/Top 标签或销量字段靠前商品</div>
+      </div>
+    </div>
 
-    <script src="./assets/js/Best.js"></script>
-  </body>
+    <div class="product-grid" id="bestGrid"></div>
+  </main>
+
+  <script src="/user/assets/js/cart.js?v=10"></script>
+  <script src="/user/assets/js/Best.js?v=10"></script>
+</body>
 </html>
