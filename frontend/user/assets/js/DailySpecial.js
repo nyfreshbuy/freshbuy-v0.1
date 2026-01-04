@@ -82,7 +82,7 @@ function buildFiltersFromProducts(list) {
 /* ========= 家庭必备判定 ========= */
 function isDailySpecial(p) {
   const tag = String(p?.tag || "");
-  // 家庭必备：先排除“爆品日”，剩下的都算家庭必备（不改后端的最佳兜底）
+  // 家庭必备：优先排除“爆品日/爆品”
   return !tag.includes("爆品日") && !tag.includes("爆品");
 }
 function matchCat(p, catKey) {
@@ -168,11 +168,15 @@ ALL = list;
  console.log("sample product:", ALL[0]);
 console.log("sectionKey samples:", ALL.slice(0,10).map(p=>getSectionKey(p)));
 console.log("categoryKey samples:", ALL.slice(0,10).map(p=>getCategoryKey(p)));
-  dailyAll = ALL.filter(isDailySpecial);
-  FILTERS = buildFiltersFromProducts(dailyAll);
+ dailyAll = ALL.filter(isDailySpecial);
 
-  renderFilters();
-  renderList();
+// ✅ 兜底：如果你后台目前全是“爆品日”，排除后会变 0，这里就回退显示全部
+if (!dailyAll.length) {
+  console.warn("DailySpecial: 非爆品日为 0，回退显示全部商品");
+  dailyAll = [...ALL];
+}
+
+FILTERS = buildFiltersFromProducts(dailyAll);
 }
 
 window.addEventListener("DOMContentLoaded", () => {
