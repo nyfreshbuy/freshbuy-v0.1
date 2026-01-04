@@ -219,10 +219,24 @@ const uploadDeliveryPhoto = multer({ storage: deliveryPhotoStorage });
 // 静态文件：前端页面 + assets + 上传图片
 // =======================
 
-// 前端根目录：backend/src → ../../frontend
-const frontendPath = path.join(__dirname, "../../frontend");
-console.log("静态前端目录:", frontendPath);
+// 前端目录：在本地你是 repo 根目录下的 /frontend
+// 但 Render 很可能只部署了 backend（Root Directory=backend），导致 ../../frontend 不存在
+const frontendCandidates = [
+  path.join(__dirname, "../../frontend"), // repo 根目录模式（推荐）
+  path.join(__dirname, "../frontend"),    // Render Root=backend 时的兜底（有些人会这么放）
+  path.join(process.cwd(), "frontend"),   // 再兜底
+];
 
+let frontendPath = frontendCandidates[0];
+for (const p of frontendCandidates) {
+  if (fs.existsSync(p)) {
+    frontendPath = p;
+    break;
+  }
+}
+
+console.log("静态前端目录(最终使用):", frontendPath);
+console.log("静态前端目录是否存在:", fs.existsSync(frontendPath));
 // A. 整个 frontend 暴露出来（支持 /user /admin /driver 等）
 app.use(express.static(frontendPath));
 
@@ -270,7 +284,9 @@ app.get("/", (req, res) => {
 app.get("/admin", (req, res) => {
   res.sendFile(path.join(frontendPath, "admin/login.html"));
 });
-
+app.get("/category.html", (req, res) => {
+  res.sendFile(path.join(frontendPath, "user/category.html"));
+});
 // /admin 下面其他 html，如 products.html、drivers.html 等
 app.get("/admin/:page", (req, res) => {
   const file = req.params.page;
