@@ -81,12 +81,7 @@ function buildFiltersFromProducts(list) {
 
 /* ========= 家庭必备判定 ========= */
 function isDailySpecial(p) {
-  const labelStr = Array.isArray(p?.labels) ? p.labels.join(" ") : String(p?.labels || "");
-  const hay = (String(p?.tag || "") + " " + String(p?.type || "") + " " + labelStr)
-    .toLowerCase();
-
-  // 你后台如果是用“家庭必备”做标签/类型/labels，这里就会命中
-  return hay.includes("家庭必备") || hay.includes("必备") || hay.includes("daily");
+  return !String(p.tag || "").includes("爆品");
 }
 function matchCat(p, catKey) {
   if (catKey === "all") return true;
