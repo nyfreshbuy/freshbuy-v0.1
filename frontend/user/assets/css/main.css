@@ -207,14 +207,40 @@ a {
   font-size: 11px;
 }
 /* 分类条（跟导航一起置顶） */
-.category-bar {
+/* ✅ 分类条外壳：负责 max-width/padding/border + 右侧链接 */
+.category-bar-wrap{
   max-width: 1400px;
   margin: 0 auto;
   padding: 6px 16px 8px;
   display: flex;
+  align-items: center;
+  gap: 10px;
+  border-top: 1px solid #f3f4f6;
+}
+
+/* ✅ 分类条本体：只负责滚动 */
+.category-bar{
+  display: flex;
   gap: 8px;
   overflow-x: auto;
-  border-top: 1px solid #f3f4f6;
+  flex: 1;
+  min-width: 0;
+}
+
+.category-bar::-webkit-scrollbar{ display:none; }
+
+/* ✅ 右侧链接：手机隐藏，电脑显示 */
+.catbar-more{
+  display:none;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #2563eb;
+  font-size: 13px;
+  white-space: nowrap;
+}
+@media (min-width: 769px){
+  .catbar-more{ display:inline-flex; }
 }
 
 .category-bar::-webkit-scrollbar {
@@ -389,14 +415,6 @@ a {
   font-size: 13px;
   color: var(--text-sub);
 }
-
-.section-link {
-  font-size: 12px;
-  color: var(--primary);
-  cursor: pointer;
-  white-space: nowrap;
-}
-
 /* 商品网格 */
 .product-grid {
   display: grid;
@@ -1048,5 +1066,23 @@ a {
   .detail-big-cart-icon {
     width: 36px;
     height: 36px;
+  }
+}
+/* ===== 强制：电脑端显示右侧，手机端显示下方 ===== */
+.section-link--mobile{ display:none !important; }
+.section-link--desktop{ display:inline-flex !important; }
+
+@media (max-width: 768px){
+  .section-link--desktop{ display:none !important; }
+  .section-link--mobile{
+    display:inline-flex !important;
+    align-items:center;
+    margin-top:8px;
+    padding:6px 10px;
+    border-radius:999px;
+    background:#eef2ff;
+    color:#2563eb;
+    font-size:13px;
+    width:fit-content;
   }
 }
