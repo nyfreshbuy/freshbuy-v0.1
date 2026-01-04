@@ -2,28 +2,132 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <title>新品上市 - 在鲜购</title>
+  <title>新客体验专区 - 在鲜购</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- ✅ 用绝对路径 + 版本号，避免缓存 -->
   <link rel="stylesheet" href="/user/assets/css/main.css?v=10" />
+
+  <style>
+    .top-nav{
+      position: sticky; top:0; z-index: 50;
+      background:#fff; border-bottom:1px solid #eef2f7;
+    }
+    .top-nav-inner{
+      max-width: 1400px; margin:0 auto; padding:10px 14px;
+      display:flex; align-items:center; gap:12px; justify-content:space-between;
+    }
+    .logo-area{display:flex; align-items:center; gap:8px;}
+    .logo-badge{
+      width:32px;height:32px;border-radius:999px;
+      background: radial-gradient(circle at 30% 30%, #22c55e, #16a34a);
+      display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;
+    }
+    .logo-text-main{font-weight:800;}
+    .right-actions{display:flex; align-items:center; gap:10px;}
+    .cart-icon{
+      position:relative; width:38px;height:38px;border-radius:999px;
+      background:#0f172a; display:flex;align-items:center;justify-content:center;
+      color:#e5e7eb; cursor:pointer;
+    }
+    .cart-count-badge{
+      position:absolute; top:-4px; right:-4px;
+      background:#ef4444; color:#fff; font-size:10px; padding:0 6px;
+      border-radius:999px; min-width:20px; text-align:center; display:none;
+    }
+
+    /* ✅ 筛选条 */
+    .filter-wrap{
+      max-width:1400px; margin:0 auto; padding:8px 14px 10px;
+      display:flex; gap:10px; align-items:center; justify-content:space-between;
+      border-top:1px solid #f3f4f6;
+    }
+    .filter-bar{
+      display:flex; gap:8px; overflow-x:auto; padding-bottom:2px;
+      -webkit-overflow-scrolling: touch;
+    }
+    .filter-bar::-webkit-scrollbar{display:none;}
+    .filter-pill{
+      flex:0 0 auto;
+      padding:8px 12px;
+      border-radius:999px;
+      border:1px solid #e5e7eb;
+      background:#fff;
+      font-size:13px;
+      cursor:pointer;
+      white-space:nowrap;
+    }
+    .filter-pill.active{
+      border-color:rgba(34,197,94,.9);
+      background:linear-gradient(135deg,#ecfdf3,#dcfce7);
+      color:#15803d;
+      font-weight:800;
+    }
+
+    .sort-box{
+      flex:0 0 auto;
+      display:flex; align-items:center; gap:6px;
+      font-size:12px; color:#6b7280;
+    }
+    .sort-select{
+      padding:8px 10px; border-radius:10px; border:1px solid #e5e7eb;
+      background:#fff; font-size:13px; outline:none;
+    }
+
+    .page{max-width:1400px; margin:0 auto; padding:14px 14px 30px;}
+    .page-title{display:flex; align-items:flex-end; justify-content:space-between; gap:10px; margin:6px 0 10px;}
+    .page-title h2{margin:0; font-size:18px;}
+    .page-title .sub{color:#6b7280; font-size:12px;}
+
+    .add-cart-toast{
+      position:fixed; top:70px; left:50%;
+      transform:translateX(-50%) translateY(-16px);
+      background:#111827; color:#f9fafb;
+      padding:6px 14px; border-radius:999px; font-size:12px;
+      box-shadow:0 8px 20px rgba(15,23,42,.4);
+      opacity:0; pointer-events:none;
+      transition: opacity .25s ease, transform .25s ease;
+      z-index:9999; white-space:nowrap;
+    }
+    .add-cart-toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+  </style>
 </head>
 
 <body>
+
   <header class="top-nav">
     <div class="top-nav-inner">
       <div class="logo-area" onclick="location.href='/user/index.html'" style="cursor:pointer;">
         <div class="logo-badge">鲜</div>
         <div>
-          <div class="logo-text-main">新品上市</div>
-          <div style="font-size:11px;color:#6b7280;">最近 7 天上新</div>
+          <div class="logo-text-main">新客体验专区</div>
+          <div style="font-size:11px;color:#6b7280;">免费配送 · 无门槛 · 0元起送</div>
         </div>
       </div>
 
       <div class="right-actions">
-        <div class="cart-icon" id="cartIcon">
-          🛒
-          <span class="cart-count-badge" id="cartCount">0</span>
-        </div>
-      </div>
+  <!-- ✅ 返回首页按钮（新增） -->
+  <button
+    type="button"
+    onclick="location.href='/user/index.html'"
+    style="
+      padding:8px 12px;
+      border-radius:999px;
+      border:1px solid #e5e7eb;
+      background:#fff;
+      font-size:13px;
+      font-weight:600;
+      cursor:pointer;
+    "
+  >
+    ← 返回首页
+  </button>
+
+  <!-- 原来的购物车（不动） -->
+  <div class="cart-icon" id="cartIcon">
+    🛒
+    <span class="cart-count-badge" id="cartCount">0</span>
+  </div>
+</div>
     </div>
 
     <div class="filter-wrap">
@@ -39,18 +143,20 @@
     </div>
   </header>
 
+  <div class="add-cart-toast" id="addCartToast">已加入购物车</div>
+
   <main class="page">
     <div class="page-title">
       <div>
-        <h2>🆕 新品上市</h2>
-        <div class="sub">只展示最近 7 天上新商品</div>
+        <h2>🔥 新客商品</h2>
+        <div class="sub">只展示新客体验区商品（爆品/新客标签/Hot 等）</div>
       </div>
     </div>
 
-    <div class="product-grid" id="newGrid"></div>
+    <div class="product-grid" id="newcomerGrid"></div>
   </main>
 
   <script src="/user/assets/js/cart.js?v=10"></script>
-  <script src="/user/assets/js/New.js?v=10"></script>
+  <script src="/user/assets/js/newcomer.js?v=10"></script>
 </body>
 </html>
