@@ -1,16 +1,58 @@
 console.log("newcomer.js loaded");
 
-const FILTERS = [
-  { key: "all", name: "全部" },
-  { key: "fresh", name: "生鲜果蔬" },
-  { key: "meat", name: "肉禽海鲜" },
-  { key: "snacks", name: "零食饮品" },
-  { key: "staples", name: "粮油主食" },
-  { key: "seasoning", name: "调味酱料" },
-  { key: "frozen", name: "冷冻食品" },
-  { key: "household", name: "日用清洁" },
-];
+let FILTERS = [{ key: "all", name: "全部" }];
 
+// 如果后台 categoryKey 是英文 key，这里映射成中文显示（可按你后台调整）
+const CATEGORY_NAME_MAP = {
+  fresh: "生鲜果蔬",
+  meat: "肉禽海鲜",
+  snacks: "零食饮品",
+  staples: "粮油主食",
+  seasoning: "调味酱料",
+  frozen: "冷冻食品",
+  household: "日用清洁",
+};
+
+function getCategoryKey(p) {
+  return String(
+    p?.categoryKey ||
+    p?.category_key ||
+    p?.catKey ||
+    p?.category ||
+    p?.mainCategory ||
+    p?.section ||
+    ""
+  ).trim();
+}
+
+function getCategoryLabel(key) {
+  return CATEGORY_NAME_MAP[key] || key || "未分类";
+}
+
+function buildFiltersFromProducts(list) {
+  const set = new Set();
+  list.forEach((p) => {
+    const k = getCategoryKey(p);
+    if (k) set.add(k);
+  });
+
+  const keys = Array.from(set);
+
+  // 你想要的固定顺序（存在就按这个排，不存在的放后面）
+  const preferred = ["fresh", "meat", "snacks", "staples", "seasoning", "frozen", "household"];
+  keys.sort((a, b) => {
+    const ia = preferred.indexOf(a);
+    const ib = preferred.indexOf(b);
+    if (ia === -1 && ib === -1) return String(a).localeCompare(String(b));
+    if (ia === -1) return 1;
+    if (ib === -1) return -1;
+    return ia - ib;
+  });
+
+  return [{ key: "all", name: "全部" }].concat(
+    keys.map((k) => ({ key: k, name: getCategoryLabel(k) }))
+  );
+}
 let ALL = [];
 let newcomerAll = [];
 let activeCat = "all";
@@ -34,31 +76,8 @@ function isNewcomer(p) {
 
 function matchCat(p, catKey) {
   if (catKey === "all") return true;
-
-  const texts = [];
-  ["category", "subCategory", "mainCategory", "subcategory", "type", "section", "tag", "name", "desc"].forEach(
-    (k) => {
-      if (p && p[k]) texts.push(String(p[k]));
-    }
-  );
-  if (Array.isArray(p?.tags)) texts.push(p.tags.join(" "));
-  if (Array.isArray(p?.labels)) texts.push(p.labels.join(" "));
-
-  const hay = texts.join(" ").toLowerCase();
-
-  const dict = {
-    fresh: ["生鲜", "果蔬", "蔬菜", "水果", "fresh", "produce", "veg", "vegetable", "fruit"],
-    meat: ["肉", "禽", "海鲜", "meat", "poultry", "seafood", "fish", "shrimp"],
-    snacks: ["零食", "饮品", "snack", "snacks", "drink", "beverage", "soda", "tea", "coffee"],
-    staples: ["粮油", "主食", "米", "面", "staple", "rice", "noodle", "oil", "flour"],
-    seasoning: ["调味", "酱料", "seasoning", "sauce", "spice", "soy", "vinegar"],
-    frozen: ["冷冻", "frozen", "ice"],
-    household: ["日用", "清洁", "household", "clean", "cleaning", "tissue", "paper", "detergent"],
-  };
-
-  return (dict[catKey] || []).some((k) => hay.includes(String(k).toLowerCase()));
+  return getCategoryKey(p) === catKey;
 }
-
 function getNum(p, keys, def = 0) {
   for (const k of keys) {
     const v = p?.[k];
@@ -239,10 +258,16 @@ async function loadProducts() {
     : [];
 
   ALL = list;
-  newcomerAll = list.filter(isNewcomer);
+newcomerAll = list.filter(isNewcomer);
 
-  renderFilters();
-  renderList();
+// ✅ 用新客商品的后台 categoryKey 动态生成筛选
+FILTERS = buildFiltersFromProducts(newcomerAll);
+
+// activeCat 不在筛选里就回到 all
+if (!FILTERS.some((f) => f.key === activeCat)) activeCat = "all";
+
+renderFilters();
+renderList();
 }
 
 function injectButtonStylesOnce() {
