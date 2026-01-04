@@ -21,7 +21,19 @@ function getCategoryKey(p) {
     ""
   ).trim();
 }
-
+function getSectionKey(p) {
+  return String(
+    p?.sectionKey ||
+    p?.section_key ||
+    p?.homeSection ||
+    p?.homeSectionKey ||
+    p?.blockKey ||
+    p?.block ||
+    p?.section ||
+    p?.groupKey ||
+    ""
+  ).trim();
+}
 const CATEGORY_NAME_MAP = {
   fresh: "生鲜果蔬",
   meat: "肉禽海鲜",
@@ -69,14 +81,8 @@ function buildFiltersFromProducts(list) {
 
 /* ========= 家庭必备判定 ========= */
 function isDailySpecial(p) {
-  return (
-    isTrueFlag(p.isFamily) ||
-    isTrueFlag(p.isFamilyEssential) ||
-    (p.tag || "").includes("家庭") ||
-    (p.tag || "").includes("家庭必备")
-  );
+  return getSectionKey(p) === "DailySpecial";
 }
-
 function matchCat(p, catKey) {
   if (catKey === "all") return true;
   return getCategoryKey(p) === catKey;
@@ -147,7 +153,9 @@ async function loadProducts() {
   const res = await fetch("/api/products-simple", { cache: "no-store" });
   const data = await res.json();
   ALL = Array.isArray(data) ? data : data.products || [];
-
+ console.log("sample product:", ALL[0]);
+console.log("sectionKey samples:", ALL.slice(0,10).map(p=>getSectionKey(p)));
+console.log("categoryKey samples:", ALL.slice(0,10).map(p=>getCategoryKey(p)));
   dailyAll = ALL.filter(isDailySpecial);
   FILTERS = buildFiltersFromProducts(dailyAll);
 

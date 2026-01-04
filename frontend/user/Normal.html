@@ -1,61 +1,60 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>全部商品 - 在鲜购拼好货</title>
+<head>
+  <meta charset="UTF-8" />
+  <title>全部商品 - 在鲜购</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/user/assets/css/main.css?v=10" />
+</head>
 
-    <link rel="stylesheet" href="./assets/css/main.css" />
-  </head>
-
-  <body>
-    <div class="top-nav">
-      <div class="top-nav-inner">
-        <div class="logo-area">
-          <a href="./index.html" class="link-btn">← 返回首页</a>
-          <div>
-            <div class="logo-text-main">全部商品</div>
-            <div class="logo-text-sub">Normal Products</div>
-          </div>
+<body>
+  <!-- 顶部 -->
+  <header class="top-nav">
+    <div class="top-nav-inner">
+      <div class="logo-area" onclick="location.href='/user/index.html'" style="cursor:pointer;">
+        <div class="logo-badge">鲜</div>
+        <div>
+          <div class="logo-text-main">全部商品</div>
+          <div style="font-size:11px;color:#6b7280;">在鲜购 · 全部商品</div>
         </div>
+      </div>
 
-        <div class="search-area">
-          <div class="search-box">
-            <span class="search-icon">🔎</span>
-            <input
-              id="normalSearchInput"
-              class="search-input"
-              placeholder="搜索全部商品：牛奶 / 饺子 / 洗衣液..."
-            />
-          </div>
-        </div>
-
-        <div class="user-area">
-          <a class="link-btn" href="./cart.html">购物车</a>
+      <div class="right-actions">
+        <div class="cart-icon" id="cartIcon">
+          🛒
+          <span class="cart-count-badge" id="cartCount">0</span>
         </div>
       </div>
     </div>
-    <!-- 分类条（本页筛选用） -->
-<div class="category-bar-wrap">
 
-  <div class="product-grid" id="productGridNormal"></div>
-  <a class="catbar-more" href="/user/category.html?cat=all&name=全部分类">全部分类 →</a>
-</div>
-    <main class="page">
-      <div clss="section-header">
-        <div>
-          <div class="section-title">
-            <span class="title-icon">🧺</span> 全部商品
-          </div>
-          <div class="section-sub">首页“全部商品”同款：默认不包含爆品日商品</div>
-        </div>
+    <!-- 分类 + 排序 -->
+    <div class="filter-wrap">
+      <div class="filter-bar" id="filterBar"></div>
+      <div class="sort-box">
+        <span>排序</span>
+        <select class="sort-select" id="sortSelect">
+          <option value="sales_desc">销量高 → 低</option>
+          <option value="price_asc">价格低 → 高</option>
+          <option value="price_desc">价格高 → 低</option>
+        </select>
       </div>
+    </div>
+  </header>
 
-      <section>
-        <div class="product-grid" id="normalGrid"></div>
-      </section>
-    </main>
+  <!-- 主体 -->
+  <main class="page">
+    <div class="page-title">
+      <div>
+        <h2>🛒 全部商品</h2>
+        <div class="sub">展示后台全部上架商品</div>
+      </div>
+    </div>
 
-    <script src="./assets/js/Normal.js"></script>
-  </body>
+    <div class="product-grid" id="normalGrid"></div>
+  </main>
+
+  <!-- 脚本 -->
+  <script src="/user/assets/js/cart.js?v=10"></script>
+  <script src="/user/assets/js/Normal.js?v=10"></script>
+</body>
 </html>
