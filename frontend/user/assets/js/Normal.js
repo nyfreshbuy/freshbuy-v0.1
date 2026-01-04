@@ -60,23 +60,16 @@ let activeCat = "all";
 function isTrueFlag(v) {
   return v === true || v === "true" || v === 1 || v === "1";
 }
-
-function isNormal(p) {
-  // ✅ 优先用 serviceMode / deliveryMode（你项目里常用 normal）
-  const sm = String(p?.serviceMode || p?.service_mode || p?.mode || "").toLowerCase();
-  const dm = String(p?.deliveryMode || p?.delivery_mode || "").toLowerCase();
-
-  // 有些商品可能用 tags/label 表示
-  const tag = String(p?.tag || "").toLowerCase();
-  const labels = Array.isArray(p?.labels) ? p.labels.join(",").toLowerCase() : "";
-
+function isNewcomer(p) {
+  const tag = String(p?.tag || "");
   return (
-    sm === "normal" ||
-    dm === "normal" ||
-    tag.includes("normal") ||
-    tag.includes("普通") ||
-    labels.includes("normal") ||
-    labels.includes("普通")
+    isTrueFlag(p?.isHot) ||
+    isTrueFlag(p?.isHotDeal) ||
+    isTrueFlag(p?.hotDeal) ||
+    isTrueFlag(p?.isSpecial) ||
+    tag.includes("爆品") ||
+    tag.includes("新客") ||
+    tag.toLowerCase().includes("hot")
   );
 }
 function matchCat(p, catKey) {
@@ -129,7 +122,7 @@ function createCard(p) {
       ? String(p.image).trim()
       : `https://picsum.photos/seed/${encodeURIComponent(pid || p.name || "fb")}/500/400`;
 
-  const badge = "新客价";
+  const badge = "普通价";
   const limitQty = p.limitQty || p.limitPerUser || p.maxQty || p.purchaseLimit || 0;
 
   article.innerHTML = `
@@ -177,8 +170,9 @@ function createCard(p) {
           image: p.image || img,
           tag: p.tag || "",
           type: p.type || "",
-          isSpecial: true,
-          isDeal: true,
+         isSpecial: false,
+isDeal: false,
+serviceMode: "normal",
         },
         1
       );
@@ -237,7 +231,7 @@ function renderList() {
   grid.innerHTML = "";
 
   if (!list.length) {
-    grid.innerHTML = `<div style="padding:12px;font-size:13px;color:#6b7280;">该分类暂无新客商品</div>`;
+    grid.innerHTML = `<div style="padding:12px;font-size:13px;color:#6b7280;">该分类暂无普通商品</div>`;
     return;
   }
 
@@ -263,8 +257,7 @@ async function loadProducts() {
     : [];
 
   ALL = list;
-normalAll = list.filter(isNormal);
-
+normalAll = list.filter((p) => !isNewcomer(p));
 // ✅ 用普通配送商品生成筛选
 FILTERS = buildFiltersFromProducts(normalAll);
 // activeCat 不在筛选里就回到 all
@@ -311,7 +304,7 @@ window.addEventListener("DOMContentLoaded", () => {
   if (sortSel) sortSel.addEventListener("change", renderList);
 
   loadProducts().catch((err) => {
-    console.error("加载新客商品失败", err);
+    console.error("加载普通商品失败", err);
     const grid = document.getElementById("normalGrid");
     if (grid) grid.innerHTML = `<div style="padding:12px;font-size:13px;color:#b91c1c;">加载失败，请稍后重试</div>`;
   });
