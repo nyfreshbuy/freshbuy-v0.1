@@ -4,16 +4,76 @@
   <meta charset="UTF-8" />
   <title>新客体验专区 - 在鲜购</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="stylesheet" href="./assets/css/main.css" />
+  <link rel="stylesheet" href="/user/assets/css/main.css" />
+  <style>
+    /* 让页面更像主页一点（轻量复刻，不影响主站） */
+    :root{
+      --primary:#22c55e; --primary-dark:#16a34a; --bg:#f3f4f6;
+      --text:#111827; --sub:#6b7280; --radius:18px;
+      --shadow:0 4px 12px rgba(15,23,42,.08);
+    }
+    body{ margin:0; background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial; }
+    a{ color:inherit; text-decoration:none; }
+
+    .top-nav{ position:sticky; top:0; z-index:40; background:#fff; box-shadow:0 1px 4px rgba(15,23,42,.08); }
+    .top-nav-inner{ max-width:1400px; margin:0 auto; padding:10px 16px; display:flex; align-items:center; justify-content:space-between; gap:12px; }
+    .left{ display:flex; align-items:center; gap:10px; min-width:0; }
+    .back-btn{ border:1px solid #e5e7eb; background:#fff; border-radius:999px; padding:6px 10px; font-size:13px; cursor:pointer; }
+    .logo{ display:flex; align-items:center; gap:8px; min-width:0; }
+    .logo-badge{ width:32px; height:32px; border-radius:999px; background:radial-gradient(circle at 30% 30%, #22c55e, #16a34a); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:800; }
+    .logo-title{ font-weight:800; font-size:15px; line-height:1.1; }
+    .logo-sub{ font-size:11px; color:var(--sub); }
+
+    .actions{ display:flex; align-items:center; gap:10px; }
+    .cart-btn{ width:38px; height:38px; border-radius:999px; background:#0f172a; color:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+    .page{ max-width:1400px; margin:0 auto; padding:14px 16px 32px; }
+
+    .section-header{ display:flex; align-items:flex-end; justify-content:space-between; gap:10px; margin:10px 2px 10px; }
+    .section-title{ display:flex; align-items:center; gap:8px; font-size:22px; font-weight:900; color:#16a34a; }
+    .section-sub{ margin-top:4px; font-size:13px; color:var(--sub); }
+    .section-link{ font-size:13px; color:#2563eb; font-weight:700; }
+
+    /* 商品网格：和主页一致（2列起） */
+    .product-grid{ display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:12px; }
+    @media(max-width:1300px){ .product-grid{ grid-template-columns:repeat(4,minmax(0,1fr)); } }
+    @media(max-width:980px){ .product-grid{ grid-template-columns:repeat(3,minmax(0,1fr)); } }
+    @media(max-width:720px){ .product-grid{ grid-template-columns:repeat(2,minmax(0,1fr)); } }
+  </style>
 </head>
 <body>
-  <div class="page">
-    <h2 style="margin:8px 0 12px;">🔥 新客体验专区</h2>
-    <div class="product-grid" id="productGridHot"></div>
-  </div>
 
-  <script src="./assets/js/cart.js"></script>
-  <!-- ✅ 加版本号避免缓存 -->
-  <script src="./assets/js/newcomer.js?v=2"></script>
+  <header class="top-nav">
+    <div class="top-nav-inner">
+      <div class="left">
+        <button class="back-btn" type="button" onclick="history.back()">← 返回</button>
+        <div class="logo">
+          <div class="logo-badge">鲜</div>
+          <div style="min-width:0;">
+            <div class="logo-title">新客体验专区</div>
+            <div class="logo-sub">免费配送 · 无门槛 · 0元起送</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <div class="cart-btn" id="cartIcon">🛒</div>
+      </div>
+    </div>
+  </header>
+
+  <main class="page">
+    <div class="section-header">
+      <div>
+        <div class="section-title">🔥 新客体验专区</div>
+        <div class="section-sub">只显示带「爆品/新客」标签的商品</div>
+      </div>
+      <a class="section-link" href="/user/index.html">回首页 →</a>
+    </div>
+
+    <div class="product-grid" id="productGridHot"></div>
+  </main>
+
+  <script src="/user/assets/js/cart.js"></script>
+  <script src="/user/assets/js/newcomer.js?v=3"></script>
 </body>
 </html>

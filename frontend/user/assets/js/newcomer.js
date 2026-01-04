@@ -1,5 +1,8 @@
 console.log("newcomer.js page loaded");
-
+function showErr(msg){
+  const grid = document.getElementById("productGridHot");
+  if (grid) grid.innerHTML = `<div style="padding:12px;color:#b91c1c;font-size:13px;">${msg}</div>`;
+}
 function createProductCard(p, badgeText) {
   const article = document.createElement("article");
   article.className = "product-card";
@@ -97,6 +100,7 @@ async function loadNewcomerProducts() {
     });
   } catch (err) {
     console.error("加载新客商品失败", err);
+    showErr("加载失败：请检查 /api/products-simple 是否可访问，或 newcomer.js/CSS 是否 404");
   }
 }
 
