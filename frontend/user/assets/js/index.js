@@ -35,7 +35,28 @@ const fallbackCategories = [
 async function loadCategories() {
   renderCategoryPills(fallbackCategories);
 }
+const SECTION_LIMITS = {
+  desktop: {
+    default: 8, // 电脑端所有区块默认 8
+  },
+  mobile: {
+    Hot: 6,   // 新客体验专区
+    DailySpecial: 8,    // 家庭必备
+    New: 6, // 新品上市
+    Best: 8,    // 产销商品
+    Normal: 4,       // 全部商品
+    default: 6,
+  },
+};
 
+function isMobileView() {
+  return window.matchMedia("(max-width: 768px)").matches;
+}
+
+function getLimit(sectionKey) {
+  if (!isMobileView()) return SECTION_LIMITS.desktop.default;
+  return SECTION_LIMITS.mobile[sectionKey] ?? SECTION_LIMITS.mobile.default;
+}
 function renderCategoryPills(list) {
   if (!categoryBar) return;
   categoryBar.innerHTML = "";
@@ -682,6 +703,18 @@ async function loadHomeProductsFromSimple() {
         grid.appendChild(createProductCard(p, badgeText));
       });
     }
+    // ✅ 每个区块显示数量（电脑 8；手机按你配置）
+const hotLimit = getLimit("Hot");
+const dailyLimit = getLimit("DailySpecial");
+const newLimit = getLimit("New");
+const bestLimit = getLimit("Best");
+const allLimit = getLimit("Normal");
+
+const hotShow = hotList.slice(0, hotLimit);
+const familyShow = familyList.slice(0, dailyLimit);
+const newShow = newList.slice(0, newLimit);
+const bestShow = bestList.slice(0, bestLimit);
+const allShow = allList.slice(0, allLimit);
 
     renderIntoGrid("productGridHot", hotList, "hot");
     renderIntoGrid("productGridDaily", familyList, "family");
@@ -1336,12 +1369,14 @@ function doSearch(keyword) {
 
   // 清空搜索：恢复“全部商品”（只恢复这一块，简单可靠）
   if (!kw) {
-    const nonHot = list.filter((p) => !isHotProduct(p));
-    gridAll.innerHTML = "";
-    nonHot.forEach((p) => gridAll.appendChild(createProductCard(p, "")));
-    return;
-  }
+  const nonHot = list.filter((p) => !isHotProduct(p));
+  const limit = getLimit("Normal");
+  const show = nonHot.slice(0, limit);
 
+  gridAll.innerHTML = "";
+  show.forEach((p) => gridAll.appendChild(createProductCard(p, "")));
+  return;
+}
   // 命中字段：name/desc/tag/type/category/subCategory/mainCategory/section/tags/labels
   const hit = (p) => {
     const fields = [

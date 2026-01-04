@@ -1053,12 +1053,17 @@ a {
 /* 默认：显示右侧 */
 .section-link--desktop{
   display: inline-flex;
+  align-items: center;
   margin-left: auto;
   white-space: nowrap;
-  font-size: 12px;
-  color: var(--primary);
-}
 
+  /* 👇 关键提升可读性 */
+  font-size: 14px;          /* 原来 12 → 14 */
+  font-weight: 700;         /* 加粗 */
+  color: #16a34a;           /* 比 primary 稍深一点 */
+
+  gap: 4px;
+}
 /* 默认：隐藏手机底部链接 */
 .section-link--mobile-bottom{
   display: none;
