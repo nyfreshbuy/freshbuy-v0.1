@@ -1,4 +1,4 @@
-console.log("newcomer page loaded");
+console.log("newcomer.js page loaded");
 
 async function loadNewcomerProducts() {
   try {
@@ -9,7 +9,7 @@ async function loadNewcomerProducts() {
       ? data
       : data.items || data.products || [];
 
-    const grid = document.getElementById("newcomerGrid");
+    const grid = document.getElementById("productGridHot");
     if (!grid) return;
 
     grid.innerHTML = "";
