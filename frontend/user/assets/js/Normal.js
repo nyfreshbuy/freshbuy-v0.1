@@ -1,289 +1,143 @@
-console.log("Normal page loaded");
+console.log("Normal.js loaded");
 
-// =========================
-// 顶部分类（本页筛选）
-// =========================
-const categoryBarNormal = document.getElementById("categoryBarNormal");
+let FILTERS = [{ key: "all", name: "全部" }];
+let ALL = [];
+let activeCat = "all";
 
-// 你截图里的这些分类（key 用来匹配商品字段）
-const NORMAL_CATEGORIES = [
-  { key: "all", name: "全部" },
-  { key: "fresh", name: "生鲜果蔬", keywords: ["生鲜", "果蔬", "蔬菜", "水果", "fresh", "produce"] },
-  { key: "meat", name: "肉禽海鲜", keywords: ["肉", "禽", "海鲜", "牛", "猪", "鸡", "鱼", "meat", "seafood"] },
-  { key: "snacks", name: "零食饮品", keywords: ["零食", "饮品", "饮料", "奶", "水", "snack", "drink", "beverage"] },
-  { key: "staples", name: "粮油主食", keywords: ["粮油", "主食", "米", "面", "粉", "油", "staple", "rice", "noodle"] },
-  { key: "seasoning", name: "调味酱料", keywords: ["调味", "酱", "料", "盐", "醋", "酱油", "seasoning", "sauce"] },
-  { key: "frozen", name: "冷冻食品", keywords: ["冷冻", "冻", "frozen"] },
-  { key: "household", name: "日用清洁", keywords: ["日用", "清洁", "纸", "洗衣", "洗洁精", "household", "clean"] },
-];
+/* ===== 工具 ===== */
+function getCategoryKey(p) {
+  return String(
+    p?.categoryKey ||
+    p?.category_key ||
+    p?.catKey ||
+    p?.category ||
+    p?.mainCategory ||
+    p?.section ||
+    ""
+  ).trim();
+}
 
-function renderCategoryPills() {
-  if (!categoryBarNormal) return;
+const CATEGORY_NAME_MAP = {
+  fresh: "生鲜果蔬",
+  meat: "肉禽海鲜",
+  snacks: "零食饮品",
+  staples: "粮油主食",
+  seasoning: "调味酱料",
+  frozen: "冷冻食品",
+  household: "日用清洁",
+};
+function getCategoryLabel(key) {
+  return CATEGORY_NAME_MAP[key] || key;
+}
 
-  categoryBarNormal.innerHTML = "";
-
-  NORMAL_CATEGORIES.forEach((cat, idx) => {
-    const a = document.createElement("a");
-    a.href = "javascript:void(0)";
-    a.className = "cat-pill" + (idx === 0 ? " active" : "");
-    a.dataset.catKey = cat.key;
-    a.textContent = cat.name;
-
-    a.addEventListener("click", () => {
-      document.querySelectorAll("#categoryBarNormal .cat-pill").forEach((x) => x.classList.remove("active"));
-      a.classList.add("active");
-
-      // 切分类时：清空搜索框（更直觉）
-      const input = document.getElementById("normalSearchInput");
-      if (input) input.value = "";
-
-      applyFilters({ categoryKey: cat.key, keyword: "" });
-    });
-
-    categoryBarNormal.appendChild(a);
+function buildFiltersFromProducts(list) {
+  const set = new Set();
+  list.forEach((p) => {
+    const k = getCategoryKey(p);
+    if (k) set.add(k);
   });
-}
 
-// =========================
-// 工具：兼容后端各种字段
-// =========================
-function isTrueFlag(v) {
-  return v === true || v === "true" || v === 1 || v === "1";
-}
+  const preferred = ["fresh","meat","snacks","staples","seasoning","frozen","household"];
+  const keys = Array.from(set).sort((a, b) => {
+    const ia = preferred.indexOf(a);
+    const ib = preferred.indexOf(b);
+    if (ia === -1 && ib === -1) return a.localeCompare(b);
+    if (ia === -1) return 1;
+    if (ib === -1) return -1;
+    return ia - ib;
+  });
 
-function hasKeyword(p, keyword) {
-  if (!p) return false;
-  const kw = String(keyword).toLowerCase();
-  const norm = (v) => (v ? String(v).toLowerCase() : "");
-
-  const fields = [
-    p.tag,
-    p.type,
-    p.category,
-    p.subCategory,
-    p.mainCategory,
-    p.subcategory,
-    p.section,
-  ];
-  if (fields.some((f) => norm(f).includes(kw))) return true;
-
-  if (Array.isArray(p.tags) && p.tags.some((t) => norm(t).includes(kw))) return true;
-  if (Array.isArray(p.labels) && p.labels.some((t) => norm(t).includes(kw))) return true;
-
-  return false;
-}
-
-// ✅ 爆品判断（跟首页一致）
-function isHotProduct(p) {
-  return (
-    isTrueFlag(p.isHot) ||
-    isTrueFlag(p.isHotDeal) ||
-    isTrueFlag(p.hotDeal) ||
-    isTrueFlag(p.isSpecial) ||
-    hasKeyword(p, "爆品") ||
-    hasKeyword(p, "爆品日") ||
-    hasKeyword(p, "hot")
+  return [{ key: "all", name: "全部" }].concat(
+    keys.map((k) => ({ key: k, name: getCategoryLabel(k) }))
   );
 }
 
-// ✅ 判断商品属于哪个分类（尽量兼容你后端字段写法）
-function matchCategory(p, cat) {
-  if (!p || !cat) return false;
-  if (cat.key === "all") return true;
-
-  // 1) 先用商品自带字段（最靠谱）
-  const fields = [
-    p.category,
-    p.mainCategory,
-    p.subCategory,
-    p.subcategory,
-    p.section,
-    p.type,
-    p.tag,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-
-  // 2) 再补：tags/labels
-  const arr1 = Array.isArray(p.tags) ? p.tags.join(" ").toLowerCase() : "";
-  const arr2 = Array.isArray(p.labels) ? p.labels.join(" ").toLowerCase() : "";
-
-  const hay = (fields + " " + arr1 + " " + arr2).toLowerCase();
-
-  // 3) 用关键词匹配
-  const kws = Array.isArray(cat.keywords) ? cat.keywords : [];
-  return kws.some((k) => hay.includes(String(k).toLowerCase()));
+function getNum(p, keys, def = 0) {
+  for (const k of keys) {
+    const n = Number(p?.[k]);
+    if (!Number.isNaN(n) && Number.isFinite(n) && n !== 0) return n;
+  }
+  return def;
+}
+function getPrice(p) {
+  return getNum(p, ["price", "specialPrice", "originPrice"], 0);
+}
+function getSales(p) {
+  return getNum(p, ["sales", "sold", "salesCount", "orderCount"], 0);
 }
 
-// =========================
-// 兜底卡片（如果没引入 createProductCard 也不白屏）
-// =========================
-function fallbackCard(p, badgeText = "") {
-  const el = document.createElement("article");
-  el.className = "product-card";
+function matchCat(p, catKey) {
+  if (catKey === "all") return true;
+  return getCategoryKey(p) === catKey;
+}
 
-  const pid = String(p._id || p.id || p.sku || "").trim();
-  const priceNum = Number(p.price ?? p.flashPrice ?? p.specialPrice ?? 0);
-  const originNum = Number(p.originPrice ?? p.price ?? 0);
-  const finalPrice = priceNum || originNum || 0;
+function sortList(list, sortKey) {
+  const arr = [...list];
+  if (sortKey === "price_asc") arr.sort((a, b) => getPrice(a) - getPrice(b));
+  else if (sortKey === "price_desc") arr.sort((a, b) => getPrice(b) - getPrice(a));
+  else arr.sort((a, b) => getSales(b) - getSales(a));
+  return arr;
+}
 
-  const imageUrl =
-    p.image && String(p.image).trim()
-      ? String(p.image).trim()
-      : `https://picsum.photos/seed/${encodeURIComponent(pid || p.name || "fb")}/500/400`;
+/* ===== UI ===== */
+function renderFilters() {
+  const bar = document.getElementById("filterBar");
+  if (!bar) return;
+  bar.innerHTML = "";
 
-  el.innerHTML = `
-    <div class="product-image-wrap">
-      ${badgeText ? `<span class="special-badge">${badgeText}</span>` : ""}
-      <img src="${imageUrl}" class="product-image" alt="${p.name || ""}" />
-    </div>
-    <div class="product-name">${p.name || ""}</div>
-    <div class="product-desc">${p.desc || ""}</div>
-    <div class="product-price-row">
-      <span class="product-price">$${finalPrice.toFixed(2)}</span>
-    </div>
-    <div class="product-tagline">${(p.tag || p.category || "").slice(0, 18)}</div>
-  `;
-
-  el.addEventListener("click", () => {
-    if (!pid) return;
-    window.location.href = "product_detail.html?id=" + encodeURIComponent(pid);
+  FILTERS.forEach((f) => {
+    const btn = document.createElement("button");
+    btn.className = "filter-pill" + (f.key === activeCat ? " active" : "");
+    btn.textContent = f.name;
+    btn.onclick = () => {
+      activeCat = f.key;
+      bar.querySelectorAll(".filter-pill").forEach((x) => x.classList.remove("active"));
+      btn.classList.add("active");
+      renderList();
+    };
+    bar.appendChild(btn);
   });
-
-  return el;
 }
 
-// =========================
-// 加载 + 渲染 + 筛选（分类 + 搜索）
-// =========================
-let ALL = [];       // 原始
-let NORMAL = [];    // 非爆品
-let CURRENT_CAT = "all";
-
-function getActiveCategory() {
-  return NORMAL_CATEGORIES.find((c) => c.key === CURRENT_CAT) || NORMAL_CATEGORIES[0];
-}
-
-function renderList(list) {
+function renderList() {
   const grid = document.getElementById("normalGrid");
+  const sortSel = document.getElementById("sortSelect");
   if (!grid) return;
 
-  const makeCard =
-    typeof window.createProductCard === "function"
-      ? (p) => window.createProductCard(p, "")
-      : (p) => fallbackCard(p, "");
+  let list = ALL.filter((p) => matchCat(p, activeCat));
+  list = sortList(list, sortSel?.value || "sales_desc");
 
   grid.innerHTML = "";
-
   if (!list.length) {
-    const catName = getActiveCategory()?.name || "该分类";
-    grid.innerHTML = `<div style="padding:12px;color:#6b7280;font-size:14px;">${catName} 暂无商品</div>`;
+    grid.innerHTML = `<div style="color:#6b7280;">该分类暂无商品</div>`;
     return;
   }
 
-  list.forEach((p) => grid.appendChild(makeCard(p)));
-}
-
-function applyFilters({ categoryKey, keyword }) {
-  CURRENT_CAT = categoryKey || CURRENT_CAT;
-
-  const cat = getActiveCategory();
-  const kw = String(keyword || "").trim().toLowerCase();
-
-  // 先按分类筛
-  let list = NORMAL.filter((p) => matchCategory(p, cat));
-
-  // 再按搜索筛
-  if (kw) {
-    const hit = (p) => {
-      const fields = [
-        p?.name,
-        p?.desc,
-        p?.tag,
-        p?.type,
-        p?.category,
-        p?.subCategory,
-        p?.mainCategory,
-        p?.subcategory,
-        p?.section,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-
-      const arr1 = Array.isArray(p?.tags) ? p.tags.join(" ").toLowerCase() : "";
-      const arr2 = Array.isArray(p?.labels) ? p.labels.join(" ").toLowerCase() : "";
-
-      return (fields + " " + arr1 + " " + arr2).includes(kw);
-    };
-
-    list = list.filter(hit);
-  }
-
-  renderList(list);
-}
-
-async function loadNormalProducts() {
-  const grid = document.getElementById("normalGrid");
-  if (!grid) {
-    console.warn("❌ 未找到 #normalGrid，请检查 Normal.html 的容器 id");
-    return;
-  }
-
-  grid.innerHTML = "";
-
-  try {
-    const res = await fetch("/api/products-simple", { cache: "no-store" });
-    const data = await res.json().catch(() => ({}));
-
-    const list = Array.isArray(data)
-      ? data
-      : Array.isArray(data.items)
-      ? data.items
-      : Array.isArray(data.products)
-      ? data.products
-      : Array.isArray(data.list)
-      ? data.list
-      : [];
-
-    ALL = list;
-    NORMAL = list.filter((p) => !isHotProduct(p)); // ✅ 排除爆品
-
-    applyFilters({ categoryKey: "all", keyword: "" });
-  } catch (err) {
-    console.error("加载全部商品失败：", err);
-    grid.innerHTML =
-      '<div style="padding:12px;color:#b00020;font-size:14px;">加载失败，请稍后重试</div>';
-  }
-}
-
-// =========================
-// 搜索绑定（只搜当前分类内）
-// =========================
-function bindSearch() {
-  const input = document.getElementById("normalSearchInput");
-  if (!input) return;
-
-  input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      applyFilters({ categoryKey: CURRENT_CAT, keyword: input.value });
-    }
-  });
-
-  input.addEventListener("input", () => {
-    if (!input.value.trim()) {
-      applyFilters({ categoryKey: CURRENT_CAT, keyword: "" });
-    }
+  list.forEach((p) => {
+    grid.appendChild(createCard(p)); // ✅ 直接复用你已有的 createCard
   });
 }
 
-// =========================
-// init
-// =========================
+/* ===== 数据 ===== */
+async function loadProducts() {
+  const res = await fetch("/api/products-simple", { cache: "no-store" });
+  const data = await res.json().catch(() => ({}));
+  const list = Array.isArray(data)
+    ? data
+    : data.products || data.items || data.list || [];
+
+  ALL = list;
+
+  FILTERS = buildFiltersFromProducts(ALL);
+  renderFilters();
+  renderList();
+}
+
 window.addEventListener("DOMContentLoaded", () => {
-  renderCategoryPills();
-  bindSearch();
-  loadNormalProducts();
+  document.getElementById("sortSelect")?.addEventListener("change", renderList);
+  loadProducts().catch((e) => {
+    console.error("Normal page load failed", e);
+    const grid = document.getElementById("normalGrid");
+    if (grid) grid.innerHTML = `<div style="color:#b91c1c;">加载失败</div>`;
+  });
 });
