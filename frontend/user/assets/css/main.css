@@ -1068,21 +1068,26 @@ a {
     height: 36px;
   }
 }
-/* ===== 强制：电脑端显示右侧，手机端显示下方 ===== */
-.section-link--mobile{ display:none !important; }
-.section-link--desktop{ display:inline-flex !important; }
+/* 电脑端：只显示右侧 */
+.section-link--desktop { display: inline-flex !important; }
 
-@media (max-width: 768px){
-  .section-link--desktop{ display:none !important; }
-  .section-link--mobile{
-    display:inline-flex !important;
-    align-items:center;
-    margin-top:8px;
-    padding:6px 10px;
-    border-radius:999px;
-    background:#eef2ff;
-    color:#2563eb;
-    font-size:13px;
-    width:fit-content;
+/* 手机端底部链接默认隐藏 */
+.section-link--mobile-bottom { display: none !important; }
+
+/* 手机端：隐藏右侧，显示底部 */
+@media (max-width: 768px) {
+  .section-link--desktop { display: none !important; }
+
+  .section-link--mobile-bottom {
+    display: flex !important;
+    justify-content: center;
+    align-items: center;
+    margin: 12px 0 6px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: #eef2ff;
+    color: #2563eb;
+    font-size: 14px;
+    font-weight: 600;
   }
 }
