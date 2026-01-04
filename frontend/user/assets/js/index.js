@@ -716,11 +716,11 @@ const newShow = newList.slice(0, newLimit);
 const bestShow = bestList.slice(0, bestLimit);
 const allShow = allList.slice(0, allLimit);
 
-    renderIntoGrid("productGridHot", hotList, "hot");
-    renderIntoGrid("productGridDaily", familyList, "family");
-    renderIntoGrid("productGridNew", newList, "new");
-    renderIntoGrid("productGridBest", bestList, "best");
-    renderIntoGrid("productGridNormal", allList, "all");
+   renderIntoGrid("productGridHot", hotShow, "hot");
+renderIntoGrid("productGridDaily", familyShow, "family");
+renderIntoGrid("productGridNew", newShow, "new");
+renderIntoGrid("productGridBest", bestShow, "best");
+renderIntoGrid("productGridNormal", allShow, "all");
   } catch (err) {
     console.error("首页加载 /api/products-simple 失败：", err);
   }
@@ -1407,9 +1407,9 @@ function doSearch(keyword) {
   if (!matched.length) {
     gridAll.innerHTML = `<div style="padding:12px;font-size:13px;color:#6b7280;">没有找到「${keyword}」相关商品</div>`;
   } else {
-    matched.forEach((p) => gridAll.appendChild(createProductCard(p, "")));
-  }
-
+  const limit = getLimit("Normal");
+  matched.slice(0, limit).forEach((p) => gridAll.appendChild(createProductCard(p, "")));
+}
   // 滚动到“全部商品”区域（如果你首页有这个 id）
   try {
     const sec = document.getElementById("sectionAll") || document.getElementById("productGridNormal");

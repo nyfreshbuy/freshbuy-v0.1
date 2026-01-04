@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>新品上市 - 在鲜购拼好货</title>
+
+    <!-- 复用你现有 main.css -->
+    <link rel="stylesheet" href="./assets/css/main.css" />
+  </head>
+
+  <body>
+    <!-- 顶部：简单返回 -->
+    <div class="top-nav">
+      <div class="top-nav-inner">
+        <div class="logo-area">
+          <a href="./index.html" class="link-btn">← 返回首页</a>
+          <div>
+            <div class="logo-text-main">新品上市</div>
+            <div class="logo-text-sub">New Arrivals</div>
+          </div>
+        </div>
+
+        <div class="search-area">
+          <div class="search-box">
+            <span class="search-icon">🔎</span>
+            <input
+              id="newSearchInput"
+              class="search-input"
+              placeholder="搜索新品：苹果 / 牛奶 / 洗衣液..."
+            />
+          </div>
+        </div>
+
+        <div class="user-area">
+          <a class="link-btn" href="./cart.html">购物车</a>
+        </div>
+      </div>
+    </div>
+
+    <main class="page">
+      <div class="section-header">
+        <div>
+          <div class="section-title">
+            <span class="title-icon">🆕</span> 新品上市
+          </div>
+          <div class="section-sub">按“新品/新上架”标签或 isNew/isNewArrival 字段自动筛选</div>
+        </div>
+      </div>
+
+      <section>
+        <div class="product-grid" id="newGrid"></div>
+      </section>
+    </main>
+
+    <!-- 新品页逻辑 -->
+    <script src="./assets/js/New.js"></script>
+  </body>
+</html>

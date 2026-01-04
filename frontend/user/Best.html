@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>畅销商品 - 在鲜购拼好货</title>
+
+    <!-- 复用你现有 main.css -->
+    <link rel="stylesheet" href="./assets/css/main.css" />
+  </head>
+
+  <body>
+    <div class="top-nav">
+      <div class="top-nav-inner">
+        <div class="logo-area">
+          <a href="./index.html" class="link-btn">← 返回首页</a>
+          <div>
+            <div class="logo-text-main">畅销商品</div>
+            <div class="logo-text-sub">Best Sellers</div>
+          </div>
+        </div>
+
+        <div class="search-area">
+          <div class="search-box">
+            <span class="search-icon">🔎</span>
+            <input
+              id="bestSearchInput"
+              class="search-input"
+              placeholder="搜索畅销：牛奶 / 饺子 / 洗衣液..."
+            />
+          </div>
+        </div>
+
+        <div class="user-area">
+          <a class="link-btn" href="./cart.html">购物车</a>
+        </div>
+      </div>
+    </div>
+
+    <main class="page">
+      <div class="section-header">
+        <div>
+          <div class="section-title">
+            <span class="title-icon">🔥</span> 畅销商品
+          </div>
+          <div class="section-sub">按“畅销/热销/top”标签或 isBest/isBestSeller 字段自动筛选</div>
+        </div>
+      </div>
+
+      <section>
+        <div class="product-grid" id="bestGrid"></div>
+      </section>
+    </main>
+
+    <script src="./assets/js/Best.js"></script>
+  </body>
+</html>

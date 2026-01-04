@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>全部商品 - 在鲜购拼好货</title>
+
+    <link rel="stylesheet" href="./assets/css/main.css" />
+  </head>
+
+  <body>
+    <div class="top-nav">
+      <div class="top-nav-inner">
+        <div class="logo-area">
+          <a href="./index.html" class="link-btn">← 返回首页</a>
+          <div>
+            <div class="logo-text-main">全部商品</div>
+            <div class="logo-text-sub">Normal Products</div>
+          </div>
+        </div>
+
+        <div class="search-area">
+          <div class="search-box">
+            <span class="search-icon">🔎</span>
+            <input
+              id="normalSearchInput"
+              class="search-input"
+              placeholder="搜索全部商品：牛奶 / 饺子 / 洗衣液..."
+            />
+          </div>
+        </div>
+
+        <div class="user-area">
+          <a class="link-btn" href="./cart.html">购物车</a>
+        </div>
+      </div>
+    </div>
+    <!-- 分类条（本页筛选用） -->
+<div class="category-bar-wrap">
+  <div class="category-bar" id="categoryBarNormal"></div>
+  <a class="catbar-more" href="/user/category.html?cat=all&name=全部分类">全部分类 →</a>
+</div>
+    <main class="page">
+      <div class="section-header">
+        <div>
+          <div class="section-title">
+            <span class="title-icon">🧺</span> 全部商品
+          </div>
+          <div class="section-sub">首页“全部商品”同款：默认不包含爆品日商品</div>
+        </div>
+      </div>
+
+      <section>
+        <div class="product-grid" id="normalGrid"></div>
+      </section>
+    </main>
+
+    <script src="./assets/js/Normal.js"></script>
+  </body>
+</html>
