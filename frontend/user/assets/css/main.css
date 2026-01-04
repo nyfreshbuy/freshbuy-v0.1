@@ -226,9 +226,6 @@ a {
   flex: 1;
   min-width: 0;
 }
-
-.category-bar::-webkit-scrollbar{ display:none; }
-
 /* ✅ 右侧链接：手机隐藏，电脑显示 */
 .catbar-more{
   display:none;
@@ -395,15 +392,9 @@ a {
   align-items: flex-end;
   margin: 14px 2px 10px;
 }
-
-.section-title {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 22px;
-  font-weight: 700;
-  color: #16a34a;
-  letter-spacing: 0.03em;
+.section-header > div{
+  flex: 1;         /* 左侧标题块占满剩余空间 */
+  min-width: 0;
 }
 
 .section-title .title-icon {
@@ -429,18 +420,6 @@ a {
 }
 
 @media (max-width: 900px) {
-  .product-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 520px) {
-  .product-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr)); /* 📱 手机 2 列 */
-    gap: 10px;
-  }
-}
-@media (max-width: 768px) {
   .product-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -950,7 +929,8 @@ a {
 /* ⭐ 主内容右移，避免被左侧竖排按钮遮挡 */
 @media (min-width: 769px) {
   .page {
-    margin-left: 120px !important;
+    margin-left: 0 !important;
+    padding-left: 120px; /* 给左侧 side-rail 留位置 */
   }
 }
 
@@ -1068,17 +1048,27 @@ a {
     height: 36px;
   }
 }
-/* 电脑端：只显示右侧 */
-.section-link--desktop { display: inline-flex !important; }
+/* ===== 查看更多：电脑右侧，手机在商品列表底部 ===== */
 
-/* 手机端底部链接默认隐藏 */
-.section-link--mobile-bottom { display: none !important; }
+/* 默认：显示右侧 */
+.section-link--desktop{
+  display: inline-flex;
+  margin-left: auto;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--primary);
+}
 
-/* 手机端：隐藏右侧，显示底部 */
-@media (max-width: 768px) {
-  .section-link--desktop { display: none !important; }
+/* 默认：隐藏手机底部链接 */
+.section-link--mobile-bottom{
+  display: none;
+}
 
-  .section-link--mobile-bottom {
+/* 手机：隐藏右侧，显示底部 */
+@media (max-width: 768px){
+  .section-link--desktop{ display: none !important; }
+
+  .section-link--mobile-bottom{
     display: flex !important;
     justify-content: center;
     align-items: center;
