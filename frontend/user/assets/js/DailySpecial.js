@@ -81,7 +81,9 @@ function buildFiltersFromProducts(list) {
 
 /* ========= 家庭必备判定 ========= */
 function isDailySpecial(p) {
-  return !String(p.tag || "").includes("爆品");
+  const tag = String(p?.tag || "");
+  // 家庭必备：先排除“爆品日”，剩下的都算家庭必备（不改后端的最佳兜底）
+  return !tag.includes("爆品日") && !tag.includes("爆品");
 }
 function matchCat(p, catKey) {
   if (catKey === "all") return true;
