@@ -105,11 +105,29 @@
       </div>
 
       <div class="right-actions">
-        <div class="cart-icon" id="cartIcon">
-          🛒
-          <span class="cart-count-badge" id="cartCount">0</span>
-        </div>
-      </div>
+  <!-- ✅ 返回首页按钮（新增） -->
+  <button
+    type="button"
+    onclick="location.href='/user/index.html'"
+    style="
+      padding:8px 12px;
+      border-radius:999px;
+      border:1px solid #e5e7eb;
+      background:#fff;
+      font-size:13px;
+      font-weight:600;
+      cursor:pointer;
+    "
+  >
+    ← 返回首页
+  </button>
+
+  <!-- 原来的购物车（不动） -->
+  <div class="cart-icon" id="cartIcon">
+    🛒
+    <span class="cart-count-badge" id="cartCount">0</span>
+  </div>
+</div>
     </div>
 
     <div class="filter-wrap">
