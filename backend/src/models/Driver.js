@@ -3,7 +3,23 @@ import mongoose from "mongoose";
 const driverSchema = new mongoose.Schema(
   {
     // 绑定登录用户（你的 User 表，role=driver）
-    userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, unique: true },
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      unique: true,
+    },
+
+    // =========================
+    // ✅ 新增：司机密码（bcrypt hash）
+    // - 不存明文
+    // - 可用于 driver 直接登录
+    // - 默认不返回（防止泄露）
+    // =========================
+    password: {
+      type: String,
+      select: false,
+    },
 
     // 展示信息（可从 User 同步，也可独立维护）
     name: { type: String, trim: true },
@@ -25,36 +41,34 @@ const driverSchema = new mongoose.Schema(
       index: true,
     },
 
-    // 分配的配送区域（你可以用 zoneId 或 zoneKey）
+    // 分配的配送区域
     zones: [
       {
-        zoneId: { type: String, trim: true }, // 例如 "zone_freshmeadows"
+        zoneId: { type: String, trim: true },
         zoneName: { type: String, trim: true },
       },
     ],
 
-    // 每日容量（限制最多可派多少单/多少路线）
+    // 每日容量
     dailyCapacity: { type: Number, default: 60 },
     todayAssignedCount: { type: Number, default: 0 },
-    // 今日统计对应的日期(用于自动重置 todayAssignedCount)
-    todayDate: {
-     type: String, // 例如 "2025-01-13"
-    },
-    // 当前位置（可选：司机端上报）
+    todayDate: { type: String },
+
+    // 当前位置
     lastLocation: {
-      lat: { type: Number },
-      lng: { type: Number },
+      lat: Number,
+      lng: Number,
       address: { type: String, trim: true },
-      updatedAt: { type: Date },
+      updatedAt: Date,
     },
 
-    // 车辆信息（可选）
+    // 车辆信息
     vehicle: {
-      type: { type: String, trim: true }, // sedan/suv/van
+      type: { type: String, trim: true },
       plate: { type: String, trim: true },
     },
 
-    // 统计（可选）
+    // 统计
     stats: {
       totalDelivered: { type: Number, default: 0 },
       totalCanceled: { type: Number, default: 0 },
@@ -67,7 +81,10 @@ const driverSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// 索引
 driverSchema.index({ status: 1, workingState: 1 });
 driverSchema.index({ "zones.zoneId": 1 });
 
-export default mongoose.model("Driver", driverSchema);
+// ✅ 强制使用 drivers 集合（你已经写对）
+export default mongoose.models.Driver ||
+  mongoose.model("Driver", driverSchema, "drivers");

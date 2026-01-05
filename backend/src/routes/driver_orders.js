@@ -45,10 +45,30 @@ function toYMD(d) {
 }
 
 // =====================
-// 简易路线排序（第一阶段）
+// 兼容派单：batchKey / routeIndex 读取
+// =====================
+function getBatchKeyFromOrder(o) {
+  return String(o?.dispatch?.batchKey || o?.fulfillment?.batchKey || o?.batchKey || "").trim();
+}
+
+function getRouteIndexFromOrder(o) {
+  // ✅ 优先使用后台派单写入的 routeIndex
+  const v =
+    o?.dispatch?.routeIndex ??
+    o?.fulfillment?.routeIndex ??
+    o?.routeIndex ??
+    o?.route_index ??
+    null;
+
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+// =====================
+// 简易路线排序（兜底）
 // - 先按 lng，再按 lat
 // =====================
-function sortForRoute(orders) {
+function sortForRouteFallback(orders) {
   return [...orders].sort((a, b) => {
     const alng = Number(a?.address?.lng ?? 0);
     const blng = Number(b?.address?.lng ?? 0);
@@ -60,11 +80,156 @@ function sortForRoute(orders) {
   });
 }
 
+// ✅ 对齐派单：如果有 routeIndex 就按 routeIndex 排；否则 fallback
+function sortForRoute(orders) {
+  const withIdx = orders.map((o) => ({ o, idx: getRouteIndexFromOrder(o) }));
+  const hasAnyIdx = withIdx.some((x) => x.idx != null);
+
+  if (hasAnyIdx) {
+    return withIdx
+      .sort((a, b) => {
+        const ai = a.idx ?? 999999;
+        const bi = b.idx ?? 999999;
+        if (ai !== bi) return ai - bi;
+        // 同 routeIndex 再按创建时间稳定排序
+        const at = new Date(a.o?.createdAt || 0).getTime();
+        const bt = new Date(b.o?.createdAt || 0).getTime();
+        return at - bt;
+      })
+      .map((x) => x.o);
+  }
+
+  return sortForRouteFallback(orders);
+}
+
 function getDriverObjectId(req) {
   const uid = String(req.user?.id || req.user?._id || "").trim();
   if (!mongoose.Types.ObjectId.isValid(uid)) return null;
   return new mongoose.Types.ObjectId(uid);
 }
+
+function normalizeOrderOut(o, routeIndexComputed = null) {
+  const storedRouteIndex = getRouteIndexFromOrder(o);
+  return {
+    id: String(o._id),
+    orderNo: o.orderNo,
+    status: o.status,
+    deliveryStatus: o.deliveryStatus,
+
+    deliveryMode: o.deliveryMode,
+    fulfillment: o.fulfillment,
+    dispatch: o.dispatch,
+    deliveryDate: o.deliveryDate,
+
+    customerName: o.customerName,
+    customerPhone: o.customerPhone,
+
+    address: o.address,
+    addressText: o.addressText,
+    note: o.note,
+
+    totalAmount: o.totalAmount,
+
+    // ✅ 最终对外 routeIndex：优先派单写入；否则用计算出来的
+    routeIndex: storedRouteIndex ?? routeIndexComputed,
+  };
+}
+
+/**
+ * =====================================================
+ * ✅ 新增：司机端批次列表（当天）
+ * GET /api/driver/orders/batches?date=YYYY-MM-DD&status=...
+ * 返回：[{ batchKey, count }]
+ * =====================================================
+ */
+router.get("/batches", requireLogin, requireDriver, async (req, res) => {
+  try {
+    const driverId = getDriverObjectId(req);
+    if (!driverId) return res.status(401).json({ success: false, message: "用户信息异常" });
+
+    const date = String(req.query.date || "").trim() || toYMD(new Date());
+    const range = parseYMDToRange(date);
+    if (!range) return res.status(400).json({ success: false, message: "date 必须是 YYYY-MM-DD" });
+
+    const statusRaw = String(req.query.status || "").trim();
+    const statusList = statusRaw
+      ? statusRaw.split(",").map((x) => x.trim()).filter(Boolean)
+      : ["paid", "packing", "shipping", "done", "completed"];
+
+    // 用 aggregation 直接分组：优先 dispatch.batchKey，其次 fulfillment.batchKey
+    const rows = await Order.aggregate([
+      {
+        $match: {
+          driverId,
+          deliveryDate: { $gte: range.start, $lt: range.end },
+          status: { $in: statusList },
+        },
+      },
+      {
+        $project: {
+          batchKey: {
+            $ifNull: ["$dispatch.batchKey", "$fulfillment.batchKey"],
+          },
+        },
+      },
+      { $match: { batchKey: { $type: "string", $ne: "" } } },
+      { $group: { _id: "$batchKey", count: { $sum: 1 } } },
+      { $sort: { _id: 1 } },
+    ]);
+
+    const batches = rows.map((r) => ({ batchKey: String(r._id), count: Number(r.count || 0) }));
+
+    return res.json({ success: true, date, total: batches.length, batches });
+  } catch (err) {
+    console.error("GET /api/driver/orders/batches error:", err);
+    return res.status(500).json({ success: false, message: "获取批次失败" });
+  }
+});
+
+/**
+ * =====================================================
+ * ✅ 新增：司机端按批次拉单（对齐派单 routeIndex）
+ * GET /api/driver/orders/batch/orders?batchKey=...&status=...
+ * =====================================================
+ */
+router.get("/batch/orders", requireLogin, requireDriver, async (req, res) => {
+  try {
+    const driverId = getDriverObjectId(req);
+    if (!driverId) return res.status(401).json({ success: false, message: "用户信息异常" });
+
+    const batchKey = String(req.query.batchKey || "").trim();
+    if (!batchKey) return res.status(400).json({ success: false, message: "batchKey 必填" });
+
+    const statusRaw = String(req.query.status || "").trim();
+    const statusList = statusRaw
+      ? statusRaw.split(",").map((x) => x.trim()).filter(Boolean)
+      : ["paid", "packing", "shipping", "done", "completed"];
+
+    const orders = await Order.find({
+      driverId,
+      status: { $in: statusList },
+      $or: [{ "fulfillment.batchKey": batchKey }, { "dispatch.batchKey": batchKey }],
+    })
+      .sort({ createdAt: 1 })
+      .lean();
+
+    // ✅ 关键：按派单 routeIndex 排序（没有则 fallback）
+    const sorted = sortForRoute(orders);
+
+    // 如果没有任何 routeIndex，才给一个计算的序号（不覆盖派单的）
+    const hasAnyIdx = sorted.some((o) => getRouteIndexFromOrder(o) != null);
+
+    return res.json({
+      success: true,
+      batchKey,
+      total: sorted.length,
+      orders: sorted.map((o, i) => normalizeOrderOut(o, hasAnyIdx ? null : i + 1)),
+    });
+  } catch (err) {
+    console.error("GET /api/driver/orders/batch/orders error:", err);
+    return res.status(500).json({ success: false, message: "按批次获取失败" });
+  }
+});
 
 /**
  * =====================================================
@@ -94,33 +259,14 @@ router.get("/", requireLogin, requireDriver, async (req, res) => {
       .sort({ createdAt: 1 })
       .lean();
 
-    const sorted = sortForRoute(orders).map((o, idx) => ({ ...o, routeIndex: idx + 1 }));
+    const sorted = sortForRoute(orders);
+    const hasAnyIdx = sorted.some((o) => getRouteIndexFromOrder(o) != null);
 
     return res.json({
       success: true,
       date,
       total: sorted.length,
-      orders: sorted.map((o) => ({
-        id: String(o._id),
-        orderNo: o.orderNo,
-        status: o.status,
-        deliveryStatus: o.deliveryStatus,
-
-        deliveryMode: o.deliveryMode,
-        fulfillment: o.fulfillment,
-        dispatch: o.dispatch,
-        deliveryDate: o.deliveryDate,
-
-        customerName: o.customerName,
-        customerPhone: o.customerPhone,
-
-        address: o.address,
-        addressText: o.addressText,
-        note: o.note,
-
-        totalAmount: o.totalAmount,
-        routeIndex: o.routeIndex,
-      })),
+      orders: sorted.map((o, i) => normalizeOrderOut(o, hasAnyIdx ? null : i + 1)),
     });
   } catch (err) {
     console.error("GET /api/driver/orders error:", err);
@@ -132,7 +278,6 @@ router.get("/", requireLogin, requireDriver, async (req, res) => {
  * =====================================================
  * ✅ 兼容旧接口：今日任务
  * GET /api/driver/orders/today
- * （返回格式兼容你旧 server.js：origin + orders）
  * =====================================================
  */
 router.get("/today", requireLogin, requireDriver, async (req, res) => {
@@ -151,7 +296,8 @@ router.get("/today", requireLogin, requireDriver, async (req, res) => {
       .sort({ createdAt: 1 })
       .lean();
 
-    const sorted = sortForRoute(orders).map((o, idx) => ({ ...o, routeIndex: idx + 1 }));
+    const sorted = sortForRoute(orders);
+    const hasAnyIdx = sorted.some((o) => getRouteIndexFromOrder(o) != null);
 
     return res.json({
       success: true,
@@ -160,19 +306,7 @@ router.get("/today", requireLogin, requireDriver, async (req, res) => {
         lng: -73.829252,
         address: "Freshbuy 仓库",
       },
-      orders: sorted.map((o) => ({
-        id: String(o._id),
-        orderNo: o.orderNo,
-        status: o.status,
-        deliveryStatus: o.deliveryStatus,
-        address: o.address,
-        addressText: o.addressText,
-        customerName: o.customerName,
-        customerPhone: o.customerPhone,
-        note: o.note,
-        totalAmount: o.totalAmount,
-        routeIndex: o.routeIndex,
-      })),
+      orders: sorted.map((o, i) => normalizeOrderOut(o, hasAnyIdx ? null : i + 1)),
     });
   } catch (err) {
     console.error("GET /api/driver/orders/today error:", err);
@@ -182,7 +316,7 @@ router.get("/today", requireLogin, requireDriver, async (req, res) => {
 
 /**
  * =====================================================
- * ✅ 司机端：按批次拉单
+ * ✅ 保留：旧接口按批次（但内部也改为对齐派单 routeIndex）
  * GET /api/driver/orders/by-batch?batchKey=...&status=...
  * =====================================================
  */
@@ -199,7 +333,6 @@ router.get("/by-batch", requireLogin, requireDriver, async (req, res) => {
       ? statusRaw.split(",").map((x) => x.trim()).filter(Boolean)
       : ["paid", "packing", "shipping"];
 
-    // ✅ 兼容：有的批次在 fulfillment.batchKey，有的在 dispatch.batchKey
     const orders = await Order.find({
       driverId,
       status: { $in: statusList },
@@ -208,33 +341,14 @@ router.get("/by-batch", requireLogin, requireDriver, async (req, res) => {
       .sort({ createdAt: 1 })
       .lean();
 
-    const sorted = sortForRoute(orders).map((o, idx) => ({ ...o, routeIndex: idx + 1 }));
+    const sorted = sortForRoute(orders);
+    const hasAnyIdx = sorted.some((o) => getRouteIndexFromOrder(o) != null);
 
     return res.json({
       success: true,
       batchKey,
       total: sorted.length,
-      orders: sorted.map((o) => ({
-        id: String(o._id),
-        orderNo: o.orderNo,
-        status: o.status,
-        deliveryStatus: o.deliveryStatus,
-
-        deliveryMode: o.deliveryMode,
-        fulfillment: o.fulfillment,
-        dispatch: o.dispatch,
-        deliveryDate: o.deliveryDate,
-
-        customerName: o.customerName,
-        customerPhone: o.customerPhone,
-
-        address: o.address,
-        addressText: o.addressText,
-        note: o.note,
-
-        totalAmount: o.totalAmount,
-        routeIndex: o.routeIndex,
-      })),
+      orders: sorted.map((o, i) => normalizeOrderOut(o, hasAnyIdx ? null : i + 1)),
     });
   } catch (err) {
     console.error("GET /api/driver/orders/by-batch error:", err);
@@ -244,9 +358,8 @@ router.get("/by-batch", requireLogin, requireDriver, async (req, res) => {
 
 /**
  * =====================================================
- * ✅ 司机端：一键开始配送（兼容旧接口）
+ * ✅ 一键开始配送（兼容旧接口）
  * PATCH /api/driver/orders/start-all
- * 规则：只把「今天 00:00 之前创建」且「未送达」的订单设为配送中
  * =====================================================
  */
 router.patch("/start-all", requireLogin, requireDriver, async (req, res) => {
@@ -288,7 +401,7 @@ router.patch("/start-all", requireLogin, requireDriver, async (req, res) => {
 
 /**
  * =====================================================
- * ✅ 司机端：开始配送
+ * ✅ 开始配送
  * PATCH /api/driver/orders/:id/start
  * =====================================================
  */
@@ -325,9 +438,8 @@ router.patch("/:id([0-9a-fA-F]{24})/start", requireLogin, requireDriver, async (
 
 /**
  * =====================================================
- * ✅ 司机端：标记送达（你现在已有）
+ * ✅ 标记送达（你原来已有）
  * PATCH /api/driver/orders/:id/delivered
- * body: { deliveryPhotoUrl?, deliveryNote? }
  * =====================================================
  */
 router.patch("/:id([0-9a-fA-F]{24})/delivered", requireLogin, requireDriver, async (req, res) => {
@@ -370,9 +482,8 @@ router.patch("/:id([0-9a-fA-F]{24})/delivered", requireLogin, requireDriver, asy
 
 /**
  * =====================================================
- * ✅ 兼容旧接口：完成配送（你旧 server.js 用的是 /complete）
+ * ✅ 兼容旧接口：完成配送
  * PATCH /api/driver/orders/:id/complete
- * body: { deliveryPhotoUrl?, deliveryNote? }
  * =====================================================
  */
 router.patch("/:id([0-9a-fA-F]{24})/complete", requireLogin, requireDriver, async (req, res) => {
@@ -385,7 +496,7 @@ router.patch("/:id([0-9a-fA-F]{24})/complete", requireLogin, requireDriver, asyn
     const deliveryNote = String(req.body?.deliveryNote || "").trim();
 
     const patch = {
-      status: "completed",          // ✅ 对齐你旧逻辑（server.js 里是 completed）
+      status: "completed",
       deliveryStatus: "delivered",
       deliveredAt: new Date(),
     };

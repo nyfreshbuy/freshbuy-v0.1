@@ -2,121 +2,355 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <title>司机端 · 配送任务与地图导航 - 在鲜购拼好货</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>司机端 - 路线与派送</title>
 
-    <link rel="stylesheet" href="assets/css/driver.css" />
+    <style>
+      :root {
+        --primary: #22c55e;
+        --primary-dark: #16a34a;
+        --accent: #f97316;
+        --bg: #0b1220;
+        --panel: rgba(255, 255, 255, 0.06);
+        --panel2: rgba(255, 255, 255, 0.09);
+        --border: rgba(255, 255, 255, 0.10);
+        --text: rgba(255, 255, 255, 0.92);
+        --muted: rgba(255, 255, 255, 0.68);
+        --shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+        --radius-lg: 18px;
+        --radius-md: 12px;
+      }
+
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, "Noto Sans", sans-serif;
+        background: radial-gradient(1200px 700px at 30% 10%, rgba(34, 197, 94, 0.18), transparent 55%),
+                    radial-gradient(1000px 700px at 85% 20%, rgba(249, 115, 22, 0.12), transparent 60%),
+                    var(--bg);
+        color: var(--text);
+      }
+
+      .wrap {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 18px 14px 40px;
+      }
+
+      .topbar {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        backdrop-filter: blur(10px);
+        background: rgba(11, 18, 32, 0.65);
+        border-bottom: 1px solid rgba(255,255,255,0.06);
+      }
+
+      .topbar-inner {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 12px 14px;
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 240px;
+      }
+      .logo {
+        width: 36px;
+        height: 36px;
+        border-radius: 12px;
+        background: linear-gradient(135deg, rgba(34,197,94,0.95), rgba(16,185,129,0.75));
+        box-shadow: 0 10px 26px rgba(34,197,94,0.18);
+      }
+      .brand h1 {
+        font-size: 16px;
+        margin: 0;
+        line-height: 1.2;
+      }
+      .brand p {
+        margin: 2px 0 0;
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .right {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 9px 12px;
+        border-radius: 999px;
+        background: rgba(255,255,255,0.08);
+        border: 1px solid rgba(255,255,255,0.10);
+      }
+
+      .btn {
+        appearance: none;
+        border: none;
+        cursor: pointer;
+        border-radius: 999px;
+        padding: 10px 14px;
+        background: rgba(255,255,255,0.10);
+        color: var(--text);
+        border: 1px solid rgba(255,255,255,0.12);
+      }
+      .btn:hover { background: rgba(255,255,255,0.14); }
+      .btn-primary {
+        background: linear-gradient(135deg, rgba(34,197,94,0.95), rgba(16,185,129,0.85));
+        border: 1px solid rgba(34,197,94,0.35);
+      }
+      .btn-primary:hover { filter: brightness(1.03); }
+      .btn-warn {
+        background: linear-gradient(135deg, rgba(249,115,22,0.95), rgba(251,146,60,0.85));
+        border: 1px solid rgba(249,115,22,0.35);
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: 380px 1fr;
+        gap: 14px;
+        margin-top: 14px;
+      }
+
+      @media (max-width: 980px) {
+        .grid { grid-template-columns: 1fr; }
+        .brand { min-width: 0; }
+      }
+
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+
+      .card-hd {
+        padding: 14px 14px 10px;
+        border-bottom: 1px solid rgba(255,255,255,0.07);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+      }
+      .card-hd h2 {
+        margin: 0;
+        font-size: 15px;
+      }
+      .card-hd .sub {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .card-bd { padding: 14px; }
+
+      .field {
+        display: grid;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+      label { font-size: 12px; color: var(--muted); }
+      input, select, textarea {
+        width: 100%;
+        padding: 10px 12px;
+        border-radius: 12px;
+        border: 1px solid rgba(255,255,255,0.12);
+        background: rgba(0,0,0,0.16);
+        color: var(--text);
+        outline: none;
+      }
+      textarea { min-height: 70px; resize: vertical; }
+
+      .row {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+
+      .hint {
+        font-size: 12px;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+
+      .list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .stop {
+        background: var(--panel2);
+        border: 1px solid rgba(255,255,255,0.10);
+        border-radius: var(--radius-md);
+        padding: 12px;
+      }
+
+      .stop-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        align-items: flex-start;
+      }
+
+      .badge {
+        font-size: 12px;
+        padding: 4px 10px;
+        border-radius: 999px;
+        background: rgba(255,255,255,0.10);
+        border: 1px solid rgba(255,255,255,0.10);
+        color: var(--text);
+        white-space: nowrap;
+      }
+      .badge-ok { background: rgba(34,197,94,0.18); border-color: rgba(34,197,94,0.35); }
+      .badge-warn { background: rgba(249,115,22,0.16); border-color: rgba(249,115,22,0.35); }
+      .badge-dim { opacity: 0.85; }
+
+      .stop h3 {
+        margin: 0 0 6px;
+        font-size: 14px;
+      }
+      .meta {
+        font-size: 12px;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+
+      .actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-top: 10px;
+      }
+
+      .mini {
+        font-size: 12px;
+        padding: 8px 10px;
+        border-radius: 999px;
+      }
+
+      .hr {
+        height: 1px;
+        background: rgba(255,255,255,0.07);
+        margin: 12px 0;
+      }
+
+      .err {
+        background: rgba(239,68,68,0.12);
+        border: 1px solid rgba(239,68,68,0.25);
+        color: rgba(255,255,255,0.92);
+        padding: 10px 12px;
+        border-radius: 12px;
+        font-size: 12px;
+        line-height: 1.5;
+        display: none;
+      }
+
+      .ok {
+        background: rgba(34,197,94,0.12);
+        border: 1px solid rgba(34,197,94,0.25);
+        padding: 10px 12px;
+        border-radius: 12px;
+        font-size: 12px;
+        line-height: 1.5;
+        display: none;
+      }
+    </style>
   </head>
 
   <body>
-    <div class="driver-layout">
-      <header class="driver-header">
-        <div>
-          <div class="driver-title">今日配送任务</div>
-          <div class="driver-subtitle" id="driverDateText"></div>
+    <div class="topbar">
+      <div class="topbar-inner">
+        <div class="brand">
+          <div class="logo"></div>
+          <div>
+            <h1>司机端 · 路线与派送</h1>
+            <p id="driverSub">加载司机信息中…</p>
+          </div>
         </div>
-        <button class="driver-btn driver-btn-ghost" id="btnRefresh">
-          ⟳ 刷新任务
-        </button>
-      </header>
 
-      <main class="driver-main">
-        <!-- 起点设置条 -->
-        <section class="driver-card">
-          <div class="driver-card-header">
-            <div>
-              <div class="driver-card-title">起点设置</div>
-              <div class="driver-card-subtitle">
-                默认起点：199-26 48th Ave, Fresh Meadows, NY 11365（司机可修改）
-              </div>
-            </div>
+        <div class="right">
+          <div class="pill">
+            <span id="hello">你好，-</span>
+            <button class="btn mini" id="btnLogout">登出</button>
           </div>
-          <div
-            style="
-              margin-top: 8px;
-              display: flex;
-              gap: 8px;
-              align-items: center;
-              padding: 0 12px 8px 12px;
-            "
-          >
-            <span
-              style="
-                font-size: 13px;
-                color: #e5e7eb;
-                white-space: nowrap;
-              "
-              >起点地址：</span
-            >
-            <input
-              id="driverOriginInput"
-              type="text"
-              placeholder="例如：199-26 48th Ave, Fresh Meadows, NY 11365"
-              style="
-                flex: 1;
-                min-width: 180px;
-                padding: 4px 8px;
-                border-radius: 6px;
-                border: 1px solid rgba(148, 163, 184, 0.7);
-                background: rgba(15, 23, 42, 0.9);
-                color: #e5e7eb;
-                font-size: 12px;
-              "
-            />
-            <button
-              class="driver-btn driver-btn-ghost"
-              id="btnSaveOrigin"
-              style="white-space: nowrap"
-            >
-              💾 保存起点
-            </button>
-          </div>
-        </section>
-
-        <!-- 上：地图 + 路线信息 -->
-        <section class="driver-card">
-          <div class="driver-card-header">
-            <div>
-              <div class="driver-card-title">地图 &amp; 最优路线</div>
-              <div class="driver-card-subtitle" id="routeSummary">
-                正在加载 Google 地图...
-              </div>
-            </div>
-            <button
-              class="driver-btn driver-btn-primary"
-              id="btnOpenRouteInMaps"
-            >
-              🧭 一键在 Google Maps 打开整条路线
-            </button>
-          </div>
-          <div id="driverMap" class="driver-map"></div>
-        </section>
-
-        <!-- 下：订单列表（会按优化后的顺序排序） -->
-        <section class="driver-card">
-          <div class="driver-card-header">
-  <div class="driver-card-title">今日配送列表</div>
-  <div class="driver-card-header-right">
-    <span id="ordersSummary" class="driver-card-sub">今日共 0 单</span>
-    <button
-      id="btnStartAllDeliveries"
-      class="driver-btn driver-btn-primary driver-btn-sm"
-      style="margin-left: 8px;"
-    >
-      开始配送
-    </button>
-  </div>
-</div>
-          <div id="driverOrdersList" class="driver-orders-list">
-            <!-- 订单卡片由 JS 渲染 -->
-          </div>
-        </section>
-      </main>
+        </div>
+      </div>
     </div>
 
-    <!-- 先加载 Google Maps JS（注意替换你的 key） -->
-    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyA6GEAhetFXnP-y9iYaE7oewv-mLKrELN0"></script>
-    <!-- 再加载司机端应用逻辑 -->
-    <script src="assets/js/driver_app.js"></script>
+    <div class="wrap">
+      <div class="grid">
+        <!-- 左侧：选择日期/批次 -->
+        <section class="card">
+          <div class="card-hd">
+            <div>
+              <h2>选择批次</h2>
+              <div class="sub">与你后台 dispatch 的 batchKey 对齐</div>
+            </div>
+            <button class="btn mini" id="btnRefreshBatches">刷新</button>
+          </div>
+          <div class="card-bd">
+            <div class="err" id="errBox"></div>
+            <div class="ok" id="okBox"></div>
+
+            <div class="field">
+              <label>日期</label>
+              <input type="date" id="dateInput" />
+            </div>
+
+            <div class="field">
+              <label>批次（batchKey）</label>
+              <select id="batchSelect">
+                <option value="">加载中…</option>
+              </select>
+            </div>
+
+            <div class="row" style="margin-top: 6px;">
+              <button class="btn btn-primary" id="btnLoadRoute">加载路线</button>
+              <button class="btn btn-warn" id="btnNavAll">一键全路线导航</button>
+            </div>
+
+            <div class="hr"></div>
+
+            <div class="hint">
+              说明：<br />
+              1) 后台派单页面按 date → batchKey 拉取订单；司机端同样按 batchKey 拉取分配给自己的订单。<br />
+              2) 若订单有 routeIndex / routeOrder 字段，会按它排序显示。<br />
+              3) “全路线导航”会用 Google Maps Directions 生成 waypoints（有数量限制，超过会自动截断）。
+            </div>
+          </div>
+        </section>
+
+        <!-- 右侧：路线 -->
+        <section class="card">
+          <div class="card-hd">
+            <div>
+              <h2>我的路线</h2>
+              <div class="sub" id="routeSub">未加载</div>
+            </div>
+            <button class="btn mini" id="btnRefreshOrders">刷新路线</button>
+          </div>
+
+          <div class="card-bd">
+            <div class="list" id="stopList">
+              <div class="hint">请先在左侧选择日期与批次，然后点击「加载路线」。</div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <script src="/driver/assets/js/driver_index.js?v=20260105"></script>
   </body>
 </html>
