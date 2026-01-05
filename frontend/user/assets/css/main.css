@@ -1147,26 +1147,75 @@ img, svg, video, canvas {
   max-width: 100%;
   height: auto;
 }
-/* ===========================
-   Mobile: 页面禁止左右滑，但分类条可左右滑
-   =========================== */
-html,
-body {
-  width: 100%;
-  max-width: 100%;
-  overflow-x: clip;         /* 更彻底地裁掉横向溢出 */
-  overscroll-behavior-x: none;
-  touch-action: pan-y;      /* 页面默认只允许上下滑 */
+/* ===== FIX: category sort-row 超宽导致横向滑动 ===== */
+.sort-row{
+  max-width: 100% !important;
+  width: 100% !important;
+  box-sizing: border-box;
+  flex-wrap: wrap !important;     /* ✅ 允许换行 */
+  min-width: 0 !important;
 }
 
-/* 分类条允许横向滑动（保持你已有 overflow-x:auto） */
-.category-bar {
-  touch-action: pan-x;
-  -webkit-overflow-scrolling: touch;
+.sort-row > *{
+  min-width: 0 !important;        /* ✅ 防止子元素撑爆 */
+  max-width: 100% !important;
 }
 
-/* 兜底：防止图片/长内容撑爆 */
-img, svg, video, canvas {
-  max-width: 100%;
-  height: auto;
+/* 如果 sort-row 里有按钮/筛选 pill，给它们一个手机端更合理宽度 */
+@media (max-width: 768px){
+  .sort-row button,
+  .sort-row .pill,
+  .sort-row .sort-pill,
+  .sort-row select{
+    max-width: 100% !important;
+  }
+}
+/* ===== FIX: footer 仍超宽（更强覆盖） ===== */
+@media (max-width: 768px){
+  footer, .footer, .footer-inner, .footer-wrap, .footer-delivery{
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+    box-sizing: border-box;
+  }
+
+  /* 把 footer 的布局强制改成竖排 */
+  .footer, .footer-inner, .footer-wrap{
+    display: block !important;
+  }
+
+  .footer-delivery,
+  .footer-section-title,
+  .footer-text{
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box;
+  }
+
+  .footer-text, .footer-text.footer-en{
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+  }
+}
+/* ===== FIX: 顶部区域窄屏溢出 ===== */
+@media (max-width: 480px){
+  .top-nav-inner{
+    max-width: 100% !important;
+    width: 100% !important;
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+    box-sizing: border-box;
+  }
+
+  .logo-area,
+  .search-area,
+  .search-box{
+    max-width: 100% !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box;
+  }
 }
