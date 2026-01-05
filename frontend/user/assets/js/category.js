@@ -172,7 +172,35 @@ function isProductInCategory(p, catKey) {
       return true;
   }
 }
+// ============================
+// 2.5) 爆品判定（分类页排除爆品）
+// ============================
+function isTrueFlag(v) {
+  return v === true || v === "true" || v === 1 || v === "1";
+}
 
+function hasKeywordSimple(p, keyword) {
+  if (!p) return false;
+  const kw = String(keyword).toLowerCase();
+  const norm = (v) => (v ? String(v).toLowerCase() : "");
+  const fields = [p.tag, p.type, p.category, p.subCategory, p.mainCategory, p.subcategory, p.section];
+  if (fields.some((f) => norm(f).includes(kw))) return true;
+  if (Array.isArray(p.tags) && p.tags.some((t) => norm(t).includes(kw))) return true;
+  if (Array.isArray(p.labels) && p.labels.some((t) => norm(t).includes(kw))) return true;
+  return false;
+}
+
+function isHotProduct(p) {
+  return (
+    isTrueFlag(p?.isHot) ||
+    isTrueFlag(p?.isHotDeal) ||
+    isTrueFlag(p?.hotDeal) ||
+    // 关键词命中（和你其他页一致）
+    hasKeywordSimple(p, "爆品") ||
+    hasKeywordSimple(p, "爆品日") ||
+    hasKeywordSimple(p, "hot")
+  );
+}
 // ============================
 // 3) 商品卡片：图片 + 标题可进详情页
 // ============================
@@ -332,8 +360,9 @@ async function loadCategoryProducts() {
     // ✅ 如果你后端是软删除：过滤掉 deleted / inactive
     const cleaned = list.filter(p => !p.isDeleted && p.deleted !== true && p.status !== "deleted");
 
-    currentProducts = cleaned.filter((p) => isProductInCategory(p, currentCatKey));
-
+   currentProducts = cleaned.filter(
+  (p) => isProductInCategory(p, currentCatKey) && !isHotProduct(p)
+);
 if (categoryStatEl) categoryStatEl.textContent = `共 ${currentProducts.length} 个商品`;
 
 // ✅ 每次加载后默认“全部”
@@ -350,47 +379,6 @@ applyFilterAndRender();
       emptyTipEl.textContent = "加载商品失败（请检查商品接口是否为 DB 版）。";
     }
   }
-}
-function rebuildSubCategoryPills() {
-  const wrap = document.getElementById("subCategoryPills"); 
-  // ⬆️ 你需要在 HTML 里给 pills 容器加个 id（下一步我告诉你怎么加）
-  if (!wrap) return;
-
-  // 从当前分类商品里提取 subCategory
-  const set = new Set();
-  currentProducts.forEach((p) => {
-    const s = String(p.subCategory || "").trim();
-    if (s) set.add(s);
-  });
-
-  const subs = Array.from(set);
-
-  // 生成按钮：全部 + 各子类
-  wrap.innerHTML = "";
-
-  const makeBtn = (label, val, active) => {
-    const btn = document.createElement("button");
-    btn.className = "filter-pill" + (active ? " active" : "");
-    btn.textContent = label;
-    btn.dataset.filter = val;
-    btn.addEventListener("click", () => {
-      wrap.querySelectorAll(".filter-pill").forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
-      currentFilter = val;
-      applyFilterAndRender();
-    });
-    return btn;
-  };
-
-  // 默认“全部”
-  wrap.appendChild(makeBtn("全部", "all", currentFilter === "all"));
-
-  // 子分类按钮（太多就限制一下，避免 UI 挤爆）
-  subs.slice(0, 8).forEach((s) => {
-    wrap.appendChild(makeBtn(s, s, currentFilter === s));
-  });
-
-  // 如果没有子分类，只有“全部”
 }
 // ============================
 // 5) 筛选 + 排序 + 搜索

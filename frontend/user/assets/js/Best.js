@@ -81,7 +81,17 @@ function hasKeyword(p, keyword) {
 
   return false;
 }
-
+/* ========= 爆品识别（用于畅销页排除） ========= */
+function isHotProduct(p) {
+  return (
+    isTrueFlag(p?.isHot) ||
+    isTrueFlag(p?.isHotDeal) ||
+    isTrueFlag(p?.hotDeal) ||
+    hasKeyword(p, "爆品") ||
+    hasKeyword(p, "爆品日") ||
+    hasKeyword(p, "hot")
+  );
+}
 /* ========= 畅销识别 ========= */
 function isBestSellerProduct(p) {
   // ✅ 先看后台字段
@@ -281,12 +291,15 @@ async function loadProducts() {
 
   ALL = list;
 
-  bestAll = list.filter(isBestSellerProduct);
+  bestAll = list.filter((p) => isBestSellerProduct(p) && !isHotProduct(p));
 
   // ✅ 兜底：如果没打标签/字段，就按“销量Top”凑一页（防止空）
   if (!bestAll.length && list.length) {
     console.warn("畅销为空，启用兜底：按销量 Top 取前 60");
-    bestAll = [...list].sort((a, b) => getSales(b) - getSales(a)).slice(0, 60);
+   bestAll = [...list]
+  .filter((p) => !isHotProduct(p))
+  .sort((a, b) => getSales(b) - getSales(a))
+  .slice(0, 60);
   }
 
   FILTERS = buildFiltersFromProducts(bestAll);

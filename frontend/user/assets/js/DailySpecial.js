@@ -50,7 +50,31 @@ console.log("✅ DailySpecial.js loaded (Family = Special)");
 
     return false;
   }
+// ❌ 爆品判定（用于从家庭必备中排除）
+function isHotProduct(p) {
+  if (
+    isTrueFlag(p.isHot) ||
+    isTrueFlag(p.isHotDeal) ||
+    isTrueFlag(p.hotDeal)
+  ) return true;
 
+  const kw = (v) => (v ? String(v).toLowerCase() : "");
+
+  const fields = [
+    p.tag,
+    p.type,
+    p.category,
+    p.section,
+  ];
+
+  if (fields.some((f) => kw(f).includes("爆品") || kw(f).includes("hot")))
+    return true;
+
+  if (Array.isArray(p.tags) && p.tags.some((t) => kw(t).includes("爆品")))
+    return true;
+
+  return false;
+}
   function getFinalPrice(p) {
     const basePrice = toNum(p.price ?? p.originPrice ?? p.regularPrice ?? 0);
     const salePrice = toNum(p.salePrice ?? p.specialPrice ?? p.discountPrice ?? p.flashPrice ?? 0);
@@ -185,8 +209,9 @@ console.log("✅ DailySpecial.js loaded (Family = Special)");
 
     try {
       const all = await fetchProducts();
-      const specialList = all.filter(isSpecialDeal);
-
+     const specialList = all.filter(
+  (p) => isSpecialDeal(p) && !isHotProduct(p)
+);
       console.log("🧮 total:", all.length, "special=>family:", specialList.length);
 
       grid.innerHTML = "";

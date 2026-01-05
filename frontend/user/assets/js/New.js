@@ -80,7 +80,17 @@ function hasKeyword(p, keyword) {
 
   return false;
 }
-
+/* ========= 爆品识别（用于新品页排除） ========= */
+function isHotProduct(p) {
+  return (
+    isTrueFlag(p?.isHot) ||
+    isTrueFlag(p?.isHotDeal) ||
+    isTrueFlag(p?.hotDeal) ||
+    hasKeyword(p, "爆品") ||
+    hasKeyword(p, "爆品日") ||
+    hasKeyword(p, "hot")
+  );
+}
 /* ========= 新品识别（沿用首页） ========= */
 function isNewProduct(p) {
   const flag =
@@ -293,12 +303,15 @@ async function loadProducts() {
 
   ALL = list;
 
-  newAll = list.filter(isNewProduct);
+newAll = list.filter((p) => isNewProduct(p) && !isHotProduct(p));
 
   // ✅ 兜底：如果没有任何新品标签，就按“最新时间”取前 60，保证不空
   if (!newAll.length && list.length) {
     console.warn("新品为空，启用兜底：按 createdAt/updatedAt 最新取前 60");
-    newAll = [...list].sort((a, b) => getCreatedAt(b) - getCreatedAt(a)).slice(0, 60);
+   newAll = [...list]
+  .filter((p) => !isHotProduct(p))
+  .sort((a, b) => getCreatedAt(b) - getCreatedAt(a))
+  .slice(0, 60);
   }
 
   FILTERS = buildFiltersFromProducts(newAll);
