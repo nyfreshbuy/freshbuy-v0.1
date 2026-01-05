@@ -1,328 +1,261 @@
-console.log("DailySpecial.js loaded");
+// frontend/user/DailySpecial.js
+// 家庭必备 = 所有特价商品（方案C）
+// 规则：只要商品满足“特价判定”，就进入家庭必备列表
+// 特价判定：
+// 1) isSpecial / onSale / isFlash 等为 true
+// 2) specialPrice / flashPrice / salePrice > 0 且 < 原价
+// 3) originPrice > price（有划线价差）
+// 4) tag / badges 含 “特价/爆品/促销”
 
-let FILTERS = [{ key: "all", name: "全部" }];
-let ALL = [];
-let dailyAll = [];
-let activeCat = "all";
+console.log("✅ DailySpecial.js loaded (Family = Special)");
 
-// 如果后台 categoryKey 是英文 key，这里映射成中文显示（可按你后台调整）
-const CATEGORY_NAME_MAP = {
-  fresh: "生鲜果蔬",
-  meat: "肉禽海鲜",
-  snacks: "零食饮品",
-  staples: "粮油主食",
-  seasoning: "调味酱料",
-  frozen: "冷冻食品",
-  household: "日用清洁",
-};
+(() => {
+  const API_BASE = ""; // 同域
+  const LIST_API_CANDIDATES = [
+    "/api/products/public",
+    "/api/products",
+    "/api/public/products",
+  ];
 
-function isTrueFlag(v) {
-  return v === true || v === "true" || v === 1 || v === "1";
-}
+  // =========================
+  // 工具
+  // =========================
+  function $(id) {
+    return document.getElementById(id);
+  }
 
-function getCategoryKey(p) {
-  return String(
-    p?.categoryKey ||
-      p?.category_key ||
-      p?.catKey ||
-      p?.category ||
-      p?.mainCategory ||
-      p?.section ||
-      ""
-  ).trim();
-}
-
-function getCategoryLabel(key) {
-  return CATEGORY_NAME_MAP[key] || key || "未分类";
-}
-
-function buildFiltersFromProducts(list) {
-  const set = new Set();
-  list.forEach((p) => {
-    const k = getCategoryKey(p);
-    if (k) set.add(k);
-  });
-
-  const keys = Array.from(set);
-
-  const preferred = ["fresh", "meat", "snacks", "staples", "seasoning", "frozen", "household"];
-  keys.sort((a, b) => {
-    const ia = preferred.indexOf(a);
-    const ib = preferred.indexOf(b);
-    if (ia === -1 && ib === -1) return String(a).localeCompare(String(b));
-    if (ia === -1) return 1;
-    if (ib === -1) return -1;
-    return ia - ib;
-  });
-
-  return [{ key: "all", name: "全部" }].concat(keys.map((k) => ({ key: k, name: getCategoryLabel(k) })));
-}
-
-/* ========= 家庭必备识别（沿用你首页规则） ========= */
-function hasKeyword(p, keyword) {
-  if (!p) return false;
-  const kw = String(keyword).toLowerCase();
-  const norm = (v) => (v ? String(v).toLowerCase() : "");
-
-  const fields = [p.tag, p.type, p.category, p.subCategory, p.mainCategory, p.subcategory, p.section];
-  if (fields.some((f) => norm(f).includes(kw))) return true;
-
-  if (Array.isArray(p.tags) && p.tags.some((t) => norm(t).includes(kw))) return true;
-  if (Array.isArray(p.labels) && p.labels.some((t) => norm(t).includes(kw))) return true;
-
-  return false;
-}
-
-function isFamilyProduct(p) {
-  return (
-    isTrueFlag(p?.isFamily) ||
-    isTrueFlag(p?.isFamilyEssential) ||
-    hasKeyword(p, "家庭必备") ||
-    hasKeyword(p, "家庭") ||
-    hasKeyword(p, "家用") ||
-    hasKeyword(p, "家庭装") ||
-    hasKeyword(p, "family")
-  );
-}
-
-/* ========= 筛选/排序/渲染 ========= */
-function matchCat(p, catKey) {
-  if (catKey === "all") return true;
-  return getCategoryKey(p) === catKey;
-}
-
-function getNum(p, keys, def = 0) {
-  for (const k of keys) {
-    const v = p?.[k];
+  function toNum(v) {
     const n = Number(v);
-    if (!Number.isNaN(n) && Number.isFinite(n) && n !== 0) return n;
-  }
-  return def;
-}
-
-function getPrice(p) {
-  return getNum(p, ["price", "flashPrice", "specialPrice", "originPrice"], 0);
-}
-
-function getSales(p) {
-  return getNum(p, ["sales", "sold", "saleCount", "salesCount", "orderCount"], 0);
-}
-
-function sortList(list, sortKey) {
-  const arr = [...list];
-  if (sortKey === "price_asc") arr.sort((a, b) => getPrice(a) - getPrice(b));
-  else if (sortKey === "price_desc") arr.sort((a, b) => getPrice(b) - getPrice(a));
-  else arr.sort((a, b) => getSales(b) - getSales(a));
-  return arr;
-}
-
-function showToast() {
-  const el = document.getElementById("addCartToast");
-  if (!el) return;
-  el.classList.add("show");
-  setTimeout(() => el.classList.remove("show"), 900);
-}
-
-function createCard(p) {
-  const article = document.createElement("article");
-  article.className = "product-card";
-
-  const pid = String(p?._id || p?.id || p?.sku || p?.code || p?.productId || "").trim();
-  const safeId = pid || String(p?.name || "fb").trim();
-
-  const price = getPrice(p);
-  const origin = getNum(p, ["originPrice"], 0);
-  const hasOrigin = origin > 0 && origin > price;
-
-  const img =
-    p?.image && String(p.image).trim()
-      ? String(p.image).trim()
-      : `https://picsum.photos/seed/${encodeURIComponent(safeId)}/500/400`;
-
-  const badge = "家庭必备";
-  const limitQty = p?.limitQty || p?.limitPerUser || p?.maxQty || p?.purchaseLimit || 0;
-
-  article.innerHTML = `
-    <div class="product-image-wrap">
-      <span class="special-badge">${badge}</span>
-      <img src="${img}" class="product-image" alt="${p?.name || ""}" />
-    </div>
-
-    <div class="product-name">${p?.name || ""}</div>
-    <div class="product-desc">${p?.desc || ""}</div>
-
-    <div class="product-price-row">
-      <span class="product-price">$${Number(price || 0).toFixed(2)}</span>
-      ${hasOrigin ? `<span class="product-origin">$${Number(origin).toFixed(2)}</span>` : ""}
-    </div>
-
-    <button type="button" class="add-btn">
-      <span class="add-btn__icon">🛒</span>
-      <span class="add-btn__text">加入购物车${limitQty > 0 ? `（限购${limitQty}）` : ""}</span>
-    </button>
-  `;
-
-  const btn = article.querySelector(".add-btn");
-  if (btn) {
-    btn.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-
-      const cartApi =
-        (window.FreshCart && typeof window.FreshCart.addItem === "function" && window.FreshCart) ||
-        (window.Cart && typeof window.Cart.addItem === "function" && window.Cart) ||
-        null;
-
-      if (!cartApi) {
-        alert("购物车模块未就绪（请确认 cart.js 已加载且 window.FreshCart 存在）");
-        return;
-      }
-
-      cartApi.addItem(
-        {
-          id: pid || safeId,
-          name: p?.name || "商品",
-          price: Number(price || 0),
-          priceNum: Number(price || 0),
-          image: p?.image || img,
-          tag: p?.tag || "",
-          type: p?.type || "",
-          isSpecial: false,
-          isDeal: false,
-          // 给你后续结算/规则判断留字段
-          serviceMode: "groupDay", // 家庭必备一般走区域团/常备（你也可删）
-        },
-        1
-      );
-
-      showToast();
-    });
+    return Number.isFinite(n) ? n : 0;
   }
 
-  article.addEventListener("click", () => {
-    const id = pid || safeId;
-    if (!id) return;
-    window.location.href = "/user/product_detail.html?id=" + encodeURIComponent(id);
-  });
-
-  return article;
-}
-
-function renderFilters() {
-  const bar = document.getElementById("filterBar");
-  if (!bar) return;
-  bar.innerHTML = "";
-
-  FILTERS.forEach((f) => {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "filter-pill" + (f.key === activeCat ? " active" : "");
-    btn.textContent = f.name;
-
-    btn.addEventListener("click", () => {
-      activeCat = f.key;
-      bar.querySelectorAll(".filter-pill").forEach((x) => x.classList.remove("active"));
-      btn.classList.add("active");
-      renderList();
-    });
-
-    bar.appendChild(btn);
-  });
-}
-
-function renderList() {
-  const grid = document.getElementById("dailyGrid");
-  const sortSel = document.getElementById("sortSelect");
-  if (!grid) return;
-
-  const sortKey = sortSel ? sortSel.value : "sales_desc";
-
-  let list = dailyAll.filter((p) => matchCat(p, activeCat));
-  list = sortList(list, sortKey);
-
-  grid.innerHTML = "";
-
-  if (!list.length) {
-    grid.innerHTML = `<div style="padding:12px;font-size:13px;color:#6b7280;">该分类暂无家庭必备商品</div>`;
-    return;
+  function isTrueFlag(v) {
+    return v === true || v === "true" || v === 1 || v === "1" || v === "yes";
   }
 
-  list.forEach((p) => grid.appendChild(createCard(p)));
-}
-
-async function loadProducts() {
-  const res = await fetch("/api/products-simple", { cache: "no-store" });
-  const data = await res.json().catch(() => ({}));
-
-  const list = Array.isArray(data)
-    ? data
-    : Array.isArray(data.items)
-    ? data.items
-    : Array.isArray(data.products)
-    ? data.products
-    : Array.isArray(data.list)
-    ? data.list
-    : [];
-
-  ALL = list;
-
-  dailyAll = list.filter(isFamilyProduct);
-
-  // ✅ 兜底：如果后台还没标家庭必备，先用关键词兜底一些
-  if (!dailyAll.length && list.length) {
-    console.warn("家庭必备为空，启用兜底关键词：家用/日用/家庭");
-    dailyAll = list.filter(
-      (p) => hasKeyword(p, "家用") || hasKeyword(p, "日用") || hasKeyword(p, "家庭")
+  function getOriginPrice(p) {
+    // 你的项目里常见字段兜底
+    return (
+      toNum(p.originPrice) ||
+      toNum(p.originalPrice) ||
+      toNum(p.marketPrice) ||
+      0
     );
   }
 
-  FILTERS = buildFiltersFromProducts(dailyAll);
-  if (!FILTERS.some((f) => f.key === activeCat)) activeCat = "all";
+  function getFinalPrice(p) {
+    // 特价优先，其次普通价
+    const sp =
+      toNum(p.specialPrice) ||
+      toNum(p.flashPrice) ||
+      toNum(p.salePrice) ||
+      0;
+    const price = toNum(p.price) || 0;
 
-  renderFilters();
-  renderList();
+    // 如果 specialPrice 合理就用它
+    if (sp > 0 && (price === 0 || sp <= price)) return sp;
+    return price || sp || 0;
+  }
 
-  console.log("[DailySpecial] ALL:", ALL.length, "dailyAll:", dailyAll.length);
-}
+  function hasTag(p, keyword) {
+    const tag = String(p.tag || p.tags || "").toLowerCase();
+    const badges = String(p.badges || p.badge || "").toLowerCase();
+    return tag.includes(keyword) || badges.includes(keyword);
+  }
 
-function injectButtonStylesOnce() {
-  if (document.getElementById("dailyBtnStyle")) return;
-  const style = document.createElement("style");
-  style.id = "dailyBtnStyle";
-  style.textContent = `
-    .add-btn{
-      width:100%;
-      margin-top:10px;
-      padding:10px 12px;
-      border:none;
-      border-radius:14px;
-      background: linear-gradient(135deg,#22c55e,#16a34a);
-      color:#fff;
-      font-weight:900;
-      cursor:pointer;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      gap:8px;
-      box-shadow: 0 10px 18px rgba(22,163,74,.18);
-      transition: transform .08s ease, filter .12s ease;
+  // ✅ 核心：特价判定（只要 true 就算家庭必备）
+  function isSpecialProduct(p) {
+    const finalPrice = getFinalPrice(p);
+    const originPrice = getOriginPrice(p);
+
+    // 1) 显式开关
+    const flag =
+      isTrueFlag(p.isSpecial) ||
+      isTrueFlag(p.onSale) ||
+      isTrueFlag(p.isFlash) ||
+      isTrueFlag(p.isPromo) ||
+      isTrueFlag(p.special) ||
+      isTrueFlag(p.flash);
+
+    if (flag) return true;
+
+    // 2) 有 specialPrice/flashPrice 且更便宜
+    const sp =
+      toNum(p.specialPrice) ||
+      toNum(p.flashPrice) ||
+      toNum(p.salePrice) ||
+      0;
+
+    if (sp > 0) {
+      // 有原价：sp < origin 即特价
+      if (originPrice > 0 && sp < originPrice) return true;
+      // 无原价：sp < price 也算特价
+      const price = toNum(p.price) || 0;
+      if (price > 0 && sp < price) return true;
     }
-    .add-btn:active{ transform: scale(.98); }
-    .add-btn:hover{ filter: brightness(.98); }
-    .add-btn__icon{ font-size:14px; }
-    .add-btn__text{ font-size:14px; letter-spacing:.02em; }
-  `;
-  document.head.appendChild(style);
-}
 
-window.addEventListener("DOMContentLoaded", () => {
-  injectButtonStylesOnce();
+    // 3) 划线价差：origin > final
+    if (originPrice > 0 && finalPrice > 0 && originPrice > finalPrice) {
+      return true;
+    }
 
-  const sortSel = document.getElementById("sortSelect");
-  if (sortSel) sortSel.addEventListener("change", renderList);
+    // 4) 文本标签
+    if (hasTag(p, "特价") || hasTag(p, "爆品") || hasTag(p, "促销")) return true;
 
-  loadProducts().catch((err) => {
-    console.error("加载家庭必备失败", err);
-    const grid = document.getElementById("dailyGrid");
-    if (grid) grid.innerHTML = `<div style="padding:12px;font-size:13px;color:#b91c1c;">加载失败，请稍后重试</div>`;
-  });
-});
+    return false;
+  }
+
+  function normalizeListPayload(payload) {
+    // 适配不同接口结构
+    if (Array.isArray(payload)) return payload;
+    if (Array.isArray(payload?.data)) return payload.data;
+    if (Array.isArray(payload?.products)) return payload.products;
+    if (Array.isArray(payload?.items)) return payload.items;
+    if (Array.isArray(payload?.list)) return payload.list;
+    return [];
+  }
+
+  async function fetchProducts() {
+    let lastErr = null;
+
+    for (const url of LIST_API_CANDIDATES) {
+      try {
+        const res = await fetch(url + "?v=" + Date.now(), { cache: "no-store" });
+        if (!res.ok) throw new Error(`HTTP ${res.status} @ ${url}`);
+        const json = await res.json();
+        const list = normalizeListPayload(json);
+
+        console.log("📦 Products fetched from:", url, "count:", list.length);
+        if (list.length) return list;
+      } catch (e) {
+        lastErr = e;
+        console.warn("⚠️ fetch failed:", e?.message || e);
+      }
+    }
+
+    throw lastErr || new Error("No product API available");
+  }
+
+  // =========================
+  // 渲染（按你项目常见 DOM 兜底）
+  // =========================
+  function renderEmpty(msg) {
+    const wrap =
+      $("dailyList") ||
+      $("productList") ||
+      document.querySelector(".product-grid") ||
+      document.querySelector("#list") ||
+      document.body;
+
+    if (!wrap) return;
+
+    wrap.innerHTML = `
+      <div style="padding:16px;background:#fff;border-radius:12px;margin:12px;">
+        <div style="font-weight:700;margin-bottom:6px;">没有可显示的家庭必备商品</div>
+        <div style="color:#6b7280;font-size:13px;line-height:1.6;">${msg}</div>
+      </div>
+    `;
+  }
+
+  function productCard(p) {
+    const pid = String(p._id || p.id || p.sku || p.productId || "").trim();
+    const name = String(p.name || p.title || "未命名商品");
+    const img =
+      String(p.image || p.img || p.cover || "").trim() ||
+      `https://picsum.photos/seed/${encodeURIComponent(pid || name)}/600/450`;
+
+    const origin = getOriginPrice(p);
+    const price = getFinalPrice(p);
+
+    const showOrigin = origin > 0 && origin > price;
+
+    return `
+      <a class="product-card" href="/user/product_detail.html?id=${encodeURIComponent(
+        pid
+      )}">
+        <div class="pc-img">
+          <img src="${img}" alt="${name}" loading="lazy"/>
+          <div class="pc-badge">家庭必备</div>
+        </div>
+        <div class="pc-body">
+          <div class="pc-name">${name}</div>
+          <div class="pc-price">
+            <span class="pc-now">$${price.toFixed(2)}</span>
+            ${
+              showOrigin
+                ? `<span class="pc-origin">$${origin.toFixed(2)}</span>`
+                : ""
+            }
+          </div>
+        </div>
+      </a>
+    `;
+  }
+
+  function injectBasicStylesIfMissing() {
+    if (document.getElementById("dailySpecialInlineStyle")) return;
+    const style = document.createElement("style");
+    style.id = "dailySpecialInlineStyle";
+    style.textContent = `
+      .product-grid, #dailyList, #productList { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; padding:12px; }
+      @media (min-width: 900px){ .product-grid, #dailyList, #productList { grid-template-columns:repeat(4,minmax(0,1fr)); } }
+      .product-card{ background:#fff; border-radius:14px; overflow:hidden; box-shadow:0 4px 14px rgba(0,0,0,.06); display:block; }
+      .pc-img{ position:relative; aspect-ratio: 4/3; background:#f3f4f6; }
+      .pc-img img{ width:100%; height:100%; object-fit:cover; display:block; }
+      .pc-badge{ position:absolute; left:10px; top:10px; background:#f97316; color:#fff; font-size:12px; padding:6px 8px; border-radius:999px; }
+      .pc-body{ padding:10px 10px 12px; }
+      .pc-name{ font-size:14px; font-weight:600; line-height:1.2; height:2.4em; overflow:hidden; }
+      .pc-price{ margin-top:8px; display:flex; gap:8px; align-items:baseline; }
+      .pc-now{ font-size:16px; font-weight:800; }
+      .pc-origin{ color:#9ca3af; font-size:12px; text-decoration:line-through; }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function renderList(list) {
+    injectBasicStylesIfMissing();
+
+    const wrap =
+      $("dailyList") ||
+      $("productList") ||
+      document.querySelector(".product-grid") ||
+      document.querySelector("#list");
+
+    if (!wrap) {
+      console.warn("❌ 找不到商品容器（dailyList/productList/.product-grid/#list）");
+      return;
+    }
+
+    wrap.innerHTML = list.map(productCard).join("");
+  }
+
+  // =========================
+  // 主流程
+  // =========================
+  async function main() {
+    try {
+      const all = await fetchProducts();
+
+      // ✅ 家庭必备 = 特价商品
+      const daily = all.filter(isSpecialProduct);
+
+      console.log("🧮 total:", all.length, "special=>daily:", daily.length);
+
+      if (!daily.length) {
+        renderEmpty(
+          "已拿到商品数据，但没有任何商品被判定为特价。请检查：后台是否真的有 originPrice>price 或 specialPrice/flashPrice 或 isSpecial=true。"
+        );
+        return;
+      }
+
+      renderList(daily);
+    } catch (err) {
+      console.error("❌ DailySpecial load failed:", err);
+      renderEmpty(
+        "无法拉取商品数据（接口请求失败）。请打开 F12 Console 看看具体报错，常见原因：API 路径不对 / CORS / Render 后端没返回 products。"
+      );
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", main);
+})();

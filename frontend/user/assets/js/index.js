@@ -482,33 +482,26 @@ function isSpecialDeal(p) {
     isTrueFlag(p.isSale)
   ) return true;
 
-  // 2) 价格类字段：sale/special < price/origin
-  const price = Number(p.price ?? p.originPrice ?? p.regularPrice ?? 0);
-  const sale = Number(p.salePrice ?? p.specialPrice ?? p.discountPrice ?? p.flashPrice ?? 0);
+  // 2) 价格类字段：sale/special/flash < base(正常价)
+  const basePrice = Number(p.price ?? p.regularPrice ?? p.originPrice ?? 0);
+  const salePrice = Number(p.salePrice ?? p.specialPrice ?? p.discountPrice ?? p.flashPrice ?? 0);
 
-  if (price > 0 && sale > 0 && sale < price) return true;
+  if (basePrice > 0 && salePrice > 0 && salePrice < basePrice) return true;
 
-  // 3) 折扣字段
+  // 3) 划线价逻辑：originPrice > price（有些数据是这样）
+  const origin = Number(p.originPrice ?? p.originalPrice ?? 0);
+  const price = Number(p.price ?? 0);
+  if (origin > 0 && price > 0 && origin > price) return true;
+
+  // 4) 折扣字段
   const discount = Number(p.discount ?? p.discountPercent ?? 0);
   if (discount > 0) return true;
 
   return false;
 }
 function isFamilyProduct(p) {
-  // ✅ 家庭必备标签（后台打标签）
-  const hasFamilyTag =
-    isTrueFlag(p.isFamily) ||
-    isTrueFlag(p.isFamilyEssential) ||
-    hasKeyword(p, "家庭必备") ||
-    hasKeyword(p, "日用清洁") ||
-    hasKeyword(p, "日用") ||
-    hasKeyword(p, "清洁") ||
-    hasKeyword(p, "household");
-
-  // ✅ 特价商品
-  const special = isSpecialDeal(p);
-
-  return hasFamilyTag || special;
+  // ✅ 家庭必备 = 所有特价商品
+  return isSpecialDeal(p);
 }
 function isBestSellerProduct(p) {
   return (
