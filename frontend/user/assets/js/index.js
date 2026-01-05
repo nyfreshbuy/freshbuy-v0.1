@@ -13,7 +13,7 @@
 // ✅ 10) 修复：右侧只渲染到 #deliveryInfoBody，不覆盖右侧 ZIP box
 // ✅ 11) 区域团：按 zone.name 区分“白石镇/大学点 vs 新鲜草原”的配送时间文案 + 真实截单倒计时
 // =======================================================
-
+console.log("✅ index.js UPDATED AT:", new Date().toISOString());
 console.log("Freshbuy index main script loaded (db-zones version)");
 
 // =========================
