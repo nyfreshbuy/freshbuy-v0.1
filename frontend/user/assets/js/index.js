@@ -468,22 +468,47 @@ function isHotProduct(p) {
     isTrueFlag(p.isHot) ||
     isTrueFlag(p.isHotDeal) ||
     isTrueFlag(p.hotDeal) ||
-    isTrueFlag(p.isSpecial) ||
     hasKeyword(p, "爆品") ||
     hasKeyword(p, "爆品日") ||
     hasKeyword(p, "hot")
   );
 }
+function isSpecialDeal(p) {
+  // 1) 后台勾选类字段
+  if (
+    isTrueFlag(p.isSpecial) ||
+    isTrueFlag(p.isDailySpecial) ||
+    isTrueFlag(p.onSale) ||
+    isTrueFlag(p.isSale)
+  ) return true;
+
+  // 2) 价格类字段：sale/special < price/origin
+  const price = Number(p.price ?? p.originPrice ?? p.regularPrice ?? 0);
+  const sale = Number(p.salePrice ?? p.specialPrice ?? p.discountPrice ?? p.flashPrice ?? 0);
+
+  if (price > 0 && sale > 0 && sale < price) return true;
+
+  // 3) 折扣字段
+  const discount = Number(p.discount ?? p.discountPercent ?? 0);
+  if (discount > 0) return true;
+
+  return false;
+}
 function isFamilyProduct(p) {
-  return (
+  // ✅ 家庭必备标签（后台打标签）
+  const hasFamilyTag =
     isTrueFlag(p.isFamily) ||
     isTrueFlag(p.isFamilyEssential) ||
-    hasKeyword(p, "家庭") ||
     hasKeyword(p, "家庭必备") ||
-    hasKeyword(p, "家庭包") ||
-    hasKeyword(p, "家用") ||
-    hasKeyword(p, "family")
-  );
+    hasKeyword(p, "日用清洁") ||
+    hasKeyword(p, "日用") ||
+    hasKeyword(p, "清洁") ||
+    hasKeyword(p, "household");
+
+  // ✅ 特价商品
+  const special = isSpecialDeal(p);
+
+  return hasFamilyTag || special;
 }
 function isBestSellerProduct(p) {
   return (
@@ -524,8 +549,7 @@ function createProductCard(p, extraBadgeText) {
   const hasOrigin = originNum > 0 && originNum > finalPrice;
 
   const badgeText =
-    extraBadgeText || (p.isSpecial || (p.tag || "").includes("爆品") ? "爆品" : "");
-
+  extraBadgeText || ((p.tag || "").includes("爆品") ? "爆品" : "");
   const imageUrl =
     p.image && String(p.image).trim()
       ? String(p.image).trim()
