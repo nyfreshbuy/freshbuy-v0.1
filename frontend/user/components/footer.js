@@ -63,10 +63,12 @@
   let sx = 0, sy = 0;
 
   function allowX(target){
-    // ✅ 允许横滑的区域：子分类 pills（你页面里就是 filter-row）
-    return !!(target && target.closest && target.closest(".filter-row"));
-  }
-
+  return !!(
+    target &&
+    target.closest &&
+    (target.closest(".filter-row") || target.closest(".category-bar"))
+  );
+}
   document.addEventListener("touchstart", (e) => {
     const t = e.touches && e.touches[0];
     if (!t) return;
