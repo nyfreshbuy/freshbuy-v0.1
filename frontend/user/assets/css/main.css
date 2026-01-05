@@ -411,8 +411,11 @@ a {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
+width: 100%;
+  min-width: 0;   /* ⭐ 防止被 flex 压扁 */
+  flex: 1;        /* ⭐ 如果父级是 flex，这句是救命的 */
+  align-content: flex-start;
 }
-
 @media (max-width: 1200px) {
   .product-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
