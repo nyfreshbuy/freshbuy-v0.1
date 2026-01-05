@@ -1219,3 +1219,31 @@ img, svg, video, canvas {
     box-sizing: border-box;
   }
 }
+/* ===========================
+   HARD LOCK: 页面禁止横向滑动（但不影响分类条）
+   =========================== */
+html, body {
+  overflow-x: hidden !important;   /* 比 clip 兼容更好 */
+}
+
+/* ✅ 把所有可能撑爆的容器强制裁剪 */
+.page,
+.top-nav,
+.top-nav-inner,
+.category-bar-wrap,
+#app {
+  max-width: 100% !important;
+  overflow-x: hidden !important;
+}
+
+/* ✅ 唯一例外：分类条允许横向滚动 */
+.category-bar {
+  overflow-x: auto !important;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x !important;
+}
+
+/* ✅ 兜底：任何元素都不能超过屏幕 */
+* {
+  max-width: 100%;
+}
