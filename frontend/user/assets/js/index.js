@@ -543,11 +543,23 @@ function createProductCard(p, extraBadgeText) {
   // ✅ 统一主键：优先 _id（MongoDB），其次 id / sku
   const pid = String(p._id || p.id || p.sku || "").trim();
 
-  const priceNum = Number(p.price ?? p.flashPrice ?? p.specialPrice ?? 0);
-  const originNum = Number(p.originPrice ?? p.price ?? 0);
-  const finalPrice = priceNum || originNum || 0;
-  const hasOrigin = originNum > 0 && originNum > finalPrice;
+ // ✅ 价格：优先显示特价（sale/special/flash），并展示划线原价
+const basePrice = Number(p.price ?? p.originPrice ?? p.regularPrice ?? 0);
+const salePrice = Number(p.salePrice ?? p.specialPrice ?? p.discountPrice ?? p.flashPrice ?? 0);
 
+// finalPrice：如果 salePrice 比 basePrice 低，就用 salePrice；否则用 basePrice
+const finalPrice =
+  basePrice > 0 && salePrice > 0 && salePrice < basePrice
+    ? salePrice
+    : (basePrice || salePrice || 0);
+
+// originNum：只有出现“真实特价”时才显示划线原价
+const originNum =
+  basePrice > 0 && salePrice > 0 && salePrice < basePrice
+    ? basePrice
+    : Number(p.originPrice ?? 0);
+
+const hasOrigin = originNum > 0 && originNum > finalPrice;
   const badgeText =
   extraBadgeText || ((p.tag || "").includes("爆品") ? "爆品" : "");
   const imageUrl =
@@ -704,7 +716,8 @@ async function loadHomeProductsFromSimple() {
 
     const allList = nonHotList;
 
-    if (!familyList.length) familyList = allList.slice(0, 12);
+    // ✅ 家庭必备：严格筛选，不要用 allList 兜底，否则会塞正常价商品
+    if (!familyList.length) familyList = [];
     if (!newList.length) newList = allList.slice(0, 12);
     if (!bestList.length) bestList = allList.slice(0, 12);
 
