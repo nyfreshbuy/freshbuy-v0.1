@@ -1089,3 +1089,16 @@ width: 100%;
     font-weight: 600;
   }
 }
+html,
+body {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;   /* 🔥 禁止横向滚动 */
+  overscroll-behavior-x: none;
+  touch-action: pan-y;  /* ✅ 只允许上下滑动 */
+}
+#app {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
