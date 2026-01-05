@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>司机登录｜在鲜购拼好货</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <style>
+      :root {
+        --primary: #22c55e;
+        --primary-dark: #16a34a;
+        --bg: #f3f4f6;
+        --card: #ffffff;
+        --text-main: #111827;
+        --text-sub: #6b7280;
+        --danger: #ef4444;
+        --radius: 14px;
+        --shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: linear-gradient(180deg, #ecfdf5, var(--bg));
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+          Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--text-main);
+      }
+
+      .card {
+        width: 100%;
+        max-width: 380px;
+        background: var(--card);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        padding: 28px 26px 26px;
+      }
+
+      .logo {
+        text-align: center;
+        font-size: 26px;
+        font-weight: 800;
+        color: var(--primary);
+        margin-bottom: 6px;
+      }
+
+      .subtitle {
+        text-align: center;
+        font-size: 14px;
+        color: var(--text-sub);
+        margin-bottom: 22px;
+      }
+
+      .field {
+        margin-bottom: 14px;
+      }
+
+      .field label {
+        display: block;
+        font-size: 13px;
+        margin-bottom: 6px;
+        color: #374151;
+      }
+
+      .field input {
+        width: 100%;
+        padding: 12px 14px;
+        border-radius: 10px;
+        border: 1px solid #d1d5db;
+        font-size: 15px;
+      }
+
+      .field input:focus {
+        outline: none;
+        border-color: var(--primary);
+      }
+
+      .error {
+        display: none;
+        margin-bottom: 12px;
+        color: var(--danger);
+        font-size: 13px;
+        text-align: center;
+      }
+
+      button {
+        width: 100%;
+        border: none;
+        border-radius: 12px;
+        padding: 12px;
+        font-size: 16px;
+        font-weight: 700;
+        color: #fff;
+        background: linear-gradient(
+          135deg,
+          var(--primary),
+          var(--primary-dark)
+        );
+        cursor: pointer;
+      }
+
+      button:disabled {
+        opacity: 0.7;
+        cursor: not-allowed;
+      }
+
+      .footer {
+        margin-top: 16px;
+        text-align: center;
+        font-size: 12px;
+        color: var(--text-sub);
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="card">
+      <div class="logo">🚚 在鲜购司机端</div>
+      <div class="subtitle">Driver Login</div>
+
+      <div id="error" class="error"></div>
+
+      <div class="field">
+        <label>手机号</label>
+        <input
+          id="phone"
+          type="tel"
+          placeholder="请输入手机号"
+          autocomplete="tel"
+        />
+      </div>
+
+      <div class="field">
+        <label>密码</label>
+        <input
+          id="password"
+          type="password"
+          placeholder="请输入密码"
+          autocomplete="current-password"
+        />
+      </div>
+
+      <button id="loginBtn">登录</button>
+
+      <div class="footer">
+        © <span id="year"></span> 在鲜购拼好货
+      </div>
+    </div>
+
+    <script>
+      document.getElementById("year").textContent =
+        new Date().getFullYear();
+
+      const btn = document.getElementById("loginBtn");
+      const errEl = document.getElementById("error");
+
+      function showError(msg) {
+        errEl.textContent = msg;
+        errEl.style.display = "block";
+      }
+
+      btn.onclick = async () => {
+        errEl.style.display = "none";
+
+        const phone = document.getElementById("phone").value.trim();
+        const password = document.getElementById("password").value;
+
+        if (!phone || !password) {
+          showError("请输入手机号和密码");
+          return;
+        }
+
+        btn.disabled = true;
+        btn.textContent = "登录中…";
+
+        try {
+          const res = await fetch("/api/driver/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ phone, password }),
+          });
+
+          const data = await res.json();
+
+          if (!res.ok || !data.token) {
+            throw new Error(data.message || "登录失败");
+          }
+
+          // ✅ 存 token
+          localStorage.setItem("freshbuy_driver_token", data.token);
+          localStorage.setItem("freshbuy_driver_phone", phone);
+
+          // ✅ 跳转司机首页
+          location.href = "/driver/index.html";
+        } catch (e) {
+          showError(e.message || "网络错误");
+        } finally {
+          btn.disabled = false;
+          btn.textContent = "登录";
+        }
+      };
+    </script>
+  </body>
+</html>

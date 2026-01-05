@@ -292,7 +292,26 @@ app.get("/admin/:page", (req, res) => {
   const file = req.params.page;
   res.sendFile(path.join(frontendPath, "admin", file));
 });
+// =======================
+// 页面路由：司机端
+// =======================
 
+// 访问 /driver 时，默认给司机登录页
+app.get("/driver", (req, res) => {
+  res.sendFile(path.join(frontendPath, "driver/login.html"));
+});
+
+// 司机登录页（你浏览器正在访问的）
+app.get("/driver/login.html", (req, res) => {
+  res.sendFile(path.join(frontendPath, "driver/login.html"));
+});
+
+// /driver 下的其他页面
+// 例如：/driver/index.html  /driver/orders.html
+app.get("/driver/:page", (req, res) => {
+  const file = req.params.page;
+  res.sendFile(path.join(frontendPath, "driver", file));
+});
 // =======================
 // 未匹配的 API 路由，统一返回 404 JSON（必须最后）
 // =======================
