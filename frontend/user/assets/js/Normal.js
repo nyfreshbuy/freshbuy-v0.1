@@ -266,9 +266,13 @@ function renderFilters() {
 }
 
 function renderList() {
-  const grid = document.getElementById("normalGrid");
+  const grid = document.getElementById("normal-list");
   const sortSel = document.getElementById("sortSelect");
-  if (!grid) return;
+
+  if (!grid) {
+    console.error("❌ normal-list container not found");
+    return;
+  }
 
   const sortKey = sortSel ? sortSel.value : "sales_desc";
 
@@ -290,7 +294,6 @@ function renderList() {
     grid.scrollIntoView({ behavior: "smooth", block: "start" });
   } catch {}
 }
-
 /* ========= 数据加载 ========= */
 async function loadProducts() {
   const res = await fetch("/api/products-simple", { cache: "no-store" });
@@ -363,7 +366,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
   loadProducts().catch((err) => {
     console.error("加载普通商品失败", err);
-    const grid = document.getElementById("normalGrid");
+    const grid = document.getElementById("normal-list");
     if (grid)
       grid.innerHTML = `<div style="padding:12px;font-size:13px;color:#b91c1c;">加载失败，请稍后重试</div>`;
   });
