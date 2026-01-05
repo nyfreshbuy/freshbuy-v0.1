@@ -59,3 +59,33 @@
       console.error("Footer inject/config failed:", err);
     });
 })();
+(() => {
+  let sx = 0, sy = 0;
+
+  function allowX(target){
+    // ✅ 允许横滑的区域：子分类 pills（你页面里就是 filter-row）
+    return !!(target && target.closest && target.closest(".filter-row"));
+  }
+
+  document.addEventListener("touchstart", (e) => {
+    const t = e.touches && e.touches[0];
+    if (!t) return;
+    sx = t.clientX;
+    sy = t.clientY;
+  }, { passive: true });
+
+  document.addEventListener("touchmove", (e) => {
+    if (allowX(e.target)) return; // 放行 pills 横滑
+
+    const t = e.touches && e.touches[0];
+    if (!t) return;
+
+    const dx = t.clientX - sx;
+    const dy = t.clientY - sy;
+
+    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 6) {
+      e.preventDefault(); // 禁止页面左右拖动
+    }
+  }, { passive: false });
+})();
+
