@@ -1093,12 +1093,57 @@ html,
 body {
   width: 100%;
   max-width: 100%;
-  overflow-x: hidden;   /* 🔥 禁止横向滚动 */
+  overflow-x: clip;         /* ✅ 更彻底的裁掉横向溢出 */
   overscroll-behavior-x: none;
-  touch-action: pan-y;  /* ✅ 只允许上下滑动 */
+  touch-action: pan-y;      /* ✅ 页面默认只允许上下滑 */
+}
+
+/* ✅ 关键：分类条允许横向滑动 */
+.category-bar {
+  touch-action: pan-x;      /* 允许左右滑 */
+  -webkit-overflow-scrolling: touch;
+}
+/* ===========================
+   FIX: 手机端 footer 超宽导致左右滑动
+   =========================== */
+@media (max-width: 768px) {
+  /* 1) footer 内部这些块不要固定 320px，强制跟屏幕走 */
+  .footer-delivery,
+  .footer-section-title,
+  .footer-text {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box;
+  }
+
+  /* 2) 文本允许断行（尤其英文） */
+  .footer-text,
+  .footer-text.footer-en {
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+  }
+
+  /* 3) 如果 footer 外层是横向布局（flex/网格），手机端改成竖排 */
+  footer,
+  .footer,
+  .footer-wrap,
+  .footer-inner,
+  .footer-delivery {
+    display: block !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+    max-width: 100% !important;
+  }
 }
 #app {
   width: 100%;
   max-width: 100%;
   overflow-x: hidden;
+}
+img, svg, video, canvas {
+  max-width: 100%;
+  height: auto;
 }
