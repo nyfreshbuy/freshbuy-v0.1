@@ -1,4 +1,10 @@
 // /user/assets/js/normal.js
+// =======================================================
+// 普通配送 / 全部商品（与首页“全部商品”一致：展示【非爆品】商品）
+// 数据源：/api/products-simple
+// 功能：分类筛选 + 排序 + 加入购物车 + 跳详情
+// =======================================================
+
 console.log("normal.js loaded");
 
 let FILTERS = [{ key: "all", name: "全部" }];
@@ -101,37 +107,39 @@ function sortList(list, sortKey) {
   return arr;
 }
 
-/* ========= 业务判断 ========= */
-// ✅ 新客判断：与 newcomer.js 保持一致
-function isNewcomer(p) {
-  const tag = String(p?.tag || "");
+/* ========= 与首页一致：爆品判断（用于排除爆品） ========= */
+function hasKeyword(p, keyword) {
+  if (!p) return false;
+  const kw = String(keyword).toLowerCase();
+  const norm = (v) => (v ? String(v).toLowerCase() : "");
+
+  const fields = [
+    p.tag,
+    p.type,
+    p.category,
+    p.subCategory,
+    p.mainCategory,
+    p.subcategory,
+    p.section,
+  ];
+  if (fields.some((f) => norm(f).includes(kw))) return true;
+
+  if (Array.isArray(p.tags) && p.tags.some((t) => norm(t).includes(kw))) return true;
+  if (Array.isArray(p.labels) && p.labels.some((t) => norm(t).includes(kw))) return true;
+
+  return false;
+}
+
+function isHotProduct(p) {
   return (
     isTrueFlag(p?.isHot) ||
     isTrueFlag(p?.isHotDeal) ||
     isTrueFlag(p?.hotDeal) ||
     isTrueFlag(p?.isSpecial) ||
-    tag.includes("爆品") ||
-    tag.includes("新客") ||
-    tag.toLowerCase().includes("hot")
+    hasKeyword(p, "爆品") ||
+    hasKeyword(p, "爆品日") ||
+    hasKeyword(p, "hot")
   );
-}
-
-/**
- * ✅ 可选 isNormal：如果后台已开始写 serviceMode/deliveryMode=normal，就能精准筛选；
- * 没写也没关系，会自动兜底为“非新客商品”。
- */
-function isNormal(p) {
-  const sm = String(p?.serviceMode || p?.service_mode || p?.mode || "").toLowerCase();
-  const dm = String(p?.deliveryMode || p?.delivery_mode || "").toLowerCase();
-  if (sm === "normal" || dm === "normal") return true;
-
-  const tag = String(p?.tag || "").toLowerCase();
-  const labels = Array.isArray(p?.labels) ? p.labels.join(",").toLowerCase() : "";
-  if (tag.includes("normal") || tag.includes("普通") || labels.includes("normal") || labels.includes("普通"))
-    return true;
-
-  // ✅ 兜底：normal = 非新客
-  return !isNewcomer(p);
 }
 
 /* ========= UI ========= */
@@ -146,9 +154,10 @@ function createCard(p) {
   const article = document.createElement("article");
   article.className = "product-card";
 
-  // ✅ 兜底 id：尽量保证不为空
-  const pid = String(p?._id || p?.id || p?.sku || p?.code || p?.productId || p?.name || "")
-    .trim();
+  // ✅ 兜底 id：尽量保证不为空（避免详情/购物车用不了）
+  const pid = String(
+    p?._id || p?.id || p?.sku || p?.code || p?.productId || p?.name || ""
+  ).trim();
 
   const price = getPrice(p);
   const origin = getNum(p, ["originPrice"], 0);
@@ -159,12 +168,14 @@ function createCard(p) {
       ? String(p.image).trim()
       : `https://picsum.photos/seed/${encodeURIComponent(pid || p?.name || "fb")}/500/400`;
 
-  const badge = "普通价";
   const limitQty = p?.limitQty || p?.limitPerUser || p?.maxQty || p?.purchaseLimit || 0;
+
+  // ✅ 普通商品不强制显示 badge（更像“全部商品”）
+  const badge = ""; // 需要的话改成 "普通价"
 
   article.innerHTML = `
     <div class="product-image-wrap">
-      <span class="special-badge">${badge}</span>
+      ${badge ? `<span class="special-badge">${badge}</span>` : ""}
       <img src="${img}" class="product-image" alt="${p?.name || ""}" />
     </div>
 
@@ -207,7 +218,7 @@ function createCard(p) {
           image: p?.image || img,
           tag: p?.tag || "",
           type: p?.type || "",
-          // ✅ 普通商品标识
+          // ✅ 普通商品标识（与首页“全部商品”一致：非爆品）
           isSpecial: false,
           isDeal: false,
           serviceMode: "normal",
@@ -269,7 +280,7 @@ function renderList() {
   grid.innerHTML = "";
 
   if (!list.length) {
-    grid.innerHTML = `<div style="padding:12px;font-size:13px;color:#6b7280;">该分类暂无普通配送商品</div>`;
+    grid.innerHTML = `<div style="padding:12px;font-size:13px;color:#6b7280;">该分类暂无商品</div>`;
     return;
   }
 
@@ -297,10 +308,10 @@ async function loadProducts() {
 
   ALL = list;
 
-  // ✅ normal = serviceMode(normal) 优先；否则兜底为非新客
-  normalAll = list.filter(isNormal);
+  // ✅ 与首页一致：全部商品 = 非爆品（nonHotList）
+  normalAll = list.filter((p) => !isHotProduct(p));
 
-  // ✅ 用普通配送商品生成筛选
+  // ✅ 用普通商品生成筛选
   FILTERS = buildFiltersFromProducts(normalAll);
 
   // activeCat 不在筛选里就回到 all
@@ -309,7 +320,7 @@ async function loadProducts() {
   renderFilters();
   renderList();
 
-  console.log("[normal] ALL:", ALL.length, "normalAll:", normalAll.length);
+  console.log("[normal] ALL:", ALL.length, "normalAll(non-hot):", normalAll.length);
 }
 
 /* ========= 按钮样式注入（一次） ========= */
@@ -351,7 +362,7 @@ window.addEventListener("DOMContentLoaded", () => {
   if (sortSel) sortSel.addEventListener("change", renderList);
 
   loadProducts().catch((err) => {
-    console.error("加载普通配送商品失败", err);
+    console.error("加载普通商品失败", err);
     const grid = document.getElementById("normalGrid");
     if (grid)
       grid.innerHTML = `<div style="padding:12px;font-size:13px;color:#b91c1c;">加载失败，请稍后重试</div>`;
