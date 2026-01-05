@@ -2,9 +2,8 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <title>新客体验专区 - 在鲜购</title>
+  <title>畅销产品 - 在鲜购</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <!-- ✅ 用绝对路径 + 版本号，避免缓存 -->
   <link rel="stylesheet" href="/user/assets/css/main.css?v=10" />
 
   <style>
@@ -35,7 +34,6 @@
       border-radius:999px; min-width:20px; text-align:center; display:none;
     }
 
-    /* ✅ 筛选条 */
     .filter-wrap{
       max-width:1400px; margin:0 auto; padding:8px 14px 10px;
       display:flex; gap:10px; align-items:center; justify-content:space-between;
@@ -93,41 +91,38 @@
 </head>
 
 <body>
-
   <header class="top-nav">
     <div class="top-nav-inner">
       <div class="logo-area" onclick="location.href='/user/index.html'" style="cursor:pointer;">
         <div class="logo-badge">鲜</div>
         <div>
-          <div class="logo-text-main">新客体验专区</div>
-          <div style="font-size:11px;color:#6b7280;">免费配送 · 无门槛 · 0元起送</div>
+          <div class="logo-text-main">畅销产品专区</div>
+          <div style="font-size:11px;color:#6b7280;">TOP 热销 · 口碑之选 · 回购最多</div>
         </div>
       </div>
 
       <div class="right-actions">
-  <!-- ✅ 返回首页按钮（新增） -->
-  <button
-    type="button"
-    onclick="location.href='/user/index.html'"
-    style="
-      padding:8px 12px;
-      border-radius:999px;
-      border:1px solid #e5e7eb;
-      background:#fff;
-      font-size:13px;
-      font-weight:600;
-      cursor:pointer;
-    "
-  >
-    ← 返回首页
-  </button>
+        <button
+          type="button"
+          onclick="location.href='/user/index.html'"
+          style="
+            padding:8px 12px;
+            border-radius:999px;
+            border:1px solid #e5e7eb;
+            background:#fff;
+            font-size:13px;
+            font-weight:600;
+            cursor:pointer;
+          "
+        >
+          ← 返回首页
+        </button>
 
-  <!-- 原来的购物车（不动） -->
-  <div class="cart-icon" id="cartIcon">
-    🛒
-    <span class="cart-count-badge" id="cartCount">0</span>
-  </div>
-</div>
+        <div class="cart-icon" id="cartIcon">
+          🛒
+          <span class="cart-count-badge" id="cartCount">0</span>
+        </div>
+      </div>
     </div>
 
     <div class="filter-wrap">
@@ -148,15 +143,15 @@
   <main class="page">
     <div class="page-title">
       <div>
-        <h2>🔥 新客商品</h2>
-        <div class="sub">只展示新客体验区商品（爆品/新客标签/Hot 等）</div>
+        <h2>🏆 畅销产品</h2>
+        <div class="sub">只展示畅销/热销/Top/Best 等标签或 isBest 标记的商品</div>
       </div>
     </div>
 
-    <div class="product-grid" id="newcomerGrid"></div>
+    <div class="product-grid" id="bestGrid"></div>
   </main>
 
   <script src="/user/assets/js/cart.js?v=10"></script>
-  <script src="/user/assets/js/newcomer.js?v=10"></script>
+  <script src="/user/assets/js/Best.js?v=1"></script>
 </body>
 </html>

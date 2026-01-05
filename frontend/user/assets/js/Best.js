@@ -1,8 +1,11 @@
-console.log("newcomer.js loaded");
+console.log("Best.js loaded");
 
 let FILTERS = [{ key: "all", name: "全部" }];
+let ALL = [];
+let bestAll = [];
+let activeCat = "all";
 
-// 如果后台 categoryKey 是英文 key，这里映射成中文显示（可按你后台调整）
+/* ========= 分类映射（可按你后台调整） ========= */
 const CATEGORY_NAME_MAP = {
   fresh: "生鲜果蔬",
   meat: "肉禽海鲜",
@@ -13,15 +16,19 @@ const CATEGORY_NAME_MAP = {
   household: "日用清洁",
 };
 
+function isTrueFlag(v) {
+  return v === true || v === "true" || v === 1 || v === "1";
+}
+
 function getCategoryKey(p) {
   return String(
     p?.categoryKey ||
-    p?.category_key ||
-    p?.catKey ||
-    p?.category ||
-    p?.mainCategory ||
-    p?.section ||
-    ""
+      p?.category_key ||
+      p?.catKey ||
+      p?.category ||
+      p?.mainCategory ||
+      p?.section ||
+      ""
   ).trim();
 }
 
@@ -37,8 +44,6 @@ function buildFiltersFromProducts(list) {
   });
 
   const keys = Array.from(set);
-
-  // 你想要的固定顺序（存在就按这个排，不存在的放后面）
   const preferred = ["fresh", "meat", "snacks", "staples", "seasoning", "frozen", "household"];
   keys.sort((a, b) => {
     const ia = preferred.indexOf(a);
@@ -53,31 +58,52 @@ function buildFiltersFromProducts(list) {
     keys.map((k) => ({ key: k, name: getCategoryLabel(k) }))
   );
 }
-let ALL = [];
-let newcomerAll = [];
-let activeCat = "all";
 
-function isTrueFlag(v) {
-  return v === true || v === "true" || v === 1 || v === "1";
+/* ========= 关键词工具（沿用首页逻辑） ========= */
+function hasKeyword(p, keyword) {
+  if (!p) return false;
+  const kw = String(keyword).toLowerCase();
+  const norm = (v) => (v ? String(v).toLowerCase() : "");
+
+  const fields = [
+    p.tag,
+    p.type,
+    p.category,
+    p.subCategory,
+    p.mainCategory,
+    p.subcategory,
+    p.section,
+  ];
+  if (fields.some((f) => norm(f).includes(kw))) return true;
+
+  if (Array.isArray(p.tags) && p.tags.some((t) => norm(t).includes(kw))) return true;
+  if (Array.isArray(p.labels) && p.labels.some((t) => norm(t).includes(kw))) return true;
+
+  return false;
 }
 
-function isNewcomer(p) {
-  const tag = String(p?.tag || "");
+/* ========= 畅销识别 ========= */
+function isBestSellerProduct(p) {
+  // ✅ 先看后台字段
+  if (
+    isTrueFlag(p?.isBest) ||
+    isTrueFlag(p?.isBestSeller) ||
+    isTrueFlag(p?.bestSeller) ||
+    isTrueFlag(p?.isTop) ||
+    isTrueFlag(p?.topSeller)
+  ) return true;
+
+  // ✅ 再看关键词（你首页的规则）
   return (
-    isTrueFlag(p?.isHot) ||
-    isTrueFlag(p?.isHotDeal) ||
-    isTrueFlag(p?.hotDeal) ||
-    isTrueFlag(p?.isSpecial) ||
-    tag.includes("爆品") ||
-    tag.includes("新客") ||
-    tag.toLowerCase().includes("hot")
+    hasKeyword(p, "畅销") ||
+    hasKeyword(p, "热销") ||
+    hasKeyword(p, "top") ||
+    hasKeyword(p, "best") ||
+    hasKeyword(p, "bestseller")
   );
 }
 
-function matchCat(p, catKey) {
-  if (catKey === "all") return true;
-  return getCategoryKey(p) === catKey;
-}
+/* ========= 可选兜底：按销量阈值自动算畅销（防止全为空） ========= */
 function getNum(p, keys, def = 0) {
   for (const k of keys) {
     const v = p?.[k];
@@ -86,20 +112,23 @@ function getNum(p, keys, def = 0) {
   }
   return def;
 }
-
+function getSales(p) {
+  return getNum(p, ["sales", "sold", "saleCount", "salesCount", "orderCount"], 0);
+}
 function getPrice(p) {
   return getNum(p, ["price", "flashPrice", "specialPrice", "originPrice"], 0);
 }
 
-function getSales(p) {
-  return getNum(p, ["sales", "sold", "saleCount", "salesCount", "orderCount"], 0);
+function matchCat(p, catKey) {
+  if (catKey === "all") return true;
+  return getCategoryKey(p) === catKey;
 }
 
 function sortList(list, sortKey) {
   const arr = [...list];
   if (sortKey === "price_asc") arr.sort((a, b) => getPrice(a) - getPrice(b));
   else if (sortKey === "price_desc") arr.sort((a, b) => getPrice(b) - getPrice(a));
-  else arr.sort((a, b) => getSales(b) - getSales(a)); // 默认销量高→低
+  else arr.sort((a, b) => getSales(b) - getSales(a));
   return arr;
 }
 
@@ -114,27 +143,29 @@ function createCard(p) {
   const article = document.createElement("article");
   article.className = "product-card";
 
-  const pid = String(p._id || p.id || p.sku || "").trim();
+  const pid = String(p?._id || p?.id || p?.sku || p?.code || p?.productId || "").trim();
+  const safeId = pid || String(p?.name || "fb").trim();
+
   const price = getPrice(p);
   const origin = getNum(p, ["originPrice"], 0);
   const hasOrigin = origin > 0 && origin > price;
 
   const img =
-    p.image && String(p.image).trim()
+    p?.image && String(p.image).trim()
       ? String(p.image).trim()
-      : `https://picsum.photos/seed/${encodeURIComponent(pid || p.name || "fb")}/500/400`;
+      : `https://picsum.photos/seed/${encodeURIComponent(safeId)}/500/400`;
 
-  const badge = "新客价";
-  const limitQty = p.limitQty || p.limitPerUser || p.maxQty || p.purchaseLimit || 0;
+  const badge = "畅销";
+  const limitQty = p?.limitQty || p?.limitPerUser || p?.maxQty || p?.purchaseLimit || 0;
 
   article.innerHTML = `
     <div class="product-image-wrap">
       <span class="special-badge">${badge}</span>
-      <img src="${img}" class="product-image" alt="${p.name || ""}" />
+      <img src="${img}" class="product-image" alt="${p?.name || ""}" />
     </div>
 
-    <div class="product-name">${p.name || ""}</div>
-    <div class="product-desc">${p.desc || ""}</div>
+    <div class="product-name">${p?.name || ""}</div>
+    <div class="product-desc">${p?.desc || ""}</div>
 
     <div class="product-price-row">
       <span class="product-price">$${Number(price || 0).toFixed(2)}</span>
@@ -147,7 +178,6 @@ function createCard(p) {
     </button>
   `;
 
-  // ✅ 加入购物车
   const btn = article.querySelector(".add-btn");
   if (btn) {
     btn.addEventListener("click", (ev) => {
@@ -165,15 +195,17 @@ function createCard(p) {
 
       cartApi.addItem(
         {
-          id: pid,
-          name: p.name || "商品",
+          id: pid || safeId,
+          name: p?.name || "商品",
           price: Number(price || 0),
           priceNum: Number(price || 0),
-          image: p.image || img,
-          tag: p.tag || "",
-          type: p.type || "",
-          isSpecial: true,
-          isDeal: true,
+          image: p?.image || img,
+          tag: p?.tag || "",
+          type: p?.type || "",
+          isSpecial: false,
+          isDeal: false,
+          // 给结算规则留字段
+          serviceMode: "groupDay",
         },
         1
       );
@@ -182,10 +214,10 @@ function createCard(p) {
     });
   }
 
-  // ✅ 点卡片去详情（你如果没做详情页可以先注释掉）
   article.addEventListener("click", () => {
-    if (!pid) return;
-    window.location.href = "/user/product_detail.html?id=" + encodeURIComponent(pid);
+    const id = pid || safeId;
+    if (!id) return;
+    window.location.href = "/user/product_detail.html?id=" + encodeURIComponent(id);
   });
 
   return article;
@@ -193,10 +225,7 @@ function createCard(p) {
 
 function renderFilters() {
   const bar = document.getElementById("filterBar");
-  if (!bar) {
-    console.warn("❌ filterBar not found");
-    return;
-  }
+  if (!bar) return;
   bar.innerHTML = "";
 
   FILTERS.forEach((f) => {
@@ -204,7 +233,6 @@ function renderFilters() {
     btn.type = "button";
     btn.className = "filter-pill" + (f.key === activeCat ? " active" : "");
     btn.textContent = f.name;
-    btn.dataset.key = f.key;
 
     btn.addEventListener("click", () => {
       activeCat = f.key;
@@ -218,29 +246,23 @@ function renderFilters() {
 }
 
 function renderList() {
-  const grid = document.getElementById("newcomerGrid");
+  const grid = document.getElementById("bestGrid");
   const sortSel = document.getElementById("sortSelect");
   if (!grid) return;
 
   const sortKey = sortSel ? sortSel.value : "sales_desc";
 
-  let list = newcomerAll.filter((p) => matchCat(p, activeCat));
+  let list = bestAll.filter((p) => matchCat(p, activeCat));
   list = sortList(list, sortKey);
-
-  console.log("[filter]", activeCat, "matched:", list.length, "sort:", sortKey);
 
   grid.innerHTML = "";
 
   if (!list.length) {
-    grid.innerHTML = `<div style="padding:12px;font-size:13px;color:#6b7280;">该分类暂无新客商品</div>`;
+    grid.innerHTML = `<div style="padding:12px;font-size:13px;color:#6b7280;">该分类暂无畅销商品</div>`;
     return;
   }
 
   list.forEach((p) => grid.appendChild(createCard(p)));
-
-  try {
-    grid.scrollIntoView({ behavior: "smooth", block: "start" });
-  } catch {}
 }
 
 async function loadProducts() {
@@ -258,22 +280,28 @@ async function loadProducts() {
     : [];
 
   ALL = list;
-newcomerAll = list.filter(isNewcomer);
 
-// ✅ 用新客商品的后台 categoryKey 动态生成筛选
-FILTERS = buildFiltersFromProducts(newcomerAll);
+  bestAll = list.filter(isBestSellerProduct);
 
-// activeCat 不在筛选里就回到 all
-if (!FILTERS.some((f) => f.key === activeCat)) activeCat = "all";
+  // ✅ 兜底：如果没打标签/字段，就按“销量Top”凑一页（防止空）
+  if (!bestAll.length && list.length) {
+    console.warn("畅销为空，启用兜底：按销量 Top 取前 60");
+    bestAll = [...list].sort((a, b) => getSales(b) - getSales(a)).slice(0, 60);
+  }
 
-renderFilters();
-renderList();
+  FILTERS = buildFiltersFromProducts(bestAll);
+  if (!FILTERS.some((f) => f.key === activeCat)) activeCat = "all";
+
+  renderFilters();
+  renderList();
+
+  console.log("[Best] ALL:", ALL.length, "bestAll:", bestAll.length);
 }
 
 function injectButtonStylesOnce() {
-  if (document.getElementById("newcomerBtnStyle")) return;
+  if (document.getElementById("bestBtnStyle")) return;
   const style = document.createElement("style");
-  style.id = "newcomerBtnStyle";
+  style.id = "bestBtnStyle";
   style.textContent = `
     .add-btn{
       width:100%;
@@ -307,8 +335,8 @@ window.addEventListener("DOMContentLoaded", () => {
   if (sortSel) sortSel.addEventListener("change", renderList);
 
   loadProducts().catch((err) => {
-    console.error("加载新客商品失败", err);
-    const grid = document.getElementById("newcomerGrid");
+    console.error("加载畅销商品失败", err);
+    const grid = document.getElementById("bestGrid");
     if (grid) grid.innerHTML = `<div style="padding:12px;font-size:13px;color:#b91c1c;">加载失败，请稍后重试</div>`;
   });
 });
