@@ -2,7 +2,7 @@ import express from "express";
 import mongoose from "mongoose";
 import Recharge from "../models/Recharge.js";
 import User from "../models/user.js";
-import Wallet from "../models/Wallet.js"; // ✅ 你给的 Wallet model（注意大小写路径要和文件一致）
+import Wallet from "../models/Wallet.js"; // ⚠️ 必须与你真实文件名一致（Wallet.js 或 wallet.js）
 import { requireLogin } from "../middlewares/auth.js";
 
 const router = express.Router();
@@ -16,7 +16,7 @@ function toObjectIdMaybe(v) {
   return mongoose.Types.ObjectId.isValid(s) ? new mongoose.Types.ObjectId(s) : null;
 }
 
-// 工具：手机号标准化（只保留数字，方便匹配）
+// 工具：手机号标准化（只保留数字）
 function normalizePhone(p) {
   return String(p || "").replace(/\D/g, "");
 }
@@ -28,7 +28,7 @@ function normalizePhone(p) {
 // ==================================================
 router.post("/", requireLogin, async (req, res) => {
   try {
-    if (req.user.role !== "admin") {
+    if (req.user?.role !== "admin") {
       return res.status(403).json({ success: false, message: "无权限（仅管理员可操作）" });
     }
 
@@ -52,11 +52,7 @@ router.post("/", requireLogin, async (req, res) => {
 
       // 容错匹配：原样 / 纯数字 / 模糊包含数字
       user = await User.findOne({
-        $or: [
-          { phone: p0 },
-          { phone: pn },
-          { phone: { $regex: pn } },
-        ],
+        $or: [{ phone: p0 }, { phone: pn }, { phone: { $regex: pn } }],
       });
     }
 
@@ -83,7 +79,7 @@ router.post("/", requireLogin, async (req, res) => {
 
     const walletBalance = Number(wallet?.balance || 0);
 
-    console.log("💳 admin recharge OK:", {
+    console.log("💳 [admin_recharge/post] OK", {
       userId: String(user._id),
       phone: user.phone,
       inc: rechargeAmount,
@@ -106,7 +102,7 @@ router.post("/", requireLogin, async (req, res) => {
         remark: record.remark,
         createdAt: record.createdAt,
       },
-      walletBalance, // ✅ 后台页面显示用这个
+      walletBalance,
     });
   } catch (err) {
     console.error("POST /api/admin/recharge error:", err);
@@ -118,16 +114,17 @@ router.post("/", requireLogin, async (req, res) => {
 // GET /api/admin/recharge/list
 // query: page, pageSize, limit, userId, phone, status
 // ✅ 返回：list + walletBalance（来自 Wallet.balance）
+// ✅ phone 查询时：先找所有可能 User，再优先选“有 Wallet 的 userId”
 // ==================================================
 router.get("/list", requireLogin, async (req, res) => {
   try {
-    if (req.user.role !== "admin") {
+    if (req.user?.role !== "admin") {
       return res.status(403).json({ success: false, message: "无权限（仅管理员可查看）" });
     }
 
     let { page = 1, pageSize = 20, limit, userId, phone, status } = req.query;
 
-    // ✅ 兼容你的后台页面用的 limit（这里直接覆盖 pageSize）
+    // ✅ 兼容后台页面用的 limit
     if (limit) pageSize = limit;
 
     page = Math.max(1, Number(page) || 1);
@@ -144,21 +141,20 @@ router.get("/list", requireLogin, async (req, res) => {
       targetUserId = oid;
     }
 
-    // 2) phone 过滤
+    // 2) phone 过滤（关键：解决“同手机号多个 User”）
     if (phone) {
       const p0 = String(phone).trim();
       const pn = normalizePhone(p0);
 
-      const u = await User.findOne({
-        $or: [
-          { phone: p0 },
-          { phone: pn },
-          { phone: { $regex: pn } },
-        ],
-      }).select("_id phone").lean();
+      // 先找出所有可能匹配的用户
+      const users = await User.find({
+        $or: [{ phone: p0 }, { phone: pn }, { phone: { $regex: pn } }],
+      })
+        .select("_id phone")
+        .lean();
 
-      if (!u) {
-        console.log("⚠️ admin_recharge/list: user not found by phone =", p0);
+      if (!users.length) {
+        console.log("⚠️ [admin_recharge/list] user not found by phone =", p0);
         return res.json({
           success: true,
           page,
@@ -170,11 +166,18 @@ router.get("/list", requireLogin, async (req, res) => {
         });
       }
 
-      query.userId = u._id;
-      targetUserId = u._id;
+      const userIds = users.map((x) => x._id);
+
+      // ✅ 优先找“有钱包记录的 userId”
+      const w = await Wallet.findOne({ userId: { $in: userIds } })
+        .select("userId balance")
+        .lean();
+
+      targetUserId = w?.userId || users[0]._id; // 有钱包用钱包的 userId，否则用第一个
+      query.userId = targetUserId;
     }
 
-    // 3) 状态过滤（done/pending/failed...）
+    // 3) 状态过滤
     if (status) query.status = String(status).trim();
 
     const total = await Recharge.countDocuments(query);
@@ -186,14 +189,22 @@ router.get("/list", requireLogin, async (req, res) => {
       .limit(pageSize)
       .lean();
 
-    // ✅ 关键：余额来自 Wallet 表
+    // ✅ 余额来自 Wallet 表
     let walletBalance = 0;
     if (targetUserId) {
-      const w = await Wallet.findOne({ userId: targetUserId }).select("balance").lean();
-      walletBalance = Number(w?.balance || 0);
+      const w2 = await Wallet.findOne({ userId: targetUserId }).select("balance").lean();
+      walletBalance = Number(w2?.balance || 0);
     }
 
-    console.log("💰 [admin_recharge/list] userId =", String(targetUserId || ""), "walletBalance =", walletBalance);
+    console.log(
+      "💰 [admin_recharge/list]",
+      "phone=",
+      phone ? String(phone) : "",
+      "userId=",
+      String(targetUserId || ""),
+      "walletBalance=",
+      walletBalance
+    );
 
     return res.json({
       success: true,
