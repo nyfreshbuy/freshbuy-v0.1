@@ -16,7 +16,40 @@ function toObjectIdMaybe(v) {
     ? new mongoose.Types.ObjectId(s)
     : null;
 }
+function pickWalletBalance(u) {
+  if (!u) return 0;
 
+  // 1) 直接数字字段
+  const direct =
+    u.walletBalance ??
+    u.balance ??
+    u.wallet_amount ??
+    u.walletAmount ??
+    u.wallet_balance ??
+    u.walletBalanceCents ??
+    u.balanceCents;
+
+  if (Number.isFinite(Number(direct))) {
+    const n = Number(direct);
+    // 如果是 cents 类型（字段名里带 Cents），做一次转换（可按你实际情况删掉）
+    if (String(direct).includes("Cents")) return Math.round(n) / 100;
+    return n;
+  }
+
+  // 2) wallet 是对象：{ balance: 97.06 } / { amount: 97.06 } / { money: 97.06 }
+  const w = u.wallet;
+  if (w && typeof w === "object") {
+    const objVal = w.balance ?? w.amount ?? w.money ?? w.value ?? w.total;
+    if (Number.isFinite(Number(objVal))) return Number(objVal);
+  }
+
+  // 3) wallet 是字符串数字
+  if (typeof u.wallet === "string" && Number.isFinite(Number(u.wallet))) {
+    return Number(u.wallet);
+  }
+
+  return 0;
+}
 // ==================================================
 // POST /api/admin/recharge
 // body: { userId | phone, amount, bonus, remark }
@@ -80,14 +113,7 @@ router.post("/", requireLogin, async (req, res) => {
       "walletBalance balance wallet"
     );
 
-    const walletBalance =
-      Number(
-        updatedUser.walletBalance ??
-          updatedUser.balance ??
-          updatedUser.wallet ??
-          0
-      ) || 0;
-
+    const walletBalance = pickWalletBalance(updatedUser);
     return res.json({
       success: true,
       message: "后台充值成功",
@@ -175,12 +201,10 @@ router.get("/list", requireLogin, async (req, res) => {
 
     // ✅ 关键：把余额算出来返回给后台页面显示
     let walletBalance = 0;
-    if (targetUserId) {
-      const uu = await User.findById(targetUserId).select("walletBalance balance wallet");
-      walletBalance =
-        Number(uu?.walletBalance ?? uu?.balance ?? uu?.wallet ?? 0) || 0;
-    }
-
+if (targetUserId) {
+  const uu = await User.findById(targetUserId).select("walletBalance balance wallet");
+  walletBalance = pickWalletBalance(uu);
+}
     return res.json({
       success: true,
       page,
