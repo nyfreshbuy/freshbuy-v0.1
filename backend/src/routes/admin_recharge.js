@@ -2,7 +2,7 @@ import express from "express";
 import mongoose from "mongoose";
 import Recharge from "../models/Recharge.js";
 import User from "../models/user.js";
-import Wallet from "../models/wallet.js"; // ✅ 你给的 Wallet model（注意大小写路径要和文件一致）
+import Wallet from "../models/Wallet.js"; // ✅ 你给的 Wallet model（注意大小写路径要和文件一致）
 import { requireLogin } from "../middlewares/auth.js";
 
 const router = express.Router();
