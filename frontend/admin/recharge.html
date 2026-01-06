@@ -491,7 +491,8 @@
 
           const showUser = (phone ? ("phone: " + phone) : "") + (userId ? (" userId: " + userId) : "");
           document.getElementById("boxUser").textContent = showUser || "—";
-
+          const wb = Number(r.walletBalance || 0);
+          document.getElementById("boxBalance").textContent = fmtMoney(wb);
           renderRecords(r.records || []);
           showAlert("查询完成", true);
         } catch (e) {
