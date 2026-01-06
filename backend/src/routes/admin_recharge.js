@@ -114,32 +114,36 @@ router.post("/", requireLogin, async (req, res) => {
 // GET /api/admin/recharge/list
 // query: page, pageSize, userId, phone, status
 // ==================================================
+// ==================================================
+// GET /api/admin/recharge/list
+// query: page, pageSize, limit, userId, phone, status
+// 返回：list + walletBalance（给后台页面显示）
+// ==================================================
 router.get("/list", requireLogin, async (req, res) => {
   try {
-    // ✅ 管理员权限
     if (req.user.role !== "admin") {
-      return res.status(403).json({
-        success: false,
-        message: "无权限（仅管理员可查看）",
-      });
+      return res.status(403).json({ success: false, message: "无权限（仅管理员可查看）" });
     }
 
-    let { page = 1, pageSize = 20, userId, phone, status } = req.query;
+    let { page = 1, pageSize = 20, limit, userId, phone, status } = req.query;
+
+    // ✅ 兼容你的后台页面用的 limit
+    if (limit && !pageSize) pageSize = limit;
     page = Math.max(1, Number(page) || 1);
     pageSize = Math.min(100, Math.max(1, Number(pageSize) || 20));
 
     const query = {};
+    let targetUserId = null; // 用于计算 walletBalance
 
-    // 1) 按 userId 过滤
+    // 1) userId 过滤
     if (userId) {
       const oid = toObjectIdMaybe(userId);
-      if (!oid) {
-        return res.status(400).json({ success: false, message: "非法 userId" });
-      }
+      if (!oid) return res.status(400).json({ success: false, message: "非法 userId" });
       query.userId = oid;
+      targetUserId = oid;
     }
 
-    // 2) 按 phone 过滤（先查 userId 再过滤记录）
+    // 2) phone 过滤（先查用户）
     if (phone) {
       const u = await User.findOne({ phone: String(phone).trim() }).select("_id");
       if (!u) {
@@ -150,12 +154,14 @@ router.get("/list", requireLogin, async (req, res) => {
           total: 0,
           totalPages: 0,
           list: [],
+          walletBalance: 0,
         });
       }
       query.userId = u._id;
+      targetUserId = u._id;
     }
 
-    // 3) 按状态过滤（你现在用 status: "done"）
+    // 3) 状态过滤
     if (status) query.status = String(status).trim();
 
     const total = await Recharge.countDocuments(query);
@@ -167,6 +173,14 @@ router.get("/list", requireLogin, async (req, res) => {
       .limit(pageSize)
       .lean();
 
+    // ✅ 关键：把余额算出来返回给后台页面显示
+    let walletBalance = 0;
+    if (targetUserId) {
+      const uu = await User.findById(targetUserId).select("walletBalance balance wallet");
+      walletBalance =
+        Number(uu?.walletBalance ?? uu?.balance ?? uu?.wallet ?? 0) || 0;
+    }
+
     return res.json({
       success: true,
       page,
@@ -174,6 +188,7 @@ router.get("/list", requireLogin, async (req, res) => {
       total,
       totalPages: Math.ceil(total / pageSize),
       list,
+      walletBalance, // ✅ 前端要的字段
     });
   } catch (err) {
     console.error("GET /api/admin/recharge/list error:", err);
