@@ -1,4 +1,3 @@
-console.log("🔥🔥🔥 admin_recharge.js LOADED ON RENDER 🔥🔥🔥");
 import express from "express";
 import mongoose from "mongoose";
 import Recharge from "../models/Recharge.js";
@@ -22,7 +21,7 @@ function toObjectIdMaybe(v) {
 // POST /api/admin/recharge
 // body: { userId | phone, amount, bonus, remark }
 // ==================================================
-router.post("/recharge", requireLogin, async (req, res) => {
+router.post("/", requireLogin, async (req, res) => {
   try {
     // ✅ 1. 校验管理员权限
     if (req.user.role !== "admin") {

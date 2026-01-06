@@ -146,9 +146,8 @@ app.use("/api/admin/dispatch", adminDispatchRouter);
 app.use("/api/site-config", siteConfigRouter);
 
 // 后台：管理员充值
-app.use("/api/admin", adminRechargeRouter);
-console.log("✅ admin_recharge 已挂载到 /api/admin");
-
+app.use("/api/admin/recharge", adminRechargeRouter);
+console.log("✅ admin_recharge 已挂载到 /api/admin/recharge");
 // 营销中心
 app.use("/api/admin", adminMarketingRouter);
 console.log("✅ admin_marketing 已挂载到 /api/admin");
