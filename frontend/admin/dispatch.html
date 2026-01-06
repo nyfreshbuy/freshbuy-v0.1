@@ -179,6 +179,7 @@
             <option value="all">全部（不推荐）</option>
           </select>
           <button id="btnLoad" class="btn primary">加载批次</button>
+          <button id="btnBuildBatch" class="btn warn">生成当日批次</button>
           <button id="btnReloadOrders" class="btn">刷新当前批次</button>
           <!-- ✅ 统一相对路径（你页面本来是 /admin/orders.html，这里用同目录更稳） -->
           <a class="btn" href="orders.html" style="text-decoration:none;display:inline-flex;align-items:center;">返回订单列表</a>
@@ -261,6 +262,7 @@
     const elDebug = document.getElementById("debugBox");
 
     const btnLoad = document.getElementById("btnLoad");
+    const btnBuildBatch = document.getElementById("btnBuildBatch");
     const btnReloadOrders = document.getElementById("btnReloadOrders");
     const btnAssign = document.getElementById("btnAssign");
 

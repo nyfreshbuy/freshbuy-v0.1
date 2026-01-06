@@ -101,6 +101,57 @@ router.get("/drivers", requireLogin, requireAdmin, async (req, res) => {
  * - batchKey 优先 dispatch.batchKey，兼容 fulfillment.batchKey
  * ==========================================
  */
+/**
+ * ==========================================
+ * ✅ 1.5) 生成某天批次（把当天符合条件的订单写入 dispatch.batchKey）
+ * POST /api/admin/dispatch/batches/build?date=YYYY-MM-DD&status=paid,packing,shipping
+ * ==========================================
+ */
+router.post("/batches/build", requireLogin, requireAdmin, async (req, res) => {
+  try {
+    const date = String(req.query.date || "").trim();
+    const statusRaw = String(req.query.status || "").trim();
+    const range = parseYMDToRange(date);
+    if (!range) return res.status(400).json({ success: false, message: "date 必须是 YYYY-MM-DD" });
+
+    const statusList = statusRaw
+      ? statusRaw.split(",").map((x) => x.trim()).filter(Boolean)
+      : ["paid", "packing", "shipping", "pending"];
+
+    // ✅ 批次号：同一天生成一次即可（也可以按 zone 生成多个批次）
+    const batchKey = `D${date.replaceAll("-", "")}-${Date.now().toString(36)}`;
+
+    const q = {
+      deliveryDate: { $gte: range.start, $lt: range.end },
+      status: { $in: statusList },
+
+      // 只给“还没有 batchKey”的订单生成
+      $or: [
+        { "dispatch.batchKey": { $exists: false } },
+        { "dispatch.batchKey": null },
+        { "dispatch.batchKey": "" },
+      ],
+    };
+
+    const r = await Order.updateMany(q, {
+      $set: {
+        "dispatch.batchKey": batchKey,
+        "dispatch.createdAt": new Date(),
+      },
+    });
+
+    return res.json({
+      success: true,
+      date,
+      batchKey,
+      matched: r.matchedCount ?? 0,
+      modified: r.modifiedCount ?? 0,
+    });
+  } catch (err) {
+    console.error("POST /api/admin/dispatch/batches/build error:", err);
+    return res.status(500).json({ success: false, message: err?.message || "生成批次失败" });
+  }
+});
 router.get("/batches", requireLogin, requireAdmin, async (req, res) => {
   try {
     const date = String(req.query.date || "").trim();
@@ -189,7 +240,39 @@ router.get("/batches", requireLogin, requireAdmin, async (req, res) => {
     return res.status(500).json({ success: false, message: "获取批次失败" });
   }
 });
+router.post("/batches/build", requireLogin, requireAdmin, async (req, res) => {
+  try {
+    const date = String(req.query.date || "").trim();
+    const statusRaw = String(req.query.status || "").trim();
+    const range = parseYMDToRange(date);
+    if (!range) return res.status(400).json({ success: false, message: "date 必须是 YYYY-MM-DD" });
 
+    const statusList = statusRaw
+      ? statusRaw.split(",").map((x) => x.trim()).filter(Boolean)
+      : ["paid", "packing", "shipping", "pending"];
+
+    const batchKey = `D${date.replaceAll("-", "")}-${Date.now().toString(36)}`;
+
+    const q = {
+      deliveryDate: { $gte: range.start, $lt: range.end },
+      status: { $in: statusList },
+      $or: [
+        { "dispatch.batchKey": { $exists: false } },
+        { "dispatch.batchKey": null },
+        { "dispatch.batchKey": "" },
+      ],
+    };
+
+    const r = await Order.updateMany(q, {
+      $set: { "dispatch.batchKey": batchKey, "dispatch.createdAt": new Date() },
+    });
+
+    return res.json({ success: true, date, batchKey, matched: r.matchedCount ?? 0, modified: r.modifiedCount ?? 0 });
+  } catch (err) {
+    console.error("POST /api/admin/dispatch/batches/build error:", err);
+    return res.status(500).json({ success: false, message: err?.message || "生成批次失败" });
+  }
+});
 /**
  * ==========================================
  * ✅ 2) 查看某批次订单 + 自动路线排序
