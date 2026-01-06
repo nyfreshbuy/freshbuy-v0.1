@@ -110,5 +110,74 @@ router.post("/recharge", requireLogin, async (req, res) => {
     res.status(500).json({ success: false, message: "后台充值失败" });
   }
 });
+// ==================================================
+// GET /api/admin/recharge/list
+// query: page, pageSize, userId, phone, status
+// ==================================================
+router.get("/list", requireLogin, async (req, res) => {
+  try {
+    // ✅ 管理员权限
+    if (req.user.role !== "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "无权限（仅管理员可查看）",
+      });
+    }
 
+    let { page = 1, pageSize = 20, userId, phone, status } = req.query;
+    page = Math.max(1, Number(page) || 1);
+    pageSize = Math.min(100, Math.max(1, Number(pageSize) || 20));
+
+    const query = {};
+
+    // 1) 按 userId 过滤
+    if (userId) {
+      const oid = toObjectIdMaybe(userId);
+      if (!oid) {
+        return res.status(400).json({ success: false, message: "非法 userId" });
+      }
+      query.userId = oid;
+    }
+
+    // 2) 按 phone 过滤（先查 userId 再过滤记录）
+    if (phone) {
+      const u = await User.findOne({ phone: String(phone).trim() }).select("_id");
+      if (!u) {
+        return res.json({
+          success: true,
+          page,
+          pageSize,
+          total: 0,
+          totalPages: 0,
+          list: [],
+        });
+      }
+      query.userId = u._id;
+    }
+
+    // 3) 按状态过滤（你现在用 status: "done"）
+    if (status) query.status = String(status).trim();
+
+    const total = await Recharge.countDocuments(query);
+
+    const list = await Recharge.find(query)
+      .populate("userId", "phone name walletBalance balance wallet")
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * pageSize)
+      .limit(pageSize)
+      .lean();
+
+    return res.json({
+      success: true,
+      page,
+      pageSize,
+      total,
+      totalPages: Math.ceil(total / pageSize),
+      list,
+    });
+  } catch (err) {
+    console.error("GET /api/admin/recharge/list error:", err);
+    return res.status(500).json({ success: false, message: "查询充值记录失败" });
+  }
+});
 export default router;
