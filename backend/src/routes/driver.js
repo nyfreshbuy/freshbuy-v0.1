@@ -1,7 +1,7 @@
 import express from "express";
 import jwt from "jsonwebtoken";
-import Driver from "../models/Driver.js";
-
+import bcrypt from "bcryptjs";
+import User from "../models/user.js"; // ⚠️ 如果你文件名是 User.js 就改成 ../models/User.js
 const router = express.Router();
 router.use(express.json());
 
@@ -13,12 +13,12 @@ if (!JWT_SECRET) {
   console.warn("⚠️ JWT_SECRET 未设置，driver 登录将失败");
 }
 
-function signDriverToken(driver) {
+function signDriverToken(user) {
   return jwt.sign(
     {
-      id: String(driver._id),
+      id: String(user._id),
       role: "driver",
-      phone: driver.phone,
+      phone: user.phone,
     },
     JWT_SECRET,
     { expiresIn: "7d" }
@@ -33,7 +33,9 @@ function requireDriver(req, res, next) {
   const auth = req.headers.authorization || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
 
-  if (!token) return next(); // 先不强制：兼容你现在用 driverId 调试的方式
+  if (!token) {
+    return res.status(401).json({ success: false, message: "未登录" });
+  }
 
   try {
     const payload = jwt.verify(token, JWT_SECRET);
@@ -46,7 +48,6 @@ function requireDriver(req, res, next) {
     return res.status(401).json({ success: false, message: "token 无效或已过期" });
   }
 }
-
 // ===============================
 // 0) 司机登录（DB版）
 // POST /api/driver/login
@@ -55,125 +56,82 @@ function requireDriver(req, res, next) {
 router.post("/login", async (req, res) => {
   try {
     const { phone, password } = req.body || {};
+    const phoneStr = String(phone || "").trim().replace(/[^\d]/g, "");
 
-    if (!phone || !password) {
-      return res.status(400).json({
-        success: false,
-        message: "手机号和密码不能为空",
-      });
+    if (!phoneStr || !password) {
+      return res.status(400).json({ success: false, message: "手机号和密码不能为空" });
     }
 
-    // 查司机
-    const driver = await Driver.findOne({ phone }).lean();
-    if (!driver) {
-      return res.status(401).json({
-        success: false,
-        message: "司机不存在",
-      });
+    // ✅ 司机账号在 users：role=driver
+    // ⚠️ 如果你的 User schema password 是 select:false，需要 +password
+    const user = await User.findOne({ phone: phoneStr, role: "driver" })
+      .select("+password name phone role isActive driverProfile")
+      .lean();
+
+    if (!user) {
+      return res.status(401).json({ success: false, message: "司机不存在" });
     }
 
-    // 密码校验（与你现有代码风格一致：明文）
-    if (String(driver.password) !== String(password)) {
-      return res.status(401).json({
-        success: false,
-        message: "密码错误",
-      });
+    if (user.isActive === false) {
+      return res.status(403).json({ success: false, message: "司机账号已禁用" });
     }
 
-    // 状态校验（如果你库里有 status 字段）
-    if (driver.status && driver.status !== "active") {
-      return res.status(403).json({
-        success: false,
-        message: "司机账号未启用",
-      });
+    const ok = await bcrypt.compare(String(password), String(user.password || ""));
+    if (!ok) {
+      return res.status(401).json({ success: false, message: "密码错误" });
     }
 
-    const token = signDriverToken(driver);
+    const token = signDriverToken(user);
 
     return res.json({
       success: true,
       token,
       driver: {
-        id: String(driver._id),
-        name: driver.name || "",
-        phone: driver.phone,
+        id: String(user._id),
+        name: user.name || "",
+        phone: user.phone || phoneStr,
+        // 下面这些如果你 user 里有 driverProfile 就返回
+        driverProfile: user.driverProfile || null,
       },
     });
   } catch (err) {
     console.error("POST /api/driver/login 出错:", err);
-    res.status(500).json({
-      success: false,
-      message: "司机登录失败（DB版）",
-    });
+    return res.status(500).json({ success: false, message: "司机登录失败" });
   }
 });
-
-// ===============================
-// 兼容：如果你还没做登录中间件，就先用 query/body 传 driverId 跑通
-// （有 token 时，会优先用 req.user）
-// ===============================
-function getDriverId(req) {
-  if (req.user && (req.user.id || req.user._id)) return String(req.user.id || req.user._id);
-  if (req.query && req.query.driverId) return String(req.query.driverId);
-  if (req.body && req.body.driverId) return String(req.body.driverId);
-  return null;
-}
-
-// ✅ 对下面接口启用“可选鉴权”：有 token 就解析，没有就继续用 driverId 调试
 router.use(requireDriver);
-
-// ===============================
-// 1) 获取司机起点（DB版）
-// GET /api/driver/origin
-// ===============================
+function getDriverId(req) {
+  return req.user?.id ? String(req.user.id) : null;
+}
 router.get("/origin", async (req, res) => {
   try {
     const driverId = getDriverId(req);
     if (!driverId) {
-      return res.status(401).json({
-        success: false,
-        message: "缺少司机身份（请先登录或传 driverId）",
-      });
+      return res.status(401).json({ success: false, message: "缺少司机身份（请先登录或传 driverId）" });
     }
 
-    const driver = await Driver.findById(driverId)
-      .select("lastLocation name phone workingState status")
+    const user = await User.findById(driverId)
+      .select("driverProfile phone name role")
       .lean();
 
-    if (!driver) {
-      return res.status(404).json({
-        success: false,
-        message: "司机不存在（DB版）",
-      });
+    if (!user || user.role !== "driver") {
+      return res.status(404).json({ success: false, message: "司机不存在（users）" });
     }
-
-    const origin = driver.lastLocation || {
-      address: "",
-      lat: undefined,
-      lng: undefined,
-      updatedAt: undefined,
-    };
 
     return res.json({
       success: true,
-      origin,
+      origin: user.driverProfile?.lastLocation || null,
       driver: {
-        id: String(driver._id),
-        name: driver.name,
-        phone: driver.phone,
-        status: driver.status,
-        workingState: driver.workingState,
+        id: String(user._id),
+        name: user.name || "",
+        phone: user.phone || "",
       },
     });
   } catch (err) {
     console.error("GET /api/driver/origin 出错:", err);
-    res.status(500).json({
-      success: false,
-      message: "获取司机起点失败（DB版）",
-    });
+    return res.status(500).json({ success: false, message: "获取司机起点失败（users）" });
   }
 });
-
 // ===============================
 // 2) 更新司机起点（DB版）
 // PATCH /api/driver/origin
@@ -183,23 +141,16 @@ router.patch("/origin", async (req, res) => {
   try {
     const driverId = getDriverId(req);
     if (!driverId) {
-      return res.status(401).json({
-        success: false,
-        message: "缺少司机身份（请先登录或传 driverId）",
-      });
+      return res.status(401).json({ success: false, message: "缺少司机身份（请先登录或传 driverId）" });
     }
 
     const { lat, lng, address } = req.body || {};
-
     if (!address || typeof address !== "string" || !address.trim()) {
-      return res.status(400).json({
-        success: false,
-        message: "address 不能为空",
-      });
+      return res.status(400).json({ success: false, message: "address 不能为空" });
     }
 
-    const parsedLat = typeof lat === "number" ? lat : lat != null ? Number(lat) : undefined;
-    const parsedLng = typeof lng === "number" ? lng : lng != null ? Number(lng) : undefined;
+    const parsedLat = lat != null ? Number(lat) : undefined;
+    const parsedLng = lng != null ? Number(lng) : undefined;
 
     if (lat != null && Number.isNaN(parsedLat)) {
       return res.status(400).json({ success: false, message: "lat 必须是数字" });
@@ -209,7 +160,7 @@ router.patch("/origin", async (req, res) => {
     }
 
     const patch = {
-      lastLocation: {
+      "driverProfile.lastLocation": {
         address: address.trim(),
         lat: parsedLat,
         lng: parsedLng,
@@ -217,28 +168,21 @@ router.patch("/origin", async (req, res) => {
       },
     };
 
-    const driver = await Driver.findByIdAndUpdate(driverId, patch, { new: true })
-      .select("lastLocation")
+    const user = await User.findByIdAndUpdate(driverId, { $set: patch }, { new: true })
+      .select("driverProfile phone name role")
       .lean();
 
-    if (!driver) {
-      return res.status(404).json({
-        success: false,
-        message: "司机不存在（DB版）",
-      });
+    if (!user || user.role !== "driver") {
+      return res.status(404).json({ success: false, message: "司机不存在（users）" });
     }
 
     return res.json({
       success: true,
-      origin: driver.lastLocation,
+      origin: user.driverProfile?.lastLocation || null,
     });
   } catch (err) {
     console.error("PATCH /api/driver/origin 出错:", err);
-    res.status(500).json({
-      success: false,
-      message: "更新司机起点失败（DB版）",
-    });
+    return res.status(500).json({ success: false, message: "更新司机起点失败（users）" });
   }
 });
-
 export default router;
