@@ -205,6 +205,7 @@ if (targetUserId) {
   const uu = await User.findById(targetUserId).select("walletBalance balance wallet");
   walletBalance = pickWalletBalance(uu);
 }
+console.log("💰 [admin_recharge/list] walletBalance =", walletBalance);
     return res.json({
       success: true,
       page,
