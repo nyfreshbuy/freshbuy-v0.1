@@ -262,10 +262,9 @@
     const elDebug = document.getElementById("debugBox");
 
     const btnLoad = document.getElementById("btnLoad");
-    const btnBuildBatch = document.getElementById("btnBuildBatch");
     const btnReloadOrders = document.getElementById("btnReloadOrders");
     const btnAssign = document.getElementById("btnAssign");
-
+    const btnBuildBatch = document.getElementById("btnBuildBatch");
     let state = {
       batches: [],
       activeBatchKey: "",
@@ -460,7 +459,34 @@
         `;
       }).join("");
     }
+   async function buildBatch() {
+  const date = elDate.value || todayYMD();
+  const statusVal = elStatus.value || "paid,packing,shipping";
+  const queryStatus =
+    statusVal === "all"
+      ? "paid,packing,shipping,pending"
+      : statusVal;
 
+  if (!confirm(`确认生成 ${date} 的派单批次？`)) return;
+
+  btnBuildBatch.disabled = true;
+  btnBuildBatch.textContent = "生成中...";
+
+  try {
+    const data = await apiPost(
+      `/api/admin/dispatch/batches/build?date=${encodeURIComponent(date)}&status=${encodeURIComponent(queryStatus)}`,
+      {}
+    );
+
+    alert(`✅ 已生成批次：${data.batchKey}\n写入订单数：${data.modified}`);
+    await loadBatches();
+  } catch (e) {
+    alert("生成批次失败：" + e.message);
+  } finally {
+    btnBuildBatch.disabled = false;
+    btnBuildBatch.textContent = "生成当日批次";
+  }
+}
     async function loadBatches() {
       const date = elDate.value || todayYMD();
       const statusVal = elStatus.value || "paid,packing,shipping";
@@ -552,6 +578,7 @@
     btnLoad.addEventListener("click", loadBatches);
     btnReloadOrders.addEventListener("click", () => state.activeBatchKey && loadBatchOrders(state.activeBatchKey));
     btnAssign.addEventListener("click", assignBatch);
+    btnBuildBatch.addEventListener("click", buildBatch);
 
     const t = getAdminToken();
     if (!t) {
