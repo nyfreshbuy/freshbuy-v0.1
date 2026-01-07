@@ -1494,3 +1494,252 @@ body.modal-open {
   #authBackdrop #loginPanel,
   #authBackdrop #registerPanel{ padding: 0 14px 14px !important; }
 }
+/* =========================================
+   Freshbuy Auth Modal (美化版)
+   依赖结构：#authBackdrop.auth-backdrop > .auth-card
+   ========================================= */
+
+#authBackdrop.auth-backdrop{
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(2, 6, 23, .45);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+#authBackdrop.auth-backdrop.active{ display:flex; }
+
+#authBackdrop .auth-card{
+  width: min(92vw, 460px);
+  border-radius: 22px;
+  background: #fff;
+  border: 1px solid rgba(226,232,240,.9);
+  box-shadow: 0 18px 60px rgba(15,23,42,.35);
+  overflow: hidden;
+}
+
+/* Header */
+#authBackdrop .auth-header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding: 14px 16px 12px;
+  background: linear-gradient(135deg, rgba(34,197,94,.18), rgba(34,197,94,.06));
+  border-bottom: 1px solid rgba(226,232,240,.9);
+}
+#authBackdrop .auth-brand{
+  display:flex;
+  align-items:center;
+  gap: 10px;
+}
+#authBackdrop .auth-logo{
+  width: 38px;
+  height: 38px;
+  border-radius: 14px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  color:#fff;
+  font-weight: 900;
+  background: radial-gradient(circle at 30% 30%, #22c55e, #16a34a);
+  box-shadow: 0 10px 24px rgba(34,197,94,.25);
+}
+#authBackdrop .auth-brand-title{
+  font-size: 18px;
+  font-weight: 900;
+  color:#0f172a;
+  letter-spacing: .2px;
+}
+#authBackdrop .auth-brand-sub{
+  margin-top: 2px;
+  font-size: 12px;
+  color:#64748b;
+}
+
+#authBackdrop .auth-close{
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid rgba(226,232,240,.95);
+  background: rgba(255,255,255,.9);
+  color: #64748b;
+  font-size: 18px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+#authBackdrop .auth-close:active{ transform: translateY(1px); }
+
+/* Tabs */
+#authBackdrop .auth-tabs{
+  margin: 12px 16px 8px;
+  padding: 4px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  border: 1px solid rgba(226,232,240,.9);
+  display:flex;
+  gap: 6px;
+}
+#authBackdrop .auth-tab{
+  flex: 1;
+  height: 36px;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  font-weight: 900;
+  font-size: 13px;
+  color: #64748b;
+}
+#authBackdrop .auth-tab.active{
+  background: #fff;
+  color: #16a34a;
+  box-shadow: 0 10px 24px rgba(15,23,42,.08);
+  border: 1px solid rgba(226,232,240,.9);
+}
+
+/* Body */
+#authBackdrop .auth-body{
+  padding: 6px 16px 16px;
+}
+#authBackdrop .auth-field{ display:block; margin-top: 10px; }
+#authBackdrop .auth-label{
+  font-size: 12px;
+  font-weight: 800;
+  color:#0f172a;
+  margin-bottom: 6px;
+}
+#authBackdrop .auth-input{
+  width: 100%;
+  padding: 12px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(226,232,240,.95);
+  background: #f8fafc;
+  font-size: 14px;
+  outline: none;
+}
+#authBackdrop .auth-input:focus{
+  background: #fff;
+  border-color: rgba(34,197,94,.75);
+  box-shadow: 0 0 0 4px rgba(34,197,94,.14);
+}
+
+#authBackdrop .auth-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  margin-top: 10px;
+}
+#authBackdrop .auth-check{
+  display:flex;
+  align-items:center;
+  gap: 8px;
+  font-size: 12px;
+  color: #64748b;
+}
+#authBackdrop .auth-link{
+  border:none;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 800;
+  color: #16a34a;
+  padding: 6px 8px;
+}
+
+#authBackdrop .auth-primary{
+  width:100%;
+  height: 46px;
+  margin-top: 12px;
+  border-radius: 999px;
+  border: none;
+  background: linear-gradient(135deg,#22c55e,#16a34a);
+  color: #fff;
+  font-weight: 900;
+  letter-spacing: .2px;
+  box-shadow: 0 14px 30px rgba(34,197,94,.24);
+}
+#authBackdrop .auth-primary:active{
+  transform: translateY(1px);
+  box-shadow: 0 10px 24px rgba(34,197,94,.2);
+}
+
+#authBackdrop .auth-footnote{
+  margin-top: 10px;
+  font-size: 11px;
+  color: #94a3b8;
+  text-align:center;
+}
+#authBackdrop .auth-footnote-link{
+  color:#2563eb;
+  font-weight: 800;
+}
+
+/* 手机更贴合 */
+@media (max-width: 420px){
+  #authBackdrop .auth-card{ width: 94vw; }
+  #authBackdrop .auth-header{ padding: 12px 14px 10px; }
+  #authBackdrop .auth-tabs{ margin: 10px 14px 6px; }
+  #authBackdrop .auth-body{ padding: 6px 14px 14px; }
+}
+body.modal-open{ overflow:hidden; }
+/* ===== Auth input icon + eye ===== */
+#authBackdrop .auth-input-wrap{
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+#authBackdrop .auth-input-ico{
+  position: absolute;
+  left: 12px;
+  font-size: 14px;
+  opacity: .75;
+  pointer-events: none;
+  transform: translateY(-1px);
+}
+
+/* 让输入框左侧留出图标空间，右侧留出眼睛按钮空间 */
+#authBackdrop .auth-input{
+  padding-left: 38px !important;
+  padding-right: 44px !important;
+}
+
+#authBackdrop .auth-eye{
+  position: absolute;
+  right: 10px;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid rgba(226,232,240,.95);
+  background: rgba(255,255,255,.9);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 14px;
+  color: #64748b;
+}
+
+#authBackdrop .auth-eye:active{
+  transform: translateY(1px);
+}
+
+/* 显示密码状态（按钮更明显一点） */
+#authBackdrop .auth-eye.is-on{
+  color: #16a34a;
+  border-color: rgba(34,197,94,.55);
+  box-shadow: 0 0 0 4px rgba(34,197,94,.12);
+}
+/* ===============================
+   修复：购物车第一个商品被顶部挡住
+================================ */
+.cart-items,
+.cart-list,
+.cartContent,
+.drawer-body {
+  padding-top: 64px;
+  box-sizing: border-box;
+}
