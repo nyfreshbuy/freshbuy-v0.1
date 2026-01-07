@@ -2,42 +2,44 @@
 import jwt from "jsonwebtoken";
 
 export function requireLogin(req, res, next) {
-   // 🔥【定位 next is not a function 的关键】
-  if (typeof next !== "function") {
-    console.error(
-      "❌ requireLogin next 不是函数",
-      "type:", typeof next,
-      "url:", req.originalUrl
-    );
-    return res
-      .status(500)
-      .json({ success: false, message: "next is not a function" });
-  }
   try {
+    // ✅ 先验证 next（抓“错误调用方式”）
+    if (typeof next !== "function") {
+      console.error("❌ requireLogin called WRONG (next missing)", {
+        nextType: typeof next,
+        method: req?.method,
+        url: req?.originalUrl,
+        authHeader: req?.headers?.authorization ? "present" : "missing",
+      });
+      return res
+        .status(500)
+        .json({ success: false, message: "AUTH_MIDDLEWARE_NEXT_MISSING" });
+    }
+
     const auth = req.headers.authorization || "";
     const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
 
     if (!token) {
-      return res.status(401).json({ success: false, msg: "未登录（缺少 token）" });
+      return res.status(401).json({ success: false, message: "未登录（缺少 token）" });
     }
 
     const secret = process.env.JWT_SECRET;
     if (!secret) {
-      return res.status(500).json({ success: false, msg: "JWT_SECRET 未配置" });
+      return res.status(500).json({ success: false, message: "JWT_SECRET 未配置" });
     }
 
     const payload = jwt.verify(token, secret);
 
-    // 你 signToken 里放的是 { id, role, phone }
     req.user = {
       id: payload.id,
       role: payload.role,
       phone: payload.phone,
     };
 
-    next();
+    return next();
   } catch (err) {
-    return res.status(401).json({ success: false, msg: "登录已过期，请重新登录" });
+    console.error("❌ requireLogin verify error:", err?.message || err);
+    return res.status(401).json({ success: false, message: "登录已过期，请重新登录" });
   }
 }
 
