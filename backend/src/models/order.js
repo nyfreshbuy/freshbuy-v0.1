@@ -265,126 +265,117 @@ orderSchema.index({ "payment.stripePaymentIntentId": 1 });
 // =========================
 // ✅ 核心：自动计算 deliveryDate + batchKey + 金额对齐
 // =========================
-orderSchema.pre("validate", function (next) {
-  try {
-    // 1) deliveryDate 规则
-    if (!this.deliveryDate) {
-      if (this.deliveryMode === "groupDay") {
-        return next(new Error("groupDay 订单必须指定 deliveryDate（区域团固定配送日）"));
-      }
-      // normal / friendGroup / dealsDay：默认次日配送
-      this.deliveryDate = startOfDay(addDays(new Date(), 1));
-    } else {
-      // 统一归零点（避免同一天不同时间导致筛选/分批出错）
-      this.deliveryDate = startOfDay(this.deliveryDate);
+// =========================
+// ✅ 核心：自动计算 deliveryDate + batchKey + 金额对齐
+// =========================
+orderSchema.pre("validate", function () {
+  // 1) deliveryDate 规则
+  if (!this.deliveryDate) {
+    if (this.deliveryMode === "groupDay") {
+      throw new Error("groupDay 订单必须指定 deliveryDate（区域团固定配送日）");
     }
+    // normal / friendGroup / dealsDay：默认次日配送
+    this.deliveryDate = startOfDay(addDays(new Date(), 1));
+  } else {
+    // 统一归零点（避免同一天不同时间导致筛选/分批出错）
+    this.deliveryDate = startOfDay(this.deliveryDate);
+  }
 
-    // 2) zoneId 优先级：dispatch.zoneId / fulfillment.zoneId / address.zoneId
-    const addrZone = String(this.address?.zoneId || "").trim();
-    const zDispatch = String(this.dispatch?.zoneId || "").trim();
-    const zFulfill = String(this.fulfillment?.zoneId || "").trim();
-    const zoneId = zDispatch || zFulfill || addrZone || "";
+  // 2) zoneId 优先级：dispatch.zoneId / fulfillment.zoneId / address.zoneId
+  const addrZone = String(this.address?.zoneId || "").trim();
+  const zDispatch = String(this.dispatch?.zoneId || "").trim();
+  const zFulfill = String(this.fulfillment?.zoneId || "").trim();
+  const zoneId = zDispatch || zFulfill || addrZone || "";
 
-    // 3) 统一生成 batchKey（派单/路线）
-    const ymd = toDateOnlyYMD(this.deliveryDate);
-    const batchKey = zoneId ? `${ymd}|zone:${zoneId}` : `${ymd}|zone:`;
-    const batchName = zoneId ? `${ymd} ${zoneId}` : `${ymd}`;
+  // 3) 统一生成 batchKey（派单/路线）
+  const ymd = toDateOnlyYMD(this.deliveryDate);
+  const batchKey = zoneId ? `${ymd}|zone:${zoneId}` : `${ymd}|zone:`;
+  const batchName = zoneId ? `${ymd} ${zoneId}` : `${ymd}`;
 
-    // 4) 写入 dispatch（✅ 所有订单都写，保证“混合”能看到）
-    if (!this.dispatch) this.dispatch = {};
-    this.dispatch.zoneId = zoneId;
-    this.dispatch.batchKey = batchKey;
-    if (!this.dispatch.batchName) this.dispatch.batchName = batchName;
+  // 4) 写入 dispatch（✅ 所有订单都写，保证“混合”能看到）
+  if (!this.dispatch) this.dispatch = {};
+  this.dispatch.zoneId = zoneId;
+  this.dispatch.batchKey = batchKey;
+  if (!this.dispatch.batchName) this.dispatch.batchName = batchName;
 
-    // 5) fulfillment：只在 dealsDay / groupDay 才标记 zone_group（兼容你的旧含义）
-    if (!this.fulfillment) this.fulfillment = {};
-    this.fulfillment.zoneId = zoneId;
+  // 5) fulfillment（兼容旧逻辑 + 给你现在页面用）
+  if (!this.fulfillment) this.fulfillment = {};
+  this.fulfillment.zoneId = zoneId;
 
-    if (zoneId && (this.deliveryMode === "dealsDay" || this.deliveryMode === "groupDay")) {
-      this.fulfillment.groupType = "zone_group";
-      this.fulfillment.batchKey = batchKey;
-      if (!this.fulfillment.batchName) this.fulfillment.batchName = batchName;
-    } else {
-      // ✅ 对于 normal/friendGroup：保持旧语义为 none
-      this.fulfillment.groupType = "none";
-      // 但为了兼容你目前 dispatch.html（还在读 fulfillment.batchKey），你有两种选择：
-      // A) 让 normal/friendGroup 也写 fulfillment.batchKey（方便前端不改就能看到混合批次）
-      // B) 改 admin_dispatch.js 聚合 dispatch.batchKey（推荐）
-      //
-      // 这里我给你默认采用 A（你现在就能看到混合批次）：
-      this.fulfillment.batchKey = batchKey;
-      if (!this.fulfillment.batchName) this.fulfillment.batchName = batchName;
-    }
+  if (zoneId && (this.deliveryMode === "dealsDay" || this.deliveryMode === "groupDay")) {
+    this.fulfillment.groupType = "zone_group";
+    this.fulfillment.batchKey = batchKey;
+    if (!this.fulfillment.batchName) this.fulfillment.batchName = batchName;
+  } else {
+    this.fulfillment.groupType = "none";
+    // 你原来选择 A：normal/friendGroup 也写 batchKey，方便前端不改
+    this.fulfillment.batchKey = batchKey;
+    if (!this.fulfillment.batchName) this.fulfillment.batchName = batchName;
+  }
 
-    // 6) items lineTotal & subtotal / taxableSubtotal
-    let subtotal = 0;
-    let taxableSubtotal = 0;
+  // 6) items lineTotal & subtotal / taxableSubtotal
+  let subtotal = 0;
+  let taxableSubtotal = 0;
 
-    for (const it of this.items || []) {
-      const price = Number(it.price || 0);
-      const qty = Math.max(1, Number(it.qty || 1));
-      it.qty = qty;
+  for (const it of this.items || []) {
+    const price = Number(it.price || 0);
+    const qty = Math.max(1, Number(it.qty || 1));
+    it.qty = qty;
 
-      const lineTotal = round2(price * qty);
-      it.lineTotal = lineTotal;
+    const lineTotal = round2(price * qty);
+    it.lineTotal = lineTotal;
 
-      subtotal += lineTotal;
-      if (it.hasTax) taxableSubtotal += lineTotal;
-    }
+    subtotal += lineTotal;
+    if (it.hasTax) taxableSubtotal += lineTotal;
+  }
 
-    this.subtotal = round2(subtotal);
-    this.taxableSubtotal = round2(taxableSubtotal);
+  this.subtotal = round2(subtotal);
+  this.taxableSubtotal = round2(taxableSubtotal);
 
-    // 7) salesTax（按 salesTaxRate）
-    const rate = Number(this.salesTaxRate || 0);
-    this.salesTax = round2(this.taxableSubtotal * rate);
+  // 7) salesTax（按 salesTaxRate）
+  const rate = Number(this.salesTaxRate || 0);
+  this.salesTax = round2(this.taxableSubtotal * rate);
 
-    // 8) platformFee（只在 stripe 才收 2%）
-    const method = String(this.payment?.method || "none");
-    const shouldPlatformFee = method === "stripe";
+  // 8) platformFee（只在 stripe 才收 2%）
+  const method = String(this.payment?.method || "none");
+  const shouldPlatformFee = method === "stripe";
 
-    if (!Number.isFinite(Number(this.platformFee))) this.platformFee = 0;
-    if (shouldPlatformFee) {
-      const base =
-        Number(this.subtotal || 0) +
-        Number(this.deliveryFee || 0) +
-        Number(this.salesTax || 0) -
-        Number(this.discount || 0);
-      this.platformFee = round2(Math.max(0, base) * 0.02);
-    } else {
-      this.platformFee = round2(Number(this.platformFee || 0));
-    }
-
-    // 9) tipFee
-    this.tipFee = round2(Number(this.tipFee || 0));
-
-    // 10) totalAmount（总额）
-    const total =
+  if (!Number.isFinite(Number(this.platformFee))) this.platformFee = 0;
+  if (shouldPlatformFee) {
+    const base =
       Number(this.subtotal || 0) +
       Number(this.deliveryFee || 0) +
-      Number(this.salesTax || 0) +
-      Number(this.platformFee || 0) +
-      Number(this.tipFee || 0) -
+      Number(this.salesTax || 0) -
       Number(this.discount || 0);
-
-    this.totalAmount = round2(Math.max(0, total));
-
-    // 11) payment 金额快照对齐（结算页统一读 payment）
-    if (!this.payment) this.payment = {};
-    this.payment.amountSubtotal = round2(this.subtotal);
-    this.payment.amountDeliveryFee = round2(this.deliveryFee);
-    this.payment.amountTax = round2(this.salesTax);
-    this.payment.amountPlatformFee = round2(this.platformFee);
-    this.payment.amountTip = round2(this.tipFee);
-    this.payment.amountDiscount = round2(this.discount);
-    this.payment.amountTotal = round2(this.totalAmount);
-
-    next();
-  } catch (e) {
-    next(e);
+    this.platformFee = round2(Math.max(0, base) * 0.02);
+  } else {
+    this.platformFee = round2(Number(this.platformFee || 0));
   }
-});
 
+  // 9) tipFee
+  this.tipFee = round2(Number(this.tipFee || 0));
+
+  // 10) totalAmount
+  const total =
+    Number(this.subtotal || 0) +
+    Number(this.deliveryFee || 0) +
+    Number(this.salesTax || 0) +
+    Number(this.platformFee || 0) +
+    Number(this.tipFee || 0) -
+    Number(this.discount || 0);
+
+  this.totalAmount = round2(Math.max(0, total));
+
+  // 11) payment 金额快照对齐
+  if (!this.payment) this.payment = {};
+  this.payment.amountSubtotal = round2(this.subtotal);
+  this.payment.amountDeliveryFee = round2(this.deliveryFee);
+  this.payment.amountTax = round2(this.salesTax);
+  this.payment.amountPlatformFee = round2(this.platformFee);
+  this.payment.amountTip = round2(this.tipFee);
+  this.payment.amountDiscount = round2(this.discount);
+  this.payment.amountTotal = round2(this.totalAmount);
+});
 // =========================
 // 导出（防止 OverwriteModelError）
 // =========================
