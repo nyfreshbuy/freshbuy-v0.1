@@ -2,6 +2,17 @@
 import jwt from "jsonwebtoken";
 
 export function requireLogin(req, res, next) {
+   // 🔥【定位 next is not a function 的关键】
+  if (typeof next !== "function") {
+    console.error(
+      "❌ requireLogin next 不是函数",
+      "type:", typeof next,
+      "url:", req.originalUrl
+    );
+    return res
+      .status(500)
+      .json({ success: false, message: "next is not a function" });
+  }
   try {
     const auth = req.headers.authorization || "";
     const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
