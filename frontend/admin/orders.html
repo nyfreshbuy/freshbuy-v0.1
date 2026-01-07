@@ -440,35 +440,70 @@
           "";
         return String(z || "").trim();
       }
+      // ✅ zoneId → 区域名称（优先用订单里带的 zoneName）
+function getZoneNameFromOrder(o) {
+  return (
+    (o && o.address && o.address.zoneName) ||
+    (o && o.fulfillment && o.fulfillment.zoneName) ||
+    o.zoneName ||
+    o.areaGroupZoneName ||
+    ""
+  );
+}
 
+// ID 太长时缩短显示
+function shortId(id) {
+  const s = String(id || "");
+  if (s.length <= 10) return s;
+  return s.slice(0, 6) + "…" + s.slice(-4);
+}
+
+// ⚠️ 临时映射（不改后端也能显示中文）
+const ZONE_NAME_MAP = {
+  // 把你截图里的 ID 填在这里
+  // "694c97187dfd9edaedfc6ffe": "新鲜草原地区",
+};
       // ✅ 动态刷新区域下拉（基于当前页订单真实 zoneId）
       function refreshAreaGroupZoneSelect(selectEl, orders, keepSelectedValue) {
-        if (!selectEl) return;
+  if (!selectEl) return;
 
-        const prev = keepSelectedValue ? String(selectEl.value || "") : "";
-        selectEl.innerHTML = `<option value="">全部区域</option>`;
+  const prev = keepSelectedValue ? String(selectEl.value || "") : "";
+  selectEl.innerHTML = `<option value="">全部区域</option>`;
 
-        const zones = new Map(); // zoneId -> count
-        (orders || []).forEach((o) => {
-          const z = getZoneIdFromOrder(o);
-          if (!z) return;
-          zones.set(z, (zones.get(z) || 0) + 1);
-        });
+  // zoneId -> { count, name }
+  const zones = new Map();
 
-        const arr = Array.from(zones.entries()).sort((a, b) => b[1] - a[1]);
+  (orders || []).forEach((o) => {
+    const zoneId = getZoneIdFromOrder(o);
+    if (!zoneId) return;
 
-        arr.forEach(([zoneId, count]) => {
-          const opt = document.createElement("option");
-          opt.value = zoneId;
-          opt.textContent = `${区域名} (${count})`;
-          selectEl.appendChild(opt);
-        });
+    const nameFromOrder = getZoneNameFromOrder(o);
+    const displayName = nameFromOrder || ZONE_NAME_MAP[zoneId] || "";
 
-        if (prev && Array.from(selectEl.options).some((x) => x.value === prev)) {
-          selectEl.value = prev;
-        }
-      }
+    const cur = zones.get(zoneId) || { count: 0, name: "" };
+    cur.count += 1;
+    if (!cur.name && displayName) cur.name = displayName;
 
+    zones.set(zoneId, cur);
+  });
+
+  Array.from(zones.entries())
+    .sort((a, b) => b[1].count - a[1].count)
+    .forEach(([zoneId, info]) => {
+      const opt = document.createElement("option");
+      opt.value = zoneId;
+
+      const label = info.name || shortId(zoneId);
+      opt.textContent = `${label} (${info.count})`;
+      opt.title = zoneId; // 悬停可看完整 ID
+
+      selectEl.appendChild(opt);
+    });
+
+  if (prev && Array.from(selectEl.options).some((x) => x.value === prev)) {
+    selectEl.value = prev;
+  }
+}
       // 构造地址字符串（给 Google 用）
       function buildOrderAddress(o) {
         return o.fullAddress || o.address || o.shippingAddress || "";
