@@ -1733,13 +1733,3 @@ body.modal-open{ overflow:hidden; }
   border-color: rgba(34,197,94,.55);
   box-shadow: 0 0 0 4px rgba(34,197,94,.12);
 }
-/* ===============================
-   修复：购物车第一个商品被顶部挡住
-================================ */
-.cart-items,
-.cart-list,
-.cartContent,
-.drawer-body {
-  padding-top: 64px;
-  box-sizing: border-box;
-}
