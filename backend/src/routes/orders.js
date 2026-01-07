@@ -10,7 +10,14 @@ const router = express.Router();
 router.use(express.json());
 
 console.log("🚀 orders.js (MongoDB版) 已加载");
-
+router.get("/checkout/ping", (req, res) => {
+  res.json({
+    ok: true,
+    from: "orders.js",
+    hasCheckout: true,
+    time: new Date().toISOString(),
+  });
+});
 // =========================
 // ✅ NY 税率（可用环境变量覆盖）
 // 默认 8.875%（NYC 常用）
@@ -617,7 +624,6 @@ router.post("/", requireLogin, async (req, res) => {
 // - 需要 Stripe(remaining>0) => platformFee=2%*subtotal
 // =====================================================
 router.post("/checkout", requireLogin, async (req, res) => {
-  console.log("✅ HIT /api/orders/checkout FROM orders.js (MongoDB版)");
   const session = await mongoose.startSession();
   try {
     const userId = toObjectIdMaybe(req.user?.id || req.user?._id);
