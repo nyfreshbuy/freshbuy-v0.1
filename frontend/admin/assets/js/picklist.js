@@ -5,9 +5,16 @@ let currentPicklist = [];
  * 小工具
  * ========================= */
 function getAdminToken() {
-  return localStorage.getItem("adminToken") || "";
+  // ✅ 兼容你现在项目里实际存在的 token key
+  return (
+    localStorage.getItem("adminToken") ||      // 旧写法（目前没有）
+    localStorage.getItem("admin_token") ||     // ✅ 你现在有
+    localStorage.getItem("auth_token") ||      // ✅ 你现在有
+    localStorage.getItem("token") ||           // ✅ 你现在有
+    localStorage.getItem("freshbuy_token") ||  // ✅ 你现在有
+    ""
+  );
 }
-
 function authHeaders() {
   const token = getAdminToken();
   return token ? { Authorization: "Bearer " + token } : {};
