@@ -1241,7 +1241,15 @@ img, svg, video, canvas {
   background: rgba(0, 0, 0, 0.45);
   padding: 16px;
 }
-
+/* ✅ 如果页面里弹窗外层用了这些 class，加 active 时必须显示 */
+.login-modal.active,
+.auth-modal.active,
+.modal-mask.active,
+.modal-backdrop.active,
+#loginModal.active,
+#authModal.active{
+  display: flex !important;
+}
 /* 弹窗卡片本体兜底（常见命名） */
 .login-box,
 .login-card,
@@ -1278,11 +1286,29 @@ body.modal-open {
 #authBackdrop.active{
   display: flex !important;
 }
-
-/* ✅ 弹窗卡片容器（不知道你 class 名，用 authBackdrop 下第一层兜底） */
-#authBackdrop > *{
+/* ✅ 弹窗卡片：确保有白底、有圆角、有阴影，不会透明 */
+#authBackdrop .auth-card,
+#authBackdrop .modal-card,
+#authBackdrop .login-card,
+#authBackdrop .login-box{
   width: calc(100vw - 32px);
   max-width: 420px;
   max-height: 90vh;
   overflow-y: auto;
+
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.35);
+}
+
+/* ✅ 万一你里面没有这些 class，就兜底抓 authBackdrop 里的第一个“可见块” */
+#authBackdrop > div{
+  width: calc(100vw - 32px);
+  max-width: 420px;
+  max-height: 90vh;
+  overflow-y: auto;
+
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.35);
 }
