@@ -43,4 +43,4 @@ export function requireLogin(req, res, next) {
   }
 }
 
-export default requireLogin;
+export default { requireLogin };

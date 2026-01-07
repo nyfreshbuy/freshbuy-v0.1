@@ -56,7 +56,7 @@ import paymentsRouter from "./routes/payments.js";
 import zonesCheckRouter from "./routes/zones_check.js";
 import adminDispatchRouter from "./routes/admin_dispatch.js";
 import stripePayRouter from "./routes/pay_stripe.js";
-
+import adminPicklist from "./routes/admin_picklist.js";
 // =======================
 // ESM 环境下的 __dirname
 // =======================
@@ -81,7 +81,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
+app.use("/api/admin", adminPicklist);
 // =======================
 // API 路由挂载（先挂具体的，再挂“/api”大网兜）
 // =======================

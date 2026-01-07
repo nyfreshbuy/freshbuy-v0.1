@@ -39,19 +39,53 @@
         color: #9ca3af;
         margin-top: 8px;
       }
+
+      /* ✅ 小补充：多选 checkbox 统一样式（不影响 admin.css） */
+      .pick-chk {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 10px;
+        border: 1px solid rgba(148, 163, 184, 0.35);
+        border-radius: 999px;
+        background: rgba(15, 23, 42, 0.35);
+        color: #e5e7eb;
+        font-size: 12px;
+        user-select: none;
+      }
+      .pick-chk input {
+        transform: translateY(1px);
+      }
+      .pick-sep {
+        width: 1px;
+        height: 26px;
+        background: rgba(148, 163, 184, 0.25);
+        margin: 0 4px;
+      }
+      .pick-label {
+        font-size: 13px;
+        color: #9ca3af;
+      }
+      .pick-time {
+        min-width: 210px;
+      }
+      @media (max-width: 980px) {
+        .pick-time {
+          min-width: 0;
+          width: 100%;
+        }
+      }
     </style>
   </head>
 
   <body data-page="picklist">
     <div class="admin-layout">
-      <!-- 左侧侧边栏，和 orders.html 基本一致，多一个“配货管理” -->
       <aside class="admin-sidebar">
-      <!-- ✅ 统一 sidebar：由 /admin/assets/js/admin_sidebar.js 注入 -->
-      <div id="adminSidebar"></div>
-    </aside>
-      <!-- 右侧主区域 -->
+        <!-- ✅ 统一 sidebar：由 /admin/assets/js/admin_sidebar.js 注入 -->
+        <div id="adminSidebar"></div>
+      </aside>
+
       <div class="admin-main">
-        <!-- 顶部栏 -->
         <header class="admin-topbar">
           <button
             class="admin-btn admin-btn-ghost admin-topbar-toggle"
@@ -71,7 +105,6 @@
           </div>
         </header>
 
-        <!-- 内容 -->
         <main class="admin-content">
           <div class="admin-page-header">
             <div>
@@ -91,23 +124,53 @@
           <section class="admin-card admin-card-ghost">
             <div class="picklist-header">
               <div class="picklist-filters">
-                <span style="font-size: 13px; color: #9ca3af">仅统计：区域团拼单订单</span>
+                <!-- ✅ 统计范围：区域团 / 全部订单 -->
+                <span class="pick-label">仅统计：</span>
+                <select id="picklistScope" class="admin-input">
+                  <option value="zone_group_only" selected>区域团拼单订单</option>
+                  <option value="all_orders">全部订单</option>
+                </select>
 
-                <!-- 区域选择 -->
+                <div class="pick-sep"></div>
+
+                <!-- ✅ 区域选择：zone（后端用 zone.zips 做区域团筛选） -->
+                <span class="pick-label">区域：</span>
                 <select id="picklistZone" class="admin-input">
                   <!-- JS 填充：全部区域 / Fresh Meadows / Flushing / ... -->
                 </select>
 
-                <!-- 周次选择：本周截单 / 上周截单 -->
-                <select id="picklistWeek" class="admin-input">
-                  <!-- JS 填充 -->
-                </select>
+                <div class="pick-sep"></div>
+
+                <!-- ✅ 配送方式：多选（可同时选次日 + 区域团） -->
+                <span class="pick-label">配送方式：</span>
+                <label class="pick-chk">
+                  <input type="checkbox" name="deliverTypes" value="zone_group" checked />
+                  区域团配送
+                </label>
+                <label class="pick-chk">
+                  <input type="checkbox" name="deliverTypes" value="next_day" />
+                  次日配送
+                </label>
+                <label class="pick-chk">
+                  <input type="checkbox" name="deliverTypes" value="friend_group" />
+                  好友拼单
+                </label>
+
+                <div class="pick-sep"></div>
+
+                <!-- ✅ 时间范围：替代“本周截单” -->
+                <span class="pick-label">时间：</span>
+                <input id="picklistFrom" type="datetime-local" class="admin-input pick-time" />
+                <span class="pick-label">到</span>
+                <input id="picklistTo" type="datetime-local" class="admin-input pick-time" />
+
+                <button class="admin-btn admin-btn-ghost" id="btnApplyPicklist">
+                  应用筛选
+                </button>
               </div>
 
               <div class="picklist-filters">
-                <span id="picklistInfo" class="picklist-summary">
-                  加载中...
-                </span>
+                <span id="picklistInfo" class="picklist-summary">加载中...</span>
               </div>
             </div>
 
@@ -115,7 +178,8 @@
               <table class="picklist-table" id="picklistTable">
                 <thead>
                   <tr>
-                    <th style="width: 120px">商品ID</th>
+                    <!-- ✅ 商品ID -> SKU -->
+                    <th style="width: 140px">SKU</th>
                     <th>商品名称</th>
                     <th style="width: 120px">规格</th>
                     <th style="width: 80px">单位</th>
@@ -125,7 +189,7 @@
                 </thead>
                 <tbody id="picklistTbody">
                   <tr>
-                    <td colspan="6" style="text-align:center;">正在加载...</td>
+                    <td colspan="6" style="text-align: center">正在加载...</td>
                   </tr>
                 </tbody>
               </table>
@@ -134,9 +198,9 @@
         </main>
       </div>
     </div>
+
     <script src="/admin/assets/js/admin_guard.js"></script>
     <script src="./assets/js/admin_auth_ui.js"></script>
-    <!-- ✅ 统一 sidebar 注入脚本（必须加） -->
     <script src="/admin/assets/js/admin_sidebar.js"></script>
     <script src="assets/js/admin.js"></script>
     <script src="assets/js/picklist.js"></script>
