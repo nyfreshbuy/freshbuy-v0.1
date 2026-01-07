@@ -1312,3 +1312,185 @@ body.modal-open {
   background: #fff;
   box-shadow: 0 12px 40px rgba(15, 23, 42, 0.35);
 }
+#authBackdrop .auth-card{
+  width: calc(100vw - 32px);
+  max-width: 420px;
+  max-height: 90vh;
+  overflow-y: auto;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 24px 60px rgba(15,23,42,.35);
+}
+/* =========================================
+   Freshbuy 登录/注册弹窗（精准美化）
+   目标结构：#authBackdrop(.auth-backdrop) > .auth-card
+   ========================================= */
+
+/* 遮罩 */
+#authBackdrop.auth-backdrop{
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 10000 !important;
+  display: none !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 16px !important;
+  background: rgba(2, 6, 23, .45) !important; /* 更干净的黑 */
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+#authBackdrop.auth-backdrop.active{
+  display: flex !important;
+}
+
+/* 卡片 */
+#authBackdrop .auth-card{
+  width: min(92vw, 460px) !important;
+  border-radius: 20px !important;
+  background: #fff !important;
+  border: 1px solid rgba(226,232,240,.9) !important;
+  box-shadow: 0 18px 60px rgba(15,23,42,.35) !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+
+/* 顶部头部（你第一行 flex 那块） */
+#authBackdrop .auth-card > div:first-child{
+  margin: 0 !important;
+  padding: 14px 16px 12px !important;
+  background: linear-gradient(135deg, rgba(34,197,94,.18), rgba(34,197,94,.06)) !important;
+  border-bottom: 1px solid rgba(226,232,240,.9) !important;
+}
+
+/* 标题 */
+#authBackdrop #authTitle{
+  font-size: 18px !important;
+  font-weight: 900 !important;
+  color: #0f172a !important;
+  letter-spacing: .2px;
+}
+
+/* 副标题（欢迎回来...） */
+#authBackdrop #authTitle + div{
+  font-size: 12px !important;
+  color: #64748b !important;
+  margin-top: 2px;
+}
+
+/* 关闭按钮：更像 iOS 圆形 */
+#authBackdrop #authCloseBtn{
+  width: 34px !important;
+  height: 34px !important;
+  border-radius: 999px !important;
+  border: 1px solid rgba(226,232,240,.95) !important;
+  background: rgba(255,255,255,.88) !important;
+  color: #64748b !important;
+  font-size: 18px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+#authBackdrop #authCloseBtn:active{
+  transform: translateY(1px);
+}
+
+/* 第二行：tab 容器（你写了 background #f3f4f6 那块） */
+#authBackdrop .auth-card > div:nth-child(2){
+  margin: 12px 16px 10px !important;
+  padding: 4px !important;
+  background: #f1f5f9 !important;
+  border: 1px solid rgba(226,232,240,.9) !important;
+}
+
+/* Tab 按钮统一 */
+#authBackdrop .auth-tab{
+  height: 36px !important;
+  border-radius: 999px !important;
+  font-weight: 800 !important;
+  font-size: 13px !important;
+  color: #64748b !important;
+  background: transparent !important;
+  border: none !important;
+}
+#authBackdrop .auth-tab.active{
+  background: #ffffff !important;
+  color: #16a34a !important;
+  box-shadow: 0 10px 24px rgba(15,23,42,.08) !important;
+  border: 1px solid rgba(226,232,240,.9) !important;
+}
+
+/* 内容区统一左右内边距 */
+#authBackdrop #loginPanel,
+#authBackdrop #registerPanel{
+  padding: 0 16px 16px !important;
+}
+
+/* 表单 label */
+#authBackdrop #loginPanel > div > div,
+#authBackdrop #registerPanel > div > div{
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  color: #0f172a !important;
+  margin-bottom: 6px !important;
+}
+
+/* 输入框：更高级的质感 */
+#authBackdrop input[type="tel"],
+#authBackdrop input[type="password"],
+#authBackdrop input[type="text"]{
+  width: 100% !important;
+  padding: 12px 12px !important;
+  border-radius: 14px !important;
+  border: 1px solid rgba(226,232,240,.95) !important;
+  background: #f8fafc !important;
+  font-size: 14px !important;
+  outline: none !important;
+}
+#authBackdrop input:focus{
+  background: #fff !important;
+  border-color: rgba(34,197,94,.75) !important;
+  box-shadow: 0 0 0 4px rgba(34,197,94,.14) !important;
+}
+
+/* “记住我/忘记密码”行 */
+#authBackdrop #loginPanel > div:nth-child(3){
+  margin-top: 8px !important;
+}
+#authBackdrop #loginPanel label{
+  font-size: 12px !important;
+  color: #64748b !important;
+}
+#authBackdrop #loginPanel span{
+  font-size: 12px !important;
+  color: #16a34a !important;
+  font-weight: 700 !important;
+}
+
+/* 主按钮 */
+#authBackdrop #loginSubmitBtn,
+#authBackdrop #registerSubmitBtn{
+  margin-top: 12px !important;
+  height: 46px !important;
+  padding: 0 14px !important;
+  border-radius: 999px !important;
+  border: none !important;
+  background: linear-gradient(135deg,#22c55e,#16a34a) !important;
+  color: #fff !important;
+  font-weight: 900 !important;
+  letter-spacing: .2px;
+  box-shadow: 0 14px 30px rgba(34,197,94,.24) !important;
+}
+#authBackdrop #loginSubmitBtn:active,
+#authBackdrop #registerSubmitBtn:active{
+  transform: translateY(1px);
+  box-shadow: 0 10px 24px rgba(34,197,94,.2) !important;
+}
+
+/* 小屏适配：更贴合手机 */
+@media (max-width: 420px){
+  #authBackdrop .auth-card{ width: 94vw !important; }
+  #authBackdrop .auth-card > div:first-child{ padding: 12px 14px 10px !important; }
+  #authBackdrop .auth-card > div:nth-child(2){ margin: 10px 14px 8px !important; }
+  #authBackdrop #loginPanel,
+  #authBackdrop #registerPanel{ padding: 0 14px 14px !important; }
+}

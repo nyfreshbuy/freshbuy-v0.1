@@ -1473,3 +1473,21 @@ function bindGlobalSearch() {
     }
   });
 }
+// ===== 密码显示/隐藏（登录 & 注册）=====
+(function bindPasswordEyeToggle() {
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest(".auth-eye[data-eye-for]");
+    if (!btn) return;
+
+    const inputId = btn.getAttribute("data-eye-for");
+    const input = document.getElementById(inputId);
+    if (!input) return;
+
+    const isPwd = input.getAttribute("type") === "password";
+    input.setAttribute("type", isPwd ? "text" : "password");
+
+    btn.classList.toggle("is-on", isPwd);
+    btn.setAttribute("aria-label", isPwd ? "隐藏密码" : "显示密码");
+    btn.textContent = isPwd ? "🙈" : "👁";
+  });
+})();
