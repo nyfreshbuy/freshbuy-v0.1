@@ -617,6 +617,7 @@ router.post("/", requireLogin, async (req, res) => {
 // - 需要 Stripe(remaining>0) => platformFee=2%*subtotal
 // =====================================================
 router.post("/checkout", requireLogin, async (req, res) => {
+  console.log("✅ HIT /api/orders/checkout FROM orders.js (MongoDB版)");
   const session = await mongoose.startSession();
   try {
     const userId = toObjectIdMaybe(req.user?.id || req.user?._id);
