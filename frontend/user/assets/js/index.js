@@ -898,6 +898,7 @@ async function initAuthUIFromStorage() {
 function openAuthModal(mode = "login") {
   if (!authBackdrop) return;
   authBackdrop.classList.add("active");
+  document.body.classList.add("modal-open");
   switchAuthMode(mode);
 
   const savedPhone = localStorage.getItem("freshbuy_login_phone") || "";
@@ -910,6 +911,7 @@ function openAuthModal(mode = "login") {
 function closeAuthModal() {
   if (!authBackdrop) return;
   authBackdrop.classList.remove("active");
+  document.body.classList.remove("modal-open");
 }
 
 function switchAuthMode(mode) {

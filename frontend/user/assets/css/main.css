@@ -1218,3 +1218,71 @@ img, svg, video, canvas {
     box-sizing: border-box;
   }
 }
+/* =========================================
+   FIX: 登录/注册弹窗在手机端变形、跟页面一起滚
+   关键：遮罩 fixed + z-index > 顶部导航(999)
+   ========================================= */
+
+/* 你项目里常见的弹窗外层命名：都一起兜底 */
+.login-modal,
+.auth-modal,
+.modal-mask,
+.modal-backdrop,
+#loginModal,
+#authModal {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 10000 !important;
+
+  display: none;                 /* 默认隐藏，JS 打开时改成 flex */
+  align-items: center;
+  justify-content: center;
+
+  background: rgba(0, 0, 0, 0.45);
+  padding: 16px;
+}
+
+/* 弹窗卡片本体兜底（常见命名） */
+.login-box,
+.login-card,
+.auth-card,
+.modal-card,
+#loginModal .card,
+#authModal .card {
+  width: calc(100vw - 32px);
+  max-width: 420px;
+
+  max-height: 90vh;
+  overflow-y: auto;
+
+  border-radius: 16px;
+  background: #fff;
+}
+
+/* 兼容 iOS：打开弹窗时给 body 加 modal-open 类，锁滚动 */
+body.modal-open {
+  overflow: hidden !important;
+}
+/* ✅ 真正的登录/注册遮罩：index.js 用的是 #authBackdrop */
+#authBackdrop{
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 10000 !important;      /* 必须 > .top-nav 的 999 */
+  display: none;                  /* 默认隐藏 */
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,.45);
+  padding: 16px;
+}
+
+#authBackdrop.active{
+  display: flex !important;
+}
+
+/* ✅ 弹窗卡片容器（不知道你 class 名，用 authBackdrop 下第一层兜底） */
+#authBackdrop > *{
+  width: calc(100vw - 32px);
+  max-width: 420px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
