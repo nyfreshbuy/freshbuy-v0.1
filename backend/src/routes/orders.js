@@ -340,11 +340,12 @@ async function buildOrderPayload(req) {
     e.status = 400;
     throw e;
   }
-  if (mode === "groupDay" && !(hasSpecial && hasNonSpecial)) {
-    const e = new Error("groupDay 需包含爆品+普通商品");
-    e.status = 400;
-    throw e;
-  }
+  // ✅ groupDay：允许 “全普通” 或 “混合”；但不允许 “纯爆品”（纯爆品请用 dealsDay）
+if (mode === "groupDay" && hasSpecial && !hasNonSpecial) {
+  const e = new Error("groupDay 不允许纯爆品订单（纯爆品请用 dealsDay）");
+  e.status = 400;
+  throw e;
+}
   if ((mode === "normal" || mode === "friendGroup") && hasSpecial) {
     const e = new Error(`${mode} 不应包含爆品`);
     e.status = 400;
