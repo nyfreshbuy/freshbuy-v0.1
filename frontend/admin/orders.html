@@ -286,6 +286,7 @@
         </main>
       </div>
     </div>
+     <script src="/admin/assets/js/admin_fetch.js"></script>
     <script src="/admin/assets/js/admin_guard.js"></script>
     <script src="./assets/js/admin_auth_ui.js"></script>
     <!-- 先加载 Google Maps JS -->
@@ -691,13 +692,11 @@ const ZONE_NAME_MAP = {
   if (!confirm(`确认打包 ${ids.length} 个订单？打包后状态会变成【配货中】`)) return;
 
   try {
-    const res = await fetch("/api/admin/orders/batch-pack", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ orderIds: ids }),
-    });
-
+    const res = await adminFetch("/api/admin/orders/batch-pack", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ orderIds: ids }),
+});
     const data = await res.json();
     if (!data.success) {
       alert("打包失败：" + (data.message || "未知错误"));
@@ -818,7 +817,7 @@ const ZONE_NAME_MAP = {
         if (to) params.append("dateTo", to);
 
         try {
-          const res = await fetch("/api/admin/orders?" + params.toString());
+         const res = await adminFetch("/api/admin/orders?" + params.toString());
           const data = await res.json();
 
           if (!data.success) {
@@ -1133,7 +1132,7 @@ const ZONE_NAME_MAP = {
         if (!confirm("确定将该订单标记为已完成？")) return;
 
         try {
-          const res = await fetch("/api/admin/orders/" + orderId + "/status", {
+          const res = await adminFetch("/api/admin/orders/" + orderId + "/status", {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ status: "done" }),
