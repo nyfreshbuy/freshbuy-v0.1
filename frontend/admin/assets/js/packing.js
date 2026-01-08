@@ -127,26 +127,43 @@ console.log("✅ /admin/assets/js/packing.js loaded");
     if (ss.has("paid")) return "已支付";
     return "待处理";
   }
+  function getAdminToken() {
+  return (
+    localStorage.getItem("admin_token") ||
+    localStorage.getItem("token") ||
+    ""
+  );
+}
+ async function apiGet(url) {
+  const token = getAdminToken();
 
-  async function apiGet(url) {
-    const res = await fetch(url, { credentials: "include" });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || data.success === false) throw new Error(data.message || `HTTP ${res.status}`);
-    return data;
-  }
+  const res = await fetch(url, {
+    method: "GET",
+    headers: token ? { Authorization: "Bearer " + token } : {},
+    credentials: "include",
+  });
 
-  async function apiSend(url, method, body) {
-    const res = await fetch(url, {
-      method,
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify(body || {}),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || data.success === false) throw new Error(data.message || `HTTP ${res.status}`);
-    return data;
-  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
+  return data;
+}
+ async function apiSend(url, method, body) {
+  const token = getAdminToken();
 
+  const res = await fetch(url, {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: "Bearer " + token } : {}),
+    },
+    credentials: "include",
+    body: JSON.stringify(body || {}),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
+  return data;
+}
   // ---------- Render ----------
   function bindCheckAll() {
     if (!checkAll) return;
