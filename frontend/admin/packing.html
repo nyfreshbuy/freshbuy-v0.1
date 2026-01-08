@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>配货批次 - 在鲜购拼好货后台</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <!-- ✅ 统一后台样式 -->
+    <link rel="stylesheet" href="assets/css/admin.css" />
+
+    <style>
+      .muted { color:#94a3b8; font-size:12px; }
+      .row { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+      .badge {
+        display:inline-flex; align-items:center; gap:6px;
+        padding:4px 10px; border-radius:999px;
+        border:1px solid rgba(148,163,184,.35);
+        background: rgba(15,23,42,.35);
+        color:#e5e7eb; font-size:12px;
+      }
+      .grid-2 { display:grid; grid-template-columns: 2fr 1fr; gap:12px; }
+      @media (max-width: 1100px){ .grid-2 { grid-template-columns:1fr; } }
+
+      .picklist-table td, .picklist-table th { font-size: 12px; }
+      .pill {
+        display:inline-flex; padding:2px 8px; border-radius:999px; font-size:11px;
+        background: rgba(56,189,248,.12); color:#38bdf8;
+      }
+      .pill.success { background: rgba(16,185,129,.12); color:#34d399; }
+      .pill.warn { background: rgba(245,158,11,.12); color:#fbbf24; }
+
+      .addr { max-width: 520px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .kpi { font-weight: 700; color:#a5b4fc; }
+    </style>
+  </head>
+
+  <body data-page="packing">
+    <div class="admin-layout">
+      <!-- 左侧侧边栏 -->
+      <aside class="admin-sidebar">
+        <div id="adminSidebar"></div>
+      </aside>
+
+      <!-- 右侧主区域 -->
+      <div class="admin-main">
+        <header class="admin-topbar">
+          <button class="admin-btn admin-btn-ghost admin-topbar-toggle" data-toggle-sidebar>
+            ☰
+          </button>
+          <div class="admin-topbar-title">配货批次</div>
+          <div class="admin-topbar-spacer"></div>
+
+          <div class="admin-user">
+            <div class="admin-user-avatar">A</div>
+            <div class="admin-user-info">
+              <span class="admin-user-name">Admin</span>
+              <span class="admin-user-role">超级管理员</span>
+            </div>
+          </div>
+        </header>
+
+        <main class="admin-content">
+          <div class="admin-page-header">
+            <div>
+              <div class="admin-page-title">
+                配货单 / 批次：<span id="batchIdText">-</span>
+              </div>
+              <div class="admin-breadcrumb">后台 &gt; 订单管理 &gt; 配货批次</div>
+              <div class="muted" id="batchHint">从 /api/admin/orders/by-batch 拉取订单</div>
+            </div>
+
+            <div class="admin-page-actions">
+              <button class="admin-btn admin-btn-ghost" id="btnBack">← 返回订单页</button>
+              <button class="admin-btn admin-btn-ghost" id="btnRefresh">⟳ 刷新</button>
+              <button class="admin-btn admin-btn-secondary" id="btnPrintPicklist">🧾 打印配货汇总</button>
+              <button class="admin-btn admin-btn-secondary" id="btnPrintLabelsAll">🏷️ 打印全部贴纸</button>
+              <button class="admin-btn admin-btn-primary" id="btnPrintLabelsSelected">✅ 打印勾选贴纸</button>
+            </div>
+          </div>
+
+          <section class="admin-card admin-card-ghost">
+            <div class="row">
+              <span class="badge">订单数：<span class="kpi" id="kpiOrders">0</span></span>
+              <span class="badge">GMV：<span class="kpi" id="kpiGMV">$0.00</span></span>
+              <span class="badge">批次状态：<span class="kpi" id="kpiStatus">-</span></span>
+
+              <div style="flex:1"></div>
+
+              <select id="driverSelect" class="admin-input" style="min-width:220px">
+                <option value="">选择司机（批量派单）</option>
+              </select>
+
+              <input id="deliveryDate" type="date" class="admin-input" style="width: 160px" />
+
+              <button class="admin-btn admin-btn-primary" id="btnAssignDriver">
+                🚚 批量派单（勾选）
+              </button>
+            </div>
+            <div class="muted" style="margin-top:6px">
+              说明：批量派单会调用 <code>PATCH /api/admin/orders/assign-driver</code>，并把订单状态改为配送中。
+            </div>
+          </section>
+
+          <div class="grid-2" style="margin-top:12px">
+            <!-- 左：订单列表 -->
+            <section class="admin-table-card">
+              <div class="admin-card-header">
+                <div>
+                  <div class="admin-card-header-title">批次订单</div>
+                  <div class="admin-card-header-sub muted">
+                    可勾选订单批量打印贴纸/派单
+                  </div>
+                </div>
+
+                <div class="muted" id="ordersMeta">-</div>
+              </div>
+
+              <div class="admin-table-wrapper">
+                <table class="admin-table" id="ordersTable">
+                  <thead>
+                    <tr>
+                      <th style="width:46px">
+                        <input type="checkbox" id="checkAll" />
+                      </th>
+                      <th style="width:90px">状态</th>
+                      <th style="width:170px">订单号</th>
+                      <th>客户</th>
+                      <th>地址/自提点</th>
+                      <th style="width:90px">金额</th>
+                      <th style="width:120px">配送方式</th>
+                    </tr>
+                  </thead>
+                  <tbody id="ordersTbody">
+                    <tr><td colspan="7">正在加载...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <!-- 右：配货汇总 -->
+            <section class="admin-table-card">
+              <div class="admin-card-header">
+                <div>
+                  <div class="admin-card-header-title">配货汇总（Picklist）</div>
+                  <div class="admin-card-header-sub muted">
+                    自动按商品汇总数量（仅用于配货参考）
+                  </div>
+                </div>
+              </div>
+
+              <div class="admin-table-wrapper">
+                <table class="admin-table picklist-table">
+                  <thead>
+                    <tr>
+                      <th>商品</th>
+                      <th style="width:70px">数量</th>
+                      <th style="width:120px">SKU</th>
+                    </tr>
+                  </thead>
+                  <tbody id="picklistTbody">
+                    <tr><td colspan="3">等待加载订单后生成...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+        </main>
+      </div>
+    </div>
+
+    <!-- ✅ 守卫 + sidebar -->
+    <script src="/admin/assets/js/admin_guard.js"></script>
+    <script src="/admin/assets/js/admin_sidebar.js"></script>
+
+    <!-- ✅ 本页逻辑 -->
+    <script src="/admin/assets/js/packing.js"></script>
+  </body>
+</html>

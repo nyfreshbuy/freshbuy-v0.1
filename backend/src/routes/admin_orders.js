@@ -2,10 +2,15 @@
 import express from "express";
 import mongoose from "mongoose";
 import Order from "../models/order.js";
-
+import { requireLogin } from "../middlewares/auth.js";
 const router = express.Router();
 router.use(express.json());
-
+router.use(requireLogin); // ✅ 让后面所有路由都有 req.user
+function requireAdmin(req, res, next) {
+  if (!req.user) return res.status(401).json({ success: false, message: "未登录" });
+  if (req.user.role !== "admin") return res.status(403).json({ success: false, message: "需要管理员权限" });
+  next();
+}
 // ===== 工具函数 =====
 function escapeRegex(s) {
   return String(s || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -113,7 +118,75 @@ router.get("/test-ping", async (req, res) => {
     sample: sample ? normalizeOrder(sample) : null,
   });
 });
+// =============================
+// ✅ A) 批量打包（生成批次 packBatchId，并把订单状态改为 packing）
+// POST /api/admin/orders/batch-pack
+// body: { orderIds: [] }
+// =============================
+router.post("/batch-pack", requireLogin, requireAdmin, async (req, res) => {
+  try {
+    const { orderIds } = req.body || {};
+    if (!Array.isArray(orderIds) || orderIds.length === 0) {
+      return res.status(400).json({ success: false, message: "orderIds 不能为空" });
+    }
 
+    const validIds = orderIds.map(String).filter(isValidObjectId);
+    if (!validIds.length) {
+      return res.status(400).json({ success: false, message: "orderIds 都不合法" });
+    }
+
+    const batchId =
+      "PK" +
+      new Date().toISOString().slice(0, 10).replace(/-/g, "") +
+      "-" +
+      Math.random().toString(36).slice(2, 6).toUpperCase();
+
+    const r = await Order.updateMany(
+      {
+        _id: { $in: validIds.map((x) => new mongoose.Types.ObjectId(x)) },
+        status: { $in: ["paid", "packing"] }, // 只允许已支付/已在配货中的订单进入批次
+      },
+      {
+        $set: {
+          status: "packing",
+          packBatchId: batchId,
+          packedAt: new Date(),
+        },
+      }
+    );
+
+    return res.json({
+      success: true,
+      batchId,
+      matched: r.matchedCount ?? r.n ?? 0,
+      modified: r.modifiedCount ?? r.nModified ?? 0,
+    });
+  } catch (err) {
+    console.error("POST /api/admin/orders/batch-pack 出错:", err);
+    return res.status(500).json({ success: false, message: err.message || "服务器错误" });
+  }
+});
+// =============================
+// ✅ B) 按批次读取订单（配货页）
+// GET /api/admin/orders/by-batch?batchId=PKxxxx
+// =============================
+router.get("/by-batch", requireLogin, requireAdmin, async (req, res) => {
+  try {
+    const batchId = String(req.query.batchId || "").trim();
+    if (!batchId) return res.status(400).json({ success: false, message: "batchId 不能为空" });
+
+    const listRaw = await Order.find({ packBatchId: batchId })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const list = listRaw.map(normalizeOrder);
+
+    return res.json({ success: true, orders: list, list, total: list.length });
+  } catch (err) {
+    console.error("GET /api/admin/orders/by-batch 出错:", err);
+    return res.status(500).json({ success: false, message: err.message || "服务器错误" });
+  }
+});
 // =============================
 // 1) 订单列表（DB版）
 // GET /api/admin/orders
@@ -209,42 +282,28 @@ if (status) {
 
     // 3) serviceMode 兼容（也按老订单口径处理）
     // ✅ 安全合并：把 or 条件塞进 $and，避免覆盖已有 $or（比如 zone 筛选）
-function addAndOr(orArr) {
-  if (!orArr || !orArr.length) return;
-
-  if (filter.$or) {
-    const oldOr = filter.$or;
-    delete filter.$or;
-    filter.$and = [...(filter.$and || []), { $or: oldOr }];
-  }
-  filter.$and = [...(filter.$and || []), { $or: orArr }];
-}
 
 if (serviceMode) {
   const sm = String(serviceMode).trim();
 
   if (sm === "areaGroup") {
-    // 区域团：新单 deliveryMode=groupDay/dealsDay；老单 orderType=area_group
-    addAndOr([
+    addAndOr(filter, [
       { deliveryMode: { $in: ["groupDay", "dealsDay"] } },
       { orderType: "area_group" },
     ]);
   } else if (sm === "friend") {
-    // 好友拼单：新单 friendGroup；老单 friend_group
-    addAndOr([
+    addAndOr(filter, [
       { deliveryMode: "friendGroup" },
       { orderType: "friend_group" },
     ]);
   } else if (sm === "normal") {
-    // 次日配送：新单 normal；老单可能没 deliveryMode / 没 orderType
-    addAndOr([
+    addAndOr(filter, [
       { deliveryMode: "normal" },
       { deliveryMode: { $exists: false } },
       { deliveryMode: "" },
       { deliveryMode: null },
     ]);
   } else {
-    // 兜底：尽量当 deliveryMode 查
     filter.deliveryMode = sm;
   }
 }
@@ -401,7 +460,7 @@ router.get("/picklist", async (req, res) => {
   }
 });
 
-router.patch("/assign-driver", async (req, res) => {
+router.patch("/assign-driver", requireAdmin, async (req, res) => {
   try {
     const { orderIds, driverId, deliveryDate } = req.body || {};
 
@@ -418,16 +477,25 @@ router.patch("/assign-driver", async (req, res) => {
     }
 
     const validIds = orderIds.map(String).filter(isValidObjectId);
+const objIds = validIds.map((x) => new mongoose.Types.ObjectId(x));
 
-    const result = await Order.updateMany(
-      {
-        _id: { $in: validIds },
-        status: { $nin: ["done", "cancel"] },
-        settlementGenerated: { $ne: true },
-      },
-      { $set: { driverId, deliveryDate: date } }
-    );
-
+const result = await Order.updateMany(
+  {
+    _id: { $in: objIds }, // ✅ 改这里
+    status: { $nin: ["done", "cancel"] },
+    settlementGenerated: { $ne: true },
+  },
+  {
+    $set: {
+      driverId,
+      deliveryDate: date,
+      status: "shipping",
+      deliveryStatus: "delivering",
+      assignedAt: new Date(),
+      startedAt: new Date(),
+    },
+  }
+);
     return res.json({
       success: true,
       message: "派单成功",
@@ -442,7 +510,7 @@ router.patch("/assign-driver", async (req, res) => {
   }
 });
 
-router.patch("/:id/assign-driver", async (req, res) => {
+router.patch("/:id/assign-driver", requireAdmin, async (req, res) => {
   try {
     const orderId = String(req.params.id);
     const { driverId, deliveryDate } = req.body || {};
@@ -461,11 +529,22 @@ router.patch("/:id/assign-driver", async (req, res) => {
 
     const updated = await Order.findOneAndUpdate(
       {
-        _id: orderId,
+        _id: new mongoose.Types.ObjectId(orderId),
         status: { $nin: ["done", "cancel"] },
         settlementGenerated: { $ne: true },
       },
-      { $set: { driverId, deliveryDate: date } },
+      {
+        $set: {
+          driverId: new mongoose.Types.ObjectId(driverId),
+          deliveryDate: date,
+
+          // ✅ 分配司机后：自动进入配送中
+          status: "shipping",
+          deliveryStatus: "delivering",
+          assignedAt: new Date(),
+          startedAt: new Date(),
+        },
+      },
       { new: true }
     ).lean();
 
@@ -479,7 +558,6 @@ router.patch("/:id/assign-driver", async (req, res) => {
     return res.status(500).json({ success: false, message: err.message || "服务器错误" });
   }
 });
-
 router.patch("/:id/status", async (req, res) => {
   try {
     const orderId = String(req.params.id);

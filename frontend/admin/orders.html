@@ -145,6 +145,7 @@
             <div class="admin-page-actions">
               <button class="admin-btn admin-btn-ghost" id="btnRefresh">⟳ 刷新</button>
               <button class="admin-btn admin-btn-secondary" id="btnGoPicklist">📦 本周配货单</button>
+              <button class="btn primary" id="btnPackBatch">打包成配货单</button>
               <button class="admin-btn admin-btn-secondary" id="btnOptimizeRoute">📍 路线智能排序</button>
               <button class="admin-btn admin-btn-primary">⬇ 导出订单（占位）</button>
             </div>
@@ -227,9 +228,12 @@
             <div class="admin-table-wrapper">
               <table class="admin-table" id="ordersTable">
                 <thead>
-                  <tr>
-                    <th style="width: 70px">序号</th>
-                    <th>订单号</th>
+  <tr>
+    <th style="width: 46px">
+      <input type="checkbox" id="checkAllOrders" />
+    </th>
+    <th style="width: 70px">序号</th>
+    <th>订单号</th>
                     <th>用户</th>
                     <th>金额</th>
                     <th>配送方式</th>
@@ -242,7 +246,7 @@
                 </thead>
                 <tbody id="ordersTableBody">
                   <tr>
-                    <td colspan="10">正在加载订单...</td>
+                    <td colspan="11">正在加载订单...</td>
                   </tr>
                 </tbody>
               </table>
@@ -429,7 +433,17 @@
           return sum + Number(amount || 0);
         }, 0);
       }
+      function bindCheckAll() {
+  const all = document.getElementById("checkAllOrders");
+  if (!all) return;
 
+  all.addEventListener("change", () => {
+    const checked = all.checked;
+    document.querySelectorAll(".order-check").forEach((c) => {
+      c.checked = checked;
+    });
+  });
+}
       // ✅ 从订单里提取 zoneId（兼容多种结构）
       function getZoneIdFromOrder(o) {
         const z =
@@ -663,14 +677,47 @@ const ZONE_NAME_MAP = {
         win.print();
         win.close();
       }
+      async function packSelectedOrders() {
+  // 只打包当前页勾选的
+  const ids = Array.from(document.querySelectorAll(".order-check:checked"))
+    .map((el) => el.getAttribute("data-id"))
+    .filter(Boolean);
 
+  if (!ids.length) {
+    alert("请先勾选要打包的订单（当前页）");
+    return;
+  }
+
+  if (!confirm(`确认打包 ${ids.length} 个订单？打包后状态会变成【配货中】`)) return;
+
+  try {
+    const res = await fetch("/api/admin/orders/batch-pack", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ orderIds: ids }),
+    });
+
+    const data = await res.json();
+    if (!data.success) {
+      alert("打包失败：" + (data.message || "未知错误"));
+      return;
+    }
+
+    // ✅ 跳转到配货页（你之后在这个页面打印20贴、分配司机）
+    window.location.href = `/admin/packing.html?batch=${encodeURIComponent(data.batchId)}`;
+  } catch (e) {
+    console.error(e);
+    alert("请求失败，请检查 /api/admin/orders/batch-pack 是否可用");
+  }
+}
       // ✅ 渲染当前页缓存到表格（含配送序号）
       function renderTableFromCache(total, totalPagesValue) {
         const tbody = document.getElementById("ordersTableBody");
         if (!tbody) return;
 
         if (!currentOrdersCache.length) {
-          tbody.innerHTML = '<tr><td colspan="10">暂无符合条件的订单</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="11">暂无符合条件的订单</td></tr>';
         } else {
           tbody.innerHTML = "";
           currentOrdersCache.forEach((o) => {
@@ -690,12 +737,15 @@ const ZONE_NAME_MAP = {
             const receiveText = renderDeliveryLabel(getDeliveryType(o));
 
             tr.innerHTML = `
-              <td>${
-                seq != null
-                  ? `<span class="order-seq-badge">${seq}</span>`
-                  : '<span class="order-seq-badge order-seq-empty">-</span>'
-              }</td>
-              <td>${oid}</td>
+  <td>
+    <input type="checkbox" class="order-check" data-id="${o._id || o.id || oid}" />
+  </td>
+  <td>${
+    seq != null
+      ? `<span class="order-seq-badge">${seq}</span>`
+      : '<span class="order-seq-badge order-seq-empty">-</span>'
+  }</td>
+  <td>${oid}</td>
               <td>${userName}${
                 userPhone
                   ? "<br><span style='font-size:11px;color:#9ca3af'>" +
@@ -731,7 +781,7 @@ const ZONE_NAME_MAP = {
         document.getElementById("gmvSummary").innerHTML =
           `当前筛选 GMV：<span class="stat-highlight">$${gmv.toFixed(2)}</span>`;
       }
-
+      
       // ✅ 拉取订单列表
       async function loadOrders(page = 1) {
         currentPage = page;
@@ -831,8 +881,9 @@ const ZONE_NAME_MAP = {
           tbody.innerHTML =
             '<tr><td colspan="10">请求出错，请检查 /api/admin/orders 是否可用</td></tr>';
         }
+      bindCheckAll();
       }
-
+     
       // ✅ 订单详情（从当前页缓存取）
       function viewOrderDetail(idOrNo) {
         const panel = document.getElementById("orderDetailPanel");
@@ -1235,6 +1286,8 @@ const ZONE_NAME_MAP = {
 
         const btnOptimizeRoute = document.getElementById("btnOptimizeRoute");
         if (btnOptimizeRoute) btnOptimizeRoute.addEventListener("click", optimizeRouteForCurrentPage);
+      const btnPackBatch = document.getElementById("btnPackBatch");
+if (btnPackBatch) btnPackBatch.addEventListener("click", packSelectedOrders);
       });
     </script>
    <!-- ✅ 统一 sidebar 注入脚本（必须加） -->

@@ -198,6 +198,9 @@ const orderSchema = new mongoose.Schema(
     // 兼容旧字段
     addressText: { type: String, default: "" },
     note: { type: String, default: "" },
+// ✅ 打包/配货批次（用于“筛选 -> 打包 -> 打印贴纸/分配司机”）
+packBatchId: { type: String, default: "", index: true }, // 例如 PK20260107-ABCD
+packedAt: { type: Date, index: true },
 
     // ✅ 结构化地址
     address: {
@@ -213,6 +216,7 @@ const orderSchema = new mongoose.Schema(
     pickupPointName: { type: String, default: "" },
 
     driverId: { type: mongoose.Schema.Types.ObjectId, ref: "User", index: true },
+    assignedAt: { type: Date, index: true }, // ✅ 管理员分配司机的时间
     leaderId: { type: mongoose.Schema.Types.ObjectId, ref: "User", index: true },
 
     // ✅ 核心：实际配送日（路线/分批/派单只看这一天）
@@ -261,6 +265,7 @@ orderSchema.index({ "dispatch.zoneId": 1, deliveryDate: 1, status: 1 });
 orderSchema.index({ "payment.status": 1, createdAt: -1 });
 orderSchema.index({ "payment.method": 1, createdAt: -1 });
 orderSchema.index({ "payment.stripePaymentIntentId": 1 });
+orderSchema.index({ packBatchId: 1, status: 1, deliveryDate: 1 });
 
 // =========================
 // ✅ 核心：自动计算 deliveryDate + batchKey + 金额对齐
@@ -269,6 +274,10 @@ orderSchema.index({ "payment.stripePaymentIntentId": 1 });
 // ✅ 核心：自动计算 deliveryDate + batchKey + 金额对齐
 // =========================
 orderSchema.pre("validate", function () {
+    // ✅ 如果已经被打包，强制保持 packing（避免后续 save 被别的逻辑覆盖）
+  if (this.packBatchId && this.status === "paid") {
+    this.status = "packing";
+  }
   // 1) deliveryDate 规则
   if (!this.deliveryDate) {
     if (this.deliveryMode === "groupDay") {
