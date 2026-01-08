@@ -1,3 +1,4 @@
+import bcrypt from "bcryptjs"; // 文件顶部加
 import express from "express";
 import twilio from "twilio";
 import jwt from "jsonwebtoken";
@@ -86,10 +87,19 @@ router.post("/verify-login", async (req, res) => {
 
     // ✅ 查/建用户（默认 customer）
     let user = await User.findOne({ phone });
-    if (!user) {
-      user = await User.create({ phone, role: "customer" });
-    }
+// ...
 
+if (!user) {
+  const tempPassword = Math.random().toString(36).slice(2, 10) + Date.now().toString().slice(-4);
+  const hashed = await bcrypt.hash(tempPassword, 10);
+
+  user = await User.create({
+    phone,
+    role: "customer",
+    name: "用户" + phone.slice(-4),   // 或者 "Freshbuy用户xxxx"
+    password: hashed,               // 给必填 password 一个 hash
+  });
+}
     const token = signToken(user);
 
     return res.json({
