@@ -28,7 +28,7 @@ import adminUsersMongoRouter from "./routes/admin_users_mongo.js";
 import order from "./models/order.js"; // 你原本就有（即使没用也不影响）
 import adminMarketingRouter from "./routes/admin_marketing.js";
 import adminSettlementsRouter from "./routes/admin_settlements.js";
-
+import authVerifyLoginRouter from "./routes/auth_verify_login.js";
 import adminSettingsMemory from "./routes/admin_settings.js";
 import adminDashboardrouter from "./routes/admin_dashboard.js";
 import productsRouter from "./routes/products.js";
@@ -118,7 +118,8 @@ console.log("✅ coupons 已挂载到 /api/coupons");
 // ---- 登录 / OTP ----
 app.use("/api/auth", authMongoRouter);
 console.log("✅ auth_mongo 已挂载到 /api/auth");
-
+app.use("/api/auth", authVerifyLoginRouter);
+console.log("✅ auth_verify_login 已挂载到 /api/auth");
 app.use("/api/auth-otp", authOtpRouter);
 
 // ---- 用户 ----
