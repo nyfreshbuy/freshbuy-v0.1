@@ -14,7 +14,7 @@ import { connectDB } from "./db.js";
 // =======================
 import authMongoRouter from "./routes/auth_mongo.js";
 import adminAuthRouter from "./routes/admin_auth.js";
-
+import smsVerifyRouter from "./src/routes/sms_verify.js";
 // 你项目里现有路由（按你原本导入保留）
 import publicZonesRouter from "./routes/public_zones.js";
 import ordersRouter from "./routes/orders.js";
@@ -73,7 +73,7 @@ console.log(
   (process.env.MONGODB_URI || "").split("@")[1]?.split("/")[0]
 );
 console.log("🔥 当前运行的 server.js 来自 =====> ", url.fileURLToPath(import.meta.url));
-
+app.use("/api/sms", smsVerifyRouter);
 // =======================
 // 创建 app
 // =======================

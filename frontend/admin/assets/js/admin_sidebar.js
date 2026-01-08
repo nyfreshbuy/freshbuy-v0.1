@@ -13,7 +13,7 @@
         { text: "司机管理", href: "/admin/drivers.html", icon: "🚚" },
         { text: "配送区域 Zone", href: "/admin/zones.html", icon: "🗺️" },
         { text: "自提点管理", href: "/admin/pickups.html", icon: "⛳" },
-
+        { text: "配货批次", href: "/admin/packing.html", icon: "📦" },
         // ✅ 你要新增的：派单与路线
         { text: "派单与路线", href: "/admin/dispatch.html", icon: "🧭" },
       ],
