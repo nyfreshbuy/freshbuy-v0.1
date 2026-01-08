@@ -14,7 +14,7 @@ import { connectDB } from "./db.js";
 // =======================
 import authMongoRouter from "./routes/auth_mongo.js";
 import adminAuthRouter from "./routes/admin_auth.js";
-import smsVerifyRouter from "./src/routes/sms_verify.js";
+import smsVerifyRouter from "./routes/sms_verify.js";
 // 你项目里现有路由（按你原本导入保留）
 import publicZonesRouter from "./routes/public_zones.js";
 import ordersRouter from "./routes/orders.js";
@@ -73,7 +73,7 @@ console.log(
   (process.env.MONGODB_URI || "").split("@")[1]?.split("/")[0]
 );
 console.log("🔥 当前运行的 server.js 来自 =====> ", url.fileURLToPath(import.meta.url));
-app.use("/api/sms", smsVerifyRouter);
+
 // =======================
 // 创建 app
 // =======================
@@ -81,6 +81,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use("/api/sms", smsVerifyRouter);
 app.use("/api/admin", adminPicklist);
 // =======================
 // API 路由挂载（先挂具体的，再挂“/api”大网兜）
