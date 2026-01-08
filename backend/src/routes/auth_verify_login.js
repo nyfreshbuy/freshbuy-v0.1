@@ -52,13 +52,17 @@ router.post("/verify-login", async (req, res) => {
     if (!/^\d{3,10}$/.test(code)) return res.status(400).json({ success: false, message: "验证码格式不正确" });
 
     const check = await client.verify.v2
-      .services(TWILIO_VERIFY_SERVICE_SID)
-      .verificationChecks.create({ to: phone, code });
+  .services(TWILIO_VERIFY_SERVICE_SID)
+  .verificationChecks
+  .create({ to: phone, code });
 
-    if (check.status !== "approved") {
-      return res.status(401).json({ success: false, message: "验证码错误或已过期", status: check.status });
-    }
-
+if (check.status !== "approved") {
+  return res.status(401).json({
+    success: false,
+    message: "验证码错误或已过期",
+    status: check.status,
+  });
+}
     // ✅ 查/建用户（按你的系统，默认 customer）
     let user = await User.findOne({ phone });
     if (!user) {
