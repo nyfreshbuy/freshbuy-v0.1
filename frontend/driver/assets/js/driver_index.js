@@ -1,16 +1,25 @@
-console.log("driver_index.js loaded");
+console.log("driver_index.js loaded (NEW)");
 
 (() => {
   const API_BASE = ""; // 同域部署留空
   const $ = (id) => document.getElementById(id);
 
-  // ====== AUTH（复用你项目里常见 token 习惯）======
+  // ====== AUTH（司机端 token 优先 + 兼容你项目里已有 key）======
   const AUTH = {
-    tokenKeys: ["freshbuy_token", "token", "auth_token", "jwt"],
+    tokenKeys: [
+      "driver_token",
+      "freshbuy_driver_token",
+      "access_token",
+      "jwt",
+      "token",
+      "admin_token",
+      "freshbuy_token",
+      "auth_token",
+    ],
     getToken() {
       for (const k of this.tokenKeys) {
         const v = localStorage.getItem(k);
-        if (v) return v;
+        if (v && String(v).trim()) return String(v).trim();
       }
       return "";
     },
@@ -22,7 +31,7 @@ console.log("driver_index.js loaded");
     },
   };
 
-  // ====== UI refs ======
+  // ====== UI refs（你页面里需要有这些 id）======
   const dateInput = $("dateInput");
   const batchSelect = $("batchSelect");
   const stopList = $("stopList");
@@ -33,31 +42,53 @@ console.log("driver_index.js loaded");
   const okBox = $("okBox");
 
   const btnLogout = $("btnLogout");
-  const btnRefreshBatches = $("btnRefreshBatches");
-  const btnLoadRoute = $("btnLoadRoute");
-  const btnRefreshOrders = $("btnRefreshOrders");
+  const btnLoadBatches = $("btnLoadBatches"); // 新按钮名
+  const btnLoadOrders = $("btnLoadOrders");   // 新按钮名
+  const btnRefresh = $("btnRefresh");
   const btnNavAll = $("btnNavAll");
+  const btnPing = $("btnPing");
+
+  // 可选：如果你页面里有这些显示位
+  const apiHint = $("apiHint");
+  const tokenHint = $("tokenHint");
+  const countHint = $("countHint");
 
   // ====== State ======
-  let DRIVER = null; // {id,name,phone}
-  let BATCHES = [];  // [{batchKey,count,...}]
-  let ORDERS = [];   // normalized orders
+  let DRIVER = null;
+  let BATCHES = [];
+  let ORDERS = [];
   let ACTIVE_BATCHKEY = "";
 
-  // ====== Helpers ======
+  let ACTIVE_API = {
+    me: "",
+    batches: "",
+    ordersByBatch: "",
+    ordersByDate: "",
+    delivered: "",
+    photo: "",
+    ping: "",
+  };
+
+  // ====== UI helpers ======
   function showErr(msg) {
-    errBox.style.display = "block";
-    errBox.textContent = String(msg || "未知错误");
-    okBox.style.display = "none";
+    if (errBox) {
+      errBox.style.display = "block";
+      errBox.textContent = String(msg || "未知错误");
+    } else {
+      alert(msg);
+    }
+    if (okBox) okBox.style.display = "none";
   }
   function showOk(msg) {
-    okBox.style.display = "block";
-    okBox.textContent = String(msg || "OK");
-    errBox.style.display = "none";
+    if (okBox) {
+      okBox.style.display = "block";
+      okBox.textContent = String(msg || "OK");
+    }
+    if (errBox) errBox.style.display = "none";
   }
   function clearMsg() {
-    errBox.style.display = "none";
-    okBox.style.display = "none";
+    if (errBox) errBox.style.display = "none";
+    if (okBox) okBox.style.display = "none";
   }
 
   function fmtDateISO(d) {
@@ -68,15 +99,33 @@ console.log("driver_index.js loaded");
     return `${y}-${m}-${dd}`;
   }
 
+  function escapeHtml(s) {
+    return String(s ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#39;");
+  }
+
+  // ====== fetch ======
   async function fetchJSON(url, options = {}) {
     const token = AUTH.getToken();
-    const headers = {
-      "Content-Type": "application/json",
-      ...(options.headers || {}),
-    };
-    if (token) headers.Authorization = `Bearer ${token}`;
+    const headers = { ...(options.headers || {}) };
 
-    const res = await fetch(url, { ...options, headers });
+    const hasBody = options.body != null;
+    const isForm = hasBody && options.body instanceof FormData;
+    if (hasBody && !isForm && !headers["Content-Type"]) {
+      headers["Content-Type"] = "application/json";
+    }
+    if (token && !headers.Authorization) headers.Authorization = `Bearer ${token}`;
+
+    const res = await fetch(url, {
+      ...options,
+      headers,
+      credentials: "include",
+    });
+
     const text = await res.text();
     let data = null;
     try {
@@ -84,6 +133,7 @@ console.log("driver_index.js loaded");
     } catch {
       data = { raw: text };
     }
+
     if (!res.ok) {
       const msg = data?.message || data?.error || `${res.status} ${res.statusText}`;
       const e = new Error(msg);
@@ -94,30 +144,33 @@ console.log("driver_index.js loaded");
     return data;
   }
 
-  async function tryFetchCandidates(candidates, options) {
+  async function tryFetchCandidates(label, candidates, options) {
     let lastErr = null;
     for (const u of candidates) {
       try {
-        return await fetchJSON(u, options);
+        const data = await fetchJSON(u, options);
+        if (apiHint) apiHint.textContent = u.replace(API_BASE, "");
+        return { data, used: u };
       } catch (e) {
         lastErr = e;
       }
     }
+    if (lastErr) {
+      lastErr._label = label;
+      lastErr._candidates = candidates;
+    }
     throw lastErr || new Error("All candidates failed");
   }
 
+  // ====== normalize ======
   function normalizeBatchList(payload) {
-    const list =
-      payload?.batches ||
-      payload?.data ||
-      payload ||
-      [];
+    const list = payload?.batches || payload?.data || payload || [];
     if (!Array.isArray(list)) return [];
     return list
       .map((x) => ({
-        batchKey: String(x.batchKey || x.key || x._id || "").trim(),
-        count: Number(x.count || x.orderCount || x.orders || 0),
-        label: x.label || x.name || "",
+        batchKey: String(x.batchKey || x.key || x._id || x.batch || "").trim(),
+        count: Number(x.count || x.orderCount || x.orders || x.total || 0),
+        label: String(x.label || x.name || x.title || "").trim(),
       }))
       .filter((x) => x.batchKey);
   }
@@ -125,6 +178,7 @@ console.log("driver_index.js loaded");
   function normalizeOrderList(payload) {
     const list =
       payload?.orders ||
+      payload?.list ||
       payload?.data ||
       payload?.items ||
       payload ||
@@ -135,69 +189,50 @@ console.log("driver_index.js loaded");
       const id = String(o._id || o.id || o.orderId || "").trim();
       const orderNo = String(o.orderNo || o.no || o.orderNumber || o.order_id || id).trim();
       const status = String(o.status || o.state || "").trim();
+
       const routeIndex = Number(
-        o.routeIndex ?? o.route_index ?? o.routeOrder ?? o.route_order ?? o.seq ?? 999999
+        o.routeSeq ?? o.routeIndex ?? o.route_index ?? o.sequenceNumber ?? o.sequenceNo ?? o.seq ?? 999999
       );
 
       const addr =
-        o.deliveryAddress?.full ||
+        o.fullAddress ||
         o.address?.full ||
-        o.deliveryAddress ||
         o.address ||
         o.shippingAddress ||
         o.fulfillment?.address ||
+        o.deliveryAddress?.full ||
         "";
 
       const name =
-        o.deliveryAddress?.name ||
-        o.address?.name ||
         o.receiverName ||
-        o.name ||
+        o.address?.name ||
+        o.deliveryAddress?.name ||
+        o.user?.name ||
         "";
 
       const phone =
-        o.deliveryAddress?.phone ||
-        o.address?.phone ||
         o.receiverPhone ||
-        o.phone ||
+        o.address?.phone ||
+        o.deliveryAddress?.phone ||
+        o.user?.phone ||
         "";
 
-      const amount = Number(o.amount ?? o.total ?? o.totalAmount ?? 0);
+      const amount = Number(o.totalAmount ?? o.amount ?? o.total ?? 0);
 
-      const deliveryMethod =
-        o.deliveryMethod ||
-        o.shippingMethod ||
-        o.dispatch?.mode ||
-        o.fulfillment?.mode ||
-        "";
-
-      const lat = Number(o.lat ?? o.deliveryAddress?.lat ?? o.address?.lat ?? NaN);
-      const lng = Number(o.lng ?? o.deliveryAddress?.lng ?? o.address?.lng ?? NaN);
-
-      const driverId = String(o.driverId || o.driver_id || o.driver?._id || o.driver?.id || "").trim();
-
-      const batchKey = String(
-        o.dispatch?.batchKey ||
-          o.fulfillment?.batchKey ||
-          o.batchKey ||
-          o.batch_key ||
-          ""
-      ).trim();
+      const lat = Number(o.lat ?? o.address?.lat ?? o.deliveryAddress?.lat ?? NaN);
+      const lng = Number(o.lng ?? o.address?.lng ?? o.deliveryAddress?.lng ?? NaN);
 
       return {
         id,
         orderNo,
         status,
-        routeIndex,
+        routeIndex: Number.isFinite(routeIndex) ? routeIndex : 999999,
         addr: String(addr || "").trim(),
         name: String(name || "").trim(),
         phone: String(phone || "").trim(),
         amount,
-        deliveryMethod: String(deliveryMethod || "").trim(),
         lat: Number.isFinite(lat) ? lat : null,
         lng: Number.isFinite(lng) ? lng : null,
-        driverId,
-        batchKey,
         raw: o,
       };
     });
@@ -205,17 +240,14 @@ console.log("driver_index.js loaded");
 
   function statusBadge(status) {
     const s = String(status || "").toLowerCase();
-    if (["delivered", "完成", "已送达", "delivered_ok"].some((k) => s.includes(k))) {
-      return { text: "已送达", cls: "badge badge-ok" };
+    if (["done", "delivered", "完成", "已送达"].some((k) => s.includes(String(k).toLowerCase()))) {
+      return { text: "已送达", cls: "badge ok" };
     }
-    if (["cancel", "取消", "failed", "异常"].some((k) => s.includes(k))) {
-      return { text: "异常/取消", cls: "badge badge-warn" };
+    if (["cancel", "取消", "failed", "异常"].some((k) => s.includes(String(k).toLowerCase()))) {
+      return { text: "异常/取消", cls: "badge warn" };
     }
-    if (["assigned", "已分配"].some((k) => s.includes(k))) {
-      return { text: "已分配", cls: "badge badge-dim" };
-    }
-    if (!status) return { text: "未开始", cls: "badge badge-dim" };
-    return { text: status, cls: "badge badge-dim" };
+    if (!status) return { text: "未开始", cls: "badge dim" };
+    return { text: status, cls: "badge dim" };
   }
 
   function buildGoogleMapsSingle(addrOrLatLng) {
@@ -224,150 +256,166 @@ console.log("driver_index.js loaded");
   }
 
   function buildGoogleMapsDirections(stops) {
-    // stops: [{addr, lat, lng}]
     const points = stops
-      .map((s) => {
-        if (s.lat != null && s.lng != null) return `${s.lat},${s.lng}`;
-        return s.addr;
-      })
+      .map((s) => (s.lat != null && s.lng != null ? `${s.lat},${s.lng}` : s.addr))
       .filter(Boolean);
 
-    if (points.length === 0) return "";
+    if (!points.length) return "";
 
-    // Google Maps Directions: origin + destination + waypoints
-    // waypoints 数量限制（通常 23 左右），这里做安全截断
-    const maxStops = 22; // origin+dest+waypoints <= 22 保险一点
+    const maxStops = 22;
     const sliced = points.slice(0, maxStops);
     const origin = encodeURIComponent(sliced[0]);
     const destination = encodeURIComponent(sliced[sliced.length - 1]);
-
     const waypointsArr = sliced.slice(1, -1);
-    const waypoints =
-      waypointsArr.length > 0
-        ? `&waypoints=${encodeURIComponent(waypointsArr.join("|"))}`
-        : "";
-
+    const waypoints = waypointsArr.length ? `&waypoints=${encodeURIComponent(waypointsArr.join("|"))}` : "";
     return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}${waypoints}&travelmode=driving`;
   }
 
-  // ====== API mapping（关键：batchKey 对齐后台派单）======
+  // ====== API calls（自动探测）======
   async function loadDriverMe() {
-    // 你后端如果没有这个接口，先用本地存储兜底
     const candidates = [
       `${API_BASE}/api/driver/me`,
       `${API_BASE}/api/drivers/me`,
-      `${API_BASE}/api/users/me`, // 如果你项目已有用户 me
+      `${API_BASE}/api/users/me`,
     ];
+    const { data, used } = await tryFetchCandidates("me", candidates);
+    ACTIVE_API.me = used;
 
-    try {
-      const data = await tryFetchCandidates(candidates);
-      const me = data?.user || data?.driver || data?.data || data;
-      const id = String(me?._id || me?.id || "").trim();
-      const phone = String(me?.phone || me?.mobile || localStorage.getItem("freshbuy_login_phone") || "").trim();
-      const name = String(me?.name || me?.nickname || me?.nick || localStorage.getItem("freshbuy_login_nickname") || "司机").trim();
+    const me = data?.user || data?.driver || data?.data || data;
+    const id = String(me?._id || me?.id || "").trim();
+    const phone = String(me?.phone || me?.mobile || localStorage.getItem("freshbuy_login_phone") || "").trim();
+    const name = String(me?.name || me?.nickname || me?.nick || localStorage.getItem("freshbuy_login_nickname") || "司机").trim();
 
-      DRIVER = { id, phone, name, raw: me };
-      hello.textContent = `你好，${phone || name || "-"}`;
-      driverSub.textContent = `当前司机：${name}${phone ? " · " + phone : ""}`;
-    } catch (e) {
-      // 兜底
-      const phone = localStorage.getItem("freshbuy_login_phone") || "";
-      const name = localStorage.getItem("freshbuy_login_nickname") || "司机";
-      DRIVER = { id: "", phone, name, raw: null };
-      hello.textContent = `你好，${phone || name || "-"}`;
-      driverSub.textContent = `当前司机：${name}${phone ? " · " + phone : ""}（接口 /api/driver/me 未找到，使用本地兜底）`;
-    }
+    DRIVER = { id, phone, name, raw: me };
+    if (hello) hello.textContent = `你好，${phone || name || "司机"}`;
+    if (driverSub) driverSub.textContent = `当前司机：${name}${phone ? " · " + phone : ""}`;
+  }
+
+  async function ping() {
+    clearMsg();
+    const candidates = [
+      `${API_BASE}/api/driver/ping`,
+      `${API_BASE}/api/drivers/ping`,
+      `${API_BASE}/api/ping`,
+    ];
+    const { data, used } = await tryFetchCandidates("ping", candidates);
+    ACTIVE_API.ping = used;
+    showOk(`Ping OK ✅（${used.replace(API_BASE, "")}）`);
+    return data;
   }
 
   async function loadBatchesByDate(dateStr) {
     clearMsg();
-    batchSelect.innerHTML = `<option value="">加载中…</option>`;
+    if (batchSelect) batchSelect.innerHTML = `<option value="">加载中…</option>`;
 
     const q = encodeURIComponent(dateStr);
     const candidates = [
-      // ✅ 推荐：司机专用接口
       `${API_BASE}/api/driver/batches?date=${q}`,
       `${API_BASE}/api/driver/dispatch/batches?date=${q}`,
-      // ⚠️ 如果你还没做司机接口，临时用 admin 的（不建议生产环境）
+      `${API_BASE}/api/driver/batch/list?date=${q}`,
+      // 临时兜底（你没做司机接口时）
       `${API_BASE}/api/admin/dispatch/batches?date=${q}`,
     ];
 
-    const data = await tryFetchCandidates(candidates);
+    const { data, used } = await tryFetchCandidates("batches", candidates);
+    ACTIVE_API.batches = used;
+
     BATCHES = normalizeBatchList(data);
 
-    if (BATCHES.length === 0) {
-      batchSelect.innerHTML = `<option value="">当天没有批次</option>`;
-      showOk("当天没有可用批次（可能还未派单/未生成 batchKey）");
+    if (!BATCHES.length) {
+      if (batchSelect) batchSelect.innerHTML = `<option value="">当天没有批次</option>`;
+      showOk("当天没有可用批次（可能未生成 batchKey / 未派单）");
       return;
     }
 
-    batchSelect.innerHTML = [
-      `<option value="">请选择批次</option>`,
-      ...BATCHES.map((b) => {
-        const txt = `${b.batchKey}${b.count ? `（${b.count}单）` : ""}`;
-        return `<option value="${escapeHtml(b.batchKey)}">${escapeHtml(txt)}</option>`;
-      }),
-    ].join("");
+    if (batchSelect) {
+      batchSelect.innerHTML = [
+        `<option value="">请选择批次</option>`,
+        ...BATCHES.map((b) => {
+          const txt = `${b.batchKey}${b.count ? `（${b.count}单）` : ""}${b.label ? ` · ${b.label}` : ""}`;
+          return `<option value="${escapeHtml(b.batchKey)}">${escapeHtml(txt)}</option>`;
+        }),
+      ].join("");
 
-    // 默认选中第一个
-    batchSelect.value = BATCHES[0].batchKey;
-    ACTIVE_BATCHKEY = batchSelect.value;
-    showOk(`已加载批次：${BATCHES.length} 个`);
+      batchSelect.value = BATCHES[0].batchKey;
+      ACTIVE_BATCHKEY = batchSelect.value;
+    }
+
+    showOk(`已加载批次：${BATCHES.length} 个（默认选中第一个）`);
   }
 
   async function loadOrdersByBatchKey(batchKey) {
     clearMsg();
-    routeSub.textContent = `批次：${batchKey} · 加载中…`;
-    stopList.innerHTML = `<div class="hint">加载中…</div>`;
+    if (routeSub) routeSub.textContent = `批次：${batchKey} · 加载中…`;
+    if (stopList) stopList.innerHTML = `<div class="hint">加载中…</div>`;
 
     const q = encodeURIComponent(batchKey);
-
     const candidates = [
-      // ✅ 推荐：司机接口（只返回分配给该司机的订单）
       `${API_BASE}/api/driver/batch/orders?batchKey=${q}`,
       `${API_BASE}/api/driver/dispatch/batch/orders?batchKey=${q}`,
       `${API_BASE}/api/driver/orders?batchKey=${q}`,
-      // ⚠️ 临时：若你只做了 admin 的 batch orders
+      // 临时兜底
       `${API_BASE}/api/admin/dispatch/batch/orders?batchKey=${q}`,
     ];
 
-    const data = await tryFetchCandidates(candidates);
-    let list = normalizeOrderList(data);
+    const { data, used } = await tryFetchCandidates("ordersByBatch", candidates);
+    ACTIVE_API.ordersByBatch = used;
 
-    // 如果返回的是全量订单，这里尽量按 driverId 过滤（如果字段存在）
-    if (DRIVER?.id) {
-      const hasDriverId = list.some((x) => x.driverId);
-      if (hasDriverId) list = list.filter((x) => !x.driverId || x.driverId === DRIVER.id);
-    }
-
-    // 排序：routeIndex / seq
-    list.sort((a, b) => (a.routeIndex || 0) - (b.routeIndex || 0));
-
-    ORDERS = list;
+    ORDERS = normalizeOrderList(data).sort((a, b) => (a.routeIndex || 0) - (b.routeIndex || 0));
     renderOrders();
   }
 
-  function renderOrders() {
-    if (!ACTIVE_BATCHKEY) {
-      routeSub.textContent = "未选择批次";
-      stopList.innerHTML = `<div class="hint">请先选择批次。</div>`;
-      return;
+  async function loadOrdersByDate(dateStr) {
+    clearMsg();
+    if (routeSub) routeSub.textContent = `日期：${dateStr} · 加载中…`;
+    if (stopList) stopList.innerHTML = `<div class="hint">加载中…</div>`;
+
+    const q = encodeURIComponent(dateStr);
+    const candidates = [
+      `${API_BASE}/api/driver/orders?date=${q}`,
+      `${API_BASE}/api/driver/orders?day=${q}`,
+      `${API_BASE}/api/driver/orders?dateStr=${q}`,
+      `${API_BASE}/api/driver/orders/by-date?date=${q}`,
+    ];
+
+    const { data, used } = await tryFetchCandidates("ordersByDate", candidates);
+    ACTIVE_API.ordersByDate = used;
+
+    ACTIVE_BATCHKEY = ""; // 走日期模式
+    ORDERS = normalizeOrderList(data).sort((a, b) => (a.routeIndex || 0) - (b.routeIndex || 0));
+    renderOrders({ mode: "date", dateStr });
+  }
+
+  // ====== render ======
+  function renderOrders(extra = {}) {
+    const mode = extra.mode || "batch";
+
+    if (countHint) countHint.textContent = String(ORDERS.length || 0);
+
+    if (mode === "batch") {
+      if (routeSub) {
+        routeSub.textContent = ACTIVE_BATCHKEY
+          ? `批次：${ACTIVE_BATCHKEY} · 共 ${ORDERS.length} 单`
+          : `未选择批次（也可按日期加载）`;
+      }
+    } else {
+      if (routeSub) routeSub.textContent = `日期：${extra.dateStr || ""} · 共 ${ORDERS.length} 单`;
     }
 
-    routeSub.textContent = `批次：${ACTIVE_BATCHKEY} · 共 ${ORDERS.length} 单`;
+    if (!stopList) return;
 
-    if (ORDERS.length === 0) {
-      stopList.innerHTML = `<div class="hint">该批次没有分配给你的订单（或接口返回为空）。</div>`;
+    if (!ORDERS.length) {
+      stopList.innerHTML =
+        `<div class="hint">没有订单。若后台已派单：请确认司机端 token 是否正确、以及司机接口是否只返回“当前司机”的订单。</div>`;
       return;
     }
 
     stopList.innerHTML = ORDERS.map((o, idx) => {
       const badge = statusBadge(o.status);
-      const title = `#${idx + 1} · 订单 ${o.orderNo}`;
+      const title = `#${idx + 1} · 订单 ${o.orderNo || o.id}`;
       const addrLine = o.addr || "(无地址)";
       const who = [o.name, o.phone].filter(Boolean).join(" · ");
       const amt = o.amount ? `$${Number(o.amount).toFixed(2)}` : "";
-      const meta2 = [o.deliveryMethod, amt].filter(Boolean).join(" · ");
       const navTarget = o.lat != null && o.lng != null ? `${o.lat},${o.lng}` : addrLine;
       const navUrl = buildGoogleMapsSingle(navTarget);
 
@@ -380,15 +428,15 @@ console.log("driver_index.js loaded");
                 <div><b>地址：</b>${escapeHtml(addrLine)}</div>
                 ${who ? `<div><b>收货：</b>${escapeHtml(who)}</div>` : ``}
                 <div><b>路线序：</b>${Number.isFinite(o.routeIndex) ? o.routeIndex : "-"}</div>
-                ${meta2 ? `<div>${escapeHtml(meta2)}</div>` : ``}
+                ${amt ? `<div><b>金额：</b>${escapeHtml(amt)}</div>` : ``}
               </div>
             </div>
             <div class="${badge.cls}">${escapeHtml(badge.text)}</div>
           </div>
 
           <div class="actions">
-            <a class="btn mini" href="${navUrl}" target="_blank" rel="noreferrer">单点导航</a>
-            <button class="btn mini btn-primary" data-act="delivered" data-id="${escapeHtml(o.id)}">标记送达</button>
+            <a class="btn mini info" href="${navUrl}" target="_blank" rel="noreferrer">单点导航</a>
+            <button class="btn mini primary" data-act="delivered" data-id="${escapeHtml(o.id)}">标记送达</button>
 
             <label class="btn mini" style="cursor:pointer;">
               上传照片
@@ -419,30 +467,34 @@ console.log("driver_index.js loaded");
     });
   }
 
-  // ====== Actions ======
+  // ====== actions ======
   async function markDelivered(orderId) {
     if (!orderId) return;
     clearMsg();
 
+    const id = encodeURIComponent(orderId);
     const candidates = [
-      `${API_BASE}/api/driver/orders/${encodeURIComponent(orderId)}/delivered`,
-      `${API_BASE}/api/driver/order/${encodeURIComponent(orderId)}/delivered`,
-      // 临时（不建议）：如果你只有 admin 更新状态接口
-      `${API_BASE}/api/admin/orders/${encodeURIComponent(orderId)}/delivered`,
+      `${API_BASE}/api/driver/orders/${id}/delivered`,
+      `${API_BASE}/api/driver/order/${id}/delivered`,
+      `${API_BASE}/api/driver/orders/${id}/status`,
+      // 临时兜底：你只有 admin status 的情况
+      `${API_BASE}/api/admin/orders/${id}/status`,
     ];
 
     try {
-      await tryFetchCandidates(
+      const { used } = await tryFetchCandidates(
+        "delivered",
         candidates,
-        { method: "POST", body: JSON.stringify({ status: "delivered" }) }
+        { method: "POST", body: JSON.stringify({ status: "done" }) }
       );
-      showOk("已标记送达 ✅");
-      // 本地更新
+      ACTIVE_API.delivered = used;
+
       const it = ORDERS.find((x) => x.id === orderId);
-      if (it) it.status = "delivered";
+      if (it) it.status = "done";
+      showOk("已标记送达/完成 ✅");
       renderOrders();
     } catch (e) {
-      showErr(`标记送达失败：${e.message}`);
+      showErr(`标记失败：${e.message}（后端可能未实现 delivered/status 接口）`);
     }
   }
 
@@ -450,115 +502,134 @@ console.log("driver_index.js loaded");
     if (!orderId || !file) return;
     clearMsg();
 
-    const token = AUTH.getToken();
+    const id = encodeURIComponent(orderId);
     const form = new FormData();
     form.append("file", file);
 
     const candidates = [
-      `${API_BASE}/api/driver/orders/${encodeURIComponent(orderId)}/photo`,
-      `${API_BASE}/api/driver/order/${encodeURIComponent(orderId)}/photo`,
+      `${API_BASE}/api/driver/orders/${id}/photo`,
+      `${API_BASE}/api/driver/order/${id}/photo`,
+      `${API_BASE}/api/driver/orders/${id}/upload`,
     ];
 
     let lastErr = null;
     for (const url of candidates) {
       try {
-        const res = await fetch(url, {
-          method: "POST",
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-          body: form,
-        });
-        const text = await res.text();
-        let data = null;
-        try { data = text ? JSON.parse(text) : null; } catch { data = { raw: text }; }
-        if (!res.ok) throw new Error(data?.message || `${res.status} ${res.statusText}`);
+        await fetchJSON(url, { method: "POST", body: form });
+        ACTIVE_API.photo = url;
         showOk("照片已上传 ✅");
         return;
       } catch (e) {
         lastErr = e;
       }
     }
-    showErr(`上传失败：${lastErr?.message || "未知错误"}（请确认后端是否已实现 photo 接口）`);
+    showErr(`上传失败：${lastErr?.message || "未知错误"}（后端可能未实现 photo/upload 接口）`);
   }
 
   function navAll() {
-    if (!ORDERS.length) return showErr("没有路线订单，无法导航");
-    const stops = ORDERS.map((o) => ({
-      addr: o.addr,
-      lat: o.lat,
-      lng: o.lng,
-    }));
+    if (!ORDERS.length) return showErr("没有订单，无法全程导航");
+    const stops = ORDERS.map((o) => ({ addr: o.addr, lat: o.lat, lng: o.lng }));
     const url = buildGoogleMapsDirections(stops);
     if (!url) return showErr("缺少地址/坐标，无法生成路线导航");
     window.open(url, "_blank", "noreferrer");
   }
 
-  function escapeHtml(s) {
-    return String(s ?? "")
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;")
-      .replaceAll("'", "&#39;");
-  }
-
-  // ====== Init ======
+  // ====== init ======
   async function init() {
+    // token 状态
+    if (tokenHint) tokenHint.textContent = AUTH.getToken() ? "FOUND" : "MISSING";
+
     // 默认今天
-    dateInput.value = fmtDateISO(new Date());
+    if (dateInput) dateInput.value = fmtDateISO(new Date());
 
-    btnLogout.addEventListener("click", () => {
-      AUTH.clear();
-      location.href = "/driver/login.html"; // 你如果没有 login.html，就改成你实际司机登录页
-    });
+    if (btnLogout) {
+      btnLogout.addEventListener("click", () => {
+        AUTH.clear();
+        location.href = "/driver/login.html"; // 没有就改成你的司机登录页
+      });
+    }
 
-    btnRefreshBatches.addEventListener("click", async () => {
-      try {
-        await loadBatchesByDate(dateInput.value);
-      } catch (e) {
-        showErr(`加载批次失败：${e.message}`);
-      }
-    });
+    if (btnPing) {
+      btnPing.addEventListener("click", async () => {
+        try { await ping(); } catch (e) { showErr(`Ping 失败：${e.message}`); }
+      });
+    }
 
-    btnLoadRoute.addEventListener("click", async () => {
-      ACTIVE_BATCHKEY = batchSelect.value;
-      if (!ACTIVE_BATCHKEY) return showErr("请先选择批次");
-      try {
-        await loadOrdersByBatchKey(ACTIVE_BATCHKEY);
-      } catch (e) {
-        showErr(`加载路线失败：${e.message}`);
-      }
-    });
+    if (btnLoadBatches && dateInput) {
+      btnLoadBatches.addEventListener("click", async () => {
+        try { await loadBatchesByDate(dateInput.value); }
+        catch (e) { showErr(`加载批次失败：${e.message}`); }
+      });
+    }
 
-    btnRefreshOrders.addEventListener("click", async () => {
-      if (!ACTIVE_BATCHKEY) return showErr("请先选择批次");
-      try {
-        await loadOrdersByBatchKey(ACTIVE_BATCHKEY);
-      } catch (e) {
-        showErr(`刷新路线失败：${e.message}`);
-      }
-    });
+    if (btnLoadOrders && dateInput) {
+      btnLoadOrders.addEventListener("click", async () => {
+        try {
+          ACTIVE_BATCHKEY = batchSelect ? batchSelect.value : "";
+          if (ACTIVE_BATCHKEY) {
+            await loadOrdersByBatchKey(ACTIVE_BATCHKEY);
+          } else {
+            await loadOrdersByDate(dateInput.value);
+          }
+        } catch (e) {
+          showErr(`加载订单失败：${e.message}`);
+        }
+      });
+    }
 
-    btnNavAll.addEventListener("click", navAll);
+    if (btnRefresh && dateInput) {
+      btnRefresh.addEventListener("click", async () => {
+        try {
+          if (ACTIVE_BATCHKEY) return await loadOrdersByBatchKey(ACTIVE_BATCHKEY);
+          return await loadOrdersByDate(dateInput.value);
+        } catch (e) {
+          showErr(`刷新失败：${e.message}`);
+        }
+      });
+    }
 
-    dateInput.addEventListener("change", async () => {
-      try {
-        await loadBatchesByDate(dateInput.value);
-      } catch (e) {
-        showErr(`加载批次失败：${e.message}`);
-      }
-    });
+    if (btnNavAll) btnNavAll.addEventListener("click", navAll);
 
-    batchSelect.addEventListener("change", () => {
-      ACTIVE_BATCHKEY = batchSelect.value;
-      routeSub.textContent = ACTIVE_BATCHKEY ? `批次：${ACTIVE_BATCHKEY} · 未加载` : "未选择批次";
-    });
+    if (dateInput) {
+      dateInput.addEventListener("change", async () => {
+        try {
+          await loadBatchesByDate(dateInput.value);
+        } catch (e) {
+          showErr(`批次接口不可用：${e.message}（可直接点“加载订单”走按日期模式）`);
+        }
+      });
+    }
 
-    await loadDriverMe();
+    if (batchSelect) {
+      batchSelect.addEventListener("change", () => {
+        ACTIVE_BATCHKEY = batchSelect.value;
+        if (routeSub) {
+          routeSub.textContent = ACTIVE_BATCHKEY
+            ? `批次：${ACTIVE_BATCHKEY} · 未加载`
+            : "未选择批次（可按日期加载）";
+        }
+      });
+    }
 
+    // 尝试加载司机信息（接口不存在也可用）
     try {
-      await loadBatchesByDate(dateInput.value);
+      await loadDriverMe();
     } catch (e) {
-      showErr(`加载批次失败：${e.message}`);
+      const phone = localStorage.getItem("freshbuy_login_phone") || "";
+      const name = localStorage.getItem("freshbuy_login_nickname") || "司机";
+      DRIVER = { id: "", phone, name, raw: null };
+      if (hello) hello.textContent = `你好，${phone || name || "司机"}`;
+      if (driverSub) driverSub.textContent = `当前司机：${name}${phone ? " · " + phone : ""}（/api/driver/me 未找到，使用本地兜底）`;
+    }
+
+    // 初次自动加载批次（失败不阻断）
+    if (dateInput) {
+      try {
+        await loadBatchesByDate(dateInput.value);
+        showOk("已自动加载批次：可直接点“加载订单”");
+      } catch (e) {
+        showErr(`未找到批次接口：${e.message}（你仍可点“加载订单”走按日期模式）`);
+      }
     }
   }
 

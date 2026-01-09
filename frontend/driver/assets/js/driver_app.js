@@ -1,850 +1,605 @@
-// frontend/driver/assets/js/driver_app.js
-console.log("driver_app.js 已加载");
+console.log("driver_app.js loaded");
 
-// ============================
-// 1) 全局变量 & 起点配置
-// ============================
+(() => {
+  const API_BASE = ""; // 同域部署留空
+  const $ = (id) => document.getElementById(id);
 
-// 统一的司机起点（配送表 + Google Maps 整条路线都用它）
-// 默认就写死你的仓库地址
-let currentOrigin = {
-  address: "199-26 48th Ave, Fresh Meadows, NY 11365",
-  lat: null, // 一开始不写死，后面通过 geocode 算出真实坐标
-  lng: null,
-};
+  // ====== AUTH（司机端 token 优先 + 兼容你项目里已有 key）======
+  const AUTH = {
+    tokenKeys: [
+      "driver_token",
+      "freshbuy_driver_token",
+      "access_token",
+      "jwt",
+      "token",
+      "admin_token",
+      "freshbuy_token",
+      "auth_token",
+    ],
+    getToken() {
+      for (const k of this.tokenKeys) {
+        const v = localStorage.getItem(k);
+        if (v && String(v).trim()) return String(v).trim();
+      }
+      return "";
+    },
+    clear() {
+      for (const k of this.tokenKeys) localStorage.removeItem(k);
+      localStorage.removeItem("freshbuy_is_logged_in");
+      localStorage.removeItem("freshbuy_login_phone");
+      localStorage.removeItem("freshbuy_login_nickname");
+    },
+  };
 
-let map;
-let directionsService;
-let directionsRenderer;
-let geocoder; // 把地址转成经纬度
+  // ====== UI refs ======
+  const dateInput = $("dateInput");
+  const batchSelect = $("batchSelect");
+  const stopList = $("stopList");
+  const routeSub = $("routeSub");
+  const hello = $("hello");
+  const driverSub = $("driverSub");
+  const errBox = $("errBox");
+  const okBox = $("okBox");
+  const apiHint = $("apiHint");
+  const tokenHint = $("tokenHint");
+  const countHint = $("countHint");
 
-// 保留 driverOrigin，始终和 currentOrigin 一致
-let driverOrigin = currentOrigin;
+  const btnLogout = $("btnLogout");
+  const btnLoadBatches = $("btnLoadBatches");
+  const btnLoadOrders = $("btnLoadOrders");
+  const btnRefresh = $("btnRefresh");
+  const btnNavAll = $("btnNavAll");
+  const btnPing = $("btnPing");
 
-let driverOrders = [];     // 原始订单列表
-let orderedIndices = [];   // 按路线优化后的索引顺序
-let currentRouteUrl = "";  // 一键在 Google Maps 打开整条路线的 URL
+  // ====== State ======
+  let DRIVER = null;
+  let BATCHES = [];
+  let ORDERS = [];
+  let ACTIVE_BATCHKEY = "";
+  let ACTIVE_API = {
+    me: "",
+    batches: "",
+    ordersByBatch: "",
+    ordersByDate: "",
+    delivered: "",
+    photo: "",
+    ping: "",
+  };
 
-// 自定义 Marker（起点 + 配送点）
-let originMarker = null;
-let orderMarkers = [];
-
-// DOM：起点输入框
-let driverOriginInputEl = null;
-
-
-// ============================
-// 2) 小工具函数
-// ============================
-
-function formatDateTime(str) {
-  if (!str) return "-";
-  const d = new Date(str);
-  if (Number.isNaN(d.getTime())) return str;
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  const h = String(d.getHours()).padStart(2, "0");
-  const mm = String(d.getMinutes()).padStart(2, "0");
-  return `${y}-${m}-${day} ${h}:${mm}`;
-}
-
-// ⭐ 防御：避免 o 为 undefined
-function buildFullAddress(o) {
-  if (!o || typeof o !== "object") return "";
-
-  return (
-    o.fullAddress ||
-    o.address ||
-    [o.street, o.city, o.state, o.zip].filter(Boolean).join(", ")
-  );
-}
-
-// 统一拿订单 ID
-function getOrderId(o) {
-  return o?._id || o?.id || o?.orderId || o?.orderNo;
-}
-
-
-// ============================
-// 3) 地图初始化
-// ============================
-
-function initMap() {
-  console.log("✅ initMap 被调用");
-
-  map = new google.maps.Map(document.getElementById("driverMap"), {
-    center: { lat: 40.758, lng: -73.829 }, // 默认先放法拉盛
-    zoom: 12,
-  });
-
-  directionsService = new google.maps.DirectionsService();
-  directionsRenderer = new google.maps.DirectionsRenderer({
-    map,
-    // 关闭默认 A/B/C marker，用我们自己的 0/1/2...
-    suppressMarkers: true,
-  });
-
-  geocoder = new google.maps.Geocoder();
-
-  const routeSummary = document.getElementById("routeSummary");
-  if (routeSummary) {
-    routeSummary.textContent = "地图初始化成功，正在加载今日配送任务...";
+  // ====== UI helpers ======
+  function showErr(msg) {
+    errBox.classList.add("err");
+    errBox.style.display = "block";
+    errBox.textContent = String(msg || "未知错误");
+    okBox.style.display = "none";
   }
-}
-
-
-// ============================
-// 4) 起点 geocode（保证 0 号点用真实经纬度）
-// ============================
-
-// 确保 currentOrigin.lat / lng 有值，再执行回调 cb()
-function ensureOriginLatLng(cb) {
-  // 已经有经纬度了，直接回调
-  if (
-    currentOrigin &&
-    typeof currentOrigin.lat === "number" &&
-    typeof currentOrigin.lng === "number"
-  ) {
-    console.log("✅ 起点已有经纬度：", currentOrigin);
-    if (typeof cb === "function") cb();
-    return;
+  function showOk(msg) {
+    okBox.classList.add("ok");
+    okBox.style.display = "block";
+    okBox.textContent = String(msg || "OK");
+    errBox.style.display = "none";
+  }
+  function clearMsg() {
+    errBox.style.display = "none";
+    okBox.style.display = "none";
   }
 
-  if (!geocoder) {
-    console.warn("⚠ geocoder 未初始化，无法 geocode 起点");
-    if (typeof cb === "function") cb();
-    return;
+  function fmtDateISO(d) {
+    const dt = d instanceof Date ? d : new Date();
+    const y = dt.getFullYear();
+    const m = String(dt.getMonth() + 1).padStart(2, "0");
+    const dd = String(dt.getDate()).padStart(2, "0");
+    return `${y}-${m}-${dd}`;
   }
 
-  if (!currentOrigin || !currentOrigin.address) {
-    console.warn("⚠ currentOrigin.address 为空，无法 geocode 起点");
-    if (typeof cb === "function") cb();
-    return;
+  function escapeHtml(s) {
+    return String(s ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#39;");
   }
 
-  const addr = currentOrigin.address;
-  console.log("🔍 正在根据地址 geocode 起点：", addr);
+  // ====== fetch ======
+  async function fetchJSON(url, options = {}) {
+    const token = AUTH.getToken();
+    const headers = {
+      ...(options.headers || {}),
+    };
 
-  geocoder.geocode({ address: addr }, (results, status) => {
-    if (
-      status === google.maps.GeocoderStatus.OK &&
-      Array.isArray(results) &&
-      results.length > 0
-    ) {
-      const loc = results[0].geometry.location;
-      currentOrigin.lat = loc.lat();
-      currentOrigin.lng = loc.lng();
-      driverOrigin = currentOrigin;
-      console.log("✅ geocode 完成的起点坐标：", currentOrigin);
-    } else {
-      console.warn(
-        "⚠ geocode 起点失败，用地址 fallback：",
-        status,
-        results
-      );
+    // JSON body时才设 content-type
+    const hasBody = options.body != null;
+    const isForm = hasBody && (options.body instanceof FormData);
+    if (hasBody && !isForm && !headers["Content-Type"]) {
+      headers["Content-Type"] = "application/json";
+    }
+    if (token && !headers.Authorization) headers.Authorization = `Bearer ${token}`;
+
+    const res = await fetch(url, {
+      ...options,
+      headers,
+      credentials: "include",
+    });
+
+    const text = await res.text();
+    let data = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = { raw: text };
     }
 
-    if (typeof cb === "function") cb();
-  });
-}
-
-
-// ============================
-// 5) 起点 marker / 订单 marker 绘制
-// ============================
-
-function clearRouteMarkers() {
-  if (originMarker) {
-    originMarker.setMap(null);
-    originMarker = null;
+    if (!res.ok) {
+      const msg = data?.message || data?.error || `${res.status} ${res.statusText}`;
+      const e = new Error(msg);
+      e.status = res.status;
+      e.data = data;
+      throw e;
+    }
+    return data;
   }
-  if (orderMarkers.length) {
-    orderMarkers.forEach((m) => m.setMap(null));
-    orderMarkers = [];
+
+  async function tryFetchCandidates(label, candidates, options) {
+    let lastErr = null;
+    for (const u of candidates) {
+      try {
+        const data = await fetchJSON(u, options);
+        // 成功：记住实际使用的 API
+        apiHint.textContent = u.replace(API_BASE, "");
+        return { data, used: u };
+      } catch (e) {
+        lastErr = e;
+      }
+    }
+    if (lastErr) {
+      lastErr._label = label;
+      lastErr._candidates = candidates;
+    }
+    throw lastErr || new Error("All candidates failed");
   }
-}
 
-// indices: 按顺序的订单索引数组（例如 [3, 0, 2]）
-function drawMarkersForOrderSequence(indices) {
-  if (!map) return;
+  // ====== normalize ======
+  function normalizeBatchList(payload) {
+    const list = payload?.batches || payload?.data || payload || [];
+    if (!Array.isArray(list)) return [];
+    return list
+      .map((x) => ({
+        batchKey: String(x.batchKey || x.key || x._id || x.batch || "").trim(),
+        count: Number(x.count || x.orderCount || x.orders || x.total || 0),
+        label: String(x.label || x.name || x.title || "").trim(),
+      }))
+      .filter((x) => x.batchKey);
+  }
 
-  clearRouteMarkers();
+  function normalizeOrderList(payload) {
+    const list = payload?.orders || payload?.list || payload?.data || payload?.items || payload || [];
+    if (!Array.isArray(list)) return [];
 
-  // 起点 0 号 marker
-  if (
-    currentOrigin &&
-    typeof currentOrigin.lat === "number" &&
-    typeof currentOrigin.lng === "number"
-  ) {
-    originMarker = new google.maps.Marker({
-      position: { lat: currentOrigin.lat, lng: currentOrigin.lng },
-      map,
-      label: "0",
-      title: currentOrigin.address || "起点",
+    return list.map((o) => {
+      const id = String(o._id || o.id || o.orderId || "").trim();
+      const orderNo = String(o.orderNo || o.no || o.orderNumber || o.order_id || id).trim();
+      const status = String(o.status || o.state || "").trim();
+
+      const routeIndex = Number(
+        o.routeSeq ?? o.routeIndex ?? o.route_index ?? o.sequenceNumber ?? o.sequenceNo ?? o.seq ?? 999999
+      );
+
+      const addr =
+        o.fullAddress ||
+        o.address?.full ||
+        o.address ||
+        o.shippingAddress ||
+        o.fulfillment?.address ||
+        o.deliveryAddress?.full ||
+        "";
+
+      const name =
+        o.receiverName ||
+        o.address?.name ||
+        o.deliveryAddress?.name ||
+        o.user?.name ||
+        "";
+
+      const phone =
+        o.receiverPhone ||
+        o.address?.phone ||
+        o.deliveryAddress?.phone ||
+        o.user?.phone ||
+        "";
+
+      const amount = Number(o.totalAmount ?? o.amount ?? o.total ?? 0);
+
+      const lat = Number(o.lat ?? o.address?.lat ?? o.deliveryAddress?.lat ?? NaN);
+      const lng = Number(o.lng ?? o.address?.lng ?? o.deliveryAddress?.lng ?? NaN);
+
+      return {
+        id,
+        orderNo,
+        status,
+        routeIndex: Number.isFinite(routeIndex) ? routeIndex : 999999,
+        addr: String(addr || "").trim(),
+        name: String(name || "").trim(),
+        phone: String(phone || "").trim(),
+        amount,
+        lat: Number.isFinite(lat) ? lat : null,
+        lng: Number.isFinite(lng) ? lng : null,
+        raw: o,
+      };
     });
-  } else {
-    console.warn("⚠ currentOrigin 还没有经纬度，0 号 marker 无法显示");
   }
 
-  if (!indices || !indices.length) return;
-
-  // 配送点：1,2,3...
-  indices.forEach((idx, seqIndex) => {
-    const o = driverOrders[idx];
-    if (!o || typeof o.lat !== "number" || typeof o.lng !== "number") return;
-
-    const marker = new google.maps.Marker({
-      position: { lat: o.lat, lng: o.lng },
-      map,
-      label: String(seqIndex + 1),
-      title:
-        (o.customerName || o.user?.name || "配送点") +
-        " · " +
-        (buildFullAddress(o) || ""),
-    });
-
-    orderMarkers.push(marker);
-  });
-}
-
-
-// ============================
-// 6) 起点加载 / 保存
-// ============================
-
-// 不再从后端读，完全信任 currentOrigin
-async function loadDriverOrigin() {
-  driverOrigin = currentOrigin;
-
-  if (driverOriginInputEl && currentOrigin.address) {
-    driverOriginInputEl.value = currentOrigin.address;
+  function statusBadge(status) {
+    const s = String(status || "").toLowerCase();
+    if (["done", "delivered", "完成", "已送达"].some((k) => s.includes(String(k).toLowerCase()))) {
+      return { text: "已送达", cls: "badge ok" };
+    }
+    if (["cancel", "取消", "failed", "异常"].some((k) => s.includes(String(k).toLowerCase()))) {
+      return { text: "异常/取消", cls: "badge warn" };
+    }
+    if (!status) return { text: "未开始", cls: "badge dim" };
+    return { text: status, cls: "badge dim" };
   }
 
-  console.log("⭐ 当前起点 currentOrigin:", currentOrigin);
-
-  // 尝试把地址 geocode 成经纬度（异步）
-  ensureOriginLatLng();
-}
-
-async function saveDriverOrigin() {
-  if (!driverOriginInputEl) return;
-  const addr = driverOriginInputEl.value.trim();
-  if (!addr) {
-    alert("起点地址不能为空");
-    return;
+  function buildGoogleMapsSingle(addrOrLatLng) {
+    const q = encodeURIComponent(addrOrLatLng);
+    return `https://www.google.com/maps/search/?api=1&query=${q}`;
   }
 
-  if (!geocoder) {
-    geocoder = new google.maps.Geocoder();
+  function buildGoogleMapsDirections(stops) {
+    const points = stops
+      .map((s) => (s.lat != null && s.lng != null ? `${s.lat},${s.lng}` : s.addr))
+      .filter(Boolean);
+
+    if (points.length === 0) return "";
+
+    // 保守截断
+    const maxStops = 22;
+    const sliced = points.slice(0, maxStops);
+    const origin = encodeURIComponent(sliced[0]);
+    const destination = encodeURIComponent(sliced[sliced.length - 1]);
+    const waypointsArr = sliced.slice(1, -1);
+    const waypoints = waypointsArr.length ? `&waypoints=${encodeURIComponent(waypointsArr.join("|"))}` : "";
+    return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}${waypoints}&travelmode=driving`;
   }
 
-  geocoder.geocode({ address: addr }, async (results, status) => {
-    if (
-      status !== google.maps.GeocoderStatus.OK ||
-      !Array.isArray(results) ||
-      !results.length
-    ) {
-      console.error("❌ geocode 解析失败:", status, results);
-      alert("无法识别该地址，请确认后再试。");
+  // ====== API calls（自动探测）======
+  async function loadDriverMe() {
+    const candidates = [
+      `${API_BASE}/api/driver/me`,
+      `${API_BASE}/api/drivers/me`,
+      `${API_BASE}/api/users/me`,
+    ];
+    const { data, used } = await tryFetchCandidates("me", candidates);
+    ACTIVE_API.me = used;
+
+    const me = data?.user || data?.driver || data?.data || data;
+    const id = String(me?._id || me?.id || "").trim();
+    const phone = String(me?.phone || me?.mobile || localStorage.getItem("freshbuy_login_phone") || "").trim();
+    const name = String(me?.name || me?.nickname || me?.nick || localStorage.getItem("freshbuy_login_nickname") || "司机").trim();
+
+    DRIVER = { id, phone, name, raw: me };
+    hello.textContent = `你好，${phone || name || "司机"}`;
+    driverSub.textContent = `当前司机：${name}${phone ? " · " + phone : ""}`;
+  }
+
+  async function ping() {
+    clearMsg();
+    const candidates = [
+      `${API_BASE}/api/driver/ping`,
+      `${API_BASE}/api/drivers/ping`,
+      `${API_BASE}/api/ping`,
+    ];
+    const { data, used } = await tryFetchCandidates("ping", candidates);
+    ACTIVE_API.ping = used;
+    showOk(`Ping OK：${data?.ok === false ? "返回 ok=false" : "✅"}（${used.replace(API_BASE, "")}）`);
+  }
+
+  async function loadBatchesByDate(dateStr) {
+    clearMsg();
+    batchSelect.innerHTML = `<option value="">加载中…</option>`;
+
+    const q = encodeURIComponent(dateStr);
+    const candidates = [
+      `${API_BASE}/api/driver/batches?date=${q}`,
+      `${API_BASE}/api/driver/dispatch/batches?date=${q}`,
+      `${API_BASE}/api/driver/batch/list?date=${q}`,
+      // 临时兜底（如果你没做司机接口）
+      `${API_BASE}/api/admin/dispatch/batches?date=${q}`,
+    ];
+
+    const { data, used } = await tryFetchCandidates("batches", candidates);
+    ACTIVE_API.batches = used;
+
+    BATCHES = normalizeBatchList(data);
+    if (!BATCHES.length) {
+      batchSelect.innerHTML = `<option value="">当天没有批次</option>`;
+      showOk("当天没有可用批次（可能未生成 batchKey / 未派单）");
       return;
     }
 
-    const loc = results[0].geometry.location;
-    const lat = loc.lat();
-    const lng = loc.lng();
+    batchSelect.innerHTML = [
+      `<option value="">请选择批次</option>`,
+      ...BATCHES.map((b) => {
+        const txt = `${b.batchKey}${b.count ? `（${b.count}单）` : ""}${b.label ? ` · ${b.label}` : ""}`;
+        return `<option value="${escapeHtml(b.batchKey)}">${escapeHtml(txt)}</option>`;
+      }),
+    ].join("");
 
-    // 无论后端是否成功，前端先更新 0 号起点
-    currentOrigin = {
-      address: addr,
-      lat,
-      lng,
-    };
-    driverOrigin = currentOrigin;
-    console.log("⭐ 保存后的起点 currentOrigin:", currentOrigin);
+    batchSelect.value = BATCHES[0].batchKey;
+    ACTIVE_BATCHKEY = batchSelect.value;
+    showOk(`已加载批次：${BATCHES.length} 个（已默认选中第一个）`);
+  }
+
+  async function loadOrdersByBatchKey(batchKey) {
+    clearMsg();
+    routeSub.textContent = `批次：${batchKey} · 加载中…`;
+    stopList.innerHTML = `<div class="hint">加载中…</div>`;
+
+    const q = encodeURIComponent(batchKey);
+    const candidates = [
+      `${API_BASE}/api/driver/batch/orders?batchKey=${q}`,
+      `${API_BASE}/api/driver/dispatch/batch/orders?batchKey=${q}`,
+      `${API_BASE}/api/driver/orders?batchKey=${q}`,
+      // 临时兜底
+      `${API_BASE}/api/admin/dispatch/batch/orders?batchKey=${q}`,
+    ];
+
+    const { data, used } = await tryFetchCandidates("ordersByBatch", candidates);
+    ACTIVE_API.ordersByBatch = used;
+
+    const list = normalizeOrderList(data).sort((a, b) => (a.routeIndex || 0) - (b.routeIndex || 0));
+    ORDERS = list;
+    renderOrders();
+  }
+
+  // 如果你后端没有“批次”而是“按日期返回我的订单”，也能用
+  async function loadOrdersByDate(dateStr) {
+    clearMsg();
+    routeSub.textContent = `日期：${dateStr} · 加载中…`;
+    stopList.innerHTML = `<div class="hint">加载中…</div>`;
+
+    const q = encodeURIComponent(dateStr);
+    const candidates = [
+      `${API_BASE}/api/driver/orders?date=${q}`,
+      `${API_BASE}/api/driver/orders?day=${q}`,
+      `${API_BASE}/api/driver/orders?dateStr=${q}`,
+      `${API_BASE}/api/driver/orders/by-date?date=${q}`,
+    ];
+
+    const { data, used } = await tryFetchCandidates("ordersByDate", candidates);
+    ACTIVE_API.ordersByDate = used;
+
+    const list = normalizeOrderList(data).sort((a, b) => (a.routeIndex || 0) - (b.routeIndex || 0));
+    ORDERS = list;
+    ACTIVE_BATCHKEY = ""; // 走日期模式
+    renderOrders({ mode: "date", dateStr });
+  }
+
+  // ====== render ======
+  function renderOrders(extra = {}) {
+    const mode = extra.mode || "batch";
+
+    countHint.textContent = String(ORDERS.length || 0);
+
+    if (mode === "batch") {
+      routeSub.textContent = ACTIVE_BATCHKEY
+        ? `批次：${ACTIVE_BATCHKEY} · 共 ${ORDERS.length} 单`
+        : `未选择批次（你也可以尝试按日期加载）`;
+    } else {
+      routeSub.textContent = `日期：${extra.dateStr || ""} · 共 ${ORDERS.length} 单`;
+    }
+
+    if (!ORDERS.length) {
+      stopList.innerHTML =
+        `<div class="hint">没有订单。若后台已派单：请确认司机端 token 是否正确、以及司机接口是否返回的是“当前司机的订单”。</div>`;
+      return;
+    }
+
+    stopList.innerHTML = ORDERS.map((o, idx) => {
+      const badge = statusBadge(o.status);
+      const title = `#${idx + 1} · 订单 ${o.orderNo || o.id}`;
+      const addrLine = o.addr || "(无地址)";
+      const who = [o.name, o.phone].filter(Boolean).join(" · ");
+      const amt = o.amount ? `$${Number(o.amount).toFixed(2)}` : "";
+      const navTarget = o.lat != null && o.lng != null ? `${o.lat},${o.lng}` : addrLine;
+      const navUrl = buildGoogleMapsSingle(navTarget);
+
+      return `
+        <div class="stop" data-id="${escapeHtml(o.id)}">
+          <div class="stop-top">
+            <div>
+              <h3>${escapeHtml(title)}</h3>
+              <div class="meta">
+                <div><b>地址：</b>${escapeHtml(addrLine)}</div>
+                ${who ? `<div><b>收货：</b>${escapeHtml(who)}</div>` : ``}
+                <div><b>路线序：</b>${Number.isFinite(o.routeIndex) ? o.routeIndex : "-"}</div>
+                ${amt ? `<div><b>金额：</b>${escapeHtml(amt)}</div>` : ``}
+              </div>
+            </div>
+            <div class="${badge.cls}">${escapeHtml(badge.text)}</div>
+          </div>
+
+          <div class="actions">
+            <a class="btn mini info" href="${navUrl}" target="_blank" rel="noreferrer">单点导航</a>
+            <button class="btn mini primary" data-act="delivered" data-id="${escapeHtml(o.id)}">标记送达</button>
+
+            <label class="btn mini" style="cursor:pointer;">
+              上传照片
+              <input type="file" accept="image/*" capture="environment" style="display:none;"
+                data-act="photo" data-id="${escapeHtml(o.id)}" />
+            </label>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    // bind actions
+    stopList.querySelectorAll("button[data-act='delivered']").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const id = btn.getAttribute("data-id");
+        await markDelivered(id);
+      });
+    });
+
+    stopList.querySelectorAll("input[type='file'][data-act='photo']").forEach((inp) => {
+      inp.addEventListener("change", async () => {
+        const id = inp.getAttribute("data-id");
+        const file = inp.files && inp.files[0];
+        if (!file) return;
+        await uploadPhoto(id, file);
+        inp.value = "";
+      });
+    });
+  }
+
+  // ====== actions ======
+  async function markDelivered(orderId) {
+    if (!orderId) return;
+    clearMsg();
+
+    const id = encodeURIComponent(orderId);
+    const candidates = [
+      `${API_BASE}/api/driver/orders/${id}/delivered`,
+      `${API_BASE}/api/driver/order/${id}/delivered`,
+      `${API_BASE}/api/driver/orders/${id}/status`,
+      // 临时兜底（如果你只有 admin 的 status 更新）
+      `${API_BASE}/api/admin/orders/${id}/status`,
+    ];
 
     try {
-      // 尝试通知后端（可以没有实现）
-      await fetch("/api/driver/origin", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ address: addr, lat, lng }),
-      });
-    } catch (err) {
-      console.warn("后端保存起点失败（忽略）：", err);
+      const { used } = await tryFetchCandidates(
+        "delivered",
+        candidates,
+        { method: "POST", body: JSON.stringify({ status: "done" }) }
+      );
+      ACTIVE_API.delivered = used;
+
+      const it = ORDERS.find((x) => x.id === orderId);
+      if (it) it.status = "done";
+      showOk("已标记送达/完成 ✅");
+      renderOrders();
+    } catch (e) {
+      showErr(`标记失败：${e.message}（后端可能未实现 delivered/status 接口）`);
     }
-
-    alert("起点已保存。系统会根据新的起点重新规划路线。");
-
-    if (driverOrders.length) {
-      drawOptimizedRoute();
-    } else {
-      loadDriverOrders();
-    }
-  });
-}
-
-
-// ============================
-// 7) 拉取今日司机订单
-// ============================
-
-async function loadDriverOrders() {
-  const summaryEl = document.getElementById("ordersSummary");
-  const routeSummary = document.getElementById("routeSummary");
-  if (summaryEl)
-    summaryEl.textContent = "正在从 /api/driver/orders/today 拉取数据...";
-  if (routeSummary) routeSummary.textContent = "正在获取今日配送点...";
-
-  try {
-    const res = await fetch("/api/driver/orders/today");
-    const data = await res.json();
-    console.log("📦 /api/driver/orders/today 返回：", data);
-
-    // 起点仍然以 currentOrigin 为准
-    driverOrigin = currentOrigin;
-
-    if (driverOriginInputEl && currentOrigin.address) {
-      driverOriginInputEl.value = currentOrigin.address;
-    }
-
-    driverOrders = Array.isArray(data.orders) ? data.orders : [];
-    if (!driverOrders.length) {
-      if (summaryEl) summaryEl.textContent = "今日暂无配送任务。";
-      if (routeSummary) routeSummary.textContent = "没有配送点，不需要路线规划。";
-      const listEl = document.getElementById("driverOrdersList");
-      if (listEl) listEl.innerHTML = "";
-      currentRouteUrl = "";
-      clearRouteMarkers();
-      return;
-    }
-
-    if (summaryEl)
-      summaryEl.textContent = `今日共 ${driverOrders.length} 单配送任务`;
-
-    // ⭐ 重点：先把起点 geocode 出经纬度，再画路线 + 0 号点
-    ensureOriginLatLng(() => {
-      console.log("🔍 geocode 完成，开始绘制路线");
-      drawOptimizedRoute();
-    });
-  } catch (err) {
-    console.error("❌ 获取司机订单失败:", err);
-    if (summaryEl) summaryEl.textContent = "获取任务失败，请稍后重试。";
-    if (routeSummary) routeSummary.textContent = "无法获取任务数据。";
-    currentRouteUrl = "";
-  }
-}
-
-
-// ============================
-// 8) 绘制最优路线 + 打点
-// ============================
-
-function drawOptimizedRoute() {
-  const routeSummary = document.getElementById("routeSummary");
-
-  const points = driverOrders
-    .map((o, idx) => {
-      if (typeof o.lat === "number" && typeof o.lng === "number") {
-        return { idx, order: o, location: { lat: o.lat, lng: o.lng } };
-      }
-      return null;
-    })
-    .filter(Boolean);
-
-  // 没有经纬度：只生成外部 URL（起点仍然显示 0）
-  if (!points.length) {
-    if (routeSummary)
-      routeSummary.textContent =
-        "今日任务没有提供经纬度，只在列表中显示地址，但仍可在 Google Maps 打开整条路线。";
-
-    drawMarkersForOrderSequence([]);
-    renderOrdersList();
-    buildRouteUrlFromOrders(driverOrders);
-    return;
   }
 
-  // 只有一个点
-  if (points.length === 1) {
-    const p = points[0];
-    map.setCenter(p.location);
-    map.setZoom(14);
+  async function uploadPhoto(orderId, file) {
+    if (!orderId || !file) return;
+    clearMsg();
 
-    orderedIndices = [p.idx];
+    const id = encodeURIComponent(orderId);
+    const form = new FormData();
+    form.append("file", file);
 
-    drawMarkersForOrderSequence(orderedIndices);
-    renderOrdersList(orderedIndices);
-    buildRouteUrlFromOrders([p.order]);
+    const candidates = [
+      `${API_BASE}/api/driver/orders/${id}/photo`,
+      `${API_BASE}/api/driver/order/${id}/photo`,
+      `${API_BASE}/api/driver/orders/${id}/upload`,
+    ];
 
-    if (routeSummary) routeSummary.textContent = "只有一个配送点，已在地图上标记。";
-    return;
-  }
-
-  // 多个点 → Directions API 优化顺序
-  let origin;
-
-  // 强制优先用经纬度，保证路线起点和 0 号 marker 一致
-  if (
-    currentOrigin &&
-    typeof currentOrigin.lat === "number" &&
-    typeof currentOrigin.lng === "number"
-  ) {
-    origin = new google.maps.LatLng(currentOrigin.lat, currentOrigin.lng);
-  } else if (currentOrigin && currentOrigin.address) {
-    origin = currentOrigin.address;
-  } else {
-    origin = points[0].location;
-  }
-
-  const destination = points[points.length - 1].location;
-  const waypoints = points.slice(0, -1).map((p) => ({
-    location: p.location,
-    stopover: true,
-  }));
-
-  const request = {
-    origin,
-    destination,
-    waypoints,
-    travelMode: google.maps.TravelMode.DRIVING,
-    optimizeWaypoints: true,
-  };
-
-  directionsService.route(request, (result, status) => {
-    if (status === google.maps.DirectionsStatus.OK) {
-      console.log("✅ Directions 路线结果：", result);
-      directionsRenderer.setDirections(result);
-
-      const route = result.routes[0];
-      const wpOrder = route.waypoint_order || [];
-
-      orderedIndices = [];
-      wpOrder.forEach((wpIdx) => {
-        orderedIndices.push(points[wpIdx].idx);
-      });
-      orderedIndices.push(points[points.length - 1].idx);
-
-      drawMarkersForOrderSequence(orderedIndices);
-      renderOrdersList(orderedIndices);
-
-      const orderedOrders = orderedIndices.map((i) => driverOrders[i]);
-      buildRouteUrlFromOrders(orderedOrders);
-
-      if (routeSummary)
-        routeSummary.textContent = `已为 ${points.length} 个配送点绘制最优驾驶路线`;
-    } else {
-      console.warn("Directions 请求失败：", status);
-      if (routeSummary) routeSummary.textContent = "无法请求路线规划，只在地图上打点。";
-
-      orderedIndices = points.map((p) => p.idx);
-      drawMarkersForOrderSequence(orderedIndices);
-
-      renderOrdersList(orderedIndices);
-      buildRouteUrlFromOrders(points.map((p) => p.order));
-    }
-  });
-}
-
-
-// ============================
-// 9) 渲染订单列表（配送表）
-// ============================
-
-function renderOrdersList(indices) {
-  const listEl = document.getElementById("driverOrdersList");
-  if (!listEl) return;
-  listEl.innerHTML = "";
-
-  if (!Array.isArray(driverOrders) || !driverOrders.length) return;
-
-  const useIndices =
-    Array.isArray(indices) && indices.length
-      ? indices
-      : driverOrders.map((_, i) => i);
-
-  useIndices.forEach((idx, displayIndex) => {
-    const o = driverOrders[idx];
-    if (!o) {
-      console.warn("renderOrdersList: 找不到订单，idx =", idx);
-      return;
-    }
-
-    const card = document.createElement("div");
-    card.className = "driver-order-card";
-
-    const addr = buildFullAddress(o);
-
-    const leftHtml = `
-      <div class="driver-order-main">
-        <div class="driver-order-top">
-          <div class="driver-order-name">
-            ${displayIndex + 1}. ${o.customerName || o.user?.name || "-"}
-          </div>
-          <div class="driver-order-tag">${o.orderNo || o._id}</div>
-        </div>
-        <div class="driver-order-sub">
-          电话：${o.customerPhone || o.user?.phone || "-"}
-        </div>
-        <div class="driver-order-address">
-          地址：${addr || "未提供地址"}
-        </div>
-        <div class="driver-order-sub">
-          下单时间：${formatDateTime(o.createdAt)}
-        </div>
-        ${
-          o.photoUrl
-            ? '<div class="driver-order-sub" style="color:#22c55e;">已上传送达照片</div>'
-            : ""
-        }
-      </div>
-    `;
-
-    const status = o.status || "assigned";
-    const statusText =
-      (status === "delivered" && "已送达") ||
-      (status === "delivering" && "配送中") ||
-      (status === "assigned" && "待配送") ||
-      status;
-
-    const rightDiv = document.createElement("div");
-    rightDiv.className = "driver-order-actions";
-    rightDiv.innerHTML = `
-      <div class="driver-tag-status ${
-        status === "delivered"
-          ? "delivered"
-          : status === "delivering"
-          ? "delivering"
-          : ""
-      }">${statusText}</div>
-      <button class="driver-btn driver-btn-ghost">🧭 导航</button>
-      <button class="driver-btn driver-btn-ghost">📷 上传照片</button>
-      <button class="driver-btn driver-btn-primary"${
-        status === "delivered" ? " disabled" : ""
-      }>✅ 完成</button>
-    `;
-
-    const fileInput = document.createElement("input");
-    fileInput.type = "file";
-    fileInput.accept = "image/*";
-    fileInput.style.display = "none";
-    rightDiv.appendChild(fileInput);
-
-    const [navBtn, photoBtn, completeBtn] = rightDiv.querySelectorAll("button");
-
-    navBtn.addEventListener("click", () => {
-      openSingleOrderInGoogleMaps(o);
-    });
-
-    photoBtn.addEventListener("click", () => {
-      fileInput.click();
-    });
-
-    fileInput.addEventListener("change", () => {
-      const file = fileInput.files[0];
-      if (file) {
-        uploadDeliveryPhoto(o, file);
-      }
-    });
-
-    completeBtn.addEventListener("click", () => {
-      const id = getOrderId(o);
-      if (!id) {
-        alert("缺少订单 ID，无法标记送达");
+    let lastErr = null;
+    for (const url of candidates) {
+      try {
+        await fetchJSON(url, { method: "POST", body: form });
+        ACTIVE_API.photo = url;
+        showOk("照片已上传 ✅");
         return;
+      } catch (e) {
+        lastErr = e;
       }
-      if (completeBtn.disabled) return;
-      markOrderDelivered(id);
+    }
+    showErr(`上传失败：${lastErr?.message || "未知错误"}（后端可能未实现 photo/upload 接口）`);
+  }
+
+  function navAll() {
+    if (!ORDERS.length) return showErr("没有订单，无法全程导航");
+    const stops = ORDERS.map((o) => ({ addr: o.addr, lat: o.lat, lng: o.lng }));
+    const url = buildGoogleMapsDirections(stops);
+    if (!url) return showErr("缺少地址/坐标，无法生成路线导航");
+    window.open(url, "_blank", "noreferrer");
+  }
+
+  // ====== init ======
+  async function init() {
+    // token 状态
+    tokenHint.textContent = AUTH.getToken() ? "FOUND" : "MISSING";
+
+    // 默认今天
+    dateInput.value = fmtDateISO(new Date());
+
+    btnLogout.addEventListener("click", () => {
+      AUTH.clear();
+      location.href = "/driver/login.html"; // 没有就改成你的司机登录页
     });
 
-    card.innerHTML = leftHtml;
-    card.appendChild(rightDiv);
-    listEl.appendChild(card);
-  });
-}
-
-
-// ============================
-// 10) 一键开始配送（所有未完成订单）
-// ============================
-
-async function startAllDeliveries() {
-  if (!driverOrders.length) {
-    alert("当前没有配送任务。");
-    return;
-  }
-
-  if (
-    !confirm(
-      "确认开始配送所有【尚未送达】的订单？\n\n确认后，这些订单状态会变为【配送中】。"
-    )
-  ) {
-    return;
-  }
-
-  try {
-    const res = await fetch("/api/driver/orders/start-all", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ startedAt: new Date().toISOString() }),
-    });
-    const data = await res.json();
-
-    if (!data.success) {
-      alert("更新失败：" + (data.message || "未知错误"));
-      return;
-    }
-
-    const updatedList = Array.isArray(data.driverOrders)
-      ? data.driverOrders
-      : [];
-
-    // 用后端返回的 driverOrders 覆盖本地同 ID 的订单
-    driverOrders = driverOrders.map((o) => {
-      const id = getOrderId(o);
-      const hit = updatedList.find((u) => getOrderId(u) === id);
-      return hit || o;
+    btnPing.addEventListener("click", async () => {
+      try { await ping(); } catch (e) { showErr(`Ping 失败：${e.message}`); }
     });
 
-    // 重新渲染列表（路线顺序不变）
-    renderOrdersList(orderedIndices);
-
-    alert("所有未送达订单已标记为【配送中】");
-  } catch (err) {
-    console.error("❌ 一键开始配送失败:", err);
-    alert("网络错误，请稍后重试。");
-  }
-}
-
-
-// ============================
-// 构建整条路线的 Google Maps 导航 URL（统一用 currentOrigin）
-// ============================
-function buildRouteUrlFromOrders(orders) {
-  let list = [];
-  if (orders && orders.length) {
-    list = orders;
-  } else if (orderedIndices && orderedIndices.length) {
-    list = orderedIndices.map((i) => driverOrders[i]);
-  } else {
-    list = driverOrders;
-  }
-
-  if (!list || !list.length) {
-    currentRouteUrl = "";
-    console.warn("buildRouteUrlFromOrders：订单为空，无法生成路线 URL");
-    return;
-  }
-
-  // ⭐ 这里优先用“订单里的地址字符串”，保证跟下面配送列表显示的一模一样
-  const getLocationString = (o) => {
-    const addr = buildFullAddress(o);   // fullAddress / address / street+city...
-    if (addr) return addr;
-
-    if (typeof o.lat === "number" && typeof o.lng === "number") {
-      return `${o.lat},${o.lng}`;
-    }
-    return "";
-  };
-
-  // ⭐ 起点：优先用 currentOrigin.address，其次用起点的经纬度
-  let originStr = "";
-  if (currentOrigin && currentOrigin.address) {
-    originStr = currentOrigin.address;
-  } else if (
-    currentOrigin &&
-    typeof currentOrigin.lat === "number" &&
-    typeof currentOrigin.lng === "number"
-  ) {
-    originStr = `${currentOrigin.lat},${currentOrigin.lng}`;
-  }
-  if (!originStr) {
-    originStr = getLocationString(list[0]);
-  }
-
-  const destStr = getLocationString(list[list.length - 1]);
-  const waypointStrs = list.slice(0, -1).map(getLocationString).filter(Boolean);
-
-  if (!originStr || !destStr) {
-    currentRouteUrl = "";
-    console.warn("buildRouteUrlFromOrders：缺少起点或终点，无法生成 URL", {
-      originStr,
-      destStr,
-      list,
+    btnLoadBatches.addEventListener("click", async () => {
+      try { await loadBatchesByDate(dateInput.value); }
+      catch (e) { showErr(`加载批次失败：${e.message}`); }
     });
-    return;
-  }
 
-  let url = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(
-    originStr
-  )}&destination=${encodeURIComponent(destStr)}`;
-
-  if (waypointStrs.length) {
-    const wp = waypointStrs.map((s) => encodeURIComponent(s)).join("|");
-    url += `&waypoints=${wp}`;
-  }
-
-  url += "&travelmode=driving";
-
-  currentRouteUrl = url;
-  console.log("✅ 已生成路线 URL:", currentRouteUrl);
-}
-
-async function openFullRouteInGoogleMaps() {
-  if (!driverOrders.length) {
-    await loadDriverOrders();
-  }
-
-  if (!currentRouteUrl) {
-    console.warn("当前没有生成路线 URL", { driverOrders, orderedIndices });
-    alert(
-      "当前还没有可用路线。\n\n可能原因：\n1）/api/driver/orders/today 没返回任务；\n2）任务里没有经纬度 lat/lng 且地址缺失；\n\n请先检查接口数据和 Console 日志。"
-    );
-    return;
-  }
-
-  window.open(currentRouteUrl, "_blank");
-}
-
-function openSingleOrderInGoogleMaps(order) {
-  const addr = buildFullAddress(order);
-  if (!addr && !(order.lat && order.lng)) {
-    alert("该订单缺少地址信息，无法导航。");
-    return;
-  }
-
-  let dest = "";
-  if (order.lat && order.lng) {
-    dest = `${order.lat},${order.lng}`;
-  } else {
-    dest = addr;
-  }
-
-  const url =
-    "https://www.google.com/maps/dir/?api=1&destination=" +
-    encodeURIComponent(dest) +
-    "&travelmode=driving";
-
-  window.open(url, "_blank");
-}
-
-
-// ============================
-// 11) 上传送达照片 & 标记送达
-// ============================
-
-async function uploadDeliveryPhoto(order, file) {
-  const orderId = getOrderId(order);
-  if (!orderId) {
-    alert("缺少订单 ID，无法上传照片。");
-    return;
-  }
-
-  const formData = new FormData();
-  formData.append("photo", file);
-
-  try {
-    const res = await fetch(`/api/driver/orders/${orderId}/photo`, {
-      method: "POST",
-      body: formData,
+    btnLoadOrders.addEventListener("click", async () => {
+      try {
+        ACTIVE_BATCHKEY = batchSelect.value;
+        if (ACTIVE_BATCHKEY) {
+          await loadOrdersByBatchKey(ACTIVE_BATCHKEY);
+        } else {
+          // 如果没有批次，尝试按日期加载
+          await loadOrdersByDate(dateInput.value);
+        }
+      } catch (e) {
+        showErr(`加载订单失败：${e.message}`);
+      }
     });
-    const data = await res.json();
 
-    if (!data.success) {
-      alert("上传失败：" + (data.message || "未知错误"));
-      return;
-    }
-
-    const idx = driverOrders.findIndex((o) => getOrderId(o) === orderId);
-    if (idx !== -1) {
-      driverOrders[idx].photoUrl = data.photoUrl;
-    }
-
-    alert("送达照片上传成功");
-    renderOrdersList(orderedIndices);
-  } catch (err) {
-    console.error("❌ 上传送达照片失败:", err);
-    alert("网络错误，上传失败，请稍后重试。");
-  }
-}
-
-async function markOrderDelivered(orderId) {
-  if (!orderId) return;
-  if (!confirm("确认标记该订单为已送达？")) return;
-
-  try {
-    const res = await fetch(`/api/driver/orders/${orderId}/complete`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+    btnRefresh.addEventListener("click", async () => {
+      try {
+        if (ACTIVE_BATCHKEY) return await loadOrdersByBatchKey(ACTIVE_BATCHKEY);
+        return await loadOrdersByDate(dateInput.value);
+      } catch (e) {
+        showErr(`刷新失败：${e.message}`);
+      }
     });
-    const data = await res.json();
 
-    if (!data.success) {
-      alert("更新失败：" + (data.message || "未知错误"));
-      return;
+    btnNavAll.addEventListener("click", navAll);
+
+    dateInput.addEventListener("change", async () => {
+      // 改日期：优先尝试加载批次（有批次更清晰）
+      try { await loadBatchesByDate(dateInput.value); }
+      catch (e) {
+        // 批次接口没有也不算致命：可以走按日期加载
+        showErr(`批次接口不可用：${e.message}（可直接点“加载订单”走按日期模式）`);
+      }
+    });
+
+    batchSelect.addEventListener("change", () => {
+      ACTIVE_BATCHKEY = batchSelect.value;
+      routeSub.textContent = ACTIVE_BATCHKEY ? `批次：${ACTIVE_BATCHKEY} · 未加载` : "未选择批次（可按日期加载）";
+    });
+
+    // 尝试加载司机信息（如果接口不存在，页面也可用）
+    try {
+      await loadDriverMe();
+    } catch (e) {
+      const phone = localStorage.getItem("freshbuy_login_phone") || "";
+      const name = localStorage.getItem("freshbuy_login_nickname") || "司机";
+      DRIVER = { id: "", phone, name, raw: null };
+      hello.textContent = `你好，${phone || name || "司机"}`;
+      driverSub.textContent = `当前司机：${name}${phone ? " · " + phone : ""}（/api/driver/me 未找到，使用本地兜底）`;
     }
 
-    // 后端返回的是 driverOrder
-    const updated = data.driverOrder || data.order;
-
-    const idx = driverOrders.findIndex((o) => getOrderId(o) === orderId);
-    if (idx !== -1 && updated) {
-      driverOrders[idx] = updated;
-    }
-
-    // 如果 orderedIndices 为空，就会在 renderOrdersList 里自动退回用全部订单
-    renderOrdersList(orderedIndices);
-  } catch (err) {
-    console.error("❌ 标记送达失败:", err);
-    alert("网络错误，请稍后重试。");
-  }
-}
-
-
-// ============================
-// 12) 页面加载入口
-// ============================
-
-window.addEventListener("load", () => {
-  driverOriginInputEl = document.getElementById("driverOriginInput");
-
-  const dateEl = document.getElementById("driverDateText");
-  const now = new Date();
-  if (dateEl) {
-    dateEl.textContent = `${now.getFullYear()}-${String(
-      now.getMonth() + 1
-    ).padStart(2, "0")}-${String(now.getDate()).padStart(
-      2,
-      "0"
-    )} · 司机端`;
-  }
-
-  if (window.google && google.maps) {
-    initMap();
-    // 先根据地址计算起点经纬度，再加载订单
-    loadDriverOrigin();
-    loadDriverOrders();
-  } else {
-    console.error("❌ Google Maps JS 未加载成功");
-    const routeSummary = document.getElementById("routeSummary");
-    if (routeSummary) {
-      routeSummary.textContent =
-        "Google 地图脚本未加载，请检查 API Key。";
+    // 初次自动加载批次（如果失败不阻断）
+    try {
+      await loadBatchesByDate(dateInput.value);
+      showOk("已自动加载批次：可直接点“加载订单”");
+    } catch (e) {
+      showErr(`未找到批次接口：${e.message}（你仍可点“加载订单”走按日期模式）`);
     }
   }
 
-  const btnRefresh = document.getElementById("btnRefresh");
-  if (btnRefresh) btnRefresh.addEventListener("click", () => loadDriverOrders());
-
-  const btnOpenRoute = document.getElementById("btnOpenRouteInMaps");
-  if (btnOpenRoute)
-    btnOpenRoute.addEventListener("click", openFullRouteInGoogleMaps);
-
-  const btnSaveOrigin = document.getElementById("btnSaveOrigin");
-  if (btnSaveOrigin) btnSaveOrigin.addEventListener("click", saveDriverOrigin);
-
-  // ⭐ 一键开始配送按钮
-  const btnStartAll = document.getElementById("btnStartAllDeliveries");
-  if (btnStartAll) {
-    btnStartAll.addEventListener("click", startAllDeliveries);
-  }
-});
+  init().catch((e) => showErr(e.message));
+})();
