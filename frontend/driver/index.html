@@ -2,150 +2,139 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <title>司机端 - 我的配送单</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>司机端 - 今日路线</title>
     <style>
       :root {
         --bg: #0b1220;
-        --card: rgba(15, 23, 42, 0.9);
-        --stroke: rgba(148, 163, 184, 0.35);
+        --card: rgba(255, 255, 255, 0.06);
+        --line: rgba(148, 163, 184, 0.22);
         --text: #e5e7eb;
         --muted: #94a3b8;
         --primary: #22c55e;
         --warn: #f59e0b;
         --danger: #ef4444;
-        --accent: #38bdf8;
         --radius: 16px;
       }
       * { box-sizing: border-box; }
       body {
         margin: 0;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, "Noto Sans", sans-serif;
-        background: radial-gradient(1200px 600px at 20% -20%, rgba(56,189,248,.18), transparent),
-                    radial-gradient(900px 600px at 110% 10%, rgba(34,197,94,.18), transparent),
+        background: radial-gradient(1200px 600px at 20% 0%, rgba(34,197,94,.18), transparent 55%),
+                    radial-gradient(1000px 600px at 80% 10%, rgba(56,189,248,.15), transparent 60%),
                     var(--bg);
         color: var(--text);
       }
-      .wrap { max-width: 1100px; margin: 0 auto; padding: 18px 14px 50px; }
+      a { color: inherit; text-decoration: none; }
+      .wrap { max-width: 1100px; margin: 0 auto; padding: 16px; }
       .topbar {
-        display: flex; gap: 10px; align-items: center; justify-content: space-between;
-        padding: 14px; border: 1px solid var(--stroke); border-radius: var(--radius);
-        background: rgba(2,6,23,.35); backdrop-filter: blur(10px);
-        position: sticky; top: 0; z-index: 10;
-      }
-      .title { display: flex; flex-direction: column; gap: 2px; }
-      .title h1 { margin: 0; font-size: 18px; }
-      .title .sub { font-size: 12px; color: var(--muted); }
-      .actions { display:flex; gap: 8px; align-items:center; flex-wrap: wrap; justify-content:flex-end; }
-      .btn {
-        border: 1px solid var(--stroke);
-        background: rgba(148,163,184,.12);
-        color: var(--text);
-        padding: 9px 12px;
-        border-radius: 12px;
-        cursor: pointer;
-        font-weight: 600;
-        font-size: 13px;
-      }
-      .btn.primary { background: rgba(34,197,94,.20); border-color: rgba(34,197,94,.55); }
-      .btn.ghost { background: transparent; }
-      .btn.danger { background: rgba(239,68,68,.16); border-color: rgba(239,68,68,.45); }
-      .btn:disabled { opacity: .5; cursor: not-allowed; }
-
-      .panel {
-        margin-top: 12px;
-        border: 1px solid var(--stroke);
+        display: flex; gap: 12px; align-items: center; justify-content: space-between;
+        padding: 14px 14px;
+        border: 1px solid var(--line);
+        background: rgba(15, 23, 42, 0.55);
         border-radius: var(--radius);
-        background: var(--card);
-        padding: 12px;
+        backdrop-filter: blur(10px);
       }
-      .filters { display:flex; gap: 8px; flex-wrap: wrap; align-items:center; }
-      .input, select {
-        border: 1px solid var(--stroke);
-        background: rgba(2,6,23,.35);
+      .left { display:flex; gap:12px; align-items:center; }
+      .logo {
+        width: 42px; height: 42px; border-radius: 14px;
+        background: rgba(34,197,94,.18);
+        border: 1px solid rgba(34,197,94,.35);
+        display:flex; align-items:center; justify-content:center;
+        font-weight: 900;
+      }
+      .hello { font-size: 14px; font-weight: 700; }
+      .sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+      .right { display:flex; gap: 8px; align-items:center; flex-wrap: wrap; justify-content: flex-end; }
+      .btn {
+        border: 1px solid var(--line);
+        background: rgba(255,255,255,.06);
         color: var(--text);
-        padding: 9px 10px;
+        padding: 10px 12px;
+        border-radius: 12px;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .btn:hover { background: rgba(255,255,255,.10); }
+      .btn.primary { border-color: rgba(34,197,94,.45); background: rgba(34,197,94,.16); }
+      .btn.danger { border-color: rgba(239,68,68,.45); background: rgba(239,68,68,.12); }
+      .grid { display: grid; grid-template-columns: 360px 1fr; gap: 12px; margin-top: 12px; }
+      @media (max-width: 980px) { .grid { grid-template-columns: 1fr; } }
+
+      .card {
+        border: 1px solid var(--line);
+        background: rgba(15, 23, 42, 0.55);
+        border-radius: var(--radius);
+        padding: 14px;
+      }
+      .card h2 { margin: 0; font-size: 14px; }
+      .muted { color: var(--muted); font-size: 12px; }
+      .row { display:flex; gap: 8px; align-items:center; margin-top: 10px; flex-wrap: wrap; }
+      .input, select {
+        border: 1px solid var(--line);
+        background: rgba(255,255,255,.06);
+        color: var(--text);
+        padding: 10px 10px;
         border-radius: 12px;
         font-size: 13px;
         outline: none;
       }
-      .input { min-width: 220px; }
-
-      .metaRow {
-        display:flex; gap: 10px; flex-wrap: wrap; align-items:center; justify-content: space-between;
-        margin-top: 10px;
-        color: var(--muted);
-        font-size: 12px;
-      }
+      select option { background: #0b1220; color: var(--text); }
       .pill {
-        display:inline-flex; align-items:center; gap: 6px;
-        padding: 3px 10px; border-radius: 999px;
-        border: 1px solid var(--stroke);
-        background: rgba(148,163,184,.10);
+        display:inline-flex; gap:6px; align-items:center;
+        border: 1px solid var(--line);
+        padding: 8px 10px;
+        border-radius: 999px;
         font-size: 12px;
-        color: var(--text);
+        color: var(--muted);
+        background: rgba(255,255,255,.04);
       }
-      .pill.ok { border-color: rgba(34,197,94,.55); background: rgba(34,197,94,.16); }
-      .pill.warn { border-color: rgba(245,158,11,.55); background: rgba(245,158,11,.16); }
-      .pill.bad { border-color: rgba(239,68,68,.55); background: rgba(239,68,68,.16); }
-      .pill.info { border-color: rgba(56,189,248,.55); background: rgba(56,189,248,.16); }
 
-      .grid {
-        margin-top: 12px;
-        display: grid;
-        grid-template-columns: repeat(12, 1fr);
-        gap: 10px;
-      }
-      .card {
-        grid-column: span 12;
-        border: 1px solid var(--stroke);
-        border-radius: var(--radius);
-        background: rgba(2,6,23,.35);
-        padding: 12px;
-      }
-      @media (min-width: 860px) {
-        .card { grid-column: span 6; }
-      }
-      .row { display:flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
-      .left { display:flex; gap: 10px; align-items:flex-start; }
-      .seq {
-        width: 44px; height: 44px; border-radius: 999px;
-        display:flex; align-items:center; justify-content:center;
-        background: rgba(56,189,248,.16); color: var(--accent);
-        font-weight: 900; font-size: 20px; flex: 0 0 auto;
-        border: 1px solid rgba(56,189,248,.35);
-      }
-      .seq.empty { opacity:.35; }
-      .main { display:flex; flex-direction:column; gap: 4px; }
-      .oid { font-weight: 800; font-size: 14px; }
-      .addr { color: var(--text); font-size: 13px; line-height: 1.25; }
-      .muted { color: var(--muted); font-size: 12px; }
-      .right { display:flex; flex-direction:column; gap: 8px; align-items:flex-end; }
-      .btnrow { display:flex; gap: 8px; flex-wrap: wrap; justify-content:flex-end; }
-      .detail {
+      .msg {
         margin-top: 10px;
-        padding-top: 10px;
-        border-top: 1px dashed rgba(148,163,184,.35);
-        display: none;
-      }
-      .detail.active { display:block; }
-      .items { margin-top: 8px; display:flex; flex-direction:column; gap: 6px; }
-      .item { display:flex; justify-content: space-between; gap: 10px; font-size: 13px; }
-      .hr { height:1px; background: rgba(148,163,184,.18); margin: 10px 0; }
-      .toast {
-        position: fixed; left: 50%; transform: translateX(-50%);
-        bottom: 14px; z-index: 99;
-        max-width: 92vw;
         padding: 10px 12px;
         border-radius: 12px;
-        border: 1px solid var(--stroke);
-        background: rgba(2,6,23,.85);
-        backdrop-filter: blur(10px);
-        color: var(--text);
+        border: 1px solid var(--line);
+        display:none;
         font-size: 13px;
-        display: none;
       }
-      .toast.show { display:block; }
+      .msg.ok { display:block; border-color: rgba(34,197,94,.4); background: rgba(34,197,94,.12); }
+      .msg.err { display:block; border-color: rgba(239,68,68,.45); background: rgba(239,68,68,.12); }
+
+      .routeHead { display:flex; align-items:flex-end; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+      .routeTitle { font-size: 14px; font-weight: 800; }
+      .routeSub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+      .stopList { margin-top: 12px; display: flex; flex-direction: column; gap: 10px; }
+      .stop {
+        border: 1px solid var(--line);
+        background: rgba(255,255,255,.05);
+        border-radius: 14px;
+        padding: 12px;
+      }
+      .stop-top {
+        display:flex; gap:10px; justify-content: space-between; align-items:flex-start;
+      }
+      .stop h3 { margin: 0 0 6px 0; font-size: 14px; }
+      .meta { font-size: 12px; color: var(--muted); line-height: 1.6; }
+      .actions { margin-top: 10px; display:flex; gap: 8px; flex-wrap: wrap; align-items:center; }
+      .btn.mini { padding: 8px 10px; border-radius: 10px; font-size: 12px; }
+      .btn.mini.primary { background: rgba(34,197,94,.16); border-color: rgba(34,197,94,.45); }
+      .btn.mini.info { background: rgba(56,189,248,.12); border-color: rgba(56,189,248,.35); }
+      .badge {
+        padding: 6px 10px;
+        border-radius: 999px;
+        font-size: 12px;
+        border: 1px solid var(--line);
+        background: rgba(255,255,255,.06);
+        color: var(--muted);
+        white-space: nowrap;
+      }
+      .badge.ok { border-color: rgba(34,197,94,.4); color: #86efac; background: rgba(34,197,94,.12); }
+      .badge.warn { border-color: rgba(245,158,11,.45); color: #fcd34d; background: rgba(245,158,11,.12); }
+      .badge.dim { opacity: .9; }
+
+      .hint { color: var(--muted); font-size: 13px; padding: 10px 0; }
       code { color: #a5b4fc; }
     </style>
   </head>
@@ -153,59 +142,73 @@
   <body>
     <div class="wrap">
       <div class="topbar">
-        <div class="title">
-          <h1>🚚 司机端 · 我的配送单</h1>
-          <div class="sub" id="subTitle">加载中...</div>
-        </div>
-        <div class="actions">
-          <button class="btn ghost" id="btnLogout">退出登录</button>
-          <button class="btn" id="btnTestToken">检查 Token</button>
-          <button class="btn primary" id="btnRefresh">刷新订单</button>
-        </div>
-      </div>
-
-      <div class="panel">
-        <div class="filters">
-          <input class="input" id="kw" placeholder="搜索：订单号 / 姓名 / 手机 / 地址" />
-          <select id="status">
-            <option value="">全部状态</option>
-            <option value="packing">配货中</option>
-            <option value="shipping">配送中</option>
-            <option value="done">已完成</option>
-            <option value="pending">待确认/待支付</option>
-            <option value="paid">已支付</option>
-            <option value="cancelled">已取消</option>
-          </select>
-          <select id="scope">
-            <option value="today">只看今天</option>
-            <option value="all">全部日期</option>
-          </select>
-          <select id="mode">
-            <option value="">全部模式</option>
-            <option value="door">送货上门</option>
-            <option value="pickup">团长自提</option>
-          </select>
-          <button class="btn" id="btnApply">应用筛选</button>
-        </div>
-
-        <div class="metaRow">
-          <div style="display:flex; gap:8px; flex-wrap: wrap; align-items:center;">
-            <span class="pill info" id="pillApi">API: <span id="apiUsed">未选择</span></span>
-            <span class="pill" id="pillCount">订单数：<b id="count">0</b></span>
-            <span class="pill" id="pillTime">更新时间：<span id="updatedAt">-</span></span>
+        <div class="left">
+          <div class="logo">🚚</div>
+          <div>
+            <div class="hello" id="hello">你好，司机</div>
+            <div class="sub" id="driverSub">当前司机：-</div>
           </div>
-          <div class="muted" id="debugHint"></div>
+        </div>
+
+        <div class="right">
+          <span class="pill">Token：<b id="tokenHint">?</b></span>
+          <span class="pill">API：<b id="apiHint">-</b></span>
+          <span class="pill">订单数：<b id="countHint">0</b></span>
+          <button class="btn" id="btnPing">Ping</button>
+          <button class="btn danger" id="btnLogout">退出</button>
         </div>
       </div>
 
-      <div class="grid" id="list">
-        <!-- cards -->
-      </div>
+      <div class="grid">
+        <!-- 左侧：选择日期/批次 -->
+        <div class="card">
+          <h2>任务选择</h2>
+          <div class="muted" style="margin-top:6px;">
+            你可以按 <b>批次</b> 拉订单；如果批次接口不存在，也可以按 <b>日期</b> 拉订单。
+          </div>
 
-      <div class="toast" id="toast"></div>
+          <div class="row">
+            <input class="input" id="dateInput" type="date" />
+            <button class="btn" id="btnLoadBatches">加载批次</button>
+          </div>
+
+          <div class="row">
+            <select id="batchSelect" style="min-width: 260px;">
+              <option value="">（可选）先加载批次</option>
+            </select>
+          </div>
+
+          <div class="row">
+            <button class="btn primary" id="btnLoadOrders">加载订单</button>
+            <button class="btn" id="btnRefresh">刷新</button>
+            <button class="btn" id="btnNavAll">全程导航</button>
+          </div>
+
+          <div class="msg ok" id="okBox"></div>
+          <div class="msg err" id="errBox"></div>
+
+          <div class="muted" style="margin-top:10px;">
+            如果后台已派单但这里为空：通常是 <code>司机端接口没按 driver 过滤</code> 或 <code>页面还在跑旧 JS</code>。
+          </div>
+        </div>
+
+        <!-- 右侧：路线列表 -->
+        <div class="card">
+          <div class="routeHead">
+            <div>
+              <div class="routeTitle">今日路线</div>
+              <div class="routeSub" id="routeSub">未加载</div>
+            </div>
+          </div>
+
+          <div id="stopList" class="stopList">
+            <div class="hint">点击“加载订单”开始。</div>
+          </div>
+        </div>
+      </div>
     </div>
 
-    <script src="/driver/assets/js/driver_fetch.js?v=1"></script>
-    <script src="/driver/assets/js/driver_orders.js?v=1"></script>
+    <!-- ✅ 关键：不要再引用旧的 driver_orders.js -->
+    <script src="/driver/assets/js/driver_index.js?v=20260108_1"></script>
   </body>
 </html>
