@@ -58,6 +58,7 @@ import stripePayRouter from "./routes/pay_stripe.js";
 import adminPicklist from "./routes/admin_picklist.js";
 import authVerifyRegisterRouter from "./routes/auth_verify_register.js";
 import authVerifyResetPasswordRouter from "./routes/auth_verify_reset_password.js";
+import driverDispatchRoutes from "./routes/driver_dispatch.js";
 // =======================
 // ESM 环境下的 __dirname
 // =======================
@@ -84,6 +85,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use("/api/sms", smsVerifyRouter);
 app.use("/api/admin", adminPicklist);
+app.use("/api/driver", driverDispatchRoutes);
 // =======================
 // API 路由挂载（先挂具体的，再挂“/api”大网兜）
 // =======================

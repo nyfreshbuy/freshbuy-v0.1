@@ -161,7 +161,27 @@ console.log("driver_index.js loaded (NEW)");
     }
     throw lastErr || new Error("All candidates failed");
   }
+  function addrToText(addr) {
+  if (!addr) return "";
+  if (typeof addr === "string") return addr.trim();
 
+  // object -> 拼字符串
+  if (typeof addr === "object") {
+    const line1 = addr.line1 || addr.address1 || addr.street || "";
+    const line2 = addr.line2 || addr.address2 || addr.apt || "";
+    const city  = addr.city || "";
+    const state = addr.state || "";
+    const zip   = addr.zip || addr.postalCode || "";
+
+    const parts = [line1, line2, city, state, zip].filter(Boolean);
+    if (parts.length) return parts.join(" ").replace(/\s+/g, " ").trim();
+
+    // 实在没有字段就 JSON 兜底
+    try { return JSON.stringify(addr); } catch { return String(addr); }
+  }
+
+  return String(addr).trim();
+}
   // ====== normalize ======
   function normalizeBatchList(payload) {
     const list = payload?.batches || payload?.data || payload || [];
@@ -227,7 +247,7 @@ console.log("driver_index.js loaded (NEW)");
         orderNo,
         status,
         routeIndex: Number.isFinite(routeIndex) ? routeIndex : 999999,
-        addr: String(addr || "").trim(),
+        addr: addrToText(addr),
         name: String(name || "").trim(),
         phone: String(phone || "").trim(),
         amount,
@@ -274,9 +294,10 @@ console.log("driver_index.js loaded (NEW)");
   // ====== API calls（自动探测）======
   async function loadDriverMe() {
     const candidates = [
+      `${API_BASE}/api/users/me`,
       `${API_BASE}/api/driver/me`,
       `${API_BASE}/api/drivers/me`,
-      `${API_BASE}/api/users/me`,
+      
     ];
     const { data, used } = await tryFetchCandidates("me", candidates);
     ACTIVE_API.me = used;
