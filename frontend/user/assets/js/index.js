@@ -1041,6 +1041,10 @@ if (registerSubmitBtn) {
     }
   });
 }
+function isStrongPassword(pwd){
+  // 至少8位，且必须包含字母和数字
+  return /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,}$/.test(String(pwd||""));
+}
 // ===============================
 // ✅ ZIP 锁定/解锁（左右同步）仅锁 ZIP 输入框，不影响其它按钮
 // ===============================
