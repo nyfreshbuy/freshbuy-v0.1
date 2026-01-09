@@ -818,7 +818,31 @@ async function apiRegister(name, phone, password) {
   if (!res.ok || !data?.success) throw new Error(data?.msg || "注册失败");
   return data.user || null;
 }
+// ✅ 发送短信验证码（Twilio Verify）
+async function apiSendSmsCode(phone) {
+  const { res, data } = await apiFetch("/api/sms/send-code", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ phone }),
+  });
+  if (!res.ok || !data?.success) throw new Error(data?.message || "发送验证码失败");
+  return data;
+}
 
+// ✅ 注册：验证码校验 + 创建账号 + 返回 token（后端接口）
+async function apiVerifyRegister({ phone, code, password, name }) {
+  const { res, data } = await apiFetch("/api/auth/verify-register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ phone, code, password, name, autoLogin: true }),
+  });
+
+  const ok = data?.success === true && typeof data?.token === "string";
+  if (!res.ok || !ok) throw new Error(data?.message || "注册失败");
+
+  setToken(data.token);
+  return data.user || null;
+}
 // 轻量 me（只有 id/role/phone）
 async function apiMe() {
   const token = getToken();
@@ -863,6 +887,8 @@ const loginRemember = document.getElementById("loginRemember");
 
 const regPhone = document.getElementById("regPhone");
 const regPassword = document.getElementById("regPassword");
+const regCode = document.getElementById("regCode");
+const regSendCodeBtn = document.getElementById("regSendCodeBtn");
 
 const loginSubmitBtn = document.getElementById("loginSubmitBtn");
 const registerSubmitBtn = document.getElementById("registerSubmitBtn");
@@ -942,7 +968,19 @@ if (authBackdrop) {
 }
 if (tabLogin) tabLogin.addEventListener("click", () => switchAuthMode("login"));
 if (tabRegister) tabRegister.addEventListener("click", () => switchAuthMode("register"));
+if (regSendCodeBtn) {
+  regSendCodeBtn.addEventListener("click", async () => {
+    const phone = (regPhone && regPhone.value.trim()) || "";
+    if (!phone) return alert("请先输入手机号");
 
+    try {
+      await apiSendSmsCode(phone);
+      alert("验证码已发送");
+    } catch (e) {
+      alert(e.message || "发送失败");
+    }
+  });
+}
 if (loginSubmitBtn) {
   loginSubmitBtn.addEventListener("click", async () => {
     const phone = (loginPhone && loginPhone.value.trim()) || "";
@@ -970,17 +1008,26 @@ if (loginSubmitBtn) {
   });
 }
 
+function isStrongPassword(pwd) {
+  // 至少8位，且必须包含字母+数字
+  return /^(?=.*[A-Za-z])(?=.*\d).{8,}$/.test(String(pwd || ""));
+}
+
 if (registerSubmitBtn) {
   registerSubmitBtn.addEventListener("click", async () => {
     const phone = (regPhone && regPhone.value.trim()) || "";
     const pwd = (regPassword && regPassword.value) || "";
-    if (!phone || !pwd) return alert("请填写手机号和密码");
+    const code = (regCode && regCode.value.trim()) || "";
+
+    if (!phone) return alert("请填写手机号");
+    if (!code) return alert("请填写验证码");
+    if (!pwd) return alert("请填写密码");
+    if (!isStrongPassword(pwd)) return alert("密码至少8位，且必须包含字母和数字");
 
     const name = "用户" + String(phone).slice(-4);
 
     try {
-      await apiRegister(name, phone, pwd);
-      await apiLogin(phone, pwd);
+      await apiVerifyRegister({ phone, code, password: pwd, name });
 
       localStorage.setItem("freshbuy_login_phone", phone);
       applyLoggedInUI(phone);
@@ -994,13 +1041,6 @@ if (registerSubmitBtn) {
     }
   });
 }
-
-if (userProfile) {
-  userProfile.addEventListener("click", () => {
-    window.location.href = "/user/user_center.html";
-  });
-}
-
 // ===============================
 // ✅ ZIP 锁定/解锁（左右同步）仅锁 ZIP 输入框，不影响其它按钮
 // ===============================

@@ -53,7 +53,11 @@
   const btnLogin = box.querySelector("#btnAdminLogin");
   const btnLogout = box.querySelector("#btnAdminLogout");
 
-  const token = localStorage.getItem(TOKEN_KEY);
+  const token =
+  localStorage.getItem("admin_token") ||
+  localStorage.getItem("token") ||
+  localStorage.getItem("freshbuy_token") ||
+  "";
   const role = localStorage.getItem(ROLE_KEY);
   const nickname = localStorage.getItem(NICK_KEY) || "管理员";
 
