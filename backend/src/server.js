@@ -133,9 +133,12 @@ app.use("/api/payments", paymentsRouter);
 app.use("/api/pay/stripe", stripePayRouter);
 
 // ---- 司机 ----
+// ---- 司机 ----
 app.use("/api/driver", driverRouter);
 app.use("/api/driver/orders", driverOrdersRouter);
 
+// ✅ 兼容旧前端：/api/driver/batches  /api/driver/batch/orders  /api/driver?date=...
+app.use("/api/driver", driverOrdersRouter);
 // ---- 后台 ----
 app.use("/api/admin/dashboard", adminDashboardrouter);
 app.use("/api/admin/zones", adminZonesRouter);

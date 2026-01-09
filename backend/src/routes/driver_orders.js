@@ -107,7 +107,35 @@ function getDriverObjectId(req) {
   if (!mongoose.Types.ObjectId.isValid(uid)) return null;
   return new mongoose.Types.ObjectId(uid);
 }
+function buildDriverMatch(req) {
+  const uid = String(req.user?.id || req.user?._id || "").trim();
+  const phone = String(req.user?.phone || req.user?.mobile || "").trim();
 
+  const or = [];
+
+  // 1) driverId 可能是 ObjectId
+  if (mongoose.Types.ObjectId.isValid(uid)) {
+    or.push({ driverId: new mongoose.Types.ObjectId(uid) });
+    or.push({ "dispatch.driverId": new mongoose.Types.ObjectId(uid) });
+    or.push({ "fulfillment.driverId": new mongoose.Types.ObjectId(uid) });
+  }
+
+  // 2) driverId 可能是字符串（比如存的就是 "65xx..." 或者手机号）
+  if (uid) {
+    or.push({ driverId: uid });
+    or.push({ "dispatch.driverId": uid });
+    or.push({ "fulfillment.driverId": uid });
+  }
+
+  // 3) 有些系统存 driverPhone
+  if (phone) {
+    or.push({ driverPhone: phone });
+    or.push({ "dispatch.driverPhone": phone });
+    or.push({ "fulfillment.driverPhone": phone });
+  }
+
+  return or.length ? { $or: or } : null;
+}
 function normalizeOrderOut(o, routeIndexComputed = null) {
   const storedRouteIndex = getRouteIndexFromOrder(o);
   return {
@@ -144,9 +172,6 @@ function normalizeOrderOut(o, routeIndexComputed = null) {
  */
 router.get("/batches", requireLogin, requireDriver, async (req, res) => {
   try {
-    const driverId = getDriverObjectId(req);
-    if (!driverId) return res.status(401).json({ success: false, message: "用户信息异常" });
-
     const date = String(req.query.date || "").trim() || toYMD(new Date());
     const range = parseYMDToRange(date);
     if (!range) return res.status(400).json({ success: false, message: "date 必须是 YYYY-MM-DD" });
@@ -156,20 +181,20 @@ router.get("/batches", requireLogin, requireDriver, async (req, res) => {
       ? statusRaw.split(",").map((x) => x.trim()).filter(Boolean)
       : ["paid", "packing", "shipping", "done", "completed"];
 
-    // 用 aggregation 直接分组：优先 dispatch.batchKey，其次 fulfillment.batchKey
+    const driverMatch = buildDriverMatch(req);
+    if (!driverMatch) return res.status(401).json({ success: false, message: "用户信息异常" });
+
     const rows = await Order.aggregate([
       {
         $match: {
-          driverId,
+          ...driverMatch,
           deliveryDate: { $gte: range.start, $lt: range.end },
           status: { $in: statusList },
         },
       },
       {
         $project: {
-          batchKey: {
-            $ifNull: ["$dispatch.batchKey", "$fulfillment.batchKey"],
-          },
+          batchKey: { $ifNull: ["$dispatch.batchKey", "$fulfillment.batchKey"] },
         },
       },
       { $match: { batchKey: { $type: "string", $ne: "" } } },
@@ -178,14 +203,12 @@ router.get("/batches", requireLogin, requireDriver, async (req, res) => {
     ]);
 
     const batches = rows.map((r) => ({ batchKey: String(r._id), count: Number(r.count || 0) }));
-
     return res.json({ success: true, date, total: batches.length, batches });
   } catch (err) {
     console.error("GET /api/driver/orders/batches error:", err);
     return res.status(500).json({ success: false, message: "获取批次失败" });
   }
 });
-
 /**
  * =====================================================
  * ✅ 新增：司机端按批次拉单（对齐派单 routeIndex）
@@ -194,9 +217,6 @@ router.get("/batches", requireLogin, requireDriver, async (req, res) => {
  */
 router.get("/batch/orders", requireLogin, requireDriver, async (req, res) => {
   try {
-    const driverId = getDriverObjectId(req);
-    if (!driverId) return res.status(401).json({ success: false, message: "用户信息异常" });
-
     const batchKey = String(req.query.batchKey || "").trim();
     if (!batchKey) return res.status(400).json({ success: false, message: "batchKey 必填" });
 
@@ -205,18 +225,18 @@ router.get("/batch/orders", requireLogin, requireDriver, async (req, res) => {
       ? statusRaw.split(",").map((x) => x.trim()).filter(Boolean)
       : ["paid", "packing", "shipping", "done", "completed"];
 
+    const driverMatch = buildDriverMatch(req);
+    if (!driverMatch) return res.status(401).json({ success: false, message: "用户信息异常" });
+
     const orders = await Order.find({
-      driverId,
+      ...driverMatch,
       status: { $in: statusList },
       $or: [{ "fulfillment.batchKey": batchKey }, { "dispatch.batchKey": batchKey }],
     })
       .sort({ createdAt: 1 })
       .lean();
 
-    // ✅ 关键：按派单 routeIndex 排序（没有则 fallback）
     const sorted = sortForRoute(orders);
-
-    // 如果没有任何 routeIndex，才给一个计算的序号（不覆盖派单的）
     const hasAnyIdx = sorted.some((o) => getRouteIndexFromOrder(o) != null);
 
     return res.json({
@@ -230,7 +250,6 @@ router.get("/batch/orders", requireLogin, requireDriver, async (req, res) => {
     return res.status(500).json({ success: false, message: "按批次获取失败" });
   }
 });
-
 /**
  * =====================================================
  * ✅ 司机端：我的任务列表（按天）
@@ -239,23 +258,17 @@ router.get("/batch/orders", requireLogin, requireDriver, async (req, res) => {
  */
 router.get("/", requireLogin, requireDriver, async (req, res) => {
   try {
-    const driverId = getDriverObjectId(req);
-    if (!driverId) return res.status(401).json({ success: false, message: "用户信息异常" });
+   const driverMatch = buildDriverMatch(req);
+if (!driverMatch)
+  return res.status(401).json({ success: false, message: "用户信息异常" });
 
-    const date = String(req.query.date || "").trim() || toYMD(new Date());
-    const range = parseYMDToRange(date);
-    if (!range) return res.status(400).json({ success: false, message: "date 必须是 YYYY-MM-DD" });
-
-    const statusRaw = String(req.query.status || "").trim();
-    const statusList = statusRaw
-      ? statusRaw.split(",").map((x) => x.trim()).filter(Boolean)
-      : ["paid", "packing", "shipping"];
-
-    const orders = await Order.find({
-      driverId,
-      deliveryDate: { $gte: range.start, $lt: range.end },
-      status: { $in: statusList },
-    })
+const orders = await Order.find({
+  ...driverMatch,
+  deliveryDate: { $gte: range.start, $lt: range.end },
+  status: { $in: statusList },
+})
+  .sort({ createdAt: 1 })
+  .lean();
       .sort({ createdAt: 1 })
       .lean();
 
