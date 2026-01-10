@@ -603,42 +603,43 @@ console.log("driver_index.js loaded (NEW)");
       });
     }
 
-    if (btnLoadOrders && dateInput) {
-      btnLoadOrders.addEventListener("click", async () => {
-  try {
-    ACTIVE_BATCHKEY = batchSelect ? batchSelect.value : "";
+   if (btnLoadOrders && dateInput) {
+  btnLoadOrders.addEventListener("click", async () => {
+    try {
+      ACTIVE_BATCHKEY = batchSelect ? batchSelect.value : "";
 
-    // 1) 选了批次就按批次拉
-    if (ACTIVE_BATCHKEY) {
+      // 1) 选了批次就按批次拉
+      if (ACTIVE_BATCHKEY) {
+        await loadOrdersByBatchKey(ACTIVE_BATCHKEY);
+        return;
+      }
+
+      // 2) 没有批次就不要走按日期（因为你后端未必支持 date 拉单）
+      if (!BATCHES || BATCHES.length === 0) {
+        showErr("当天没有批次：请先在后台生成批次/派单。");
+        return;
+      }
+
+      // 3) BATCHES 有但没选中，默认选第一个
+      ACTIVE_BATCHKEY = BATCHES[0].batchKey;
+      if (batchSelect) batchSelect.value = ACTIVE_BATCHKEY;
       await loadOrdersByBatchKey(ACTIVE_BATCHKEY);
-      return;
+    } catch (e) {
+      showErr(e); // ✅ 用你新版 showErr，能打印 candidates
     }
+  });
+} // ✅ 这个 } 你原来漏了！！！
 
-    // 2) 没有批次就不要走按日期（因为你后端未必支持 date 拉单）
-    if (!BATCHES || BATCHES.length === 0) {
-      showErr("当天没有批次：请先在后台生成批次/派单。");
-      return;
+if (btnRefresh && dateInput) {
+  btnRefresh.addEventListener("click", async () => {
+    try {
+      if (ACTIVE_BATCHKEY) return await loadOrdersByBatchKey(ACTIVE_BATCHKEY);
+      return await loadOrdersByDate(dateInput.value);
+    } catch (e) {
+      showErr(e);
     }
-
-    // 3) BATCHES 有但没选中，默认选第一个
-    ACTIVE_BATCHKEY = BATCHES[0].batchKey;
-    if (batchSelect) batchSelect.value = ACTIVE_BATCHKEY;
-    await loadOrdersByBatchKey(ACTIVE_BATCHKEY);
-  } catch (e) {
-    showErr(`加载订单失败：${e.message}`);
-  }
-});
-    if (btnRefresh && dateInput) {
-      btnRefresh.addEventListener("click", async () => {
-        try {
-          if (ACTIVE_BATCHKEY) return await loadOrdersByBatchKey(ACTIVE_BATCHKEY);
-          return await loadOrdersByDate(dateInput.value);
-        } catch (e) {
-          showErr(`刷新失败：${e.message}`);
-        }
-      });
-    }
-
+  });
+}
     if (btnNavAll) btnNavAll.addEventListener("click", navAll);
 
     if (dateInput) {
