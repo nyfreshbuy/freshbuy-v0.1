@@ -70,15 +70,33 @@ console.log("driver_index.js loaded (NEW)");
   };
 
   // ====== UI helpers ======
-  function showErr(msg) {
-    if (errBox) {
-      errBox.style.display = "block";
-      errBox.textContent = String(msg || "未知错误");
-    } else {
-      alert(msg);
+  function showErr(err) {
+  // err 可能是字符串，也可能是 Error 对象
+  let msg = "未知错误";
+  let extra = "";
+
+  if (typeof err === "string") {
+    msg = err;
+  } else if (err && typeof err === "object") {
+    msg = err.message || msg;
+
+    // ✅ 把 tryFetchCandidates 里记录的候选接口打印出来
+    if (err._candidates && Array.isArray(err._candidates)) {
+      extra += "\n\n尝试过的接口：\n" + err._candidates.map((x) => " - " + x.replace(API_BASE, "")).join("\n");
     }
-    if (okBox) okBox.style.display = "none";
+    if (err.status) {
+      extra += `\n\nHTTP: ${err.status}`;
+    }
   }
+
+  if (errBox) {
+    errBox.style.display = "block";
+    errBox.textContent = String(msg) + extra;
+  } else {
+    alert(String(msg) + extra);
+  }
+  if (okBox) okBox.style.display = "none";
+}
   function showOk(msg) {
     if (okBox) {
       okBox.style.display = "block";
@@ -393,12 +411,14 @@ console.log("driver_index.js loaded (NEW)");
 
     const q = encodeURIComponent(dateStr);
     const candidates = [
-      `${API_BASE}/api/driver/orders?date=${q}`,
-      `${API_BASE}/api/driver/orders?day=${q}`,
-      `${API_BASE}/api/driver/orders?dateStr=${q}`,
-      `${API_BASE}/api/driver/orders/by-date?date=${q}`,
-    ];
+  // ✅ 最建议你后端实现的标准形式（你的系统最干净）
+  `${API_BASE}/api/driver/orders?date=${q}`,
 
+  // ✅ 兼容一些可能写过的写法
+  `${API_BASE}/api/driver/orders/byDate?date=${q}`,
+  `${API_BASE}/api/driver/orders/by_day?date=${q}`,
+  `${API_BASE}/api/driver/orders/date/${q}`,
+];
     const { data, used } = await tryFetchCandidates("ordersByDate", candidates);
     ACTIVE_API.ordersByDate = used;
 
@@ -585,19 +605,29 @@ console.log("driver_index.js loaded (NEW)");
 
     if (btnLoadOrders && dateInput) {
       btnLoadOrders.addEventListener("click", async () => {
-        try {
-          ACTIVE_BATCHKEY = batchSelect ? batchSelect.value : "";
-          if (ACTIVE_BATCHKEY) {
-            await loadOrdersByBatchKey(ACTIVE_BATCHKEY);
-          } else {
-            await loadOrdersByDate(dateInput.value);
-          }
-        } catch (e) {
-          showErr(`加载订单失败：${e.message}`);
-        }
-      });
+  try {
+    ACTIVE_BATCHKEY = batchSelect ? batchSelect.value : "";
+
+    // 1) 选了批次就按批次拉
+    if (ACTIVE_BATCHKEY) {
+      await loadOrdersByBatchKey(ACTIVE_BATCHKEY);
+      return;
     }
 
+    // 2) 没有批次就不要走按日期（因为你后端未必支持 date 拉单）
+    if (!BATCHES || BATCHES.length === 0) {
+      showErr("当天没有批次：请先在后台生成批次/派单。");
+      return;
+    }
+
+    // 3) BATCHES 有但没选中，默认选第一个
+    ACTIVE_BATCHKEY = BATCHES[0].batchKey;
+    if (batchSelect) batchSelect.value = ACTIVE_BATCHKEY;
+    await loadOrdersByBatchKey(ACTIVE_BATCHKEY);
+  } catch (e) {
+    showErr(`加载订单失败：${e.message}`);
+  }
+});
     if (btnRefresh && dateInput) {
       btnRefresh.addEventListener("click", async () => {
         try {
