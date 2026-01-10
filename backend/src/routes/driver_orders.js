@@ -96,11 +96,12 @@ function sortForRoute(orders) {
 }
 
 // =====================
-// ✅ driver 匹配（兼容你数据库里 driverId 存法不一致）
+// ✅ driver 匹配（兼容你数据库里 driverId/phone/name 存法不一致）
 // =====================
 function buildDriverMatch(req) {
   const uid = String(req.user?.id || req.user?._id || "").trim();
   const phone = String(req.user?.phone || req.user?.mobile || "").trim();
+  const name = String(req.user?.name || req.user?.nickname || req.user?.nick || "").trim();
 
   const or = [];
 
@@ -124,6 +125,13 @@ function buildDriverMatch(req) {
     or.push({ driverPhone: phone });
     or.push({ "dispatch.driverPhone": phone });
     or.push({ "fulfillment.driverPhone": phone });
+  }
+
+  // 4) driverName（很多后台只存名字）
+  if (name) {
+    or.push({ driverName: name });
+    or.push({ "dispatch.driverName": name });
+    or.push({ "fulfillment.driverName": name });
   }
 
   return or.length ? { $or: or } : null;
@@ -157,7 +165,7 @@ function normalizeOrderOut(o, routeIndexComputed = null) {
 /**
  * =====================================================
  * ✅ 司机端批次列表（当天）
- * GET /api/driver/orders/batches?date=YYYY-MM-DD&status=...
+ * GET /api/driver/batches?date=YYYY-MM-DD&status=...
  * =====================================================
  */
 router.get("/batches", requireLogin, requireDriver, async (req, res) => {
@@ -169,34 +177,34 @@ router.get("/batches", requireLogin, requireDriver, async (req, res) => {
     const statusRaw = String(req.query.status || "").trim();
     const statusList = statusRaw
       ? statusRaw.split(",").map((x) => x.trim()).filter(Boolean)
-     : ["paid", "packing", "shipping", "delivering", "配送中", "done", "completed"];
+      : ["paid", "packing", "shipping", "delivering", "配送中", "done", "completed"];
+
     const driverMatch = buildDriverMatch(req);
     if (!driverMatch) return res.status(401).json({ success: false, message: "用户信息异常" });
 
     const rows = await Order.aggregate([
       {
         $match: {
-  ...driverMatch,
-  status: { $in: statusList },
-
-  // ✅ 有 deliveryDate 就用 deliveryDate，没有就用 createdAt 兜底
-  $or: [
-    { deliveryDate: { $gte: range.start, $lt: range.end } },
-    { deliveryDate: { $exists: false }, createdAt: { $gte: range.start, $lt: range.end } },
-    { deliveryDate: null, createdAt: { $gte: range.start, $lt: range.end } },
-  ],
-},
+          ...driverMatch,
+          status: { $in: statusList },
+          // ✅ 有 deliveryDate 用 deliveryDate；没有就用 createdAt 兜底
+          $or: [
+            { deliveryDate: { $gte: range.start, $lt: range.end } },
+            { deliveryDate: { $exists: false }, createdAt: { $gte: range.start, $lt: range.end } },
+            { deliveryDate: null, createdAt: { $gte: range.start, $lt: range.end } },
+          ],
+        },
       },
       {
-  $project: {
-    batchKey: {
-      $ifNull: [
-        "$batchId", // ✅ 后台用的 PK20260110-6SYD
-        { $ifNull: ["$dispatch.batchKey", "$fulfillment.batchKey"] },
-      ],
-    },
-  },
-},
+        $project: {
+          batchKey: {
+            $ifNull: [
+              "$batchId", // ✅ 后台批次：PK20260110-6SYD
+              { $ifNull: ["$dispatch.batchKey", "$fulfillment.batchKey"] },
+            ],
+          },
+        },
+      },
       { $match: { batchKey: { $type: "string", $ne: "" } } },
       { $group: { _id: "$batchKey", count: { $sum: 1 } } },
       { $sort: { _id: 1 } },
@@ -205,7 +213,7 @@ router.get("/batches", requireLogin, requireDriver, async (req, res) => {
     const batches = rows.map((r) => ({ batchKey: String(r._id), count: Number(r.count || 0) }));
     return res.json({ success: true, date, total: batches.length, batches });
   } catch (err) {
-    console.error("GET /api/driver/orders/batches error:", err);
+    console.error("GET /api/driver/batches error:", err);
     return res.status(500).json({ success: false, message: "获取批次失败" });
   }
 });
@@ -213,7 +221,7 @@ router.get("/batches", requireLogin, requireDriver, async (req, res) => {
 /**
  * =====================================================
  * ✅ 司机端按批次拉单
- * GET /api/driver/orders/batch/orders?batchKey=...&status=...
+ * GET /api/driver/batch/orders?batchKey=...&status=...
  * =====================================================
  */
 router.get("/batch/orders", requireLogin, requireDriver, async (req, res) => {
@@ -224,18 +232,19 @@ router.get("/batch/orders", requireLogin, requireDriver, async (req, res) => {
     const statusRaw = String(req.query.status || "").trim();
     const statusList = statusRaw
       ? statusRaw.split(",").map((x) => x.trim()).filter(Boolean)
-     : ["paid", "packing", "shipping", "delivering", "配送中", "done", "completed"];
+      : ["paid", "packing", "shipping", "delivering", "配送中", "done", "completed"];
+
     const driverMatch = buildDriverMatch(req);
     if (!driverMatch) return res.status(401).json({ success: false, message: "用户信息异常" });
 
     const orders = await Order.find({
       ...driverMatch,
       status: { $in: statusList },
-     $or: [
-  { batchId: batchKey }, // ✅ 兼容后台 batchId=PK...
-  { "fulfillment.batchKey": batchKey },
-  { "dispatch.batchKey": batchKey },
-],
+      $or: [
+        { batchId: batchKey }, // ✅ 兼容后台 batchId=PK...
+        { "dispatch.batchKey": batchKey },
+        { "fulfillment.batchKey": batchKey },
+      ],
     })
       .sort({ createdAt: 1 })
       .lean();
@@ -250,7 +259,7 @@ router.get("/batch/orders", requireLogin, requireDriver, async (req, res) => {
       orders: sorted.map((o, i) => normalizeOrderOut(o, hasAnyIdx ? null : i + 1)),
     });
   } catch (err) {
-    console.error("GET /api/driver/orders/batch/orders error:", err);
+    console.error("GET /api/driver/batch/orders error:", err);
     return res.status(500).json({ success: false, message: "按批次获取失败" });
   }
 });
@@ -258,7 +267,8 @@ router.get("/batch/orders", requireLogin, requireDriver, async (req, res) => {
 /**
  * =====================================================
  * ✅ 司机端：按天任务列表
- * GET /api/driver/orders?date=YYYY-MM-DD&status=paid,packing,shipping
+ * GET /api/driver/orders?date=YYYY-MM-DD&status=...
+ * （如果你 mount 在 /api/driver，则此路由为 /api/driver?date=...）
  * =====================================================
  */
 router.get("/", requireLogin, requireDriver, async (req, res) => {
@@ -271,18 +281,20 @@ router.get("/", requireLogin, requireDriver, async (req, res) => {
     const statusList = statusRaw
       ? statusRaw.split(",").map((x) => x.trim()).filter(Boolean)
       : ["paid", "packing", "shipping", "delivering", "配送中", "done", "completed"];
+
     const driverMatch = buildDriverMatch(req);
     if (!driverMatch) return res.status(401).json({ success: false, message: "用户信息异常" });
 
-   const orders = await Order.find({
-  ...driverMatch,
-  status: { $in: statusList },
-  $or: [
-    { deliveryDate: { $gte: range.start, $lt: range.end } },
-    { deliveryDate: { $exists: false }, createdAt: { $gte: range.start, $lt: range.end } },
-    { deliveryDate: null, createdAt: { $gte: range.start, $lt: range.end } },
-  ],
-})
+    const orders = await Order.find({
+      ...driverMatch,
+      status: { $in: statusList },
+      // ✅ deliveryDate 没有就用 createdAt
+      $or: [
+        { deliveryDate: { $gte: range.start, $lt: range.end } },
+        { deliveryDate: { $exists: false }, createdAt: { $gte: range.start, $lt: range.end } },
+        { deliveryDate: null, createdAt: { $gte: range.start, $lt: range.end } },
+      ],
+    })
       .sort({ createdAt: 1 })
       .lean();
 
