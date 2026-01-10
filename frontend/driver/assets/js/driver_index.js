@@ -1,4 +1,4 @@
-console.log("driver_index.js loaded (NEW)");
+console.log("driver_index.js loaded (NEW) - FIXED ROUTES");
 
 (() => {
   const API_BASE = ""; // 同域部署留空
@@ -42,8 +42,8 @@ console.log("driver_index.js loaded (NEW)");
   const okBox = $("okBox");
 
   const btnLogout = $("btnLogout");
-  const btnLoadBatches = $("btnLoadBatches"); // 新按钮名
-  const btnLoadOrders = $("btnLoadOrders");   // 新按钮名
+  const btnLoadBatches = $("btnLoadBatches");
+  const btnLoadOrders = $("btnLoadOrders");
   const btnRefresh = $("btnRefresh");
   const btnNavAll = $("btnNavAll");
   const btnPing = $("btnPing");
@@ -71,32 +71,36 @@ console.log("driver_index.js loaded (NEW)");
 
   // ====== UI helpers ======
   function showErr(err) {
-  // err 可能是字符串，也可能是 Error 对象
-  let msg = "未知错误";
-  let extra = "";
+    let msg = "未知错误";
+    let extra = "";
 
-  if (typeof err === "string") {
-    msg = err;
-  } else if (err && typeof err === "object") {
-    msg = err.message || msg;
+    if (typeof err === "string") {
+      msg = err;
+    } else if (err && typeof err === "object") {
+      msg = err.message || msg;
 
-    // ✅ 把 tryFetchCandidates 里记录的候选接口打印出来
-    if (err._candidates && Array.isArray(err._candidates)) {
-      extra += "\n\n尝试过的接口：\n" + err._candidates.map((x) => " - " + x.replace(API_BASE, "")).join("\n");
+      if (err._candidates && Array.isArray(err._candidates)) {
+        extra +=
+          "\n\n尝试过的接口：\n" +
+          err._candidates.map((x) => " - " + x.replace(API_BASE, "")).join("\n");
+      }
+      if (err.status) {
+        extra += `\n\nHTTP: ${err.status}`;
+      }
+      if (err.data && err.data.message) {
+        extra += `\n\n后端返回：${err.data.message}`;
+      }
     }
-    if (err.status) {
-      extra += `\n\nHTTP: ${err.status}`;
+
+    if (errBox) {
+      errBox.style.display = "block";
+      errBox.textContent = String(msg) + extra;
+    } else {
+      alert(String(msg) + extra);
     }
+    if (okBox) okBox.style.display = "none";
   }
 
-  if (errBox) {
-    errBox.style.display = "block";
-    errBox.textContent = String(msg) + extra;
-  } else {
-    alert(String(msg) + extra);
-  }
-  if (okBox) okBox.style.display = "none";
-}
   function showOk(msg) {
     if (okBox) {
       okBox.style.display = "block";
@@ -104,6 +108,7 @@ console.log("driver_index.js loaded (NEW)");
     }
     if (errBox) errBox.style.display = "none";
   }
+
   function clearMsg() {
     if (errBox) errBox.style.display = "none";
     if (okBox) okBox.style.display = "none";
@@ -179,27 +184,31 @@ console.log("driver_index.js loaded (NEW)");
     }
     throw lastErr || new Error("All candidates failed");
   }
+
   function addrToText(addr) {
-  if (!addr) return "";
-  if (typeof addr === "string") return addr.trim();
+    if (!addr) return "";
+    if (typeof addr === "string") return addr.trim();
 
-  // object -> 拼字符串
-  if (typeof addr === "object") {
-    const line1 = addr.line1 || addr.address1 || addr.street || "";
-    const line2 = addr.line2 || addr.address2 || addr.apt || "";
-    const city  = addr.city || "";
-    const state = addr.state || "";
-    const zip   = addr.zip || addr.postalCode || "";
+    if (typeof addr === "object") {
+      const line1 = addr.line1 || addr.address1 || addr.street || "";
+      const line2 = addr.line2 || addr.address2 || addr.apt || "";
+      const city = addr.city || "";
+      const state = addr.state || "";
+      const zip = addr.zip || addr.postalCode || "";
 
-    const parts = [line1, line2, city, state, zip].filter(Boolean);
-    if (parts.length) return parts.join(" ").replace(/\s+/g, " ").trim();
+      const parts = [line1, line2, city, state, zip].filter(Boolean);
+      if (parts.length) return parts.join(" ").replace(/\s+/g, " ").trim();
 
-    // 实在没有字段就 JSON 兜底
-    try { return JSON.stringify(addr); } catch { return String(addr); }
+      try {
+        return JSON.stringify(addr);
+      } catch {
+        return String(addr);
+      }
+    }
+
+    return String(addr).trim();
   }
 
-  return String(addr).trim();
-}
   // ====== normalize ======
   function normalizeBatchList(payload) {
     const list = payload?.batches || payload?.data || payload || [];
@@ -229,11 +238,19 @@ console.log("driver_index.js loaded (NEW)");
       const status = String(o.status || o.state || "").trim();
 
       const routeIndex = Number(
-        o.routeSeq ?? o.routeIndex ?? o.route_index ?? o.sequenceNumber ?? o.sequenceNo ?? o.seq ?? 999999
+        o.routeSeq ??
+          o.routeIndex ??
+          o.route_index ??
+          o.sequenceNumber ??
+          o.sequenceNo ??
+          o.seq ??
+          999999
       );
 
       const addr =
+        o.addressText ||
         o.fullAddress ||
+        o.address?.fullText ||
         o.address?.full ||
         o.address ||
         o.shippingAddress ||
@@ -242,6 +259,7 @@ console.log("driver_index.js loaded (NEW)");
         "";
 
       const name =
+        o.customerName ||
         o.receiverName ||
         o.address?.name ||
         o.deliveryAddress?.name ||
@@ -249,6 +267,7 @@ console.log("driver_index.js loaded (NEW)");
         "";
 
       const phone =
+        o.customerPhone ||
         o.receiverPhone ||
         o.address?.phone ||
         o.deliveryAddress?.phone ||
@@ -305,7 +324,9 @@ console.log("driver_index.js loaded (NEW)");
     const origin = encodeURIComponent(sliced[0]);
     const destination = encodeURIComponent(sliced[sliced.length - 1]);
     const waypointsArr = sliced.slice(1, -1);
-    const waypoints = waypointsArr.length ? `&waypoints=${encodeURIComponent(waypointsArr.join("|"))}` : "";
+    const waypoints = waypointsArr.length
+      ? `&waypoints=${encodeURIComponent(waypointsArr.join("|"))}`
+      : "";
     return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}${waypoints}&travelmode=driving`;
   }
 
@@ -315,7 +336,6 @@ console.log("driver_index.js loaded (NEW)");
       `${API_BASE}/api/users/me`,
       `${API_BASE}/api/driver/me`,
       `${API_BASE}/api/drivers/me`,
-      
     ];
     const { data, used } = await tryFetchCandidates("me", candidates);
     ACTIVE_API.me = used;
@@ -343,17 +363,15 @@ console.log("driver_index.js loaded (NEW)");
     return data;
   }
 
+  // ✅ FIX 1：批次接口换成你后端真实路由：/api/driver/orders/batches
   async function loadBatchesByDate(dateStr) {
     clearMsg();
     if (batchSelect) batchSelect.innerHTML = `<option value="">加载中…</option>`;
 
     const q = encodeURIComponent(dateStr);
     const candidates = [
-      `${API_BASE}/api/driver/batches?date=${q}`,
-      `${API_BASE}/api/driver/dispatch/batches?date=${q}`,
-      `${API_BASE}/api/driver/batch/list?date=${q}`,
-      // 临时兜底（你没做司机接口时）
-      `${API_BASE}/api/admin/dispatch/batches?date=${q}`,
+      `${API_BASE}/api/driver/orders/batches?date=${q}`, // ✅ 你的 driver_orders.js
+      `${API_BASE}/api/driver/batches?date=${q}`,       // 备选（未来别名）
     ];
 
     const { data, used } = await tryFetchCandidates("batches", candidates);
@@ -383,6 +401,7 @@ console.log("driver_index.js loaded (NEW)");
     showOk(`已加载批次：${BATCHES.length} 个（默认选中第一个）`);
   }
 
+  // ✅ FIX 2：按批次拉单接口换成你后端真实路由：/api/driver/orders/batch/orders
   async function loadOrdersByBatchKey(batchKey) {
     clearMsg();
     if (routeSub) routeSub.textContent = `批次：${batchKey} · 加载中…`;
@@ -390,11 +409,8 @@ console.log("driver_index.js loaded (NEW)");
 
     const q = encodeURIComponent(batchKey);
     const candidates = [
-      `${API_BASE}/api/driver/batch/orders?batchKey=${q}`,
-      `${API_BASE}/api/driver/dispatch/batch/orders?batchKey=${q}`,
-      `${API_BASE}/api/driver/orders?batchKey=${q}`,
-      // 临时兜底
-      `${API_BASE}/api/admin/dispatch/batch/orders?batchKey=${q}`,
+      `${API_BASE}/api/driver/orders/batch/orders?batchKey=${q}`, // ✅ 你的 driver_orders.js
+      `${API_BASE}/api/driver/batch/orders?batchKey=${q}`,        // 备选
     ];
 
     const { data, used } = await tryFetchCandidates("ordersByBatch", candidates);
@@ -404,6 +420,7 @@ console.log("driver_index.js loaded (NEW)");
     renderOrders();
   }
 
+  // ✅ FIX 3：按日期拉单走你后端真实路由：/api/driver/orders?date=...
   async function loadOrdersByDate(dateStr) {
     clearMsg();
     if (routeSub) routeSub.textContent = `日期：${dateStr} · 加载中…`;
@@ -411,18 +428,15 @@ console.log("driver_index.js loaded (NEW)");
 
     const q = encodeURIComponent(dateStr);
     const candidates = [
-  // ✅ 最建议你后端实现的标准形式（你的系统最干净）
-  `${API_BASE}/api/driver/orders?date=${q}`,
+      `${API_BASE}/api/driver/orders?date=${q}`,               // ✅ 你的 driver_orders.js
+      `${API_BASE}/api/driver/orders/byDate?date=${q}`,        // 备选
+      `${API_BASE}/api/driver/orders/date/${q}`,               // 备选
+    ];
 
-  // ✅ 兼容一些可能写过的写法
-  `${API_BASE}/api/driver/orders/byDate?date=${q}`,
-  `${API_BASE}/api/driver/orders/by_day?date=${q}`,
-  `${API_BASE}/api/driver/orders/date/${q}`,
-];
     const { data, used } = await tryFetchCandidates("ordersByDate", candidates);
     ACTIVE_API.ordersByDate = used;
 
-    ACTIVE_BATCHKEY = ""; // 走日期模式
+    ACTIVE_BATCHKEY = "";
     ORDERS = normalizeOrderList(data).sort((a, b) => (a.routeIndex || 0) - (b.routeIndex || 0));
     renderOrders({ mode: "date", dateStr });
   }
@@ -447,7 +461,7 @@ console.log("driver_index.js loaded (NEW)");
 
     if (!ORDERS.length) {
       stopList.innerHTML =
-        `<div class="hint">没有订单。若后台已派单：请确认司机端 token 是否正确、以及司机接口是否只返回“当前司机”的订单。</div>`;
+        `<div class="hint">没有订单。若后台已派单：请确认司机端 token 正确、并确认派单时写入了 driverId / dispatch.batchKey / deliveryDate。</div>`;
       return;
     }
 
@@ -489,7 +503,6 @@ console.log("driver_index.js loaded (NEW)");
       `;
     }).join("");
 
-    // bind actions
     stopList.querySelectorAll("button[data-act='delivered']").forEach((btn) => {
       btn.addEventListener("click", async () => {
         const id = btn.getAttribute("data-id");
@@ -518,8 +531,7 @@ console.log("driver_index.js loaded (NEW)");
       `${API_BASE}/api/driver/orders/${id}/delivered`,
       `${API_BASE}/api/driver/order/${id}/delivered`,
       `${API_BASE}/api/driver/orders/${id}/status`,
-      // 临时兜底：你只有 admin status 的情况
-      `${API_BASE}/api/admin/orders/${id}/status`,
+      `${API_BASE}/api/admin/orders/${id}/status`, // 兜底
     ];
 
     try {
@@ -577,10 +589,8 @@ console.log("driver_index.js loaded (NEW)");
 
   // ====== init ======
   async function init() {
-    // token 状态
     if (tokenHint) tokenHint.textContent = AUTH.getToken() ? "FOUND" : "MISSING";
 
-    // 默认今天
     if (dateInput) dateInput.value = fmtDateISO(new Date());
 
     if (btnLogout) {
@@ -599,47 +609,45 @@ console.log("driver_index.js loaded (NEW)");
     if (btnLoadBatches && dateInput) {
       btnLoadBatches.addEventListener("click", async () => {
         try { await loadBatchesByDate(dateInput.value); }
-        catch (e) { showErr(`加载批次失败：${e.message}`); }
+        catch (e) { showErr(e); }
       });
     }
 
-   if (btnLoadOrders && dateInput) {
-  btnLoadOrders.addEventListener("click", async () => {
-    try {
-      ACTIVE_BATCHKEY = batchSelect ? batchSelect.value : "";
+    if (btnLoadOrders && dateInput) {
+      btnLoadOrders.addEventListener("click", async () => {
+        try {
+          ACTIVE_BATCHKEY = batchSelect ? batchSelect.value : "";
 
-      // 1) 选了批次就按批次拉
-      if (ACTIVE_BATCHKEY) {
-        await loadOrdersByBatchKey(ACTIVE_BATCHKEY);
-        return;
-      }
+          if (ACTIVE_BATCHKEY) {
+            await loadOrdersByBatchKey(ACTIVE_BATCHKEY);
+            return;
+          }
 
-      // 2) 没有批次就不要走按日期（因为你后端未必支持 date 拉单）
-      if (!BATCHES || BATCHES.length === 0) {
-        showErr("当天没有批次：请先在后台生成批次/派单。");
-        return;
-      }
+          if (!BATCHES || BATCHES.length === 0) {
+            showErr("当天没有批次：请先在后台生成批次/派单。");
+            return;
+          }
 
-      // 3) BATCHES 有但没选中，默认选第一个
-      ACTIVE_BATCHKEY = BATCHES[0].batchKey;
-      if (batchSelect) batchSelect.value = ACTIVE_BATCHKEY;
-      await loadOrdersByBatchKey(ACTIVE_BATCHKEY);
-    } catch (e) {
-      showErr(e); // ✅ 用你新版 showErr，能打印 candidates
+          ACTIVE_BATCHKEY = BATCHES[0].batchKey;
+          if (batchSelect) batchSelect.value = ACTIVE_BATCHKEY;
+          await loadOrdersByBatchKey(ACTIVE_BATCHKEY);
+        } catch (e) {
+          showErr(e);
+        }
+      });
     }
-  });
-} // ✅ 这个 } 你原来漏了！！！
 
-if (btnRefresh && dateInput) {
-  btnRefresh.addEventListener("click", async () => {
-    try {
-      if (ACTIVE_BATCHKEY) return await loadOrdersByBatchKey(ACTIVE_BATCHKEY);
-      return await loadOrdersByDate(dateInput.value);
-    } catch (e) {
-      showErr(e);
+    if (btnRefresh && dateInput) {
+      btnRefresh.addEventListener("click", async () => {
+        try {
+          if (ACTIVE_BATCHKEY) return await loadOrdersByBatchKey(ACTIVE_BATCHKEY);
+          return await loadOrdersByDate(dateInput.value);
+        } catch (e) {
+          showErr(e);
+        }
+      });
     }
-  });
-}
+
     if (btnNavAll) btnNavAll.addEventListener("click", navAll);
 
     if (dateInput) {
@@ -647,7 +655,7 @@ if (btnRefresh && dateInput) {
         try {
           await loadBatchesByDate(dateInput.value);
         } catch (e) {
-          showErr(`批次接口不可用：${e.message}（可直接点“加载订单”走按日期模式）`);
+          showErr(e);
         }
       });
     }
@@ -663,7 +671,6 @@ if (btnRefresh && dateInput) {
       });
     }
 
-    // 尝试加载司机信息（接口不存在也可用）
     try {
       await loadDriverMe();
     } catch (e) {
@@ -671,7 +678,8 @@ if (btnRefresh && dateInput) {
       const name = localStorage.getItem("freshbuy_login_nickname") || "司机";
       DRIVER = { id: "", phone, name, raw: null };
       if (hello) hello.textContent = `你好，${phone || name || "司机"}`;
-      if (driverSub) driverSub.textContent = `当前司机：${name}${phone ? " · " + phone : ""}（/api/driver/me 未找到，使用本地兜底）`;
+      if (driverSub) driverSub.textContent =
+        `当前司机：${name}${phone ? " · " + phone : ""}（/api/driver/me 未找到，使用本地兜底）`;
     }
 
     // 初次自动加载批次（失败不阻断）
@@ -680,10 +688,10 @@ if (btnRefresh && dateInput) {
         await loadBatchesByDate(dateInput.value);
         showOk("已自动加载批次：可直接点“加载订单”");
       } catch (e) {
-        showErr(`未找到批次接口：${e.message}（你仍可点“加载订单”走按日期模式）`);
+        showErr(e);
       }
     }
   }
 
-  init().catch((e) => showErr(e.message));
+  init().catch((e) => showErr(e));
 })();
