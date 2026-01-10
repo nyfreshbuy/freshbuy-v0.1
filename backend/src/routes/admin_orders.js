@@ -462,7 +462,7 @@ router.get("/picklist", async (req, res) => {
 
 router.patch("/assign-driver", requireAdmin, async (req, res) => {
   try {
-    const { orderIds, driverId, deliveryDate } = req.body || {};
+    const { orderIds, driverId, deliveryDate, batchId, status } = req.body || {};
 
     if (!Array.isArray(orderIds) || orderIds.length === 0) {
       return res.status(400).json({ success: false, message: "orderIds 不能为空" });
@@ -471,37 +471,75 @@ router.patch("/assign-driver", requireAdmin, async (req, res) => {
       return res.status(400).json({ success: false, message: "driverId 不合法" });
     }
 
+    // ✅ 批次ID：从前端 payload 传来的 batchId；如果没传，就自动从订单里取（兼容 packBatchId）
+    const incomingBatchId = String(batchId || "").trim();
+
     const date = deliveryDate ? new Date(deliveryDate) : new Date();
     if (isNaN(date.getTime())) {
       return res.status(400).json({ success: false, message: "deliveryDate 不合法" });
     }
 
     const validIds = orderIds.map(String).filter(isValidObjectId);
-const objIds = validIds.map((x) => new mongoose.Types.ObjectId(x));
+    const objIds = validIds.map((x) => new mongoose.Types.ObjectId(x));
 
-const result = await Order.updateMany(
-  {
-    _id: { $in: objIds }, // ✅ 改这里
-    status: { $nin: ["done", "cancel"] },
-    settlementGenerated: { $ne: true },
-  },
-  {
-    $set: {
-      driverId,
-      deliveryDate: date,
-      status: "shipping",
-      deliveryStatus: "delivering",
-      assignedAt: new Date(),
-      startedAt: new Date(),
-    },
-  }
-);
+    // ✅ 如果前端没传 batchId，就从第一条订单里读 packBatchId 兜底
+    let finalBatchId = incomingBatchId;
+    if (!finalBatchId) {
+      const one = await Order.findOne({ _id: { $in: objIds } })
+        .select("packBatchId batchId dispatch.batchKey fulfillment.batchKey")
+        .lean();
+      finalBatchId =
+        String(one?.packBatchId || one?.batchId || one?.dispatch?.batchKey || one?.fulfillment?.batchKey || "").trim();
+    }
+
+    // ✅ 最终状态
+    const finalStatus = String(status || "shipping").trim() || "shipping";
+
+    const result = await Order.updateMany(
+      {
+        _id: { $in: objIds },
+        status: { $nin: ["done", "cancel"] },
+        settlementGenerated: { $ne: true },
+      },
+      {
+        $set: {
+          // ✅ 司机匹配（你 driver_orders.js 会按这些字段找）
+          driverId: new mongoose.Types.ObjectId(driverId),
+
+          // ✅ 日期筛选（司机端按 date 拉单会用）
+          deliveryDate: date,
+
+          // ✅ 状态
+          status: finalStatus,
+          deliveryStatus: "delivering",
+
+          assignedAt: new Date(),
+          startedAt: new Date(),
+
+          // ✅ 批次（你后台 by-batch 用的是 packBatchId）
+          ...(finalBatchId ? { packBatchId: finalBatchId } : {}),
+
+          // ✅ 司机端批次/订单接口最关键：dispatch 字段
+          ...(finalBatchId
+            ? {
+                dispatch: {
+                  batchKey: finalBatchId,
+                  driverId: new mongoose.Types.ObjectId(driverId),
+                  assignedAt: new Date(),
+                },
+              }
+            : {}),
+        },
+      }
+    );
+
     return res.json({
       success: true,
       message: "派单成功",
       matched: result.matchedCount ?? result.n ?? 0,
       modified: result.modifiedCount ?? result.nModified ?? 0,
       driverId,
+      batchId: finalBatchId || "",
       deliveryDate: date.toISOString(),
     });
   } catch (err) {
@@ -509,7 +547,6 @@ const result = await Order.updateMany(
     return res.status(500).json({ success: false, message: err.message || "服务器错误" });
   }
 });
-
 router.patch("/:id/assign-driver", requireAdmin, async (req, res) => {
   try {
     const orderId = String(req.params.id);

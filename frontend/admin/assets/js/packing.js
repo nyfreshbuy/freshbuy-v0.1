@@ -445,6 +445,7 @@ const payload = {
   orderIds: ids,
   driverId,
   status: "shipping",
+   batchId,
 };
 
 if (deliveryDate) payload.deliveryDate = deliveryDate;
