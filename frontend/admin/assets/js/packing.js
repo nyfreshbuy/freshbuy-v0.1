@@ -435,12 +435,20 @@ console.log("✅ /admin/assets/js/packing.js loaded");
     if (!ids.length) return alert("请先勾选要派单的订单");
 
     const deliveryDate = String(deliveryDateEl.value || "").trim(); // YYYY-MM-DD or ""
-    const payload = {
-      orderIds: ids,
-      driverId,
-      status: "shipping",
-    };
-    if (deliveryDate) payload.deliveryDate = deliveryDate;
+
+// ✅ 从当前页面 URL 拿批次号（PK20260110-6SYD）
+const batchIdFromUrl = getBatchIdFromUrl();
+
+// ✅ 派单 payload：一定要带 batchId
+const payload = {
+  batchId: batchIdFromUrl,   // ⭐⭐⭐关键：让后端把订单写入这个批次
+  orderIds: ids,
+  driverId,
+  status: "shipping",
+};
+
+if (deliveryDate) payload.deliveryDate = deliveryDate;
+
 
     // 兼容 PATCH / POST
     try {
