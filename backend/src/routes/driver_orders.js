@@ -169,20 +169,34 @@ router.get("/batches", requireLogin, requireDriver, async (req, res) => {
     const statusRaw = String(req.query.status || "").trim();
     const statusList = statusRaw
       ? statusRaw.split(",").map((x) => x.trim()).filter(Boolean)
-      : ["paid", "packing", "shipping", "done", "completed"];
-
+     : ["paid", "packing", "shipping", "delivering", "配送中", "done", "completed"];
     const driverMatch = buildDriverMatch(req);
     if (!driverMatch) return res.status(401).json({ success: false, message: "用户信息异常" });
 
     const rows = await Order.aggregate([
       {
         $match: {
-          ...driverMatch,
-          deliveryDate: { $gte: range.start, $lt: range.end },
-          status: { $in: statusList },
-        },
+  ...driverMatch,
+  status: { $in: statusList },
+
+  // ✅ 有 deliveryDate 就用 deliveryDate，没有就用 createdAt 兜底
+  $or: [
+    { deliveryDate: { $gte: range.start, $lt: range.end } },
+    { deliveryDate: { $exists: false }, createdAt: { $gte: range.start, $lt: range.end } },
+    { deliveryDate: null, createdAt: { $gte: range.start, $lt: range.end } },
+  ],
+},
       },
-      { $project: { batchKey: { $ifNull: ["$dispatch.batchKey", "$fulfillment.batchKey"] } } },
+      {
+  $project: {
+    batchKey: {
+      $ifNull: [
+        "$batchId", // ✅ 后台用的 PK20260110-6SYD
+        { $ifNull: ["$dispatch.batchKey", "$fulfillment.batchKey"] },
+      ],
+    },
+  },
+},
       { $match: { batchKey: { $type: "string", $ne: "" } } },
       { $group: { _id: "$batchKey", count: { $sum: 1 } } },
       { $sort: { _id: 1 } },
@@ -210,15 +224,18 @@ router.get("/batch/orders", requireLogin, requireDriver, async (req, res) => {
     const statusRaw = String(req.query.status || "").trim();
     const statusList = statusRaw
       ? statusRaw.split(",").map((x) => x.trim()).filter(Boolean)
-      : ["paid", "packing", "shipping", "done", "completed"];
-
+     : ["paid", "packing", "shipping", "delivering", "配送中", "done", "completed"];
     const driverMatch = buildDriverMatch(req);
     if (!driverMatch) return res.status(401).json({ success: false, message: "用户信息异常" });
 
     const orders = await Order.find({
       ...driverMatch,
       status: { $in: statusList },
-      $or: [{ "fulfillment.batchKey": batchKey }, { "dispatch.batchKey": batchKey }],
+     $or: [
+  { batchId: batchKey }, // ✅ 兼容后台 batchId=PK...
+  { "fulfillment.batchKey": batchKey },
+  { "dispatch.batchKey": batchKey },
+],
     })
       .sort({ createdAt: 1 })
       .lean();
@@ -253,16 +270,19 @@ router.get("/", requireLogin, requireDriver, async (req, res) => {
     const statusRaw = String(req.query.status || "").trim();
     const statusList = statusRaw
       ? statusRaw.split(",").map((x) => x.trim()).filter(Boolean)
-      : ["paid", "packing", "shipping"];
-
+      : ["paid", "packing", "shipping", "delivering", "配送中", "done", "completed"];
     const driverMatch = buildDriverMatch(req);
     if (!driverMatch) return res.status(401).json({ success: false, message: "用户信息异常" });
 
-    const orders = await Order.find({
-      ...driverMatch,
-      deliveryDate: { $gte: range.start, $lt: range.end },
-      status: { $in: statusList },
-    })
+   const orders = await Order.find({
+  ...driverMatch,
+  status: { $in: statusList },
+  $or: [
+    { deliveryDate: { $gte: range.start, $lt: range.end } },
+    { deliveryDate: { $exists: false }, createdAt: { $gte: range.start, $lt: range.end } },
+    { deliveryDate: null, createdAt: { $gte: range.start, $lt: range.end } },
+  ],
+})
       .sort({ createdAt: 1 })
       .lean();
 
