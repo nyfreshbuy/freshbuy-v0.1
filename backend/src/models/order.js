@@ -149,7 +149,7 @@ const orderSchema = new mongoose.Schema(
       stripePaid: { type: Number, default: 0 },
 
       // Stripe 相关
-    
+      stripePaymentIntentId: { type: String, default: "", index: true },
       stripeChargeId: { type: String, default: "" },
       stripeClientSecret: { type: String, default: "" },
 

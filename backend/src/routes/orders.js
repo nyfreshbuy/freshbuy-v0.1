@@ -478,7 +478,18 @@ if (mode === "groupDay" && hasSpecial && !hasNonSpecial) {
 
     // ✅ 履约归类（后台按批次/路线筛选用）
     fulfillment,
-
+        // ✅ 新增：派单归类（路线/派单主要用 dispatch）
+    dispatch: z
+      ? {
+          zoneId: z,
+          batchKey,
+          batchName: zoneName || "",
+        }
+      : {
+          zoneId: "",
+          batchKey: "",
+          batchName: "",
+        },
     // ✅ 金额
     subtotal,
     deliveryFee,
