@@ -452,10 +452,14 @@ aside.card {
             <button class="mini tip-btn" data-tip="7.99" type="button">$7.99</button>
             <button class="mini tip-btn" data-tip="9.99" type="button">$9.99</button>
             <input
-              id="customTip"
-              class="input"
-              style="width: 90px; padding: 6px 8px; font-size: 12px"
-              placeholder="自定义"
+  id="customTip"
+  class="input"
+  type="number"
+  min="0"
+  step="0.01"
+  value="0"
+  style="width: 90px; padding: 6px 8px; font-size: 12px"
+  placeholder="自定义"
             />
           </div>
           <div class="muted" style="margin-top: 6px; line-height: 1.4">
@@ -602,12 +606,15 @@ aside.card {
       }
 
       function calcFinalAmount(snapshot) {
-        if (!snapshot) return { tax: 0, serviceFee: 0, tip: 0, grand: 0 };
+  if (!snapshot) return { tax: 0, serviceFee: 0, tip: 0, grand: 0 };
 
-        const items = Array.isArray(snapshot.items) ? snapshot.items : [];
-        const subtotal = safeNum(snapshot.subtotal, 0);
-        const shipping = safeNum(snapshot.shipping, 0);
+  // ✅ 核心：无论哪里把 currentTip 搞成 NaN，都在这里纠正
+  currentTip = safeNum(currentTip, 0);
+  if (currentTip < 0) currentTip = 0;
 
+  const items = Array.isArray(snapshot.items) ? snapshot.items : [];
+  const subtotal = safeNum(snapshot.subtotal, 0);
+  const shipping = safeNum(snapshot.shipping, 0);
         // 1) taxable 小计（✅ 兼容 taxable / hasTax）
         let taxableAmount = 0;
         for (const it of items) {
@@ -1255,9 +1262,14 @@ async function ensureStripeMounted() {
     if (!snapshot) throw new Error("购物车为空");
 
     const extra = calcFinalAmount(snapshot);
-    const total = Number(extra.grand || 0);
-    if (total < 0.5) throw new Error("信用卡支付最低 $0.50，请增加商品金额或改用钱包支付");
+const total = Number(extra.grand);
 
+if (!Number.isFinite(total)) {
+  throw new Error("金额计算异常（NaN）。请检查小费/税/运费输入。");
+}
+if (total < 0.5) {
+  throw new Error("信用卡支付最低 $0.50，请增加商品金额或改用钱包支付");
+}
     const token = getToken();
     if (!token) throw new Error("未登录：没有 token");
 
@@ -1612,7 +1624,9 @@ const result = await stripe.confirmPayment({
         // 小费按钮绑定
         const tipButtons = Array.from(document.querySelectorAll(".tip-btn"));
         const customTip = document.getElementById("customTip");
-
+        // ✅ 初始化：默认小费=0，输入框同步，避免初始 NaN/空字符串链式污染
+customTip.value = "0";
+currentTip = 0;
         tipButtons.forEach((btn) => {
           btn.addEventListener("click", () => {
             const v = safeNum(btn.dataset.tip, 0);
