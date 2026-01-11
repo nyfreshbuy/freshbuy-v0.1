@@ -1624,8 +1624,26 @@ const onPaySwitch = async () => {
   refreshAll();
 };
 
-document.getElementById("payWallet").addEventListener("change", onPaySwitch);
-document.getElementById("payStripe").addEventListener("change", onPaySwitch);
+const payWalletEl = document.getElementById("payWallet");
+const payStripeEl = document.getElementById("payStripe");
+
+// ✅ 1) change 继续保留
+payWalletEl.addEventListener("change", onPaySwitch);
+payStripeEl.addEventListener("change", onPaySwitch);
+
+// ✅ 2) click 也绑定（label 点击一定触发）
+payWalletEl.addEventListener("click", onPaySwitch);
+payStripeEl.addEventListener("click", onPaySwitch);
+
+// ✅ 3) 额外：点到 label 区域（不是点到 input）也强制触发
+payWalletEl.closest("label")?.addEventListener("click", () => {
+  payWalletEl.checked = true;
+  onPaySwitch();
+});
+payStripeEl.closest("label")?.addEventListener("click", () => {
+  payStripeEl.checked = true;
+  onPaySwitch();
+});
         // 默认地址
         loadDefaultLocal();
         fetchDefaultAddressFromDB()
