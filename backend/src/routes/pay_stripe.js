@@ -10,10 +10,12 @@ const router = express.Router();
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || "";
 const STRIPE_PUBLISHABLE_KEY = process.env.STRIPE_PUBLISHABLE_KEY || "";
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || "";
-const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
 
 if (!STRIPE_SECRET_KEY) console.warn("⚠️ STRIPE_SECRET_KEY 未设置，Stripe 接口将不可用");
-const stripe = STRIPE_SECRET_KEY ? new Stripe(STRIPE_SECRET_KEY, { apiVersion: "2024-06-20" }) : null;
+
+const stripe = STRIPE_SECRET_KEY
+  ? new Stripe(STRIPE_SECRET_KEY, { apiVersion: "2024-06-20" })
+  : null;
 
 // ---------- 工具 ----------
 function moneyToCents(n) {
@@ -54,13 +56,6 @@ function isDealLike(it) {
 }
 
 // ---------- 金额重算（服务端权威） ----------
-// 规则说明：
-// - subtotal：按 items 计算
-// - shipping：按 mode + subtotal 计算（你原本逻辑）
-// - tax：从 payload.pricing.taxableAmount * taxRate 来算（目前按前端传的 taxRate；你也可按 state/zip 查更准确）
-// - serviceFee：如果 Stripe 支付，一律按 subtotal*2%（你前端规则）
-// - tip：使用 payload.pricing.tip（>=0）
-// 最后 total = subtotal + shipping + tax + serviceFee + tip
 function computeTotalsFromPayload(payload) {
   const items = Array.isArray(payload?.items) ? payload.items : [];
 
@@ -84,7 +79,7 @@ function computeTotalsFromPayload(payload) {
   else shipping = 4.99;
   shipping = round2(shipping);
 
-  // taxableAmount：从 items 判断 taxable/hasTax（优先），否则用 payload.pricing.taxableAmount（兼容）
+  // taxableAmount：优先按 items taxable/hasTax 来算
   let taxableAmount = 0;
   for (const it of items) {
     const qty = safeNum(it.qty, 1);
@@ -94,15 +89,13 @@ function computeTotalsFromPayload(payload) {
   }
   taxableAmount = round2(taxableAmount);
 
-  // taxRate：优先用 payload.pricing.taxRate（你前端 NY 才 >0）
   const taxRate = safeNum(payload?.pricing?.taxRate, 0);
   const tax = round2(taxableAmount * taxRate);
 
-  // serviceFee：Stripe 订单一定收（2%）
+  // Stripe 订单一定收（2%）
   const serviceRate = safeNum(payload?.pricing?.serviceRate, 0.02);
   const serviceFee = round2(subtotal * serviceRate);
 
-  // tip
   const tip = Math.max(0, round2(safeNum(payload?.pricing?.tip, 0)));
 
   const total = round2(subtotal + shipping + tax + serviceFee + tip);
@@ -121,6 +114,17 @@ function computeTotalsFromPayload(payload) {
   };
 }
 
+// ---------- 0) 健康检查（可选） ----------
+router.get("/ping", (req, res) => {
+  res.json({
+    ok: true,
+    stripeReady: !!stripe,
+    hasSecret: !!STRIPE_SECRET_KEY,
+    hasPublishable: !!STRIPE_PUBLISHABLE_KEY,
+    hasWebhookSecret: !!STRIPE_WEBHOOK_SECRET,
+  });
+});
+
 // ---------- 1) 给前端取 publishable key ----------
 router.get("/publishable-key", (req, res) => {
   if (!STRIPE_PUBLISHABLE_KEY) {
@@ -138,13 +142,9 @@ router.post("/order-intent", requireLogin, express.json(), async (req, res) => {
     const user = req.user;
     const payload = req.body || {};
 
-    // ✅ 幂等关键：intentKey 必须存在
     const intentKey = String(payload.intentKey || "").trim();
-    if (!intentKey) {
-      return res.status(400).json({ success: false, message: "缺少 intentKey（前端幂等键）" });
-    }
+    if (!intentKey) return res.status(400).json({ success: false, message: "缺少 intentKey（前端幂等键）" });
 
-    // ✅ 地址基本校验（Stripe intent 也要严格，避免 webhook paid 但没法履约）
     const s = payload.shipping || {};
     if (!s.firstName || !s.lastName || !s.phone || !s.street1 || !s.city || !s.state || !s.zip) {
       return res.status(400).json({ success: false, message: "收货信息不完整" });
@@ -153,7 +153,6 @@ router.post("/order-intent", requireLogin, express.json(), async (req, res) => {
       return res.status(400).json({ success: false, message: "缺少坐标（请从 Places 下拉选择地址）" });
     }
 
-    // ✅ 规则：dealsDay 只能全爆品（服务端再校验一次）
     const items = Array.isArray(payload.items) ? payload.items : [];
     const hasDeal = items.some((it) => isDealLike(it));
     const hasNonDeal = items.some((it) => !isDealLike(it));
@@ -161,13 +160,10 @@ router.post("/order-intent", requireLogin, express.json(), async (req, res) => {
       return res.status(400).json({ success: false, message: "爆品日订单只能包含爆品商品" });
     }
 
-    // ✅ 重算金额（服务端权威）
     const totals = computeTotalsFromPayload(payload);
-    if (!totals.total || totals.total <= 0) {
-      return res.status(400).json({ success: false, message: "金额异常" });
-    }
+    if (!totals.total || totals.total <= 0) return res.status(400).json({ success: false, message: "金额异常" });
 
-    // ✅ 最低消费规则（按你前端）
+    // 你前端规则：最低消费
     if ((payload.mode === "groupDay" || payload.mode === "normal") && totals.subtotal < 49.99) {
       return res.status(400).json({ success: false, message: "未满足最低消费 $49.99，无法下单" });
     }
@@ -175,34 +171,29 @@ router.post("/order-intent", requireLogin, express.json(), async (req, res) => {
       return res.status(400).json({ success: false, message: "未满足好友拼单最低消费 $29，无法下单" });
     }
 
-    // ✅ 派单关键字段（前端你已加）
-    const deliveryType = String(payload.deliveryType || "").trim(); // groupDay/nextDay/friend
-    const deliveryDate = String(payload.deliveryDate || "").trim(); // YYYY-MM-DD
+    const deliveryType = String(payload.deliveryType || "").trim();
+    const deliveryDate = String(payload.deliveryDate || "").trim();
     const zoneKey = String(payload.zoneKey || "").trim();
 
-    // 最低要求：deliveryType + deliveryDate 不能为空（否则你派单系统找不到）
     if (!deliveryType || !deliveryDate) {
       return res.status(400).json({ success: false, message: "缺少 deliveryType / deliveryDate" });
     }
 
-    // ---------- 2.1) 先找是否已有未支付订单（同 user + intentKey） ----------
-    // 你 Order schema 如果没 strict: false，建议加字段 payment.intentKey
+    // ---------- 2.1) 找是否已有同 intentKey 的未支付订单（幂等） ----------
     let doc = await Order.findOne({
       userId: user._id,
       "payment.method": "stripe",
       "payment.intentKey": intentKey,
-      "payment.status": { $in: ["unpaid", "requires_payment_method", "pending"] },
+      "payment.status": { $in: ["unpaid", "requires_payment_method", "pending", "created"] },
     }).catch(() => null);
 
-    // 如果存在且有 paymentIntentId：直接返回它（幂等）
-    if (doc?.payment?.stripePaymentIntentId) {
-      // 确保 PI 还存在（可选：这里不强查，避免慢）
+    if (doc?.payment?.stripePaymentIntentId && doc?.payment?.stripeClientSecret) {
       return res.json({
         success: true,
         orderId: String(doc._id),
         orderNo: doc.orderNo,
-        clientSecret: doc.payment?.stripeClientSecret || "",
-        paymentIntentId: doc.payment?.stripePaymentIntentId || "",
+        clientSecret: doc.payment.stripeClientSecret,
+        paymentIntentId: doc.payment.stripePaymentIntentId,
         reused: true,
       });
     }
@@ -218,15 +209,21 @@ router.post("/order-intent", requireLogin, express.json(), async (req, res) => {
         customerName: [s.firstName, s.lastName].filter(Boolean).join(" ").trim(),
         customerPhone: s.phone,
 
-        // ✅ 你后台派单/路线用的字段（存在就写）
-        mode: payload.mode, // 如果 schema 没这个字段也无所谓（strict 时需要加）
-        deliveryType,       // groupDay/nextDay/friend
-        deliveryDate,       // YYYY-MM-DD
-        zoneKey,            // 关键：后台按区域分组
+        mode: payload.mode,
+        deliveryType,
+        deliveryDate,
+        zoneKey,
         groupDay: payload.groupDay === true || deliveryType === "groupDay",
 
-        // 你旧字段
-        status: "pending", // 履约状态（paid 后再改）
+        // ✅ 统一：履约状态 pending，支付状态 unpaid（后台经常看这些）
+        status: "pending",
+        paidAt: null,
+
+        // ✅ 兼容一些后台字段
+        isPaid: false,
+        paymentStatus: "unpaid",
+        payStatus: "unpaid",
+
         orderType:
           payload.mode === "groupDay"
             ? "area_group"
@@ -236,19 +233,21 @@ router.post("/order-intent", requireLogin, express.json(), async (req, res) => {
             ? "friend"
             : "normal",
 
-        // 金额（旧字段）
         subtotal: totals.subtotal,
         deliveryFee: totals.shipping,
         discount: 0,
         totalAmount: totals.total,
 
-        // 支付快照（新字段）
         payment: {
           status: "unpaid",
           method: "stripe",
           currency: "USD",
 
-          intentKey, // ✅ 幂等关键：存下来
+          // ✅ 幂等键保存下来
+          intentKey,
+
+          // ✅ 兼容：有些后台读 payment.paid
+          paid: false,
 
           amountSubtotal: totals.subtotal,
           amountDeliveryFee: totals.shipping,
@@ -263,7 +262,6 @@ router.post("/order-intent", requireLogin, express.json(), async (req, res) => {
           taxableAmount: totals.taxableAmount,
         },
 
-        // 地址（兼容字段）
         addressText: s.fullText || "",
         note: s.note || "",
 
@@ -292,27 +290,34 @@ router.post("/order-intent", requireLogin, express.json(), async (req, res) => {
     }
 
     // ---------- 2.3) 创建 PaymentIntent（同 intentKey 幂等） ----------
-    // Stripe 自带 idempotencyKey：同一个 key 多次调用只会创建一次 PI
     const intent = await stripe.paymentIntents.create(
       {
         amount: moneyToCents(totals.total),
         currency: "usd",
         automatic_payment_methods: { enabled: true },
+
+        // ✅ 关键：webhook 用它来找订单
         metadata: {
           orderId: String(doc._id),
           orderNo: String(doc.orderNo),
           userId: String(user._id),
-          intentKey: intentKey,
+          intentKey,
         },
       },
-      {
-        idempotencyKey: `fb_pi_${intentKey}`, // ✅ Stripe 级幂等
-      }
+      { idempotencyKey: `fb_pi_${intentKey}` }
     );
 
-    // 写回订单
+    // 写回订单（兼容更多字段）
+    doc.payment = doc.payment || {};
     doc.payment.stripePaymentIntentId = intent.id;
     doc.payment.stripeClientSecret = intent.client_secret || "";
+    doc.payment.status = "pending";
+    doc.payment.paid = false;
+
+    // 兼容后台字段
+    doc.paymentStatus = "pending";
+    doc.payStatus = "pending";
+
     await doc.save();
 
     return res.json({
@@ -330,7 +335,7 @@ router.post("/order-intent", requireLogin, express.json(), async (req, res) => {
 });
 
 // ---------- 3) Stripe Webhook：更新订单支付状态 ----------
-// 重要：Webhook 必须使用 express.raw({ type: 'application/json' })，不能被 express.json() 吃掉
+// ⚠️ 重要：这个路由必须拿到 RAW body 才能验签成功
 router.post("/webhook", express.raw({ type: "application/json" }), async (req, res) => {
   try {
     if (!stripe) return res.status(500).send("stripe not initialized");
@@ -348,14 +353,20 @@ router.post("/webhook", express.raw({ type: "application/json" }), async (req, r
       return res.status(400).send(`Webhook Error: ${e.message}`);
     }
 
-    // ✅ 处理成功
+    // ✅ 关键日志：你看 Render 日志就知道 webhook 进没进来
+    console.log("📩 Stripe webhook received:", event.type, "id=", event.id);
+
+    const now = new Date();
+
     if (event.type === "payment_intent.succeeded") {
       const pi = event.data.object;
 
       const orderId = pi.metadata?.orderId;
       const orderNo = pi.metadata?.orderNo;
       const intentKey = pi.metadata?.intentKey;
+
       const amountPaid = centsToMoney(pi.amount_received || pi.amount || 0);
+      const amountTotal = centsToMoney(pi.amount || 0);
 
       const q =
         orderId
@@ -366,23 +377,48 @@ router.post("/webhook", express.raw({ type: "application/json" }), async (req, r
           ? { "payment.intentKey": intentKey }
           : null;
 
-      if (q) {
-        await Order.updateOne(q, {
-          $set: {
-            "payment.status": "paid",
-            "payment.paidAt": new Date(),
-            "payment.paidTotal": amountPaid,
-            "payment.stripeChargeId": String(pi.latest_charge || ""),
-            "payment.stripePaymentIntentId": String(pi.id || ""),
-
-            status: "paid", // 你也可以改成 "packing" 更符合履约
-            paidAt: new Date(),
-          },
+      if (!q) {
+        console.warn("⚠️ payment_intent.succeeded 但无法定位订单：metadata 缺失", {
+          pi: pi.id,
+          orderId,
+          orderNo,
+          intentKey,
         });
+        return res.json({ received: true });
       }
+
+      const upd = await Order.updateOne(q, {
+        $set: {
+          // ✅ 你原本的字段
+          "payment.status": "paid",
+          "payment.paidAt": now,
+          "payment.paidTotal": amountPaid,
+          "payment.amountTotal": amountTotal,
+          "payment.stripeChargeId": String(pi.latest_charge || ""),
+          "payment.stripePaymentIntentId": String(pi.id || ""),
+          "payment.method": "stripe",
+          "payment.paid": true,
+
+          // ✅ 订单主字段（后台很多页面只看这些）
+          status: "paid",
+          paidAt: now,
+
+          // ✅ 兼容字段：非常多后台“是否已支付”就是看这些
+          isPaid: true,
+          paymentStatus: "paid",
+          payStatus: "paid",
+        },
+      });
+
+      console.log("✅ webhook succeeded updated:", {
+        matched: upd?.matchedCount,
+        modified: upd?.modifiedCount,
+        q,
+        pi: pi.id,
+        amountPaid,
+      });
     }
 
-    // ✅ 处理失败
     if (event.type === "payment_intent.payment_failed") {
       const pi = event.data.object;
 
@@ -400,12 +436,26 @@ router.post("/webhook", express.raw({ type: "application/json" }), async (req, r
           : null;
 
       if (q) {
-        await Order.updateOne(q, {
+        const upd = await Order.updateOne(q, {
           $set: {
             "payment.status": "failed",
+            "payment.paid": false,
             "payment.lastError": pi.last_payment_error?.message || "payment_failed",
+
+            // 兼容字段
+            paymentStatus: "failed",
+            payStatus: "failed",
+            isPaid: false,
           },
         });
+        console.warn("⚠️ webhook payment_failed updated:", {
+          matched: upd?.matchedCount,
+          modified: upd?.modifiedCount,
+          q,
+          pi: pi.id,
+        });
+      } else {
+        console.warn("⚠️ payment_failed but cannot locate order:", pi?.id);
       }
     }
 

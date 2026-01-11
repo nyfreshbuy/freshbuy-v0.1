@@ -33,7 +33,12 @@ import adminDashboardrouter from "./routes/admin_dashboard.js";
 import productsRouter from "./routes/products.js";
 import frontendProductsRouter from "./routes/frontendProducts.js";
 import categoriesRouter from "./routes/categories.js";
+
+// ✅ 你原本的旧 webhook（保留）
 import stripeWebhook from "./routes/stripe_webhook.js";
+
+// ✅ 你现在真正用的 Stripe 支付路由（包含 /publishable-key /order-intent /webhook）
+import stripePayRouter from "./routes/pay_stripe.js";
 
 import driverRouter from "./routes/driver.js";
 import driverOrdersRouter from "./routes/driver_orders.js";
@@ -41,7 +46,7 @@ import driverOrdersRouter from "./routes/driver_orders.js";
 import addressesRouter from "./routes/addresses.js";
 import rechargeRouter from "./routes/recharge.js";
 import couponsRouter from "./routes/coupons.js";
-import { requireAdmin } from "./middlewares/admin.js"; // 你原本就有（即使没用也不影响）
+import { requireAdmin } from "./middlewares/admin.js";
 import adminZonesRouter from "./routes/admin_zones.js";
 import authOtpRouter from "./routes/auth_otp.js";
 import publicServiceRouter from "./routes/public_service.js";
@@ -55,11 +60,11 @@ import usersRouter from "./routes/users.js";
 import paymentsRouter from "./routes/payments.js";
 import zonesCheckRouter from "./routes/zones_check.js";
 import adminDispatchRouter from "./routes/admin_dispatch.js";
-import stripePayRouter from "./routes/pay_stripe.js";
 import adminPicklist from "./routes/admin_picklist.js";
 import authVerifyRegisterRouter from "./routes/auth_verify_register.js";
 import authVerifyResetPasswordRouter from "./routes/auth_verify_reset_password.js";
 import driverDispatchRoutes from "./routes/driver_dispatch.js";
+
 // =======================
 // ESM 环境下的 __dirname
 // =======================
@@ -80,36 +85,57 @@ console.log("🔥 当前运行的 server.js 来自 =====> ", url.fileURLToPath(i
 // =======================
 // 创建 app
 // =======================
-
 const app = express();
-// ⚠️ Stripe Webhook 必须在 express.json() 之前
+
+/**
+ * ✅✅✅ Stripe Webhook 必须 RAW BODY，且必须在 express.json() 之前
+ *
+ * 你当前有两套：
+ * 1) 旧：/api/stripe  -> stripe_webhook.js（你原本就放在 json 之前，OK）
+ * 2) 新：/api/pay/stripe/webhook -> pay_stripe.js 内部的 router.post("/webhook", express.raw(...))
+ *
+ * 最稳方案：在这里把 /api/pay/stripe/webhook 单独“提前”挂一次 raw，
+ * 然后让它继续走 pay_stripe.js 里定义的 /webhook handler。
+ *
+ * ⚠️ 注意：这里用 express.raw 先吃掉 body，仅用于 webhook 这个路径，不影响其它 API。
+ */
+app.post(
+  "/api/pay/stripe/webhook",
+  express.raw({ type: "application/json" }),
+  // 让请求继续交给 stripePayRouter 内部的 /webhook 处理
+  (req, res, next) => next()
+);
+
+// ✅ 旧 webhook：也保留在 json 之前
 app.use("/api/stripe", stripeWebhook);
+
 app.use(cors());
+
+// 其它 API 才用 json
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// =======================
+// 其他路由（保持你的顺序）
+// =======================
 app.use("/api/sms", smsVerifyRouter);
 app.use("/api/admin", adminPicklist);
 app.use("/api/driver", driverDispatchRoutes);
-// =======================
-// API 路由挂载（先挂具体的，再挂“/api”大网兜）
-// =======================
 
 // ---- 基础工具 / 公共 ----
 app.use("/api/geocode", geocodeRouter);
 console.log("✅ geocode 已挂载到 /api/geocode");
 
-// ✅ Public zones（你要的真实入口）
-// 访问：/api/public/zones 以及 /api/public/zones/ping
+// ✅ Public zones
 app.use("/api/public/zones", publicZonesRouter);
-app.use("/api/zones", publicZonesRouter); // ✅ 兼容 /api/zones/by-zip
+app.use("/api/zones", publicZonesRouter);
 console.log("✅ public_zones 已挂载到 /api/public/zones");
 
-// ✅ ZIP 检测（避免跟 zones 列表冲突）
-// 访问：/api/zones/check?zip=xxxxx 以及 /api/zones/check/ping
+// ✅ ZIP 检测
 app.use("/api/zones/check", zonesCheckRouter);
 console.log("✅ zones_check 已挂载到 /api/zones/check");
 
-// 你原来的 public 路由（保留）
+// public
 app.use("/api/public", publicGeoRouter);
 app.use("/api/public", publicServiceRouter);
 
@@ -134,15 +160,16 @@ app.use("/api/user", userMeRouter);
 
 // ---- 支付 ----
 app.use("/api/payments", paymentsRouter);
+
+// ✅✅✅ 你真正的 Stripe 支付路由：/api/pay/stripe/...
+// 由于我们把 /api/pay/stripe/webhook 提前 raw 了，所以这里就安全了
 app.use("/api/pay/stripe", stripePayRouter);
 
 // ---- 司机 ----
-// ---- 司机 ----
 app.use("/api/driver", driverRouter);
 app.use("/api/driver/orders", driverOrdersRouter);
-
-// ✅ 兼容旧前端：/api/driver/batches  /api/driver/batch/orders  /api/driver?date=...
 app.use("/api/driver", driverOrdersRouter);
+
 // ---- 后台 ----
 app.use("/api/admin/dashboard", adminDashboardrouter);
 app.use("/api/admin/zones", adminZonesRouter);
@@ -158,6 +185,7 @@ app.use("/api/site-config", siteConfigRouter);
 // 后台：管理员充值
 app.use("/api/admin/recharge", adminRechargeRouter);
 console.log("✅ admin_recharge 已挂载到 /api/admin/recharge");
+
 // 营销中心
 app.use("/api/admin", adminMarketingRouter);
 console.log("✅ admin_marketing 已挂载到 /api/admin");
@@ -176,7 +204,6 @@ app.use("/api/admin/users", adminUsersMongoRouter);
 
 // 后台结算
 app.use("/api/admin/settlements", adminSettlementsRouter);
-//（你原本重复挂了一次 settlements，这里我不重复挂第二次，避免潜在副作用）
 
 // 后台通用 admin 功能
 app.use("/api/admin", adminRouter);
@@ -196,7 +223,7 @@ app.use("/api/categories", categoriesRouter);
 // ---- 系统设置 ----
 app.use("/api/admin/settings", adminSettingsMemory);
 
-// ✅ 最后再挂 /api 大网兜（避免拦截上面所有更具体的接口）
+// ✅ 最后再挂 /api 大网兜
 app.use("/api", productsSimpleRouter);
 
 // =======================
@@ -207,13 +234,11 @@ app.use("/api", productsSimpleRouter);
 const uploadsRoot = path.join(__dirname, "../uploads");
 const deliveryPhotosDir = path.join(uploadsRoot, "delivery_photos");
 
-// 确保目录存在
 if (!fs.existsSync(deliveryPhotosDir)) {
   fs.mkdirSync(deliveryPhotosDir, { recursive: true });
   console.log("📁 已创建送达照片目录:", deliveryPhotosDir);
 }
 
-// 配置 multer 存储司机送达照片
 const deliveryPhotoStorage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, deliveryPhotosDir),
   filename: (req, file, cb) => {
@@ -227,13 +252,10 @@ const uploadDeliveryPhoto = multer({ storage: deliveryPhotoStorage });
 // =======================
 // 静态文件：前端页面 + assets + 上传图片
 // =======================
-
-// 前端目录：在本地你是 repo 根目录下的 /frontend
-// 但 Render 很可能只部署了 backend（Root Directory=backend），导致 ../../frontend 不存在
 const frontendCandidates = [
-  path.join(__dirname, "../../frontend"), // repo 根目录模式（推荐）
-  path.join(__dirname, "../frontend"),    // Render Root=backend 时的兜底（有些人会这么放）
-  path.join(process.cwd(), "frontend"),   // 再兜底
+  path.join(__dirname, "../../frontend"),
+  path.join(__dirname, "../frontend"),
+  path.join(process.cwd(), "frontend"),
 ];
 
 let frontendPath = frontendCandidates[0];
@@ -246,13 +268,9 @@ for (const p of frontendCandidates) {
 
 console.log("静态前端目录(最终使用):", frontendPath);
 console.log("静态前端目录是否存在:", fs.existsSync(frontendPath));
-// A. 整个 frontend 暴露出来（支持 /user /admin /driver 等）
+
 app.use(express.static(frontendPath));
-
-// B. /assets → 用户端静态资源目录（CSS/JS/图片）
 app.use("/assets", express.static(path.join(frontendPath, "user/assets")));
-
-// C. /uploads → 后台上传商品图片 + 司机送达照片
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
 // =======================
@@ -267,7 +285,6 @@ app.get("/api/whoami-server", (req, res) => {
   });
 });
 
-// 司机端 test ping
 app.get("/api/driver/test-ping", (req, res) => {
   res.json({
     success: true,
@@ -275,7 +292,6 @@ app.get("/api/driver/test-ping", (req, res) => {
   });
 });
 
-// 通用 debug
 app.get("/api/debug-settings", (req, res) => {
   res.json({ success: true, msg: "来自 server.js 的 debug-settings 测试接口" });
 });
@@ -283,44 +299,38 @@ app.get("/api/debug-settings", (req, res) => {
 // =======================
 // 页面路由：用户首页 + 后台首页
 // =======================
-
-// 用户端首页
 app.get("/", (req, res) => {
   res.sendFile(path.join(frontendPath, "user/index.html"));
 });
 
-// 后台首页（仪表盘）
 app.get("/admin", (req, res) => {
   res.sendFile(path.join(frontendPath, "admin/login.html"));
 });
 app.get("/category.html", (req, res) => {
   res.sendFile(path.join(frontendPath, "user/category.html"));
 });
-// /admin 下面其他 html，如 products.html、drivers.html 等
+
 app.get("/admin/:page", (req, res) => {
   const file = req.params.page;
   res.sendFile(path.join(frontendPath, "admin", file));
 });
+
 // =======================
 // 页面路由：司机端
 // =======================
-
-// 访问 /driver 时，默认给司机登录页
 app.get("/driver", (req, res) => {
   res.sendFile(path.join(frontendPath, "driver/login.html"));
 });
 
-// 司机登录页（你浏览器正在访问的）
 app.get("/driver/login.html", (req, res) => {
   res.sendFile(path.join(frontendPath, "driver/login.html"));
 });
 
-// /driver 下的其他页面
-// 例如：/driver/index.html  /driver/orders.html
 app.get("/driver/:page", (req, res) => {
   const file = req.params.page;
   res.sendFile(path.join(frontendPath, "driver", file));
 });
+
 // =======================
 // 未匹配的 API 路由，统一返回 404 JSON（必须最后）
 // =======================
