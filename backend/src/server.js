@@ -80,9 +80,10 @@ console.log("🔥 当前运行的 server.js 来自 =====> ", url.fileURLToPath(i
 // =======================
 // 创建 app
 // =======================
+
+const app = express();
 // ⚠️ Stripe Webhook 必须在 express.json() 之前
 app.use("/api/stripe", stripeWebhook);
-const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
