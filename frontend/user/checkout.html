@@ -261,35 +261,36 @@
       #cardErrors {
         margin-top: 6px;
       }
-      /* ✅ 修复：地址输入框被覆盖导致无法输入 */
-#street {
-  position: relative;
-  z-index: 9999;
-  pointer-events: auto;
-}
-#shippingFormV2,
-#shippingFormV2 * {
-  pointer-events: auto;
-}
-/* ✅ 让 Google Places 下拉永远在最上层（否则你会“看不到/点不到/像输入不了”） */
-.pac-container {
-  z-index: 999999 !important;
-  pointer-events: auto !important;
-}
-.pac-item,
-.pac-item * {
-  pointer-events: auto !important;
-}
 
-/* ✅ 右侧卡片本身也抬高层级，避免被其它透明层挡住 */
-aside.card {
-  position: relative;
-  z-index: 10000;
-}
-#shippingFormV2 {
-  position: relative;
-  z-index: 10000;
-}
+      /* ✅ 修复：地址输入框被覆盖导致无法输入 */
+      #street {
+        position: relative;
+        z-index: 9999;
+        pointer-events: auto;
+      }
+      #shippingFormV2,
+      #shippingFormV2 * {
+        pointer-events: auto;
+      }
+      /* ✅ 让 Google Places 下拉永远在最上层（否则你会“看不到/点不到/像输入不了”） */
+      .pac-container {
+        z-index: 999999 !important;
+        pointer-events: auto !important;
+      }
+      .pac-item,
+      .pac-item * {
+        pointer-events: auto !important;
+      }
+
+      /* ✅ 右侧卡片本身也抬高层级，避免被其它透明层挡住 */
+      aside.card {
+        position: relative;
+        z-index: 10000;
+      }
+      #shippingFormV2 {
+        position: relative;
+        z-index: 10000;
+      }
     </style>
   </head>
 
@@ -452,14 +453,14 @@ aside.card {
             <button class="mini tip-btn" data-tip="7.99" type="button">$7.99</button>
             <button class="mini tip-btn" data-tip="9.99" type="button">$9.99</button>
             <input
-  id="customTip"
-  class="input"
-  type="number"
-  min="0"
-  step="0.01"
-  value="0"
-  style="width: 90px; padding: 6px 8px; font-size: 12px"
-  placeholder="自定义"
+              id="customTip"
+              class="input"
+              type="number"
+              min="0"
+              step="0.01"
+              value="0"
+              style="width: 90px; padding: 6px 8px; font-size: 12px"
+              placeholder="自定义"
             />
           </div>
           <div class="muted" style="margin-top: 6px; line-height: 1.4">
@@ -524,30 +525,32 @@ aside.card {
     <script src="/assets/js/cart.js"></script>
     <!-- Stripe.js（必须） -->
     <script src="https://js.stripe.com/v3/"></script>
-<script>
-  // ✅ 捕获运行时错误（含文件 + 行号）
-  window.addEventListener("error", function (e) {
-    const msg = [
-      "JS Error:",
-      e.message,
-      "file: " + (e.filename || ""),
-      "line: " + (e.lineno || ""),
-      "col: " + (e.colno || "")
-    ].join("\n");
-    alert(msg);
-  });
 
-  // ✅ 捕获 Promise/async 报错（fetch 常见）
-  window.addEventListener("unhandledrejection", function (e) {
-    const r = e.reason;
-    const msg = [
-      "Unhandled Rejection:",
-      (r && (r.message || String(r))) || "unknown",
-      (r && r.stack) ? r.stack : ""
-    ].join("\n");
-    alert(msg);
-  });
-</script>
+    <script>
+      // ✅ 捕获运行时错误（含文件 + 行号）
+      window.addEventListener("error", function (e) {
+        const msg = [
+          "JS Error:",
+          e.message,
+          "file: " + (e.filename || ""),
+          "line: " + (e.lineno || ""),
+          "col: " + (e.colno || "")
+        ].join("\n");
+        alert(msg);
+      });
+
+      // ✅ 捕获 Promise/async 报错（fetch 常见）
+      window.addEventListener("unhandledrejection", function (e) {
+        const r = e.reason;
+        const msg = [
+          "Unhandled Rejection:",
+          (r && (r.message || String(r))) || "unknown",
+          (r && r.stack) ? r.stack : ""
+        ].join("\n");
+        alert(msg);
+      });
+    </script>
+
     <script>
       // ========= 工具 =========
       function money(n) {
@@ -591,7 +594,6 @@ aside.card {
       }
 
       // ========= ✅ 税/服务费/小费 =========
-      // NYC 常用 8.875%，先按这个；以后可按 ZIP 精确
       const NY_TAX_RATE = 0.08875;
       const SERVICE_FEE_RATE = 0.02;
 
@@ -606,15 +608,16 @@ aside.card {
       }
 
       function calcFinalAmount(snapshot) {
-  if (!snapshot) return { tax: 0, serviceFee: 0, tip: 0, grand: 0 };
+        if (!snapshot) return { tax: 0, serviceFee: 0, tip: 0, grand: 0 };
 
-  // ✅ 核心：无论哪里把 currentTip 搞成 NaN，都在这里纠正
-  currentTip = safeNum(currentTip, 0);
-  if (currentTip < 0) currentTip = 0;
+        // ✅ 核心：无论哪里把 currentTip 搞成 NaN，都在这里纠正
+        currentTip = safeNum(currentTip, 0);
+        if (currentTip < 0) currentTip = 0;
 
-  const items = Array.isArray(snapshot.items) ? snapshot.items : [];
-  const subtotal = safeNum(snapshot.subtotal, 0);
-  const shipping = safeNum(snapshot.shipping, 0);
+        const items = Array.isArray(snapshot.items) ? snapshot.items : [];
+        const subtotal = safeNum(snapshot.subtotal, 0);
+        const shipping = safeNum(snapshot.shipping, 0);
+
         // 1) taxable 小计（✅ 兼容 taxable / hasTax）
         let taxableAmount = 0;
         for (const it of items) {
@@ -773,13 +776,13 @@ aside.card {
         let canSubmit = true;
         let ruleHint = "";
 
-        // 1) 纯爆品：✅ 改为 dealsDay（后端 rules：dealsDay 只能包含爆品）
+        // 1) 纯爆品：✅ dealsDay
         if (hasDeal && !hasNonDeal) {
           mode = "dealsDay";
           shipping = 0;
           ruleHint = "规则：纯爆品订单为爆品日配送，本单免运费，可结算。";
         }
-        // 2) 混合：强制 groupDay，按门槛（未满可结算但收运费）
+        // 2) 混合：强制 groupDay
         else if (hasDeal && hasNonDeal) {
           mode = "groupDay";
           const th = safeNum(zone.groupDay?.freeThreshold, 49.99);
@@ -790,7 +793,7 @@ aside.card {
               ? `规则：爆品+普通已满 $${th.toFixed(2)}，区域团免运费，可结算。`
               : `规则：爆品+普通按区域团规则：未满 $${th.toFixed(2)} 收取运费 $${fee.toFixed(2)}，可结算。`;
         }
-        // 3) 全是非爆：根据偏好 normal / friendGroup / groupDay
+        // 3) 全是非爆：normal / friendGroup / groupDay
         else {
           const pref = getPreferredMode();
 
@@ -1187,229 +1190,236 @@ aside.card {
       }
 
       // ========= Stripe =========
-let stripe = null;
-let elements = null;
-let paymentElement = null;
-let stripeReady = false;
+      let stripe = null;
+      let elements = null;
+      let paymentElement = null;
+      let stripeReady = false;
 
-async function initStripeUI() {
-  try {
-    const res = await fetch("/api/pay/stripe/publishable-key", { cache: "no-store" });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data.success || !data.key) {
-      stripeReady = false;
-      return;
-    }
-    stripe = Stripe(data.key);
-    stripeReady = true;
-  } catch {
-    stripeReady = false;
-  }
-}
+      async function initStripeUI() {
+        try {
+          const res = await fetch("/api/pay/stripe/publishable-key", { cache: "no-store" });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || !data.success || !data.key) {
+            stripeReady = false;
+            return;
+          }
+          stripe = Stripe(data.key);
+          stripeReady = true;
+        } catch {
+          stripeReady = false;
+        }
+      }
 
-async function mountStripeElements(clientSecret) {
-  if (!stripeReady || !stripe) throw new Error("Stripe 未初始化（publishable key 未获取到）");
-  elements = stripe.elements({ clientSecret });
-  paymentElement = elements.create("payment");
-  const mountEl = document.getElementById("paymentElement");
-  mountEl.innerHTML = "";
-  paymentElement.mount(mountEl);
-}
+      async function mountStripeElements(clientSecret) {
+        if (!stripeReady || !stripe) throw new Error("Stripe 未初始化（publishable key 未获取到）");
+        elements = stripe.elements({ clientSecret });
+        paymentElement = elements.create("payment");
+        const mountEl = document.getElementById("paymentElement");
+        mountEl.innerHTML = "";
+        paymentElement.mount(mountEl);
+      }
 
-function setStripeAreaVisible(v) {
-  const box = document.getElementById("stripeArea");
-  box.style.display = v ? "block" : "none";
-}
+      function setStripeAreaVisible(v) {
+        const box = document.getElementById("stripeArea");
+        box.style.display = v ? "block" : "none";
+      }
 
-// ✅ 幂等 + 并发锁
-let lastClientSecret = "";
-let stripeMounting = false;
-let lastIntentKey = "";
+      // ✅ 幂等 + 并发锁
+      let lastClientSecret = "";
+      let stripeMounting = false;
+      let lastIntentKey = "";
 
-function buildIntentKey(snapshot, extra) {
-  const itemsKey = (snapshot.items || [])
-    .map((it) => `${it._id || it.id}:${Number(it.qty || 1)}:${Number(it.priceNum ?? it.price ?? 0)}`)
-    .sort()
-    .join("|");
-
-  const f = getFormUS();
-  const addrKey = `${f.street1}|${f.city}|${f.state}|${f.zip}|${document.getElementById("addrPlaceId").value || ""}`;
-
-  return [
-    "v1",
-    snapshot.mode,
-    snapshot.zone?.id || "",
-    itemsKey,
-    Number(snapshot.subtotal || 0).toFixed(2),
-    Number(snapshot.shipping || 0).toFixed(2),
-    Number(extra.tax || 0).toFixed(2),
-    Number(extra.serviceFee || 0).toFixed(2),
-    Number(extra.tip || 0).toFixed(2),
-    Number(extra.grand || 0).toFixed(2),
-    addrKey,
-  ].join("~");
-}
-
-async function ensureStripeMounted() {
-  if (stripeMounting) return;
-  stripeMounting = true;
-
-  try {
-    if (!stripeReady) await initStripeUI();
-    if (!stripeReady) throw new Error("Stripe 未准备好：publishable key 获取失败");
-
-    const snapshot = computeCheckoutSnapshot();
-    if (!snapshot) throw new Error("购物车为空");
-
-    const extra = calcFinalAmount(snapshot);
-const total = Number(extra.grand);
-
-if (!Number.isFinite(total)) {
-  throw new Error("金额计算异常（NaN）。请检查小费/税/运费输入。");
-}
-if (total < 0.5) {
-  throw new Error("信用卡支付最低 $0.50，请增加商品金额或改用钱包支付");
-}
-    const token = getToken();
-    if (!token) throw new Error("未登录：没有 token");
-
-    setStripeAreaVisible(true);
-
-    const intentKey = buildIntentKey(snapshot, extra);
-
-    // ✅ 同一个 key 已挂载：不再创建新 intent
-    if (intentKey === lastIntentKey && lastClientSecret && elements && paymentElement) {
-      showAlert("信用卡输入框已就绪，请填写卡信息。", true);
-      return;
-    }
-
-    const f = getFormUS();
-    const { addrLine, full } = addrLineUS();
-    const fullText = document.getElementById("addrFullText").value || full;
-    const placeId = document.getElementById("addrPlaceId").value.trim();
-    const lat = Number(document.getElementById("addrLat").value);
-    const lng = Number(document.getElementById("addrLng").value);
-
-    const { deliveryType, deliveryDate } = computeDeliveryMeta(snapshot.mode);
-    const zoneKey = snapshot.zone?.zoneKey || snapshot.zone?.key || snapshot.zone?.id || "";
-
-    const payload = {
-      intentKey,
-      mode: snapshot.mode,
-      deliveryType,
-      deliveryDate,
-      zoneKey,
-      groupDay: deliveryType === "groupDay",
-      zoneId: snapshot.zone?.id || "",
-      zoneName: snapshot.zone?.name || "",
-      items: (snapshot.items || []).map((it) => {
-        const isTax = it.taxable === true || it.hasTax === true;
-        return {
-          productId: it._id || it.id,
-          name: it.name,
-          qty: Number(it.qty || 1),
-          price: Number(it.priceNum ?? it.price ?? 0),
-          image: it.image || it.imageUrl || it.cover || (Array.isArray(it.images) ? it.images[0] : "") || "",
-          isSpecial: !!isDealLike(it),
-          taxable: isTax,
-          hasTax: isTax,
+      // ✅【关键修复】intentKey 不允许 NaN 被 “||0” 吞掉；并 bump 版本 v2
+      function buildIntentKey(snapshot, extra) {
+        const num2 = (v) => {
+          const n = Number(v);
+          if (!Number.isFinite(n)) return "NaN";
+          return n.toFixed(2);
         };
-      }),
-      shipping: {
-        firstName: f.firstName,
-        lastName: f.lastName,
-        phone: f.phone,
-        street1: f.street1,
-        apt: f.apt || "",
-        city: f.city,
-        state: f.state,
-        zip: f.zip,
-        addressLine: addrLine,
-        fullText,
-        placeId: placeId || "",
-        lat: Number.isFinite(lat) ? lat : undefined,
-        lng: Number.isFinite(lng) ? lng : undefined,
-        note: f.note || "",
-      },
-      pricing: {
-        subtotal: Number(snapshot.subtotal || 0),
-        shippingFee: Number(snapshot.shipping || 0),
-        taxableAmount: Number(extra.taxableAmount || 0),
-        tax: Number(extra.tax || 0),
-        serviceFee: Number(extra.serviceFee || 0),
-        tip: Number(extra.tip || 0),
-        total: Number(extra.grand || 0),
-        taxRate: (document.getElementById("state")?.value || "") === "NY" ? NY_TAX_RATE : 0,
-        serviceRate: SERVICE_FEE_RATE,
-      },
-      source: "web_checkout",
-    };
 
-    showAlert("正在加载信用卡输入框…", true);
+        const itemsKey = (snapshot.items || [])
+          .map((it) => `${it._id || it.id}:${Number(it.qty || 1)}:${Number(it.priceNum ?? it.price ?? 0)}`)
+          .sort()
+          .join("|");
 
-    const res = await fetch("/api/pay/stripe/order-intent", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
-      body: JSON.stringify(payload),
-    });
+        const f = getFormUS();
+        const addrKey = `${f.street1}|${f.city}|${f.state}|${f.zip}|${document.getElementById("addrPlaceId").value || ""}`;
 
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data.success || !data.clientSecret) {
-      throw new Error(data.message || "创建 Stripe 支付失败");
-    }
+        return [
+          "v2",
+          snapshot.mode,
+          snapshot.zone?.id || "",
+          itemsKey,
+          num2(snapshot.subtotal),
+          num2(snapshot.shipping),
+          num2(extra.tax),
+          num2(extra.serviceFee),
+          num2(extra.tip),
+          num2(extra.grand),
+          addrKey,
+        ].join("~");
+      }
 
-    lastIntentKey = intentKey;
+      async function ensureStripeMounted() {
+        if (stripeMounting) return;
+        stripeMounting = true;
 
-    if (data.clientSecret !== lastClientSecret) {
-      lastClientSecret = data.clientSecret;
-      await mountStripeElements(data.clientSecret);
-    }
+        try {
+          if (!stripeReady) await initStripeUI();
+          if (!stripeReady) throw new Error("Stripe 未准备好：publishable key 获取失败");
 
-    showAlert("信用卡输入框已加载，请填写卡信息。", true);
-  } finally {
-    stripeMounting = false;
-  }
-}
-function ymd(d) {
-  const x = new Date(d);
-  return x.toISOString().slice(0, 10); // YYYY-MM-DD
-}
-// ✅ 区域团固定配送日：先按 周三+周六（你按真实规则改）
-function nextGroupDayDate() {
-  const now = new Date();
-  const targetDays = [3, 6]; // 0日1一2二3三4四5五6六
-  for (let i = 0; i < 14; i++) {
-    const t = new Date(now);
-    t.setDate(now.getDate() + i);
-    if (targetDays.includes(t.getDay())) return ymd(t);
-  }
-  return ymd(now);
-}
+          const snapshot = computeCheckoutSnapshot();
+          if (!snapshot) throw new Error("购物车为空");
 
-// ✅ 统一把你前端 mode 映射成后端派单可用的 deliveryType + deliveryDate
-function computeDeliveryMeta(mode) {
-  const m = String(mode || "").trim();
+          const extra = calcFinalAmount(snapshot);
+          const total = Number(extra.grand);
 
-  // 你现在 snapshot.mode 可能是：groupDay | friendGroup | normal | dealsDay
-  // 我们把它映射为后端统一使用的 deliveryType
-  let deliveryType = m;
-  if (m === "friendGroup") deliveryType = "friend";   // ✅ 后台更好统一
-  if (m === "normal") deliveryType = "nextDay";       // ✅ 后台更好统一
-  if (m === "groupDay") deliveryType = "groupDay";
-  if (m === "dealsDay") deliveryType = "groupDay";    // ✅ 爆品日也走区域团的派送日（更适配派单）
+          if (!Number.isFinite(total)) {
+            throw new Error("金额计算异常（NaN）。请检查小费/税/运费输入。");
+          }
+          if (total < 0.5) {
+            throw new Error("信用卡支付最低 $0.50，请增加商品金额或改用钱包支付");
+          }
 
-  // deliveryDate：groupDay 用固定配送日；nextDay/friend 默认明天
-  let deliveryDate = "";
-  if (deliveryType === "groupDay") {
-    deliveryDate = nextGroupDayDate();
-  } else {
-    const t = new Date();
-    t.setDate(t.getDate() + 1);
-    deliveryDate = ymd(t);
-  }
+          const token = getToken();
+          if (!token) throw new Error("未登录：没有 token");
 
-  return { deliveryType, deliveryDate };
-}
+          setStripeAreaVisible(true);
+
+          const intentKey = buildIntentKey(snapshot, extra);
+
+          // ✅ 同一个 key 已挂载：不再创建新 intent
+          if (intentKey === lastIntentKey && lastClientSecret && elements && paymentElement) {
+            showAlert("信用卡输入框已就绪，请填写卡信息。", true);
+            return;
+          }
+
+          const f = getFormUS();
+          const { addrLine, full } = addrLineUS();
+          const fullText = document.getElementById("addrFullText").value || full;
+          const placeId = document.getElementById("addrPlaceId").value.trim();
+          const lat = Number(document.getElementById("addrLat").value);
+          const lng = Number(document.getElementById("addrLng").value);
+
+          const { deliveryType, deliveryDate } = computeDeliveryMeta(snapshot.mode);
+          const zoneKey = snapshot.zone?.zoneKey || snapshot.zone?.key || snapshot.zone?.id || "";
+
+          const payload = {
+            intentKey,
+            mode: snapshot.mode,
+            deliveryType,
+            deliveryDate,
+            zoneKey,
+            groupDay: deliveryType === "groupDay",
+            zoneId: snapshot.zone?.id || "",
+            zoneName: snapshot.zone?.name || "",
+            items: (snapshot.items || []).map((it) => {
+              const isTax = it.taxable === true || it.hasTax === true;
+              return {
+                productId: it._id || it.id,
+                name: it.name,
+                qty: Number(it.qty || 1),
+                price: Number(it.priceNum ?? it.price ?? 0),
+                image: it.image || it.imageUrl || it.cover || (Array.isArray(it.images) ? it.images[0] : "") || "",
+                isSpecial: !!isDealLike(it),
+                taxable: isTax,
+                hasTax: isTax,
+              };
+            }),
+            shipping: {
+              firstName: f.firstName,
+              lastName: f.lastName,
+              phone: f.phone,
+              street1: f.street1,
+              apt: f.apt || "",
+              city: f.city,
+              state: f.state,
+              zip: f.zip,
+              addressLine: addrLine,
+              fullText,
+              placeId: placeId || "",
+              lat: Number.isFinite(lat) ? lat : undefined,
+              lng: Number.isFinite(lng) ? lng : undefined,
+              note: f.note || "",
+            },
+            pricing: {
+              subtotal: Number(snapshot.subtotal),
+              shippingFee: Number(snapshot.shipping),
+              taxableAmount: Number(extra.taxableAmount),
+              tax: Number(extra.tax),
+              serviceFee: Number(extra.serviceFee),
+              tip: Number(extra.tip),
+              total: Number(extra.grand), // ✅ 不要 ||0
+              taxRate: (document.getElementById("state")?.value || "") === "NY" ? NY_TAX_RATE : 0,
+              serviceRate: SERVICE_FEE_RATE,
+            },
+            source: "web_checkout",
+          };
+
+          showAlert("正在加载信用卡输入框…", true);
+
+          const res = await fetch("/api/pay/stripe/order-intent", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+            body: JSON.stringify(payload),
+          });
+
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || !data.success || !data.clientSecret) {
+            throw new Error(data.message || "创建 Stripe 支付失败");
+          }
+
+          lastIntentKey = intentKey;
+
+          if (data.clientSecret !== lastClientSecret) {
+            lastClientSecret = data.clientSecret;
+            await mountStripeElements(data.clientSecret);
+          }
+
+          showAlert("信用卡输入框已加载，请填写卡信息。", true);
+        } finally {
+          stripeMounting = false;
+        }
+      }
+
+      function ymd(d) {
+        const x = new Date(d);
+        return x.toISOString().slice(0, 10);
+      }
+
+      // ✅ 区域团固定配送日：周三+周六（你按真实规则改）
+      function nextGroupDayDate() {
+        const now = new Date();
+        const targetDays = [3, 6];
+        for (let i = 0; i < 14; i++) {
+          const t = new Date(now);
+          t.setDate(now.getDate() + i);
+          if (targetDays.includes(t.getDay())) return ymd(t);
+        }
+        return ymd(now);
+      }
+
+      function computeDeliveryMeta(mode) {
+        const m = String(mode || "").trim();
+
+        let deliveryType = m;
+        if (m === "friendGroup") deliveryType = "friend";
+        if (m === "normal") deliveryType = "nextDay";
+        if (m === "groupDay") deliveryType = "groupDay";
+        if (m === "dealsDay") deliveryType = "groupDay";
+
+        let deliveryDate = "";
+        if (deliveryType === "groupDay") {
+          deliveryDate = nextGroupDayDate();
+        } else {
+          const t = new Date();
+          t.setDate(t.getDate() + 1);
+          deliveryDate = ymd(t);
+        }
+
+        return { deliveryType, deliveryDate };
+      }
+
       // ========= 下单 =========
       async function placeOrder() {
         const snapshot = computeCheckoutSnapshot();
@@ -1438,18 +1448,16 @@ function computeDeliveryMeta(mode) {
         const fullText = document.getElementById("addrFullText").value || full;
         const placeId = document.getElementById("addrPlaceId").value.trim();
 
-        // ✅ 最终金额（含税/服务费/小费）
         const extra = calcFinalAmount(snapshot);
-        // ✅ 统一派单字段（后端需要 deliveryDate；后台需要 deliveryType+zoneKey）
-const { deliveryType, deliveryDate } = computeDeliveryMeta(snapshot.mode);
-const zoneKey = snapshot.zone?.zoneKey || snapshot.zone?.key || snapshot.zone?.id || "";
+        const { deliveryType, deliveryDate } = computeDeliveryMeta(snapshot.mode);
+        const zoneKey = snapshot.zone?.zoneKey || snapshot.zone?.key || snapshot.zone?.id || "";
+
         const payload = {
           mode: snapshot.mode,
-            // ✅ 新增：后端校验 + 后台派单/路线都用它们
-  deliveryType,          // groupDay / nextDay / friend
-  deliveryDate,          // YYYY-MM-DD ✅ 解决你报错
-  zoneKey,               // ✅ 后台按区域分组派单
-  groupDay: deliveryType === "groupDay", // ✅ 兼容某些旧后端用 groupDay=true
+          deliveryType,
+          deliveryDate,
+          zoneKey,
+          groupDay: deliveryType === "groupDay",
           zoneId: snapshot.zone?.id || "",
           zoneName: snapshot.zone?.name || "",
           items: (snapshot.items || []).map((it) => {
@@ -1466,8 +1474,6 @@ const zoneKey = snapshot.zone?.zoneKey || snapshot.zone?.key || snapshot.zone?.i
                 (Array.isArray(it.images) ? it.images[0] : "") ||
                 "",
               isSpecial: !!isDealLike(it),
-
-              // ✅ 同时发 taxable + hasTax（后端/前端都能识别）
               taxable: isTax,
               hasTax: isTax,
             };
@@ -1488,22 +1494,20 @@ const zoneKey = snapshot.zone?.zoneKey || snapshot.zone?.key || snapshot.zone?.i
             lng,
             note: f.note || "",
           },
-
-          // ✅ 给后端参考（最终以你后端为准）
           pricing: {
-            subtotal: Number(snapshot.subtotal || 0),
-            shippingFee: Number(snapshot.shipping || 0),
-            taxableAmount: Number(extra.taxableAmount || 0),
-            tax: Number(extra.tax || 0),
-            serviceFee: Number(extra.serviceFee || 0),
-            tip: Number(extra.tip || 0),
-            total: Number(extra.grand || 0),
+            subtotal: Number(snapshot.subtotal),
+            shippingFee: Number(snapshot.shipping),
+            taxableAmount: Number(extra.taxableAmount),
+            tax: Number(extra.tax),
+            serviceFee: Number(extra.serviceFee),
+            tip: Number(extra.tip),
+            total: Number(extra.grand), // ✅ 不要 ||0
             taxRate: (document.getElementById("state")?.value || "") === "NY" ? NY_TAX_RATE : 0,
             serviceRate: SERVICE_FEE_RATE,
           },
-
           source: "web_checkout",
         };
+
         console.log("✅ submit payload:", payload);
         const method = getPayMethod();
         const btn = document.getElementById("btnPlaceOrder");
@@ -1533,43 +1537,44 @@ const zoneKey = snapshot.zone?.zoneKey || snapshot.zone?.key || snapshot.zone?.i
           }
 
           if (method === "stripe") {
-  try {
-    setStripeAreaVisible(true);
-   if (!paymentElement || !elements) {
-  await ensureStripeMounted();
-}
-if (!stripe) {
-  btn.disabled = false;
-  return showAlert("Stripe 未初始化（publishable key 获取失败）。", false);
-}
+            try {
+              setStripeAreaVisible(true);
+              if (!paymentElement || !elements) {
+                await ensureStripeMounted();
+              }
+              if (!stripe) {
+                btn.disabled = false;
+                return showAlert("Stripe 未初始化（publishable key 获取失败）。", false);
+              }
 
-showAlert("Stripe：请完成支付确认…", true);
-const result = await stripe.confirmPayment({
-      elements,
-      confirmParams: {},
-      redirect: "if_required",
-    });
+              showAlert("Stripe：请完成支付确认…", true);
+              const result = await stripe.confirmPayment({
+                elements,
+                confirmParams: {},
+                redirect: "if_required",
+              });
 
-    if (result.error) {
-      btn.disabled = false;
-      document.getElementById("cardErrors").textContent = result.error.message || "支付失败";
-      return showAlert(result.error.message || "支付失败", false);
-    }
+              if (result.error) {
+                btn.disabled = false;
+                document.getElementById("cardErrors").textContent = result.error.message || "支付失败";
+                return showAlert(result.error.message || "支付失败", false);
+              }
 
-    document.getElementById("cardErrors").textContent = "";
-    showAlert("支付成功 ✅ 正在清空购物车并跳转…", true);
+              document.getElementById("cardErrors").textContent = "";
+              showAlert("支付成功 ✅ 正在清空购物车并跳转…", true);
 
-    try {
-      localStorage.setItem(CART_LS_KEY, JSON.stringify({ items: [], mode: "groupDay" }));
-    } catch {}
-    setTimeout(() => (window.location.href = "/user/user_center.html"), 600);
-    return;
-  } catch (e) {
-    console.error(e);
-    btn.disabled = false;
-    return showAlert(e.message || "Stripe 支付失败", false);
-  }
-}
+              try {
+                localStorage.setItem(CART_LS_KEY, JSON.stringify({ items: [], mode: "groupDay" }));
+              } catch {}
+              setTimeout(() => (window.location.href = "/user/user_center.html"), 600);
+              return;
+            } catch (e) {
+              console.error(e);
+              btn.disabled = false;
+              return showAlert(e.message || "Stripe 支付失败", false);
+            }
+          }
+
           btn.disabled = false;
           showAlert("未知支付方式", false);
         } catch (e) {
@@ -1601,11 +1606,9 @@ const result = await stripe.confirmPayment({
 
         render(snapshot);
 
-        // 先用当前 lastWalletBalance 计算一遍（可能为 null）
         const extra = calcFinalAmount(snapshot);
         renderExtra(extra);
 
-        // 取钱包余额后再二次刷新（✅ 让“服务费是否为0”立即变正确）
         fetchWalletBalance().then((bal) => {
           lastWalletBalance = bal == null ? null : Number(bal);
 
@@ -1624,9 +1627,11 @@ const result = await stripe.confirmPayment({
         // 小费按钮绑定
         const tipButtons = Array.from(document.querySelectorAll(".tip-btn"));
         const customTip = document.getElementById("customTip");
+
         // ✅ 初始化：默认小费=0，输入框同步，避免初始 NaN/空字符串链式污染
-customTip.value = "0";
-currentTip = 0;
+        customTip.value = "0";
+        currentTip = 0;
+
         tipButtons.forEach((btn) => {
           btn.addEventListener("click", () => {
             const v = safeNum(btn.dataset.tip, 0);
@@ -1659,50 +1664,53 @@ currentTip = 0;
         // stripe 初始化
         await initStripeUI();
 
-        // radio 切换
-        // radio 切换（✅ 点信用卡就立刻加载输入框）
-// radio 切换（✅ 点信用卡就立刻加载输入框）
-const onPaySwitch = async () => {
-  const m = getPayMethod();
+        // ✅ 支付方式切换：点信用卡就立刻加载输入框
+        const onPaySwitch = async () => {
+          const m = getPayMethod();
 
-  if (m === "stripe") {
-    try {
-      await ensureStripeMounted();
-      refreshAll();
-    } catch (e) {
-      console.error(e);
-      showAlert(e.message || "信用卡初始化失败", false);
+          if (m === "stripe") {
+            try {
+              await ensureStripeMounted();
+              refreshAll();
+            } catch (e) {
+              console.error(e);
+              showAlert(e.message || "信用卡初始化失败", false);
 
-      // 回退到钱包
-      document.getElementById("payWallet").checked = true;
-      setStripeAreaVisible(false);
-      refreshAll();
-    }
-    return;
-  }
+              // 回退到钱包
+              document.getElementById("payWallet").checked = true;
+              setStripeAreaVisible(false);
+              refreshAll();
+            }
+            return;
+          }
 
-  // wallet
-  setStripeAreaVisible(false);
-  refreshAll();
-};
+          // wallet
+          setStripeAreaVisible(false);
+          refreshAll();
+        };
 
-const payWalletEl = document.getElementById("payWallet");
-const payStripeEl = document.getElementById("payStripe");
+        const payWalletEl = document.getElementById("payWallet");
+        const payStripeEl = document.getElementById("payStripe");
 
-// ✅ 只绑定 label click（不要再绑定 change/click 多套）
-payWalletEl.closest("label")?.addEventListener("click", () => {
-  payWalletEl.checked = true;
-  onPaySwitch();
-});
-payStripeEl.closest("label")?.addEventListener("click", () => {
-  payStripeEl.checked = true;
-  onPaySwitch();
-});
+        // ✅ label click（你原本的）
+        payWalletEl.closest("label")?.addEventListener("click", () => {
+          payWalletEl.checked = true;
+          onPaySwitch();
+        });
+        payStripeEl.closest("label")?.addEventListener("click", () => {
+          payStripeEl.checked = true;
+          onPaySwitch();
+        });
 
-// ✅ 如果页面打开时默认就是 stripe（未来你可能改默认），自动挂载一次
-if (getPayMethod() === "stripe") {
-  onPaySwitch();
-}
+        // ✅【关键补强】radio change：点到圆点/键盘切换也能触发（解决“点不开”）
+        payWalletEl.addEventListener("change", onPaySwitch);
+        payStripeEl.addEventListener("change", onPaySwitch);
+
+        // ✅ 如果页面打开时默认就是 stripe（未来你可能改默认），自动挂载一次
+        if (getPayMethod() === "stripe") {
+          onPaySwitch();
+        }
+
         // 默认地址
         loadDefaultLocal();
         fetchDefaultAddressFromDB()
@@ -1742,41 +1750,43 @@ if (getPayMethod() === "stripe") {
         window.addEventListener("freshcart:updated", () => refreshAll());
       });
     </script>
+
     <script>
-  // ✅ 让 Google Maps 加载完成后直接回调（带重试，避免 DOM/输入框还没就绪）
-  window.__initPlaces = function () {
-    const tryInit = () => {
-      try {
-        const input = document.getElementById("street");
-        if (!input) return false;
-        if (!(window.google && google.maps && google.maps.places)) return false;
+      // ✅ 让 Google Maps 加载完成后直接回调（带重试，避免 DOM/输入框还没就绪）
+      window.__initPlaces = function () {
+        const tryInit = () => {
+          try {
+            const input = document.getElementById("street");
+            if (!input) return false;
+            if (!(window.google && google.maps && google.maps.places)) return false;
 
-        initPlaces();
-        console.log("✅ Places initialized by callback");
-        return true;
-      } catch (e) {
-        console.error("❌ initPlaces failed", e);
-        return false;
-      }
-    };
+            initPlaces();
+            console.log("✅ Places initialized by callback");
+            return true;
+          } catch (e) {
+            console.error("❌ initPlaces failed", e);
+            return false;
+          }
+        };
 
-    if (tryInit()) return;
+        if (tryInit()) return;
 
-    // 轻量重试：最多 20 次 * 150ms ≈ 3s
-    let n = 0;
-    const t = setInterval(() => {
-      n++;
-      if (tryInit() || n >= 20) clearInterval(t);
-    }, 150);
-  };
-</script>
+        // 轻量重试：最多 20 次 * 150ms ≈ 3s
+        let n = 0;
+        const t = setInterval(() => {
+          n++;
+          if (tryInit() || n >= 20) clearInterval(t);
+        }, 150);
+      };
+    </script>
+
     <script src="/user/components/footer.js"></script>
 
     <!-- Google Maps Places（✅ callback 方式加载） -->
-<script
-  src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCFgt7ksBZeFbkPJIYTo9bhJ_5U311zOYQ&libraries=places&callback=__initPlaces"
-  async
-  defer
-></script>
+    <script
+      src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCFgt7ksBZeFbkPJIYTo9bhJ_5U311zOYQ&libraries=places&callback=__initPlaces"
+      async
+      defer
+    ></script>
   </body>
 </html>
