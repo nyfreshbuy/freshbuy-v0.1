@@ -33,6 +33,7 @@ import adminDashboardrouter from "./routes/admin_dashboard.js";
 import productsRouter from "./routes/products.js";
 import frontendProductsRouter from "./routes/frontendProducts.js";
 import categoriesRouter from "./routes/categories.js";
+import stripeWebhook from "./routes/stripe_webhook.js";
 
 import driverRouter from "./routes/driver.js";
 import driverOrdersRouter from "./routes/driver_orders.js";
@@ -79,6 +80,8 @@ console.log("🔥 当前运行的 server.js 来自 =====> ", url.fileURLToPath(i
 // =======================
 // 创建 app
 // =======================
+// ⚠️ Stripe Webhook 必须在 express.json() 之前
+app.use("/api/stripe", stripeWebhook);
 const app = express();
 app.use(cors());
 app.use(express.json());
