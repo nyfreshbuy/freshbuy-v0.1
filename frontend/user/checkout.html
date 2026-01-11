@@ -261,6 +261,35 @@
       #cardErrors {
         margin-top: 6px;
       }
+      /* ✅ 修复：地址输入框被覆盖导致无法输入 */
+#street {
+  position: relative;
+  z-index: 9999;
+  pointer-events: auto;
+}
+#shippingFormV2,
+#shippingFormV2 * {
+  pointer-events: auto;
+}
+/* ✅ 让 Google Places 下拉永远在最上层（否则你会“看不到/点不到/像输入不了”） */
+.pac-container {
+  z-index: 999999 !important;
+  pointer-events: auto !important;
+}
+.pac-item,
+.pac-item * {
+  pointer-events: auto !important;
+}
+
+/* ✅ 右侧卡片本身也抬高层级，避免被其它透明层挡住 */
+aside.card {
+  position: relative;
+  z-index: 10000;
+}
+#shippingFormV2 {
+  position: relative;
+  z-index: 10000;
+}
     </style>
   </head>
 
@@ -1507,15 +1536,6 @@ const zoneKey = snapshot.zone?.zoneKey || snapshot.zone?.key || snapshot.zone?.i
           })
           .catch(() => {});
 
-        // Places
-        const t = setInterval(() => {
-          if (window.google && google.maps && google.maps.places) {
-            clearInterval(t);
-            initPlaces();
-          }
-        }, 120);
-        setTimeout(() => clearInterval(t), 8000);
-
         document.getElementById("btnClearAddr").addEventListener("click", () => {
           document.getElementById("street").value = "";
           document.getElementById("apt").value = "";
@@ -1533,15 +1553,43 @@ const zoneKey = snapshot.zone?.zoneKey || snapshot.zone?.key || snapshot.zone?.i
         window.addEventListener("freshcart:updated", () => refreshAll());
       });
     </script>
+    <script>
+  // ✅ 让 Google Maps 加载完成后直接回调（带重试，避免 DOM/输入框还没就绪）
+  window.__initPlaces = function () {
+    const tryInit = () => {
+      try {
+        const input = document.getElementById("street");
+        if (!input) return false;
+        if (!(window.google && google.maps && google.maps.places)) return false;
 
+        initPlaces();
+        console.log("✅ Places initialized by callback");
+        return true;
+      } catch (e) {
+        console.error("❌ initPlaces failed", e);
+        return false;
+      }
+    };
+
+    if (tryInit()) return;
+
+    // 轻量重试：最多 20 次 * 150ms ≈ 3s
+    let n = 0;
+    const t = setInterval(() => {
+      n++;
+      if (tryInit() || n >= 20) clearInterval(t);
+    }, 150);
+  };
+</script>
     <script src="/user/components/footer.js"></script>
 
     <!-- Stripe.js（必须） -->
     <script src="https://js.stripe.com/v3/"></script>
-
-    <!-- Google Maps Places -->
-    <script
-      src="https://maps.googleapis.com/maps/api/js?key=AIzaSyC57HNDru9utidXTSdDzpErvNvhYBpU-lU&libraries=places&loading=async"
-    ></script>
+    <!-- Google Maps Places（✅ callback 方式加载） -->
+<script
+  src="https://maps.googleapis.com/maps/api/js?key=AIzaSyC57HNDru9utidXTSdDzpErvNvhYBpU-lU&libraries=places&callback=__initPlaces"
+  async
+  defer
+></script>
   </body>
 </html>
