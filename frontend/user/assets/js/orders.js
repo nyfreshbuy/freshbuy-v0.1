@@ -1,4 +1,4 @@
-console.log("📘 orders.js 已加载（FINAL）");
+console.log("📘 orders.js 已加载（ULTIMATE）");
 
 // =========================
 // 工具
@@ -39,8 +39,9 @@ function toIdString(v) {
 
 // =========================
 // 订单容器（自动找 / 自动建）
+// 支持 user_center tab 异步渲染：可重试等待
 // =========================
-function resolveOrdersListEl() {
+function resolveOrdersListElOnce() {
   const ids = [
     "ordersList",
     "orderList",
@@ -55,6 +56,18 @@ function resolveOrdersListEl() {
     if (el) return el;
   }
 
+  // 也兼容 class
+  const byClass =
+    document.querySelector(".ordersList") ||
+    document.querySelector(".orderList") ||
+    document.querySelector(".orders-list");
+
+  if (byClass) return byClass;
+
+  return null;
+}
+
+function createOrdersListEl() {
   const host =
     document.getElementById("main") ||
     document.querySelector(".main") ||
@@ -65,10 +78,27 @@ function resolveOrdersListEl() {
   const wrap = document.createElement("div");
   wrap.id = "ordersList";
   wrap.style.cssText = "margin-top:12px; display:grid; gap:12px;";
-  host.appendChild(wrap);
+
+  // ✅ 尽量插到“我的订单”区域附近（如果页面有 tab 容器）
+  const tabHost =
+    document.querySelector("#tabContent") ||
+    document.querySelector(".tab-content") ||
+    document.querySelector(".user-center-content");
+
+  (tabHost || host).appendChild(wrap);
 
   console.warn("⚠️ 页面未找到订单容器，已自动创建 #ordersList");
   return wrap;
+}
+
+async function resolveOrdersListElWithRetry(retry = 10, intervalMs = 300) {
+  for (let i = 0; i < retry; i++) {
+    const el = resolveOrdersListElOnce();
+    if (el) return el;
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  // 最后兜底：创建
+  return createOrdersListEl();
 }
 
 // =========================
@@ -101,56 +131,6 @@ function normalizeOrder(o) {
   const status = o.status || o.payment?.status || "";
 
   return { id, createdAt, total, items, paymentMethod, status, raw: o };
-}
-
-// =========================
-// 主流程
-// =========================
-async function loadUserOrders() {
-  const listEl = resolveOrdersListEl();
-  listEl.innerHTML = `<div class="no-orders">加载中…</div>`;
-
-  // ---------- 1) 后端 /api/orders/my ----------
-  try {
-    const token = getToken();
-    if (!token) throw new Error("no token");
-
-    const res = await fetch("/api/orders/my?days=all&limit=50", {
-      credentials: "include",
-      headers: {
-        Authorization: "Bearer " + token,
-      },
-    });
-
-    const data = await res.json().catch(() => ({}));
-    console.log("📦 /api/orders/my =", res.status, data);
-
-    if (res.ok && data?.success && Array.isArray(data.orders)) {
-      const orders = data.orders.map(normalizeOrder);
-
-      if (!orders.length) {
-        listEl.innerHTML = `<div class="no-orders">暂无订单</div>`;
-        return;
-      }
-
-      renderOrders(listEl, orders);
-      return;
-    }
-  } catch (err) {
-    console.warn("⚠️ 拉取 /api/orders/my 失败，尝试本地兜底", err);
-  }
-
-  // ---------- 2) 本地兜底 ----------
-  const local1 = safeParse(localStorage.getItem("fresh_orders_v1") || "[]", []);
-  const local2 = safeParse(localStorage.getItem("freshbuy_orders") || "[]", []);
-  const orders = [...local1, ...local2].map(normalizeOrder);
-
-  if (!orders.length) {
-    listEl.innerHTML = `<div class="no-orders">暂无订单</div>`;
-    return;
-  }
-
-  renderOrders(listEl, orders);
 }
 
 // =========================
@@ -211,7 +191,86 @@ function renderOrders(listEl, orders) {
 }
 
 // =========================
+// 主流程
+// =========================
+async function loadUserOrders() {
+  const listEl = await resolveOrdersListElWithRetry(10, 300);
+  listEl.innerHTML = `<div class="no-orders">加载中…</div>`;
+
+  // ---------- 1) 后端 /api/orders/my ----------
+  try {
+    const token = getToken();
+    if (!token) throw new Error("no token");
+
+    const res = await fetch("/api/orders/my?days=all&limit=50", {
+      credentials: "include",
+      headers: {
+        Authorization: "Bearer " + token,
+      },
+    });
+
+    const data = await res.json().catch(() => ({}));
+    console.log("📦 /api/orders/my =", res.status, data);
+
+    if (res.ok && data?.success && Array.isArray(data.orders)) {
+      const orders = data.orders.map(normalizeOrder);
+
+      if (!orders.length) {
+        listEl.innerHTML = `<div class="no-orders">暂无订单</div>`;
+        return;
+      }
+
+      renderOrders(listEl, orders);
+      return;
+    }
+
+    console.warn("⚠️ /api/orders/my 返回失败：", data?.message || res.status);
+  } catch (err) {
+    console.warn("⚠️ 拉取 /api/orders/my 失败，尝试本地兜底", err);
+  }
+
+  // ---------- 2) 本地兜底 ----------
+  const local1 = safeParse(localStorage.getItem("fresh_orders_v1") || "[]", []);
+  const local2 = safeParse(localStorage.getItem("freshbuy_orders") || "[]", []);
+  const orders = [...local1, ...local2].map(normalizeOrder);
+
+  if (!orders.length) {
+    listEl.innerHTML = `<div class="no-orders">暂无订单</div>`;
+    return;
+  }
+
+  renderOrders(listEl, orders);
+}
+
+// =========================
 // 启动 & 调试
 // =========================
-document.addEventListener("DOMContentLoaded", loadUserOrders);
+function boot() {
+  loadUserOrders();
+
+  // ✅ 如果用户中心是 tab 切换：点击后再刷新一次（不依赖你页面结构）
+  document.addEventListener("click", (e) => {
+    const t = e.target;
+    const text = (t?.innerText || "").trim();
+    const id = String(t?.id || "");
+    const cls = String(t?.className || "");
+
+    // 命中“订单”相关 tab/button 就刷新
+    if (
+      text.includes("订单") ||
+      text.toLowerCase().includes("order") ||
+      id.toLowerCase().includes("order") ||
+      cls.toLowerCase().includes("order")
+    ) {
+      setTimeout(loadUserOrders, 200);
+    }
+  });
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", boot);
+} else {
+  boot();
+}
+
 window.__reloadUserOrders = loadUserOrders;
