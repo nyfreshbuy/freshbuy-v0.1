@@ -900,12 +900,11 @@ document.getElementById("saveNicknameBtn")?.addEventListener("click", async () =
   s.onerror = (e) => console.error("❌ orders.js inject failed", e);
   document.head.appendChild(s);
 })();
-// ===== 修改密码（新增）=====
+// ===== 修改/设置密码（新版：自动识别是否已设置密码）=====
 (function () {
   const $ = (id) => document.getElementById(id);
 
   function getToken() {
-    // 兼容你项目里常见 token key
     const keys = ["freshbuy_token", "token", "jwt", "access_token", "auth_token"];
     for (const k of keys) {
       const v = localStorage.getItem(k);
@@ -914,87 +913,130 @@ document.getElementById("saveNicknameBtn")?.addEventListener("click", async () =
     return "";
   }
 
-  async function changePassword() {
-    const oldPassword = ($("ucOldPwd")?.value || "").trim();
-    const newPassword = ($("ucNewPwd")?.value || "").trim();
-    const newPassword2 = ($("ucNewPwd2")?.value || "").trim();
+  function setMsg(text, ok = false) {
     const msg = $("ucPwdMsg");
-
     if (!msg) return;
+    msg.textContent = text || "";
+    msg.style.color = ok ? "#16a34a" : "#ef4444";
+  }
 
-    msg.textContent = "";
-    msg.style.color = "#6b7280";
-
-    if (!oldPassword) {
-      msg.textContent = "请输入当前密码";
-      msg.style.color = "#ef4444";
-      return;
-    }
-    if (newPassword.length < 6) {
-      msg.textContent = "新密码至少 6 位";
-      msg.style.color = "#ef4444";
-      return;
-    }
-    if (newPassword !== newPassword2) {
-      msg.textContent = "两次输入的新密码不一致";
-      msg.style.color = "#ef4444";
-      return;
-    }
-
-    const token = getToken();
-    if (!token) {
-      msg.textContent = "未登录或 token 丢失，请重新登录后再修改密码";
-      msg.style.color = "#ef4444";
-      return;
-    }
-
+  function setBtn(loading, textWhenIdle) {
     const btn = $("btnChangePwd");
-    if (btn) {
+    if (!btn) return;
+    if (loading) {
       btn.disabled = true;
       btn.style.opacity = "0.7";
       btn.textContent = "提交中...";
-    }
-
-    try {
-      const res = await fetch("/api/users/change-password", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: "Bearer " + token,
-        },
-        credentials: "include",
-        body: JSON.stringify({ oldPassword, newPassword }),
-      });
-
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.success) {
-        msg.textContent = data.message || "修改失败，请检查当前密码是否正确";
-        msg.style.color = "#ef4444";
-        return;
-      }
-
-      msg.textContent = "✅ 密码修改成功，请用新密码下次登录";
-      msg.style.color = "#16a34a";
-
-      $("ucOldPwd").value = "";
-      $("ucNewPwd").value = "";
-      $("ucNewPwd2").value = "";
-    } catch (e) {
-      msg.textContent = "网络错误，稍后再试";
-      msg.style.color = "#ef4444";
-    } finally {
-      if (btn) {
-        btn.disabled = false;
-        btn.style.opacity = "1";
-        btn.textContent = "修改密码";
-      }
+    } else {
+      btn.disabled = false;
+      btn.style.opacity = "1";
+      btn.textContent = textWhenIdle || "修改密码";
     }
   }
 
+  // 调后端接口（带 token）
+  async function postWithToken(url, body) {
+    const token = getToken();
+    if (!token) throw new Error("未登录或 token 丢失，请重新登录");
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + token,
+      },
+      credentials: "include",
+      body: JSON.stringify(body || {}),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data?.success === false) {
+      throw new Error(data?.message || `请求失败(${res.status})`);
+    }
+    return data;
+  }
+
+  async function submitPassword() {
+    const oldPassword = ($("ucOldPwd")?.value || "").trim();
+    const newPassword = ($("ucNewPwd")?.value || "").trim();
+    const newPassword2 = ($("ucNewPwd2")?.value || "").trim();
+
+    // 基础校验
+    if (newPassword.length < 6) return setMsg("新密码至少 6 位", false);
+    if (newPassword !== newPassword2) return setMsg("两次输入的新密码不一致", false);
+
+    setMsg(""); // 清空提示
+    setBtn(true);
+
+    try {
+      // ✅ 优先策略：
+      // 1) 如果用户没填旧密码：优先走 set-password（首次设置）
+      // 2) 如果用户填了旧密码：优先走 change-password（修改）
+      if (!oldPassword) {
+        // 尝试首次设置密码
+        const r = await postWithToken("/api/users/set-password", { newPassword });
+        setMsg("✅ 密码设置成功（下次可用密码登录）", true);
+
+        // 清空输入
+        if ($("ucOldPwd")) $("ucOldPwd").value = "";
+        if ($("ucNewPwd")) $("ucNewPwd").value = "";
+        if ($("ucNewPwd2")) $("ucNewPwd2").value = "";
+
+        // 按钮文案回归“修改密码”
+        setBtn(false, "修改密码");
+        return;
+      }
+
+      // 用户填了旧密码：走修改密码
+      const r = await postWithToken("/api/users/change-password", { oldPassword, newPassword });
+      setMsg("✅ 密码修改成功，请用新密码下次登录", true);
+
+      if ($("ucOldPwd")) $("ucOldPwd").value = "";
+      if ($("ucNewPwd")) $("ucNewPwd").value = "";
+      if ($("ucNewPwd2")) $("ucNewPwd2").value = "";
+
+      setBtn(false, "修改密码");
+    } catch (e) {
+      const msg = String(e?.message || "");
+
+      // ✅ 自动兜底逻辑：
+      // A) 走 change-password 失败，且提示“未设置密码” -> 提示用户不需要旧密码，直接设置
+      if (msg.includes("未设置密码") || msg.includes("无法修改")) {
+        setMsg("该账号尚未设置密码：请清空“当前密码”，直接填写新密码后点击按钮进行“设置密码”。", false);
+        setBtn(false, "设置密码");
+        return;
+      }
+
+      // B) 走 set-password 失败，且提示“已设置密码” -> 提示必须输入旧密码
+      if (msg.includes("已设置密码") || msg.includes("请使用修改密码")) {
+        setMsg("该账号已设置密码：请输入“当前密码”再修改。", false);
+        setBtn(false, "修改密码");
+        return;
+      }
+
+      setMsg(msg || "操作失败，请稍后再试", false);
+      setBtn(false, "修改密码");
+    }
+  }
+
+  // 点击按钮触发
   document.addEventListener("click", (e) => {
     if (e.target && e.target.id === "btnChangePwd") {
       e.preventDefault();
-      changePassword();
+      submitPassword();
+    }
+  });
+
+  // ✅ 交互优化：用户把“当前密码”清空时，按钮提示变成“设置密码”
+  document.addEventListener("input", (e) => {
+    if (!e.target) return;
+    const id = e.target.id;
+
+    if (id === "ucOldPwd" || id === "ucNewPwd" || id === "ucNewPwd2") {
+      const oldPassword = ($("ucOldPwd")?.value || "").trim();
+      // 没填旧密码 -> 更像“首次设置”
+      const btn = $("btnChangePwd");
+      if (btn) btn.textContent = oldPassword ? "修改密码" : "设置密码";
     }
   });
 })();

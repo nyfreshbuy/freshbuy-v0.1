@@ -1,6 +1,6 @@
 // backend/src/routes/users.js
 import express from "express";
-import bcrypt from "bcryptjs"; // ✅ 新增：用于校验/加密密码
+import bcrypt from "bcryptjs"; // ✅ 用于校验/加密密码
 import User from "../models/user.js";
 import Address from "../models/Address.js"; // ✅ 关键：从 Address 集合取默认地址
 import { requireLogin } from "../middlewares/auth.js";
@@ -79,7 +79,7 @@ router.get("/me", requireLogin, async (req, res) => {
         role: u.role,
         phone: u.phone,
         name: u.name,
-        nickname: u.nickname || "", // ✅ 新增：返回昵称
+        nickname: u.nickname || "", // ✅ 返回昵称
         email: u.email || "",
         accountSettings: u.accountSettings || {},
         isActive: u.isActive,
@@ -107,9 +107,7 @@ router.patch("/me", requireLogin, async (req, res) => {
       return res.status(400).json({ success: false, message: "nickname 不能为空" });
     }
     if (nickname.length > 24) {
-      return res
-        .status(400)
-        .json({ success: false, message: "nickname 最多 24 个字符" });
+      return res.status(400).json({ success: false, message: "nickname 最多 24 个字符" });
     }
 
     const u = await User.findByIdAndUpdate(
@@ -148,7 +146,7 @@ router.patch("/me", requireLogin, async (req, res) => {
 });
 
 // ===============================
-// ✅ 修改密码（新增）
+// ✅ 修改密码（已有密码账号）
 // POST /api/users/change-password
 // body: { oldPassword: "xxx", newPassword: "yyy" }
 // ===============================
@@ -167,8 +165,7 @@ router.post("/change-password", requireLogin, async (req, res) => {
       return res.status(400).json({ success: false, message: "新密码至少 6 位" });
     }
 
-    // ⚠️ 兼容你 User 模型可能是 password 或 passwordHash
-    // 同时兼容 schema 里把密码字段设置为 select:false 的情况
+    // 兼容 schema 里把密码字段设置为 select:false
     const u = await User.findById(userId).select("+password +passwordHash _id");
 
     if (!u) {
@@ -177,9 +174,7 @@ router.post("/change-password", requireLogin, async (req, res) => {
 
     const hashed = u.passwordHash || u.password || "";
     if (!hashed) {
-      return res
-        .status(400)
-        .json({ success: false, message: "该账号未设置密码，无法修改" });
+      return res.status(400).json({ success: false, message: "该账号未设置密码，无法修改" });
     }
 
     const ok = await bcrypt.compare(oldPassword, hashed);
@@ -198,6 +193,53 @@ router.post("/change-password", requireLogin, async (req, res) => {
   } catch (err) {
     console.error("POST /api/users/change-password error:", err);
     return res.status(500).json({ success: false, message: "修改密码失败" });
+  }
+});
+
+// ===============================
+// ✅ 设置密码（首次设置，仅限无密码账号）
+// POST /api/users/set-password
+// body: { newPassword: "yyy" }
+// ===============================
+router.post("/set-password", requireLogin, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ success: false, message: "未登录" });
+
+    const newPassword = String(req.body?.newPassword || "").trim();
+
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({ success: false, message: "新密码至少 6 位" });
+    }
+
+    // 兼容 schema 里把密码字段设置为 select:false
+    const u = await User.findById(userId).select("+password +passwordHash _id");
+
+    if (!u) {
+      return res.status(404).json({ success: false, message: "用户不存在" });
+    }
+
+    // 如果已经有密码，则不允许走“设置密码”
+    const existed = u.passwordHash || u.password || "";
+    if (existed) {
+      return res.status(400).json({
+        success: false,
+        message: "该账号已设置密码，请使用修改密码",
+      });
+    }
+
+    const newHashed = await bcrypt.hash(newPassword, 10);
+
+    // 兼容字段名
+    if (u.passwordHash !== undefined) u.passwordHash = newHashed;
+    if (u.password !== undefined) u.password = newHashed;
+
+    await u.save();
+
+    return res.json({ success: true, message: "密码设置成功" });
+  } catch (err) {
+    console.error("POST /api/users/set-password error:", err);
+    return res.status(500).json({ success: false, message: "设置密码失败" });
   }
 });
 
