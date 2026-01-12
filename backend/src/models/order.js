@@ -47,6 +47,12 @@ const orderItemSchema = new mongoose.Schema(
     lineTotal: { type: Number, default: 0 },
     cost: { type: Number, default: 0 },
     hasTax: { type: Boolean, default: false },
+
+    // ✅ 兼容旧字段（有些前端会传 taxable / isSpecial 等）
+    taxable: { type: Boolean, default: false },
+    isSpecial: { type: Boolean, default: false },
+    tag: { type: String, default: "" },
+    type: { type: String, default: "" },
   },
   { _id: false }
 );
@@ -58,9 +64,11 @@ const orderSchema = new mongoose.Schema(
   {
     orderNo: { type: String, index: true },
 
+    // ✅ 用户归属（用户中心“我的订单”靠它）
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", index: true },
+
     customerName: { type: String, default: "" },
-    customerPhone: { type: String, default: "" },
+    customerPhone: { type: String, default: "", index: true },
 
     deliveryType: { type: String, default: "home", index: true },
 
@@ -102,20 +110,45 @@ const orderSchema = new mongoose.Schema(
     payment: {
       status: {
         type: String,
-        enum: ["unpaid", "paid", "refunded"],
+        // ✅ 扩展：Stripe 分阶段状态
+        enum: [
+          "unpaid",
+          "requires_payment_method",
+          "requires_action",
+          "processing",
+          "failed",
+          "paid",
+          "refunded",
+        ],
         default: "unpaid",
+        index: true,
       },
 
       method: {
         type: String,
-        enum: ["stripe", "wallet", "zelle"],
+        enum: ["stripe", "wallet", "zelle", "none"],
+        default: "none",
+        index: true,
       },
 
-      amountTotal: { type: Number },
+      // ✅ 幂等键（你前端 intentKey 推荐存到这）
+      idempotencyKey: { type: String, default: "", index: true },
+
+      // ✅ 更语义化的字段（建议和 idempotencyKey 同步写）
+      intentKey: { type: String, default: "", index: true },
+
+      // ✅ 金额总额（支付快照 + 对账）
+      amountTotal: { type: Number, default: 0 },
       paidTotal: { type: Number, default: 0 },
 
+      // ✅ Stripe 补全字段（你 pay_stripe.js / webhook 用得到）
+      stripePaymentIntentId: { type: String, default: "", index: true },
+      stripeClientSecret: { type: String, default: "" },
+      stripeChargeId: { type: String, default: "" },
+
+      // ✅ 兼容你原先的 stripe 子结构（保留不破坏历史数据）
       stripe: {
-        intentId: String,
+        intentId: { type: String, default: "", index: true },
         paid: { type: Number, default: 0 },
       },
 
@@ -125,22 +158,27 @@ const orderSchema = new mongoose.Schema(
 
       zelle: {
         paid: { type: Number, default: 0 },
-        reference: String,
-        confirmedBy: String,
+        reference: { type: String, default: "" },
+        confirmedBy: { type: String, default: "" },
         confirmedAt: Date,
       },
 
-      idempotencyKey: String,
+      // ✅ 错误信息
+      lastError: { type: String, default: "" },
+
+      // ✅ 支付时间（payment 内也留一份）
+      paidAt: Date,
 
       // 金额快照（由 pre-validate 自动写入）
-      amountSubtotal: Number,
-      amountDeliveryFee: Number,
-      amountTax: Number,
-      amountPlatformFee: Number,
-      amountTip: Number,
-      amountDiscount: Number,
+      amountSubtotal: { type: Number, default: 0 },
+      amountDeliveryFee: { type: Number, default: 0 },
+      amountTax: { type: Number, default: 0 },
+      amountPlatformFee: { type: Number, default: 0 },
+      amountTip: { type: Number, default: 0 },
+      amountDiscount: { type: Number, default: 0 },
     },
 
+    // ✅ 根字段 paidAt（你现有代码在用）
     paidAt: { type: Date, index: true },
 
     marketing: {
@@ -211,27 +249,31 @@ orderSchema.index({ "dispatch.batchKey": 1, deliveryDate: 1, status: 1 });
 orderSchema.index({ "dispatch.zoneId": 1, deliveryDate: 1, status: 1 });
 orderSchema.index({ "payment.status": 1, createdAt: -1 });
 orderSchema.index({ "payment.method": 1, createdAt: -1 });
+
+// ✅ Stripe 两套字段都建索引（兼容历史 + 新版）
 orderSchema.index({ "payment.stripe.intentId": 1 });
+orderSchema.index({ "payment.stripePaymentIntentId": 1 });
+orderSchema.index({ "payment.idempotencyKey": 1 });
+orderSchema.index({ "payment.intentKey": 1 });
 
 // =========================
 // pre-validate：金额 / 批次 / 派单统一
 // =========================
 orderSchema.pre("validate", function () {
+  // ✅ paid 且已有 packBatchId => packing
   if (this.packBatchId && this.status === "paid") {
     this.status = "packing";
   }
 
+  // ✅ deliveryDate 默认次日，统一归零点
   if (!this.deliveryDate) {
     this.deliveryDate = startOfDay(addDays(new Date(), 1));
   } else {
     this.deliveryDate = startOfDay(this.deliveryDate);
   }
 
-  const zoneId =
-    this.dispatch?.zoneId ||
-    this.fulfillment?.zoneId ||
-    this.address?.zoneId ||
-    "";
+  // ✅ zoneId：dispatch/fulfillment/address 三者统一
+  const zoneId = this.dispatch?.zoneId || this.fulfillment?.zoneId || this.address?.zoneId || "";
 
   const ymd = toDateOnlyYMD(this.deliveryDate);
   const batchKey = `${ymd}|zone:${zoneId || ""}`;
@@ -247,6 +289,7 @@ orderSchema.pre("validate", function () {
   this.fulfillment.batchKey = batchKey;
   this.fulfillment.batchName ||= batchName;
 
+  // ✅ items 重算
   let subtotal = 0;
   let taxableSubtotal = 0;
 
@@ -255,21 +298,25 @@ orderSchema.pre("validate", function () {
     it.qty = qty;
     it.lineTotal = round2(Number(it.price || 0) * qty);
     subtotal += it.lineTotal;
-    if (it.hasTax) taxableSubtotal += it.lineTotal;
+
+    // hasTax 优先，其次 taxable 兼容
+    const hasTax = !!it.hasTax || !!it.taxable;
+    it.hasTax = hasTax;
+    if (hasTax) taxableSubtotal += it.lineTotal;
   }
 
   this.subtotal = round2(subtotal);
   this.taxableSubtotal = round2(taxableSubtotal);
 
+  // ✅ salesTax
   this.salesTax = round2(this.taxableSubtotal * Number(this.salesTaxRate || 0));
 
-  const shouldPlatformFee = this.payment?.method === "stripe";
+  // ✅ platformFee：只要是 stripe 就收 2%
+  const method = this.payment?.method || "none";
+  const shouldPlatformFee = method === "stripe";
+
   if (shouldPlatformFee) {
-    const base =
-      this.subtotal +
-      this.deliveryFee +
-      this.salesTax -
-      this.discount;
+    const base = this.subtotal + this.deliveryFee + this.salesTax - this.discount;
     this.platformFee = round2(base * 0.02);
   } else {
     this.platformFee = round2(this.platformFee || 0);
@@ -277,15 +324,12 @@ orderSchema.pre("validate", function () {
 
   this.tipFee = round2(this.tipFee || 0);
 
+  // ✅ 总额
   this.totalAmount = round2(
-    this.subtotal +
-      this.deliveryFee +
-      this.salesTax +
-      this.platformFee +
-      this.tipFee -
-      this.discount
+    this.subtotal + this.deliveryFee + this.salesTax + this.platformFee + this.tipFee - this.discount
   );
 
+  // ✅ payment 快照
   this.payment ||= {};
   this.payment.amountSubtotal = this.subtotal;
   this.payment.amountDeliveryFee = this.deliveryFee;
@@ -294,6 +338,23 @@ orderSchema.pre("validate", function () {
   this.payment.amountTip = this.tipFee;
   this.payment.amountDiscount = this.discount;
   this.payment.amountTotal = this.totalAmount;
+
+  // ✅ 同步 intentKey <-> idempotencyKey（可选但强烈建议）
+  if (!this.payment.intentKey && this.payment.idempotencyKey) {
+    this.payment.intentKey = this.payment.idempotencyKey;
+  }
+  if (!this.payment.idempotencyKey && this.payment.intentKey) {
+    this.payment.idempotencyKey = this.payment.intentKey;
+  }
+
+  // ✅ 同步 stripePaymentIntentId <-> stripe.intentId（兼容两套字段）
+  if (!this.payment.stripePaymentIntentId && this.payment.stripe?.intentId) {
+    this.payment.stripePaymentIntentId = this.payment.stripe.intentId;
+  }
+  if (this.payment.stripePaymentIntentId && (!this.payment.stripe || !this.payment.stripe.intentId)) {
+    this.payment.stripe ||= {};
+    this.payment.stripe.intentId = this.payment.stripePaymentIntentId;
+  }
 });
 
 // =========================
