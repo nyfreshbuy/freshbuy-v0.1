@@ -1005,12 +1005,19 @@ function bindCartDOMEventsPage() {
     const backdrop = cartBackdropId && document.getElementById(cartBackdropId);
     const closeBtn = cartCloseBtnId && document.getElementById(cartCloseBtnId);
 
-    function openDrawer() {
-  // ✅ 打开购物车前，重新计算分类栏高度（防止被顶部遮挡）
-  if (window.__fb_setCartTopOffset) window.__fb_setCartTopOffset();
+   function openDrawer() {
+  // ✅ 先触发一次 offset 计算（你的 __fb_setCartTopOffset 是 rAF 版本）
+  try {
+    if (typeof window.__fb_setCartTopOffset === "function") {
+      window.__fb_setCartTopOffset();
+    }
+  } catch (e) {}
 
-  if (drawer) drawer.classList.add("active");
-  if (backdrop) backdrop.classList.add("active");
+  // ✅ 关键：等下一帧 offset 写入 CSS 变量后，再打开抽屉
+  requestAnimationFrame(() => {
+    if (drawer) drawer.classList.add("active");
+    if (backdrop) backdrop.classList.add("active");
+  });
 }
     function closeDrawer() {
       if (drawer) drawer.classList.remove("active");
