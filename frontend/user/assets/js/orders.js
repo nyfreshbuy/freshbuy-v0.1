@@ -68,7 +68,13 @@ function resolveOrdersListElOnce() {
 }
 
 function createOrdersListEl() {
+  // 🎯 优先插入“用户中心的订单区域 / tab 内容区”
   const host =
+    document.querySelector("#tab-orders") ||
+    document.querySelector(".tab-orders") ||
+    document.querySelector(".tab-content") ||
+    document.querySelector(".user-center-content") ||
+    document.querySelector("#userCenterContent") ||
     document.getElementById("main") ||
     document.querySelector(".main") ||
     document.querySelector(".container") ||
@@ -77,20 +83,19 @@ function createOrdersListEl() {
 
   const wrap = document.createElement("div");
   wrap.id = "ordersList";
-  wrap.style.cssText = "margin-top:12px; display:grid; gap:12px;";
+  wrap.style.cssText = `
+    margin-top:12px;
+    display:grid;
+    gap:12px;
+    position:relative;
+    z-index:1;
+  `;
 
-  // ✅ 尽量插到“我的订单”区域附近（如果页面有 tab 容器）
-  const tabHost =
-    document.querySelector("#tabContent") ||
-    document.querySelector(".tab-content") ||
-    document.querySelector(".user-center-content");
+  host.appendChild(wrap);
 
-  (tabHost || host).appendChild(wrap);
-
-  console.warn("⚠️ 页面未找到订单容器，已自动创建 #ordersList");
+  console.warn("⚠️ 页面未找到订单容器，已在可见区域创建 #ordersList", host);
   return wrap;
 }
-
 async function resolveOrdersListElWithRetry(retry = 10, intervalMs = 300) {
   for (let i = 0; i < retry; i++) {
     const el = resolveOrdersListElOnce();
@@ -137,6 +142,9 @@ function normalizeOrder(o) {
 // 渲染
 // =========================
 function renderOrders(listEl, orders) {
+  listEl.style.display = "grid";
+listEl.style.visibility = "visible";
+listEl.style.opacity = "1";
   listEl.innerHTML = "";
 
   orders
