@@ -10,6 +10,7 @@ const router = express.Router();
 router.use(express.json());
 
 console.log("🚀 orders.js (MongoDB版) 已加载");
+
 router.get("/checkout/ping", (req, res) => {
   res.json({
     ok: true,
@@ -18,6 +19,7 @@ router.get("/checkout/ping", (req, res) => {
     time: new Date().toISOString(),
   });
 });
+
 // =========================
 // ✅ NY 税率（可用环境变量覆盖）
 // 默认 8.875%（NYC 常用）
@@ -207,6 +209,10 @@ async function resolveZoneFromPayload({ zoneId, ship, zip }) {
  * 2) fulfillment：只要有 zoneKey，就全部归入 zone_group（包括 normal/friendGroup）
  *    这样你筛选某天某区：一把抓三种模式混在一起做路线
  * 3) batchKey 永远用 deliveryDate 的 ymd，而不是 createdAt 或 today
+ *
+ * ✅ 本次新增修复（解决“后台已支付但用户中心看不到”）：
+ * - requireLogin 下强制 userId 必须存在（不再允许生成无主订单）
+ * - token 没带 phone 时，从 User 表补齐 phone，用于 customerPhone 绑定和后续认领
  */
 async function buildOrderPayload(req) {
   const body = req.body || {};
@@ -340,12 +346,14 @@ async function buildOrderPayload(req) {
     e.status = 400;
     throw e;
   }
+
   // ✅ groupDay：允许 “全普通” 或 “混合”；但不允许 “纯爆品”（纯爆品请用 dealsDay）
-if (mode === "groupDay" && hasSpecial && !hasNonSpecial) {
-  const e = new Error("groupDay 不允许纯爆品订单（纯爆品请用 dealsDay）");
-  e.status = 400;
-  throw e;
-}
+  if (mode === "groupDay" && hasSpecial && !hasNonSpecial) {
+    const e = new Error("groupDay 不允许纯爆品订单（纯爆品请用 dealsDay）");
+    e.status = 400;
+    throw e;
+  }
+
   if ((mode === "normal" || mode === "friendGroup") && hasSpecial) {
     const e = new Error(`${mode} 不应包含爆品`);
     e.status = 400;
@@ -401,9 +409,21 @@ if (mode === "groupDay" && hasSpecial && !hasNonSpecial) {
   const orderType =
     mode === "groupDay" ? "area_group" : mode === "friendGroup" ? "friend_group" : "normal";
 
-  // 5) user + phone
+  // 5) user + phone（✅ 强制 userId，且如果 token 没 phone 就从 DB 补）
   const userId = toObjectIdMaybe(req.user?.id || req.user?._id);
-  const loginPhone10 = normPhone(req.user?.phone);
+  if (!userId) {
+    const e = new Error("未登录或用户信息异常（无法解析 userId）");
+    e.status = 401;
+    throw e;
+  }
+
+  let loginPhoneRaw = String(req.user?.phone || "").trim();
+  if (!loginPhoneRaw) {
+    const u = await User.findById(userId).select("phone").lean();
+    loginPhoneRaw = String(u?.phone || "").trim();
+  }
+
+  const loginPhone10 = normPhone(loginPhoneRaw);
   const shipPhone10 = normPhone(contactPhone);
 
   // ✅ 初始支付快照（unpaid）
@@ -437,7 +457,7 @@ if (mode === "groupDay" && hasSpecial && !hasNonSpecial) {
   const { zoneKey, zoneName } = await resolveZoneFromPayload({ zoneId, ship, zip });
   const z = String(zoneKey || "").trim();
 
-  // ✅ deliveryDate：统一按规则计算（解决你“前一天/多天订单混在一起”的根本）
+  // ✅ deliveryDate：统一按规则计算
   const finalDeliveryDate = resolveDeliveryDate(mode, deliveryDate);
   const batchKey = z ? buildBatchKey(finalDeliveryDate, z) : "";
 
@@ -462,7 +482,10 @@ if (mode === "groupDay" && hasSpecial && !hasNonSpecial) {
   const orderDoc = {
     orderNo: genOrderNo(),
 
-    userId: userId || undefined,
+    // ✅ 关键：requireLogin 下订单必须绑定 userId
+    userId,
+
+    // ✅ 关键：订单归属手机号优先使用登录手机号（避免填收货号导致“我的订单”对不上）
     customerPhone: (loginPhone10 || shipPhone10 || String(contactPhone)).trim(),
     customerName: String(contactName).trim(),
 
@@ -473,12 +496,13 @@ if (mode === "groupDay" && hasSpecial && !hasNonSpecial) {
     // ✅ 配送方式
     deliveryMode: mode,
 
-    // ✅ 真正配送日（路线筛选就靠它）
+    // ✅ 真正配送日
     deliveryDate: finalDeliveryDate,
 
     // ✅ 履约归类（后台按批次/路线筛选用）
     fulfillment,
-        // ✅ 新增：派单归类（路线/派单主要用 dispatch）
+
+    // ✅ 新增：派单归类（路线/派单主要用 dispatch）
     dispatch: z
       ? {
           zoneId: z,
@@ -490,6 +514,7 @@ if (mode === "groupDay" && hasSpecial && !hasNonSpecial) {
           batchKey: "",
           batchName: "",
         },
+
     // ✅ 金额
     subtotal,
     deliveryFee,
@@ -526,6 +551,10 @@ if (mode === "groupDay" && hasSpecial && !hasNonSpecial) {
 // =====================================================
 // ✅ 0.1) 我的订单
 // GET /api/orders/my?limit=5&days=30&status=pending
+//
+// ✅ 本次新增修复：
+// - token 没 phone 时，从 User 表补齐 phone
+// - 自动认领：把历史没有 userId 的订单（按手机号匹配）绑定到当前用户
 // =====================================================
 router.get("/my", requireLogin, async (req, res) => {
   try {
@@ -534,24 +563,39 @@ router.get("/my", requireLogin, async (req, res) => {
     const status = String(req.query.status || "").trim();
 
     const userId = toObjectIdMaybe(req.user?.id || req.user?._id);
-    const rawPhone = String(req.user?.phone || "").trim();
+    if (!userId) {
+      return res.status(401).json({ success: false, message: "未登录" });
+    }
+
+    // ✅ token 里没 phone：用 DB 补齐
+    let rawPhone = String(req.user?.phone || "").trim();
+    if (!rawPhone) {
+      const u = await User.findById(userId).select("phone").lean();
+      rawPhone = String(u?.phone || "").trim();
+    }
     const phone10 = normPhone(rawPhone);
 
-    const q = { $or: [] };
-
-    if (userId) q.$or.push({ userId });
-
-    if (rawPhone) q.$or.push({ customerPhone: rawPhone });
+    // 先构造“匹配手机号”的 or（用于认领 + 查询）
+    const phoneOr = [];
+    if (rawPhone) phoneOr.push({ customerPhone: rawPhone });
     if (phone10) {
-      q.$or.push({ customerPhone: phone10 });
-      q.$or.push({ customerPhone: "1" + phone10 });
-      q.$or.push({ customerPhone: "+1" + phone10 });
-      q.$or.push({ customerPhone: { $regex: phone10 + "$" } });
+      phoneOr.push({ customerPhone: phone10 });
+      phoneOr.push({ customerPhone: "1" + phone10 });
+      phoneOr.push({ customerPhone: "+1" + phone10 });
+      phoneOr.push({ customerPhone: { $regex: phone10 + "$" } });
     }
 
-    if (!q.$or.length) {
-      return res.status(400).json({ success: false, message: "用户信息缺失（id/phone）" });
+    // ✅ 自动认领：把历史没有 userId 的订单绑定到当前用户
+    if (phoneOr.length) {
+      await Order.updateMany(
+        { userId: { $exists: false }, $or: phoneOr },
+        { $set: { userId } }
+      );
     }
+
+    // ✅ 查询：优先用 userId；兼容历史按手机号查到的订单
+    const q = { $or: [{ userId }] };
+    if (phoneOr.length) q.$or.push(...phoneOr);
 
     if (status) q.status = status;
 
@@ -800,7 +844,9 @@ router.post("/checkout", requireLogin, async (req, res) => {
     });
   } catch (err) {
     console.error("POST /api/orders/checkout error:", err);
-    return res.status(err?.status || 400).json({ success: false, message: err?.message || "checkout failed" });
+    return res
+      .status(err?.status || 400)
+      .json({ success: false, message: err?.message || "checkout failed" });
   } finally {
     session.endSession();
   }
