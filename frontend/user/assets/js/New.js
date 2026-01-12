@@ -1,3 +1,4 @@
+// frontend/user/assets/js/New.js
 console.log("New.js loaded");
 
 let FILTERS = [{ key: "all", name: "全部" }];
@@ -43,7 +44,15 @@ function buildFiltersFromProducts(list) {
   });
 
   const keys = Array.from(set);
-  const preferred = ["fresh", "meat", "snacks", "staples", "seasoning", "frozen", "household"];
+  const preferred = [
+    "fresh",
+    "meat",
+    "snacks",
+    "staples",
+    "seasoning",
+    "frozen",
+    "household",
+  ];
   keys.sort((a, b) => {
     const ia = preferred.indexOf(a);
     const ib = preferred.indexOf(b);
@@ -75,11 +84,14 @@ function hasKeyword(p, keyword) {
   ];
   if (fields.some((f) => norm(f).includes(kw))) return true;
 
-  if (Array.isArray(p.tags) && p.tags.some((t) => norm(t).includes(kw))) return true;
-  if (Array.isArray(p.labels) && p.labels.some((t) => norm(t).includes(kw))) return true;
+  if (Array.isArray(p.tags) && p.tags.some((t) => norm(t).includes(kw)))
+    return true;
+  if (Array.isArray(p.labels) && p.labels.some((t) => norm(t).includes(kw)))
+    return true;
 
   return false;
 }
+
 /* ========= 爆品识别（用于新品页排除） ========= */
 function isHotProduct(p) {
   return (
@@ -91,6 +103,7 @@ function isHotProduct(p) {
     hasKeyword(p, "hot")
   );
 }
+
 /* ========= 新品识别（沿用首页） ========= */
 function isNewProduct(p) {
   const flag =
@@ -150,7 +163,8 @@ function sortList(list, sortKey) {
   const arr = [...list];
   if (sortKey === "price_asc") arr.sort((a, b) => getPrice(a) - getPrice(b));
   else if (sortKey === "price_desc") arr.sort((a, b) => getPrice(b) - getPrice(a));
-  else if (sortKey === "newest_desc") arr.sort((a, b) => getCreatedAt(b) - getCreatedAt(a));
+  else if (sortKey === "newest_desc")
+    arr.sort((a, b) => getCreatedAt(b) - getCreatedAt(a));
   else arr.sort((a, b) => getSales(b) - getSales(a));
   return arr;
 }
@@ -162,12 +176,92 @@ function showToast() {
   setTimeout(() => el.classList.remove("show"), 900);
 }
 
-function createCard(p) {
+/* =========================================================
+   ✅ 数量徽章（购物车数量）统一逻辑
+   说明：徽章 DOM class = .product-qty-badge（你 main.css 已有样式）
+   ========================================================= */
+function fbPid(p) {
+  return String(p?._id || p?.id || p?.sku || p?.code || p?.productId || "").trim();
+}
+
+function fbGetCartRaw() {
+  const keys = ["freshbuy_cart", "freshbuyCart", "cart", "cart_items"];
+  for (const k of keys) {
+    const s = localStorage.getItem(k);
+    if (s && String(s).trim()) {
+      try {
+        return JSON.parse(s);
+      } catch (e) {}
+    }
+  }
+  return null;
+}
+
+function fbBuildQtyMap() {
+  const raw = fbGetCartRaw();
+  const map = Object.create(null);
+  if (!raw) return map;
+
+  // 情况1：数组 [{id, qty}...]
+  if (Array.isArray(raw)) {
+    for (const it of raw) {
+      const pid = String(it?._id || it?.id || it?.sku || it?.code || it?.productId || "").trim();
+      const qty = Number(it?.qty ?? it?.count ?? it?.quantity ?? 0) || 0;
+      if (pid && qty > 0) map[pid] = (map[pid] || 0) + qty;
+    }
+    return map;
+  }
+
+  // 情况2：对象 { items: [...] }
+  if (raw && Array.isArray(raw.items)) {
+    for (const it of raw.items) {
+      const pid = String(it?._id || it?.id || it?.sku || it?.code || it?.productId || "").trim();
+      const qty = Number(it?.qty ?? it?.count ?? it?.quantity ?? 0) || 0;
+      if (pid && qty > 0) map[pid] = (map[pid] || 0) + qty;
+    }
+    return map;
+  }
+
+  // 情况3：对象本身就是 { pid: qty }
+  for (const [k, v] of Object.entries(raw)) {
+    const qty = Number(v) || 0;
+    if (k && qty > 0) map[k] = qty;
+  }
+  return map;
+}
+
+function fbRenderQtyBadge(cardEl, pid, qtyMap) {
+  const badge = cardEl.querySelector(".product-qty-badge");
+  if (!badge) return;
+  const q = Number(qtyMap[pid] || 0) || 0;
+  if (q > 0) {
+    badge.textContent = String(q);
+    badge.style.display = "flex";
+  } else {
+    badge.style.display = "none";
+  }
+}
+
+function fbRefreshAllBadges() {
+  const grid = document.getElementById("newGrid");
+  if (!grid) return;
+  const qtyMap = fbBuildQtyMap();
+  grid.querySelectorAll(".product-card[data-pid]").forEach((card) => {
+    const pid = String(card.getAttribute("data-pid") || "").trim();
+    if (pid) fbRenderQtyBadge(card, pid, qtyMap);
+  });
+}
+
+function createCard(p, qtyMap) {
   const article = document.createElement("article");
   article.className = "product-card";
 
-  const pid = String(p?._id || p?.id || p?.sku || p?.code || p?.productId || "").trim();
+  // ✅ 统一 pid（非常关键：同一个商品所有页面都用同一个 pid）
+  const pid = fbPid(p);
   const safeId = pid || String(p?.name || "fb").trim();
+  const useId = pid || safeId;
+
+  article.setAttribute("data-pid", useId);
 
   const price = getPrice(p);
   const origin = getNum(p, ["originPrice"], 0);
@@ -185,6 +279,9 @@ function createCard(p) {
     <div class="product-image-wrap">
       <span class="special-badge">${badge}</span>
       <img src="${img}" class="product-image" alt="${p?.name || ""}" />
+
+      <!-- ✅ 数量徽章（右下角） -->
+      <span class="product-qty-badge"></span>
     </div>
 
     <div class="product-name">${p?.name || ""}</div>
@@ -201,6 +298,9 @@ function createCard(p) {
     </button>
   `;
 
+  // ✅ 首次渲染就把徽章刷出来
+  fbRenderQtyBadge(article, useId, qtyMap);
+
   const btn = article.querySelector(".add-btn");
   if (btn) {
     btn.addEventListener("click", (ev) => {
@@ -216,9 +316,14 @@ function createCard(p) {
         return;
       }
 
+      // ✅ 关键：写入购物车时同时带 id/_id，跨页面读写才不会“同商品数字不一样”
       cartApi.addItem(
         {
-          id: pid || safeId,
+          id: useId,
+          _id: useId,
+          sku: p?.sku || "",
+          code: p?.code || "",
+          productId: p?.productId || "",
           name: p?.name || "商品",
           price: Number(price || 0),
           priceNum: Number(price || 0),
@@ -233,13 +338,18 @@ function createCard(p) {
       );
 
       showToast();
+
+      // ✅ 加购后立刻刷新徽章
+      fbRefreshAllBadges();
+
+      // ✅ 同时广播一个事件（如果别的页面也监听）
+      window.dispatchEvent(new Event("freshbuy:cart_updated"));
     });
   }
 
   article.addEventListener("click", () => {
-    const id = pid || safeId;
-    if (!id) return;
-    window.location.href = "/user/product_detail.html?id=" + encodeURIComponent(id);
+    if (!useId) return;
+    window.location.href = "/user/product_detail.html?id=" + encodeURIComponent(useId);
   });
 
   return article;
@@ -284,7 +394,12 @@ function renderList() {
     return;
   }
 
-  list.forEach((p) => grid.appendChild(createCard(p)));
+  // ✅ 每次渲染列表前，先拿一次 qtyMap（一次性，性能最好）
+  const qtyMap = fbBuildQtyMap();
+  list.forEach((p) => grid.appendChild(createCard(p, qtyMap)));
+
+  // ✅ 兜底刷新一次（防止 DOM/图片加载时序）
+  fbRefreshAllBadges();
 }
 
 async function loadProducts() {
@@ -303,15 +418,15 @@ async function loadProducts() {
 
   ALL = list;
 
-newAll = list.filter((p) => isNewProduct(p) && !isHotProduct(p));
+  newAll = list.filter((p) => isNewProduct(p) && !isHotProduct(p));
 
   // ✅ 兜底：如果没有任何新品标签，就按“最新时间”取前 60，保证不空
   if (!newAll.length && list.length) {
     console.warn("新品为空，启用兜底：按 createdAt/updatedAt 最新取前 60");
-   newAll = [...list]
-  .filter((p) => !isHotProduct(p))
-  .sort((a, b) => getCreatedAt(b) - getCreatedAt(a))
-  .slice(0, 60);
+    newAll = [...list]
+      .filter((p) => !isHotProduct(p))
+      .sort((a, b) => getCreatedAt(b) - getCreatedAt(a))
+      .slice(0, 60);
   }
 
   FILTERS = buildFiltersFromProducts(newAll);
@@ -353,6 +468,16 @@ function injectButtonStylesOnce() {
   document.head.appendChild(style);
 }
 
+/* ✅ 购物车在别的标签页/页面变化，也同步刷新 */
+window.addEventListener("storage", (e) => {
+  if (!e) return;
+  const keys = ["freshbuy_cart", "freshbuyCart", "cart", "cart_items"];
+  if (keys.includes(e.key)) fbRefreshAllBadges();
+});
+
+/* ✅ 如果 cart.js 未来派发这个事件，这里也会自动刷新 */
+window.addEventListener("freshbuy:cart_updated", fbRefreshAllBadges);
+
 window.addEventListener("DOMContentLoaded", () => {
   injectButtonStylesOnce();
 
@@ -362,6 +487,7 @@ window.addEventListener("DOMContentLoaded", () => {
   loadProducts().catch((err) => {
     console.error("加载新品失败", err);
     const grid = document.getElementById("newGrid");
-    if (grid) grid.innerHTML = `<div style="padding:12px;font-size:13px;color:#b91c1c;">加载失败，请稍后重试</div>`;
+    if (grid)
+      grid.innerHTML = `<div style="padding:12px;font-size:13px;color:#b91c1c;">加载失败，请稍后重试</div>`;
   });
 });

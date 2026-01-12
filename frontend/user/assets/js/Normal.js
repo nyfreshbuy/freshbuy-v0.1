@@ -1,8 +1,9 @@
-// /user/assets/js/normal.js
+// frontend/user/assets/js/normal.js
 // =======================================================
 // 普通配送 / 全部商品（与首页“全部商品”一致：展示【非爆品】商品）
 // 数据源：/api/products-simple
 // 功能：分类筛选 + 排序 + 加入购物车 + 跳详情
+// + ✅ 数量徽章（与 newcomer.js 同一套）
 // =======================================================
 
 console.log("normal.js loaded");
@@ -150,14 +151,92 @@ function showToast() {
   setTimeout(() => el.classList.remove("show"), 900);
 }
 
-function createCard(p) {
+/* =========================================================
+   ✅ 数量徽章（购物车数量）统一逻辑（与 newcomer.js 同一套）
+   ========================================================= */
+function fbPid(p) {
+  return String(p?._id || p?.id || p?.sku || p?.code || p?.productId || "").trim();
+}
+
+function fbGetCartRaw() {
+  const keys = ["freshbuy_cart", "freshbuyCart", "cart", "cart_items"];
+  for (const k of keys) {
+    const s = localStorage.getItem(k);
+    if (s && String(s).trim()) {
+      try {
+        return JSON.parse(s);
+      } catch (e) {}
+    }
+  }
+  return null;
+}
+
+function fbBuildQtyMap() {
+  const raw = fbGetCartRaw();
+  const map = Object.create(null);
+  if (!raw) return map;
+
+  // 情况1：数组 [{id, qty}...]
+  if (Array.isArray(raw)) {
+    for (const it of raw) {
+      const pid = String(it?._id || it?.id || it?.sku || it?.code || it?.productId || "").trim();
+      const qty = Number(it?.qty ?? it?.count ?? it?.quantity ?? 0) || 0;
+      if (pid && qty > 0) map[pid] = (map[pid] || 0) + qty;
+    }
+    return map;
+  }
+
+  // 情况2：对象 { items: [...] }
+  if (raw && Array.isArray(raw.items)) {
+    for (const it of raw.items) {
+      const pid = String(it?._id || it?.id || it?.sku || it?.code || it?.productId || "").trim();
+      const qty = Number(it?.qty ?? it?.count ?? it?.quantity ?? 0) || 0;
+      if (pid && qty > 0) map[pid] = (map[pid] || 0) + qty;
+    }
+    return map;
+  }
+
+  // 情况3：对象本身就是 { pid: qty }
+  for (const [k, v] of Object.entries(raw)) {
+    const qty = Number(v) || 0;
+    if (k && qty > 0) map[k] = qty;
+  }
+  return map;
+}
+
+function fbRenderQtyBadge(cardEl, pid, qtyMap) {
+  const badge = cardEl.querySelector(".product-qty-badge");
+  if (!badge) return;
+  const q = Number(qtyMap[pid] || 0) || 0;
+  if (q > 0) {
+    badge.textContent = String(q);
+    badge.style.display = "flex";
+  } else {
+    badge.style.display = "none";
+  }
+}
+
+function fbRefreshAllBadges() {
+  const grid = document.getElementById("normal-list");
+  if (!grid) return;
+  const qtyMap = fbBuildQtyMap();
+  grid.querySelectorAll(".product-card[data-pid]").forEach((card) => {
+    const pid = String(card.getAttribute("data-pid") || "").trim();
+    if (pid) fbRenderQtyBadge(card, pid, qtyMap);
+  });
+}
+
+/* ========= 商品卡片 ========= */
+function createCard(p, qtyMap) {
   const article = document.createElement("article");
   article.className = "product-card";
 
-  // ✅ 兜底 id：尽量保证不为空（避免详情/购物车用不了）
-  const pid = String(
-    p?._id || p?.id || p?.sku || p?.code || p?.productId || p?.name || ""
-  ).trim();
+  // ✅ 统一 pid：跨页面一致（并且永不为空：兜底 name）
+  const pid = fbPid(p) || String(p?.name || "").trim();
+  const safeId = pid || String(p?.name || "fb").trim();
+  const useId = pid || safeId;
+
+  article.setAttribute("data-pid", useId);
 
   const price = getPrice(p);
   const origin = getNum(p, ["originPrice"], 0);
@@ -166,7 +245,7 @@ function createCard(p) {
   const img =
     p?.image && String(p.image).trim()
       ? String(p.image).trim()
-      : `https://picsum.photos/seed/${encodeURIComponent(pid || p?.name || "fb")}/500/400`;
+      : `https://picsum.photos/seed/${encodeURIComponent(useId || p?.name || "fb")}/500/400`;
 
   const limitQty = p?.limitQty || p?.limitPerUser || p?.maxQty || p?.purchaseLimit || 0;
 
@@ -177,6 +256,9 @@ function createCard(p) {
     <div class="product-image-wrap">
       ${badge ? `<span class="special-badge">${badge}</span>` : ""}
       <img src="${img}" class="product-image" alt="${p?.name || ""}" />
+
+      <!-- ✅ 数量徽章（右下角） -->
+      <span class="product-qty-badge"></span>
     </div>
 
     <div class="product-name">${p?.name || ""}</div>
@@ -192,6 +274,9 @@ function createCard(p) {
       <span class="add-btn__text">加入购物车${limitQty > 0 ? `（限购${limitQty}）` : ""}</span>
     </button>
   `;
+
+  // ✅ 初次渲染刷新徽章
+  fbRenderQtyBadge(article, useId, qtyMap);
 
   // ✅ 加入购物车
   const btn = article.querySelector(".add-btn");
@@ -209,9 +294,14 @@ function createCard(p) {
         return;
       }
 
+      // ✅ 关键：写入购物车时同时带 id/_id，跨页面数量才一致
       cartApi.addItem(
         {
-          id: pid,
+          id: useId,
+          _id: useId,
+          sku: p?.sku || "",
+          code: p?.code || "",
+          productId: p?.productId || "",
           name: p?.name || "商品",
           price: Number(price || 0),
           priceNum: Number(price || 0),
@@ -227,13 +317,19 @@ function createCard(p) {
       );
 
       showToast();
+
+      // ✅ 加购后立刻刷新徽章
+      fbRefreshAllBadges();
+
+      // ✅ 广播事件（如果别处也监听）
+      window.dispatchEvent(new Event("freshbuy:cart_updated"));
     });
   }
 
   // ✅ 点卡片去详情（没做详情页可注释）
   article.addEventListener("click", () => {
-    if (!pid) return;
-    window.location.href = "/user/product_detail.html?id=" + encodeURIComponent(pid);
+    if (!useId) return;
+    window.location.href = "/user/product_detail.html?id=" + encodeURIComponent(useId);
   });
 
   return article;
@@ -288,12 +384,18 @@ function renderList() {
     return;
   }
 
-  list.forEach((p) => grid.appendChild(createCard(p)));
+  // ✅ 每次渲染前取一次 qtyMap
+  const qtyMap = fbBuildQtyMap();
+  list.forEach((p) => grid.appendChild(createCard(p, qtyMap)));
+
+  // ✅ 兜底刷新一次
+  fbRefreshAllBadges();
 
   try {
     grid.scrollIntoView({ behavior: "smooth", block: "start" });
   } catch {}
 }
+
 /* ========= 数据加载 ========= */
 async function loadProducts() {
   const res = await fetch("/api/products-simple", { cache: "no-store" });
@@ -356,6 +458,16 @@ function injectButtonStylesOnce() {
   `;
   document.head.appendChild(style);
 }
+
+/* ✅ 购物车在别的标签页/页面变化，也同步刷新 */
+window.addEventListener("storage", (e) => {
+  if (!e) return;
+  const keys = ["freshbuy_cart", "freshbuyCart", "cart", "cart_items"];
+  if (keys.includes(e.key)) fbRefreshAllBadges();
+});
+
+/* ✅ 如果 cart.js 未来派发这个事件，这里也会自动刷新 */
+window.addEventListener("freshbuy:cart_updated", fbRefreshAllBadges);
 
 /* ========= 启动 ========= */
 window.addEventListener("DOMContentLoaded", () => {

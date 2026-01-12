@@ -563,7 +563,30 @@
         box-shadow: 0 2px 6px rgba(15, 23, 42, 0.25);
         z-index: 2;
       }
+      /* ✅ 商品图片右下角：已加购数量徽章 */
+.product-qty-badge{
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
 
+  min-width: 34px;
+  height: 34px;
+  padding: 0 8px;
+
+  background: #22c55e;
+  color: #fff;
+  font-size: 18px;
+  font-weight: 900;
+
+  border-radius: 999px;
+  display: none;              /* 默认隐藏：qty>0 时 JS 显示 */
+  align-items: center;
+  justify-content: center;
+
+  box-shadow: 0 6px 14px rgba(0,0,0,.28);
+  border: 2px solid #fff;
+  z-index: 10;                /* ✅ 必须高于图片/角标 */
+}
       .product-name {
         font-size: 14px;
         font-weight: 600;
