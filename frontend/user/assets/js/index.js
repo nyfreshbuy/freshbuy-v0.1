@@ -12,6 +12,7 @@
 // ✅ 9) 修复：点击 次日配送/好友拼单 时，右侧信息不再被 ZIP 匹配强制改回“区域团”
 // ✅ 10) 修复：右侧只渲染到 #deliveryInfoBody，不覆盖右侧 ZIP box
 // ✅ 11) 区域团：按 zone.name 区分“白石镇/大学点 vs 新鲜草原”的配送时间文案 + 真实截单倒计时
+// ✅ 12) ✅ 商品图片右下角数量徽章：插入 DOM + 加购后立刻显示 + 同步 cart 更新
 // =======================================================
 console.log("✅ index.js UPDATED AT:", new Date().toISOString());
 console.log("Freshbuy index main script loaded (db-zones version)");
@@ -35,16 +36,17 @@ const fallbackCategories = [
 async function loadCategories() {
   renderCategoryPills(fallbackCategories);
 }
+
 const SECTION_LIMITS = {
   desktop: {
     default: 8, // 电脑端所有区块默认 8
   },
   mobile: {
-    Hot: 6,   // 新客体验专区
-    DailySpecial: 8,    // 家庭必备
+    Hot: 6, // 新客体验专区
+    DailySpecial: 8, // 家庭必备
     New: 6, // 新品上市
-    Best: 8,    // 产销商品
-    Normal: 4,       // 全部商品
+    Best: 8, // 产销商品
+    Normal: 4, // 全部商品
     default: 6,
   },
 };
@@ -57,6 +59,7 @@ function getLimit(sectionKey) {
   if (!isMobileView()) return SECTION_LIMITS.desktop.default;
   return SECTION_LIMITS.mobile[sectionKey] ?? SECTION_LIMITS.mobile.default;
 }
+
 function renderCategoryPills(list) {
   if (!categoryBar) return;
   categoryBar.innerHTML = "";
@@ -114,7 +117,6 @@ const deliveryInfo = document.getElementById("deliveryInfo");
 const deliveryInfoBody = document.getElementById("deliveryInfoBody");
 
 // ✅ 用户是否“手动选择过配送模式”
-// 解决 bug：ZIP 匹配时不要再强制切回区域团
 const MODE_USER_SELECTED_KEY = "freshbuy_user_selected_mode";
 
 // ✅ 区域团时间文案：按 zone.name 区分
@@ -279,7 +281,6 @@ function renderDeliveryInfo(mode) {
       </ul>
     `;
 
-    // ✅ 真实截单倒计时
     const cutoffDate = getNextCutoffDate(schedule.cutoff);
     startAreaGroupCountdownTo(cutoffDate);
     return;
@@ -306,8 +307,12 @@ function renderDeliveryInfo(mode) {
       <div class="delivery-info-title">好友拼单配送</div>
       <ul class="delivery-info-list">
         <li>当前拼单人数：<span class="delivery-highlight">${st.joinedUsers}</span> 人</li>
-        <li>预计人均运费：<span class="delivery-highlight">$${Number(st.avgFee || 0).toFixed(2)}</span></li>
-        <li>建议起送金额：<span class="delivery-highlight">$${Number(st.minAmount || 0).toFixed(2)}</span></li>
+        <li>预计人均运费：<span class="delivery-highlight">$${Number(
+          st.avgFee || 0
+        ).toFixed(2)}</span></li>
+        <li>建议起送金额：<span class="delivery-highlight">$${Number(
+          st.minAmount || 0
+        ).toFixed(2)}</span></li>
         <li>有效期倒计时：<span class="delivery-countdown" id="friendCountdown">--:--:--</span></li>
       </ul>
     `;
@@ -315,7 +320,6 @@ function renderDeliveryInfo(mode) {
     return;
   }
 
-  // 兜底
   deliveryHint.textContent = `当前：区域团拼单配送 · ${zoneName}`;
   deliveryInfoBody.innerHTML = `
     <div class="delivery-info-title">配送信息</div>
@@ -331,17 +335,17 @@ document.addEventListener("click", (e) => {
   const pill = e.target.closest(".delivery-pill");
   if (!pill) return;
 
-  document.querySelectorAll(".delivery-pill").forEach((btn) => btn.classList.remove("active"));
+  document
+    .querySelectorAll(".delivery-pill")
+    .forEach((btn) => btn.classList.remove("active"));
   pill.classList.add("active");
 
   const mode = pill.dataset.mode;
 
-  // ✅ 标记：用户手动选过模式（ZIP 匹配不再强制切回区域团）
   localStorage.setItem(MODE_USER_SELECTED_KEY, "1");
 
   renderDeliveryInfo(mode);
 
-  // ✅ 记住用户选择，并通知 cart.js（只有非爆品时可按偏好切换）
   try {
     function toCartModeKey(m) {
       if (m === "area-group") return "groupDay";
@@ -367,7 +371,8 @@ const shareCloseBtn = document.getElementById("shareCloseBtn");
 
 function openShareModal() {
   if (!shareBackdrop || !shareInput) return;
-  const url = window.location.origin + "/user/index.html?mode=friend-group&ts=" + Date.now();
+  const url =
+    window.location.origin + "/user/index.html?mode=friend-group&ts=" + Date.now();
   shareInput.value = url;
   shareBackdrop.classList.add("active");
   startFriendCountdownToMidnight();
@@ -457,7 +462,8 @@ function hasKeyword(p, keyword) {
   if (fields.some((f) => norm(f).includes(kw))) return true;
 
   if (Array.isArray(p.tags) && p.tags.some((t) => norm(t).includes(kw))) return true;
-  if (Array.isArray(p.labels) && p.labels.some((t) => norm(t).includes(kw))) return true;
+  if (Array.isArray(p.labels) && p.labels.some((t) => norm(t).includes(kw)))
+    return true;
 
   return false;
 }
@@ -473,36 +479,37 @@ function isHotProduct(p) {
     hasKeyword(p, "hot")
   );
 }
+
 function isSpecialDeal(p) {
-  // 1) 后台勾选类字段
   if (
     isTrueFlag(p.isSpecial) ||
     isTrueFlag(p.isDailySpecial) ||
     isTrueFlag(p.onSale) ||
     isTrueFlag(p.isSale)
-  ) return true;
+  )
+    return true;
 
-  // 2) 价格类字段：sale/special/flash < base(正常价)
   const basePrice = Number(p.price ?? p.regularPrice ?? p.originPrice ?? 0);
-  const salePrice = Number(p.salePrice ?? p.specialPrice ?? p.discountPrice ?? p.flashPrice ?? 0);
+  const salePrice = Number(
+    p.salePrice ?? p.specialPrice ?? p.discountPrice ?? p.flashPrice ?? 0
+  );
 
   if (basePrice > 0 && salePrice > 0 && salePrice < basePrice) return true;
 
-  // 3) 划线价逻辑：originPrice > price（有些数据是这样）
   const origin = Number(p.originPrice ?? p.originalPrice ?? 0);
   const price = Number(p.price ?? 0);
   if (origin > 0 && price > 0 && origin > price) return true;
 
-  // 4) 折扣字段
   const discount = Number(p.discount ?? p.discountPercent ?? 0);
   if (discount > 0) return true;
 
   return false;
 }
+
 function isFamilyProduct(p) {
-  // ✅ 家庭必备 = 所有特价商品
   return isSpecialDeal(p);
 }
+
 function isBestSellerProduct(p) {
   return (
     isTrueFlag(p.isBest) ||
@@ -512,6 +519,7 @@ function isBestSellerProduct(p) {
     hasKeyword(p, "top")
   );
 }
+
 function isNewProduct(p) {
   const flag =
     isTrueFlag(p.isNew) ||
@@ -529,6 +537,89 @@ function isNewProduct(p) {
   return d.getTime() >= Date.now();
 }
 
+// ================================
+// ✅✅✅ 商品图片右下角数量徽章工具函数
+// ================================
+function setProductBadge(pid, qty) {
+  const el = document.querySelector(`.product-qty-badge[data-pid="${pid}"]`);
+  if (!el) return;
+
+  const n = Number(qty || 0);
+  if (n > 0) {
+    el.textContent = n >= 99 ? "99+" : String(n);
+    el.style.display = "flex";
+  } else {
+    el.textContent = "";
+    el.style.display = "none";
+  }
+}
+
+// 尝试从 FreshCart / Cart / localStorage 里拿到购物车数据
+function getCartSnapshot() {
+  try {
+    if (window.FreshCart) {
+      if (typeof window.FreshCart.getCart === "function") return window.FreshCart.getCart();
+      if (typeof window.FreshCart.getItems === "function")
+        return { items: window.FreshCart.getItems() };
+    }
+  } catch {}
+
+  try {
+    if (window.Cart) {
+      if (typeof window.Cart.getCart === "function") return window.Cart.getCart();
+      if (typeof window.Cart.getItems === "function") return { items: window.Cart.getItems() };
+    }
+  } catch {}
+
+  const keys = ["freshbuy_cart", "freshbuyCart", "cart", "fb_cart"];
+  for (const k of keys) {
+    try {
+      const raw = localStorage.getItem(k);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw);
+      if (parsed) return parsed;
+    } catch {}
+  }
+
+  return null;
+}
+
+function normalizeCartToQtyMap(cart) {
+  const map = {};
+  if (!cart) return map;
+
+  if (Array.isArray(cart.items)) {
+    cart.items.forEach((it) => {
+      const id = String(it.id || it.pid || it.productId || "").trim();
+      const qty = Number(it.qty ?? it.quantity ?? 0);
+      if (id) map[id] = (map[id] || 0) + qty;
+    });
+    return map;
+  }
+
+  if (typeof cart === "object") {
+    Object.keys(cart).forEach((k) => {
+      const v = cart[k];
+      if (k === "total" || k === "meta") return;
+      const id = String(k || "").trim();
+      const qty = Number(v?.qty ?? v?.quantity ?? v ?? 0);
+      if (id) map[id] = (map[id] || 0) + qty;
+    });
+  }
+
+  return map;
+}
+
+function trySyncBadgesFromCart() {
+  const cart = getCartSnapshot();
+  const qtyMap = normalizeCartToQtyMap(cart);
+
+  document.querySelectorAll(".product-qty-badge[data-pid]").forEach((el) => {
+    const pid = el.getAttribute("data-pid");
+    setProductBadge(pid, qtyMap[pid] || 0);
+  });
+}
+
 function createProductCard(p, extraBadgeText) {
   const article = document.createElement("article");
   article.className = "product-card";
@@ -536,37 +627,46 @@ function createProductCard(p, extraBadgeText) {
   // ✅ 统一主键：优先 _id（MongoDB），其次 id / sku
   const pid = String(p._id || p.id || p.sku || "").trim();
 
- // ✅ 价格：优先显示特价（sale/special/flash），并展示划线原价
-const basePrice = Number(p.price ?? p.originPrice ?? p.regularPrice ?? 0);
-const salePrice = Number(p.salePrice ?? p.specialPrice ?? p.discountPrice ?? p.flashPrice ?? 0);
+  // ✅ 价格：优先显示特价（sale/special/flash），并展示划线原价
+  const basePrice = Number(p.price ?? p.originPrice ?? p.regularPrice ?? 0);
+  const salePrice = Number(
+    p.salePrice ?? p.specialPrice ?? p.discountPrice ?? p.flashPrice ?? 0
+  );
 
-// finalPrice：如果 salePrice 比 basePrice 低，就用 salePrice；否则用 basePrice
-const finalPrice =
-  basePrice > 0 && salePrice > 0 && salePrice < basePrice
-    ? salePrice
-    : (basePrice || salePrice || 0);
+  const finalPrice =
+    basePrice > 0 && salePrice > 0 && salePrice < basePrice
+      ? salePrice
+      : basePrice || salePrice || 0;
 
-// originNum：只有出现“真实特价”时才显示划线原价
-const originNum =
-  basePrice > 0 && salePrice > 0 && salePrice < basePrice
-    ? basePrice
-    : Number(p.originPrice ?? 0);
+  const originNum =
+    basePrice > 0 && salePrice > 0 && salePrice < basePrice
+      ? basePrice
+      : Number(p.originPrice ?? 0);
 
-const hasOrigin = originNum > 0 && originNum > finalPrice;
+  const hasOrigin = originNum > 0 && originNum > finalPrice;
+
   const badgeText =
-  extraBadgeText || ((p.tag || "").includes("爆品") ? "爆品" : "");
+    extraBadgeText || ((p.tag || "").includes("爆品") ? "爆品" : "");
+
   const imageUrl =
     p.image && String(p.image).trim()
       ? String(p.image).trim()
-      : `https://picsum.photos/seed/${encodeURIComponent(pid || p.name || "fb")}/500/400`;
+      : `https://picsum.photos/seed/${encodeURIComponent(
+          pid || p.name || "fb"
+        )}/500/400`;
 
   const tagline = (p.tag || p.category || "").slice(0, 18);
   const limitQty = p.limitQty || p.limitPerUser || p.maxQty || p.purchaseLimit || 0;
 
+  // ✅✅✅ 关键：在图片容器里插入 .product-qty-badge（你之前缺了这个）
   article.innerHTML = `
     <div class="product-image-wrap">
       ${badgeText ? `<span class="special-badge">${badgeText}</span>` : ""}
       <img src="${imageUrl}" class="product-image" alt="${p.name || ""}" />
+
+      <!-- ✅ 商品图片右下角数量徽章（JS 会控制显示/隐藏） -->
+      <div class="product-qty-badge" data-pid="${pid}"></div>
+
       <div class="product-overlay">
         <div class="overlay-btn-row">
           <button type="button" class="overlay-btn fav">⭐ 收藏</button>
@@ -625,6 +725,24 @@ const hasOrigin = originNum > 0 && originNum > finalPrice;
     };
 
     cartApi.addItem(normalized, 1);
+
+    // ✅✅✅ 关键：加购后立刻显示徽章 +1（不依赖 cart.js 是否广播）
+    try {
+      const badge = article.querySelector(`.product-qty-badge[data-pid="${pid}"]`);
+      const cur = Number((badge?.textContent || "").replace("+", "")) || 0;
+      const next = Math.min(cur + 1, 99);
+      if (badge) {
+        badge.textContent = next >= 99 ? "99+" : String(next);
+        badge.style.display = "flex";
+      }
+    } catch {}
+
+    // ✅ 通知全站：购物车已更新（给 trySyncBadgesFromCart / cart.js 用）
+    try {
+      window.dispatchEvent(
+        new CustomEvent("freshbuy:cartUpdated", { detail: { pid, delta: 1 } })
+      );
+    } catch {}
   }
 
   const overlayAdd = article.querySelector('.overlay-btn.add[data-add-pid]');
@@ -688,9 +806,17 @@ async function loadHomeProductsFromSimple() {
     console.log("首页从 /api/products-simple 拿到商品：", list);
 
     if (!list.length) {
-      ["productGridHot", "productGridDaily", "productGridNew", "productGridBest", "productGridNormal"].forEach((id) => {
+      [
+        "productGridHot",
+        "productGridDaily",
+        "productGridNew",
+        "productGridBest",
+        "productGridNormal",
+      ].forEach((id) => {
         const grid = document.getElementById(id);
-        if (grid) grid.innerHTML = '<div style="padding:12px;font-size:13px;color:#6b7280;">暂时没有商品</div>';
+        if (grid)
+          grid.innerHTML =
+            '<div style="padding:12px;font-size:13px;color:#6b7280;">暂时没有商品</div>';
       });
       return;
     }
@@ -709,7 +835,6 @@ async function loadHomeProductsFromSimple() {
 
     const allList = nonHotList;
 
-    // ✅ 家庭必备：严格筛选，不要用 allList 兜底，否则会塞正常价商品
     if (!familyList.length) familyList = [];
     if (!newList.length) newList = allList.slice(0, 12);
     if (!bestList.length) bestList = allList.slice(0, 12);
@@ -720,7 +845,8 @@ async function loadHomeProductsFromSimple() {
       grid.innerHTML = "";
 
       if (!items.length) {
-        grid.innerHTML = '<div style="padding:12px;font-size:13px;color:#6b7280;">暂时没有商品</div>';
+        grid.innerHTML =
+          '<div style="padding:12px;font-size:13px;color:#6b7280;">暂时没有商品</div>';
         return;
       }
 
@@ -733,24 +859,29 @@ async function loadHomeProductsFromSimple() {
         grid.appendChild(createProductCard(p, badgeText));
       });
     }
-    // ✅ 每个区块显示数量（电脑 8；手机按你配置）
-const hotLimit = getLimit("Hot");
-const dailyLimit = getLimit("DailySpecial");
-const newLimit = getLimit("New");
-const bestLimit = getLimit("Best");
-const allLimit = getLimit("Normal");
 
-const hotShow = hotList.slice(0, hotLimit);
-const familyShow = familyList.slice(0, dailyLimit);
-const newShow = newList.slice(0, newLimit);
-const bestShow = bestList.slice(0, bestLimit);
-const allShow = allList.slice(0, allLimit);
+    const hotLimit = getLimit("Hot");
+    const dailyLimit = getLimit("DailySpecial");
+    const newLimit = getLimit("New");
+    const bestLimit = getLimit("Best");
+    const allLimit = getLimit("Normal");
 
-   renderIntoGrid("productGridHot", hotShow, "hot");
-renderIntoGrid("productGridDaily", familyShow, "family");
-renderIntoGrid("productGridNew", newShow, "new");
-renderIntoGrid("productGridBest", bestShow, "best");
-renderIntoGrid("productGridNormal", allShow, "all");
+    const hotShow = hotList.slice(0, hotLimit);
+    const familyShow = familyList.slice(0, dailyLimit);
+    const newShow = newList.slice(0, newLimit);
+    const bestShow = bestList.slice(0, bestLimit);
+    const allShow = allList.slice(0, allLimit);
+
+    renderIntoGrid("productGridHot", hotShow, "hot");
+    renderIntoGrid("productGridDaily", familyShow, "family");
+    renderIntoGrid("productGridNew", newShow, "new");
+    renderIntoGrid("productGridBest", bestShow, "best");
+    renderIntoGrid("productGridNormal", allShow, "all");
+
+    // ✅✅✅ 商品渲染完后同步一次徽章（如果购物车里已有数量）
+    try {
+      setTimeout(() => trySyncBadgesFromCart(), 0);
+    } catch {}
   } catch (err) {
     console.error("首页加载 /api/products-simple 失败：", err);
   }
@@ -798,11 +929,7 @@ async function apiLogin(phone, password) {
     body: JSON.stringify({ phone, password }),
   });
 
-  const ok =
-    data?.success === true ||
-    data?.ok === true ||
-    typeof data?.token === "string";
-
+  const ok = data?.success === true || data?.ok === true || typeof data?.token === "string";
   if (!res.ok || !ok) throw new Error(data?.msg || data?.message || "登录失败");
   if (data?.token) setToken(data.token);
 
@@ -818,6 +945,7 @@ async function apiRegister(name, phone, password) {
   if (!res.ok || !data?.success) throw new Error(data?.msg || "注册失败");
   return data.user || null;
 }
+
 // ✅ 发送短信验证码（Twilio Verify）
 async function apiSendSmsCode(phone) {
   const { res, data } = await apiFetch("/api/sms/send-code", {
@@ -843,6 +971,7 @@ async function apiVerifyRegister({ phone, code, password, name }) {
   setToken(data.token);
   return data.user || null;
 }
+
 // 轻量 me（只有 id/role/phone）
 async function apiMe() {
   const token = getToken();
@@ -941,7 +1070,8 @@ function closeAuthModal() {
 }
 
 function switchAuthMode(mode) {
-  if (!tabLogin || !tabRegister || !loginPanel || !registerPanel || !authTitle) return;
+  if (!tabLogin || !tabRegister || !loginPanel || !registerPanel || !authTitle)
+    return;
   if (mode === "login") {
     tabLogin.classList.add("active");
     tabRegister.classList.remove("active");
@@ -968,6 +1098,7 @@ if (authBackdrop) {
 }
 if (tabLogin) tabLogin.addEventListener("click", () => switchAuthMode("login"));
 if (tabRegister) tabRegister.addEventListener("click", () => switchAuthMode("register"));
+
 if (regSendCodeBtn) {
   regSendCodeBtn.addEventListener("click", async () => {
     const phone = (regPhone && regPhone.value.trim()) || "";
@@ -981,6 +1112,7 @@ if (regSendCodeBtn) {
     }
   });
 }
+
 if (loginSubmitBtn) {
   loginSubmitBtn.addEventListener("click", async () => {
     const phone = (loginPhone && loginPhone.value.trim()) || "";
@@ -1009,7 +1141,6 @@ if (loginSubmitBtn) {
 }
 
 function isStrongPassword(pwd) {
-  // 至少8位，且必须包含字母+数字
   return /^(?=.*[A-Za-z])(?=.*\d).{8,}$/.test(String(pwd || ""));
 }
 
@@ -1041,10 +1172,11 @@ if (registerSubmitBtn) {
     }
   });
 }
-function isStrongPassword(pwd){
-  // 至少8位，且必须包含字母和数字
-  return /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,}$/.test(String(pwd||""));
+
+function isStrongPassword2(pwd) {
+  return /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,}$/.test(String(pwd || ""));
 }
+
 // ===============================
 // ✅ ZIP 锁定/解锁（左右同步）仅锁 ZIP 输入框，不影响其它按钮
 // ===============================
@@ -1084,7 +1216,6 @@ function lockZipInputToDefaultAddress(zip) {
     zipStatus.textContent = `可配送 ZIP：${z}（默认地址）`;
   }
 
-  // 右侧
   const rightInput = document.getElementById("zipInputRight");
   const rightCheckBtn = document.getElementById("zipCheckBtn");
   const rightClearBtn = document.getElementById("zipClearBtn");
@@ -1218,8 +1349,7 @@ function applyZoneToUI(zip, payload) {
   const reason = payload?.reason || payload?.message || "该邮编暂不支持配送";
 
   if (zipStatus) {
-    const locked =
-      document.getElementById("zipInput")?.dataset?.lockedByDefaultAddress === "1";
+    const locked = document.getElementById("zipInput")?.dataset?.lockedByDefaultAddress === "1";
     zipStatus.className = deliverable ? "zip-status ok" : "zip-status bad";
     zipStatus.textContent = zip
       ? deliverable
@@ -1241,12 +1371,10 @@ function applyZoneToUI(zip, payload) {
     return;
   }
 
-  // 保存 zone 简略信息
   const briefZone = { id: zone.id || zone._id || "", name: zone.name || "" };
   saveZone(briefZone);
   localStorage.setItem("freshbuy_zone_ok", "1");
 
-  // ✅ 关键修复：不再强制切回 area-group
   const userSelected = localStorage.getItem(MODE_USER_SELECTED_KEY) === "1";
   if (!userSelected) {
     try {
@@ -1258,7 +1386,9 @@ function applyZoneToUI(zip, payload) {
 
     const areaBtn = document.querySelector('.delivery-pill[data-mode="area-group"]');
     if (areaBtn) {
-      document.querySelectorAll(".delivery-pill").forEach((b) => b.classList.remove("active"));
+      document
+        .querySelectorAll(".delivery-pill")
+        .forEach((b) => b.classList.remove("active"));
       areaBtn.classList.add("active");
     }
     renderDeliveryInfo("area-group");
@@ -1269,9 +1399,7 @@ function applyZoneToUI(zip, payload) {
     renderDeliveryInfo(currentMode || "area-group");
   }
 
-  window.dispatchEvent(
-    new CustomEvent("freshbuy:zoneChanged", { detail: { zip, zone: briefZone } })
-  );
+  window.dispatchEvent(new CustomEvent("freshbuy:zoneChanged", { detail: { zip, zone: briefZone } }));
 }
 
 async function tryDetectZipFromIP() {
@@ -1286,28 +1414,27 @@ async function tryDetectZipFromIP() {
 
 async function resolveZoneByZipFromDB(zip) {
   const z = String(zip || "").trim();
-  if (!/^\d{5}$/.test(z))
-    return { ok: false, deliverable: false, zip: z, reason: "invalid zip" };
+  if (!/^\d{5}$/.test(z)) return { ok: false, deliverable: false, zip: z, reason: "invalid zip" };
 
   try {
     const r = await fetch(
-  `/api/public/zones/by-zip?zip=${encodeURIComponent(z)}&ts=${Date.now()}`,
-  { cache: "no-store" }
-);
+      `/api/public/zones/by-zip?zip=${encodeURIComponent(z)}&ts=${Date.now()}`,
+      { cache: "no-store" }
+    );
     const j = await r.json().catch(() => ({}));
     console.log("[by-zip resp]", j);
 
-    const supported = (j?.supported === true) || (j?.deliverable === true);
+    const supported = j?.supported === true || j?.deliverable === true;
 
-if (supported && j?.zone) {
-  return { ok: true, deliverable: true, zip: z, zone: j.zone };
-}
+    if (supported && j?.zone) {
+      return { ok: true, deliverable: true, zip: z, zone: j.zone };
+    }
     return {
-  ok: Boolean(j?.ok || j?.success),
-  deliverable: false,
-  zip: z,
-  reason: j?.reason || j?.message || "该邮编暂不支持配送",
-};
+      ok: Boolean(j?.ok || j?.success),
+      deliverable: false,
+      zip: z,
+      reason: j?.reason || j?.message || "该邮编暂不支持配送",
+    };
   } catch (e) {
     console.error("resolveZoneByZipFromDB error:", e);
     return { ok: false, deliverable: false, zip: z, reason: "server error" };
@@ -1405,8 +1532,8 @@ async function initZipAutoZone() {
 // =========================
 window.addEventListener("DOMContentLoaded", async () => {
   loadCategories();
-  await loadHomeProductsFromSimple(); // ✅ 改：加 await
-  bindGlobalSearch(); 
+  await loadHomeProductsFromSimple();
+  bindGlobalSearch();
   await initAuthUIFromStorage();
   await applyZipFromDefaultAddressIfLoggedIn();
 
@@ -1416,7 +1543,6 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   await initZipAutoZone();
 
-  // ✅ 自动应用用户偏好配送模式（但不会被 ZIP 匹配强行改回）
   const pref = localStorage.getItem("freshbuy_pref_mode");
   if (pref) {
     const uiMode = toUiModeKey(pref);
@@ -1426,34 +1552,38 @@ window.addEventListener("DOMContentLoaded", async () => {
     renderDeliveryInfo("area-group");
   }
 });
+
 // =========================
 // 🔍 搜索实现：过滤首页商品
 // =========================
 function doSearch(keyword) {
   const kw = String(keyword || "").trim().toLowerCase();
 
-  // 没有商品数据就不搜
   const list = Array.isArray(window.allProducts) ? window.allProducts : [];
   if (!list.length) {
     console.warn("doSearch: allProducts 为空，先等商品加载完成");
     return;
   }
 
-  // 目标：把结果渲染到 “全部商品” 区块（productGridNormal）
   const gridAll = document.getElementById("productGridNormal");
   if (!gridAll) return;
 
-  // 清空搜索：恢复“全部商品”（只恢复这一块，简单可靠）
   if (!kw) {
-  const nonHot = list.filter((p) => !isHotProduct(p));
-  const limit = getLimit("Normal");
-  const show = nonHot.slice(0, limit);
+    const nonHot = list.filter((p) => !isHotProduct(p));
+    const limit = getLimit("Normal");
+    const show = nonHot.slice(0, limit);
 
-  gridAll.innerHTML = "";
-  show.forEach((p) => gridAll.appendChild(createProductCard(p, "")));
-  return;
-}
-  // 命中字段：name/desc/tag/type/category/subCategory/mainCategory/section/tags/labels
+    gridAll.innerHTML = "";
+    show.forEach((p) => gridAll.appendChild(createProductCard(p, "")));
+
+    // ✅ 清空搜索后也同步一次徽章
+    try {
+      setTimeout(() => trySyncBadgesFromCart(), 0);
+    } catch {}
+
+    return;
+  }
+
   const hit = (p) => {
     const fields = [
       p?.name,
@@ -1483,15 +1613,24 @@ function doSearch(keyword) {
   if (!matched.length) {
     gridAll.innerHTML = `<div style="padding:12px;font-size:13px;color:#6b7280;">没有找到「${keyword}」相关商品</div>`;
   } else {
-  const limit = getLimit("Normal");
-  matched.slice(0, limit).forEach((p) => gridAll.appendChild(createProductCard(p, "")));
-}
-  // 滚动到“全部商品”区域（如果你首页有这个 id）
+    const limit = getLimit("Normal");
+    matched
+      .slice(0, limit)
+      .forEach((p) => gridAll.appendChild(createProductCard(p, "")));
+  }
+
+  // ✅ 搜索渲染后也同步一次徽章
   try {
-    const sec = document.getElementById("sectionAll") || document.getElementById("productGridNormal");
+    setTimeout(() => trySyncBadgesFromCart(), 0);
+  } catch {}
+
+  try {
+    const sec =
+      document.getElementById("sectionAll") || document.getElementById("productGridNormal");
     if (sec) sec.scrollIntoView({ behavior: "smooth", block: "start" });
   } catch {}
 }
+
 // =========================
 // 🔍 顶部搜索栏（globalSearchInput）
 // =========================
@@ -1517,6 +1656,7 @@ function bindGlobalSearch() {
     }
   });
 }
+
 // ===== 密码显示/隐藏（登录 & 注册）=====
 (function bindPasswordEyeToggle() {
   document.addEventListener("click", (e) => {
@@ -1535,6 +1675,7 @@ function bindGlobalSearch() {
     btn.textContent = isPwd ? "🙈" : "👁";
   });
 })();
+
 // ================================
 // ✅ FIX: 登录后右上角“我/尾号xxxx”点击无反应
 // 文件：frontend/user/assets/js/index.js
@@ -1542,11 +1683,9 @@ function bindGlobalSearch() {
 // ================================
 (function bindUserTopRightClick() {
   function goUserCenter() {
-    // 你用户中心页面如果不是这个路径，请改成你真实文件
     window.location.href = "/user/user_center.html";
   }
 
-  // 用事件委托：即使登录后才显示/被重新渲染，也永远能点
   document.addEventListener("click", (e) => {
     const user = e.target.closest("#userProfile");
     if (user) {
@@ -1557,7 +1696,6 @@ function bindGlobalSearch() {
     }
   });
 
-  // 兜底：如果你后续不想用委托，也可以直接绑一次
   document.addEventListener("DOMContentLoaded", () => {
     const userProfile = document.getElementById("userProfile");
     if (userProfile && !userProfile.dataset.bound) {
@@ -1570,114 +1708,27 @@ function bindGlobalSearch() {
     }
   });
 })();
+
 // ================================
 // ✅ 商品图片右下角数量徽章：同步购物车数量
 // 文件：frontend/user/assets/js/index.js
 // 位置：放在文件最底部
 // ================================
-function setProductBadge(pid, qty) {
-  const el = document.querySelector(`.product-qty-badge[data-pid="${pid}"]`);
-  if (!el) return;
 
-  const n = Number(qty || 0);
-  if (n > 0) {
-    el.textContent = n >= 99 ? "99+" : String(n);
-    el.style.display = "flex";
-  } else {
-    el.textContent = "";
-    el.style.display = "none";
-  }
-}
-
-// 尝试从 FreshCart / Cart / localStorage 里拿到购物车数据
-function getCartSnapshot() {
-  // 1) FreshCart（如果它提供 getCart / getItems）
-  try {
-    if (window.FreshCart) {
-      if (typeof window.FreshCart.getCart === "function") return window.FreshCart.getCart();
-      if (typeof window.FreshCart.getItems === "function") return { items: window.FreshCart.getItems() };
-    }
-  } catch {}
-
-  // 2) Cart（如果存在）
-  try {
-    if (window.Cart) {
-      if (typeof window.Cart.getCart === "function") return window.Cart.getCart();
-      if (typeof window.Cart.getItems === "function") return { items: window.Cart.getItems() };
-    }
-  } catch {}
-
-  // 3) localStorage（兜底：兼容不同 key）
-  const keys = ["freshbuy_cart", "freshbuyCart", "cart", "fb_cart"];
-  for (const k of keys) {
-    try {
-      const raw = localStorage.getItem(k);
-      if (!raw) continue;
-      const parsed = JSON.parse(raw);
-      if (parsed) return parsed;
-    } catch {}
-  }
-
-  return null;
-}
-
-// 把各种结构统一成 { pid: qty }
-function normalizeCartToQtyMap(cart) {
-  const map = {};
-
-  if (!cart) return map;
-
-  // 常见结构 1：{ items: [{id, qty}] }
-  if (Array.isArray(cart.items)) {
-    cart.items.forEach((it) => {
-      const id = String(it.id || it.pid || it.productId || "").trim();
-      const qty = Number(it.qty ?? it.quantity ?? 0);
-      if (id) map[id] = (map[id] || 0) + qty;
-    });
-    return map;
-  }
-
-  // 常见结构 2：{ [pid]: qty }
-  if (typeof cart === "object") {
-    Object.keys(cart).forEach((k) => {
-      const v = cart[k];
-      // 跳过非商品字段
-      if (k === "total" || k === "meta") return;
-      const id = String(k || "").trim();
-      const qty = Number(v?.qty ?? v?.quantity ?? v ?? 0);
-      if (id) map[id] = (map[id] || 0) + qty;
-    });
-  }
-
-  return map;
-}
-
-function trySyncBadgesFromCart() {
-  const cart = getCartSnapshot();
-  const qtyMap = normalizeCartToQtyMap(cart);
-
-  // 页面上所有商品徽章都刷一遍（没有数量的就隐藏）
-  document.querySelectorAll(".product-qty-badge[data-pid]").forEach((el) => {
-    const pid = el.getAttribute("data-pid");
-    setProductBadge(pid, qtyMap[pid] || 0);
-  });
-}
-
-// ✅ 页面加载/渲染后同步一次
+// ✅ 页面加载后同步一次
 document.addEventListener("DOMContentLoaded", () => {
   setTimeout(() => trySyncBadgesFromCart(), 0);
 });
 
-// ✅ 如果 cart.js 有广播事件（你后续可以在 cart.js 里 dispatch 这个事件）
+// ✅ cart.js 或 doAdd() 广播时同步
 window.addEventListener("freshbuy:cartUpdated", () => {
   trySyncBadgesFromCart();
 });
 
-// ✅ 如果同一浏览器多标签页修改了购物车，也同步
+// ✅ 多标签页同步
 window.addEventListener("storage", (e) => {
   if (!e || !e.key) return;
   if (String(e.key).toLowerCase().includes("cart")) {
     trySyncBadgesFromCart();
   }
 });
-

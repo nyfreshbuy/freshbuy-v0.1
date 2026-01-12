@@ -1006,9 +1006,12 @@ function bindCartDOMEventsPage() {
     const closeBtn = cartCloseBtnId && document.getElementById(cartCloseBtnId);
 
     function openDrawer() {
-      if (drawer) drawer.classList.add("active");
-      if (backdrop) backdrop.classList.add("active");
-    }
+  // ✅ 打开购物车前，重新计算分类栏高度（防止被顶部遮挡）
+  if (window.__fb_setCartTopOffset) window.__fb_setCartTopOffset();
+
+  if (drawer) drawer.classList.add("active");
+  if (backdrop) backdrop.classList.add("active");
+}
     function closeDrawer() {
       if (drawer) drawer.classList.remove("active");
       if (backdrop) backdrop.classList.remove("active");

@@ -591,11 +591,11 @@
       }
       .cart-drawer {
         position: fixed;
-        top: 0;
+        top: var(--cart-top-offset, 0px);
         right: 0;
         width: 320px;
         max-width: 90vw;
-        height: 100%;
+        height: calc(100% - var(--cart-top-offset, 0px));
         background: #ffffff;
         box-shadow: -2px 0 10px rgba(15, 23, 42, 0.2);
         transform: translateX(100%);
@@ -1359,6 +1359,62 @@
         });
       }
     });
+  })();
+</script>
+<script>
+  (function () {
+    function pickAnchorEl() {
+      // 购物车从“分类栏下面”开始：优先 category-bar-wrap
+      return (
+        document.querySelector(".category-bar-wrap") ||
+        document.querySelector(".top-nav")
+      );
+    }
+
+    function setCartTopOffset() {
+      var el = pickAnchorEl();
+      if (!el) return;
+
+      // sticky 顶部区域的 bottom = 购物车应该从哪里开始
+      var rect = el.getBoundingClientRect();
+      var offset = Math.max(0, Math.round(rect.bottom));
+
+      document.documentElement.style.setProperty(
+        "--cart-top-offset",
+        offset + "px"
+      );
+    }
+
+    function rafSet() {
+      requestAnimationFrame(setCartTopOffset);
+    }
+
+    // 暴露给 cart.js：打开购物车时可以手动刷新一次
+    window.__fb_setCartTopOffset = rafSet;
+
+    // 首次 & resize
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", rafSet);
+    } else {
+      rafSet();
+    }
+
+    window.addEventListener("resize", rafSet, { passive: true });
+    window.addEventListener("orientationchange", rafSet, { passive: true });
+
+    // 登录后 user-area 内容变化会改变顶部高度：监听一下
+    var userArea = document.querySelector(".user-area");
+    if (userArea && window.MutationObserver) {
+      var mo = new MutationObserver(rafSet);
+      mo.observe(userArea, { childList: true, subtree: true, characterData: true });
+    }
+
+    // 顶部区域高度变化（更稳）
+    var anchor = pickAnchorEl();
+    if (anchor && window.ResizeObserver) {
+      var ro = new ResizeObserver(rafSet);
+      ro.observe(anchor);
+    }
   })();
 </script>
     <!-- 公共购物车脚本 + 首页逻辑 -->
