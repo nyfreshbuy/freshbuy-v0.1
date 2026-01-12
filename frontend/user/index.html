@@ -17,6 +17,9 @@
         --radius-lg: 18px;
         --radius-md: 12px;
         --shadow-sm: 0 4px 12px rgba(15, 23, 42, 0.08);
+
+        /* ✅ 购物车抽屉/遮罩从哪里开始（JS 会动态写入） */
+        --cart-top-offset: 0px;
       }
 
       * {
@@ -40,7 +43,7 @@
       .top-nav {
         position: sticky;
         top: 0;
-        z-index: 40;
+        z-index: 50000; /* ✅ 必须高于遮罩/抽屉 */
         background: #ffffff;
         box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08);
       }
@@ -53,7 +56,7 @@
         grid-template-columns: 260px minmax(0, 1fr) 260px;
         gap: 16px;
         align-items: center;
-         min-width: 0;
+        min-width: 0;
       }
 
       @media (max-width: 900px) {
@@ -127,18 +130,19 @@
       }
 
       /* ✅ FIX：登录后用户信息变长，允许换行/收缩，防止撑爆 */
-.user-area{
-  min-width: 0;
-  max-width: 100%;
-  flex-wrap: wrap;
-}
+      .user-area {
+        min-width: 0;
+        max-width: 100%;
+        flex-wrap: wrap;
+      }
 
-@media (max-width: 420px){
-  .user-area{
-    justify-content: space-between;
-    gap: 8px;
-  }
-}
+      @media (max-width: 420px) {
+        .user-area {
+          justify-content: space-between;
+          gap: 8px;
+        }
+      }
+
       .link-btn {
         padding: 6px 10px;
         border-radius: 999px;
@@ -505,16 +509,17 @@
         font-weight: 600;
       }
       /* ZIP 锁死样式（默认地址来源时） */
-.zip-locked,
-.zip-locked:focus {
-  background: #f3f4f6 !important;
-  color: #374151 !important;
-  cursor: not-allowed !important;
-  box-shadow: none !important;
-}
-.zip-locked::placeholder {
-  color: #9ca3af;
-}
+      .zip-locked,
+      .zip-locked:focus {
+        background: #f3f4f6 !important;
+        color: #374151 !important;
+        cursor: not-allowed !important;
+        box-shadow: none !important;
+      }
+      .zip-locked::placeholder {
+        color: #9ca3af;
+      }
+
       /* 区块标题 */
       .section-header {
         display: flex;
@@ -539,18 +544,22 @@
         font-size: 13px;
         color: var(--text-sub);
       }
-.product-add-fixed{
-  width:100%;
-  margin-top:10px;
-  padding:10px 12px;
-  border:none;
-  border-radius:12px;
-  background:var(--primary);
-  color:#fff;
-  font-weight:700;
-  cursor:pointer;
-}
-.product-add-fixed:active{ transform:scale(0.99); }
+
+      .product-add-fixed {
+        width: 100%;
+        margin-top: 10px;
+        padding: 10px 12px;
+        border: none;
+        border-radius: 12px;
+        background: var(--primary);
+        color: #fff;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .product-add-fixed:active {
+        transform: scale(0.99);
+      }
+
       /* 商品网格：每行最多 6 个 */
       .product-grid {
         display: grid;
@@ -578,17 +587,30 @@
         }
       }
 
-      /* 购物车抽屉 */
+      /* =========================
+         ✅ 购物车抽屉（关键修复）
+         ========================= */
       .cart-drawer-backdrop {
         position: fixed;
-        inset: 0;
+
+        /* ✅ 遮罩从顶部栏下面开始 */
+        top: var(--cart-top-offset, 0px);
+        left: 0;
+        right: 0;
+        bottom: 0;
+
+        height: calc(100% - var(--cart-top-offset, 0px));
+
         background: rgba(15, 23, 42, 0.4);
         display: none;
-        z-index: 45;
+
+        /* ✅ 必须高于页面内容，否则“看起来没变化” */
+        z-index: 20000;
       }
       .cart-drawer-backdrop.active {
         display: block;
       }
+
       .cart-drawer {
         position: fixed;
         top: var(--cart-top-offset, 0px);
@@ -600,7 +622,7 @@
         box-shadow: -2px 0 10px rgba(15, 23, 42, 0.2);
         transform: translateX(100%);
         transition: transform 0.22s ease-out;
-        z-index: 20001;
+        z-index: 20001; /* ✅ 抽屉比遮罩高 1 */
         display: flex;
         flex-direction: column;
       }
@@ -677,7 +699,7 @@
         opacity: 0;
         pointer-events: none;
         transition: opacity 0.25s ease, transform 0.25s ease;
-        z-index: 9999;
+        z-index: 99999;
         white-space: nowrap;
       }
       .add-cart-toast.show {
@@ -693,7 +715,7 @@
         display: none;
         align-items: center;
         justify-content: center;
-        z-index: 60;
+        z-index: 60000;
       }
       .share-backdrop.active {
         display: flex;
@@ -716,7 +738,7 @@
         display: none;
         align-items: center;
         justify-content: center;
-        z-index: 80;
+        z-index: 70000;
       }
       .auth-backdrop.active {
         display: flex;
@@ -744,7 +766,7 @@
         display: flex;
         flex-direction: column;
         gap: 10px;
-        z-index: 50;
+        z-index: 40;
       }
       .side-rail-item {
         width: 64px;
@@ -769,19 +791,30 @@
           padding-left: 16px;
         }
       }
+
       /* ✅ 隐藏右侧 ZIP 输入框模块（保留右侧配送说明） */
-#zipCheckBox {
-  display: none !important;
-}
-/* 手机端右下角自定义客服按钮（PC隐藏，手机显示） */
-@media (max-width: 1023px){
-  #mobileTawkBtn{ display: inline-flex; align-items:center; gap:8px; }
-}
-@media (min-width: 1024px){
-  #mobileTawkBtn{ display: none; }
-}
-/* 隐藏默认蓝色浮标容器（CSS兜底） */
-#tawkchat-container{ display:none !important; }
+      #zipCheckBox {
+        display: none !important;
+      }
+
+      /* 手机端右下角自定义客服按钮（PC隐藏，手机显示） */
+      @media (max-width: 1023px) {
+        #mobileTawkBtn {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+        }
+      }
+      @media (min-width: 1024px) {
+        #mobileTawkBtn {
+          display: none;
+        }
+      }
+
+      /* 隐藏默认蓝色浮标容器（CSS兜底） */
+      #tawkchat-container {
+        display: none !important;
+      }
     </style>
 
     <link rel="stylesheet" href="./assets/css/main.css" />
@@ -815,13 +848,14 @@
           <button class="link-btn" id="loginBtn">登录</button>
           <button class="link-btn primary" id="registerBtn">注册</button>
           <button
-    id="mobileTawkBtn"
-    class="link-btn"
-    type="button"
-    style="border-color:#2563eb;color:#2563eb;font-weight:600;"
-  >
-    💬 联系客服
-  </button>
+            id="mobileTawkBtn"
+            class="link-btn"
+            type="button"
+            style="border-color:#2563eb;color:#2563eb;font-weight:600;"
+          >
+            💬 联系客服
+          </button>
+
           <div class="user-profile" id="userProfile">
             <div class="user-avatar" id="userAvatar">我</div>
             <span class="user-name" id="userNameLabel">我的账户</span>
@@ -835,9 +869,10 @@
       </div>
 
       <div class="category-bar-wrap">
-  <div class="category-bar" id="categoryBar"></div>
-</div>
-</header>
+        <div class="category-bar" id="categoryBar"></div>
+      </div>
+    </header>
+
     <div class="add-cart-toast" id="addCartToast">已加入购物车</div>
 
     <!-- 分享弹窗（好友拼单） -->
@@ -862,124 +897,130 @@
         </div>
       </div>
     </div>
+
     <!-- 登录 / 注册弹窗（只保留一套，避免 ID 冲突） -->
-<div class="auth-backdrop" id="authBackdrop">
-  <div class="auth-card" role="dialog" aria-modal="true" aria-labelledby="authTitle">
-    <!-- Header -->
-    <div class="auth-header">
-      <div class="auth-brand">
-        <div class="auth-logo">鲜</div>
-        <div class="auth-brand-text">
-          <div class="auth-brand-title" id="authTitle">登录</div>
-          <div class="auth-brand-sub">欢迎回来，在鲜购拼好货</div>
+    <div class="auth-backdrop" id="authBackdrop">
+      <div class="auth-card" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+        <!-- Header -->
+        <div class="auth-header">
+          <div class="auth-brand">
+            <div class="auth-logo">鲜</div>
+            <div class="auth-brand-text">
+              <div class="auth-brand-title" id="authTitle">登录</div>
+              <div class="auth-brand-sub">欢迎回来，在鲜购拼好货</div>
+            </div>
+          </div>
+
+          <button id="authCloseBtn" class="auth-close" type="button" aria-label="关闭">✕</button>
+        </div>
+
+        <!-- Tabs -->
+        <div class="auth-tabs" role="tablist" aria-label="登录注册切换">
+          <button id="tabLogin" class="auth-tab active" data-mode="login" type="button" role="tab" aria-selected="true">
+            登录
+          </button>
+          <button id="tabRegister" class="auth-tab" data-mode="register" type="button" role="tab" aria-selected="false">
+            注册
+          </button>
+        </div>
+
+        <!-- Body -->
+        <div class="auth-body">
+          <!-- Login -->
+          <div id="loginPanel">
+            <label class="auth-field">
+              <div class="auth-label">手机号码</div>
+              <div class="auth-input-wrap">
+                <span class="auth-input-ico">📱</span>
+                <input id="loginPhone" type="tel" class="auth-input" placeholder="请输入手机号" />
+              </div>
+            </label>
+
+            <label class="auth-field">
+              <div class="auth-label">登录密码</div>
+              <div class="auth-input-wrap">
+                <span class="auth-input-ico">🔒</span>
+                <input id="loginPassword" type="password" class="auth-input" placeholder="请输入密码" />
+                <button type="button" class="auth-eye" data-eye-for="loginPassword" aria-label="显示/隐藏密码">👁</button>
+              </div>
+            </label>
+
+            <div class="auth-row">
+              <label class="auth-check">
+                <input type="checkbox" id="loginRemember" />
+                <span>记住我</span>
+              </label>
+              <button class="auth-link" type="button">忘记密码？</button>
+            </div>
+
+            <button id="loginSubmitBtn" class="auth-primary" type="button">登录</button>
+
+            <div class="auth-footnote">
+              登录即表示你同意我们的 <span class="auth-footnote-link">服务条款</span> 与
+              <span class="auth-footnote-link">隐私政策</span>
+            </div>
+          </div>
+
+          <!-- Register -->
+          <div id="registerPanel" style="display:none;">
+            <label class="auth-field">
+              <div class="auth-label">手机号码</div>
+              <div class="auth-input-wrap">
+                <span class="auth-input-ico">📱</span>
+                <input id="regPhone" type="tel" class="auth-input" placeholder="用于接收订单物流通知" />
+              </div>
+            </label>
+
+            <!-- ✅ 短信验证码 -->
+            <label class="auth-field">
+              <div class="auth-label">短信验证码</div>
+              <div class="auth-input-wrap">
+                <span class="auth-input-ico">💬</span>
+                <input
+                  id="regCode"
+                  type="text"
+                  class="auth-input"
+                  inputmode="numeric"
+                  maxlength="10"
+                  placeholder="请输入短信验证码"
+                  style="padding-right: 110px;"
+                />
+                <button
+                  id="regSendCodeBtn"
+                  type="button"
+                  class="auth-mini-btn"
+                  style="position:absolute; right:10px; top:50%; transform:translateY(-50%); padding:6px 10px; border-radius:999px; border:1px solid #e5e7eb; background:#fff; cursor:pointer; font-size:12px; font-weight:700;"
+                >
+                  获取验证码
+                </button>
+              </div>
+            </label>
+
+            <label class="auth-field">
+              <div class="auth-label">设置登录密码</div>
+              <div class="auth-input-wrap">
+                <span class="auth-input-ico">🔒</span>
+                <input id="regPassword" type="password" class="auth-input" placeholder="至少 6 位，建议字母 + 数字" />
+                <button type="button" class="auth-eye" data-eye-for="regPassword" aria-label="显示/隐藏密码">👁</button>
+              </div>
+            </label>
+
+            <label class="auth-field">
+              <div class="auth-label">邀请码（选填）</div>
+              <input id="regInvite" type="text" class="auth-input" placeholder="有好友邀请可填写，没有可留空" />
+            </label>
+
+            <button id="registerSubmitBtn" class="auth-primary" type="button">注册并登录</button>
+
+            <div class="auth-footnote">
+              注册即表示你同意我们的 <span class="auth-footnote-link">服务条款</span> 与
+              <span class="auth-footnote-link">隐私政策</span>
+            </div>
+          </div>
         </div>
       </div>
-
-      <button id="authCloseBtn" class="auth-close" type="button" aria-label="关闭">✕</button>
     </div>
 
-    <!-- Tabs -->
-    <div class="auth-tabs" role="tablist" aria-label="登录注册切换">
-      <button id="tabLogin" class="auth-tab active" data-mode="login" type="button" role="tab" aria-selected="true">
-        登录
-      </button>
-      <button id="tabRegister" class="auth-tab" data-mode="register" type="button" role="tab" aria-selected="false">
-        注册
-      </button>
-    </div>
-
-    <!-- Body -->
-    <div class="auth-body">
-      <!-- Login -->
-      <div id="loginPanel">
-        <label class="auth-field">
-  <div class="auth-label">手机号码</div>
-  <div class="auth-input-wrap">
-    <span class="auth-input-ico">📱</span>
-    <input id="loginPhone" type="tel" class="auth-input" placeholder="请输入手机号" />
-  </div>
-</label>
-
-<label class="auth-field">
-  <div class="auth-label">登录密码</div>
-  <div class="auth-input-wrap">
-    <span class="auth-input-ico">🔒</span>
-    <input id="loginPassword" type="password" class="auth-input" placeholder="请输入密码" />
-    <button type="button" class="auth-eye" data-eye-for="loginPassword" aria-label="显示/隐藏密码">👁</button>
-  </div>
-</label>
-        <div class="auth-row">
-          <label class="auth-check">
-            <input type="checkbox" id="loginRemember" />
-            <span>记住我</span>
-          </label>
-          <button class="auth-link" type="button">忘记密码？</button>
-        </div>
-
-        <button id="loginSubmitBtn" class="auth-primary" type="button">登录</button>
-
-        <div class="auth-footnote">
-          登录即表示你同意我们的 <span class="auth-footnote-link">服务条款</span> 与
-          <span class="auth-footnote-link">隐私政策</span>
-        </div>
-      </div>
-
-      <!-- Register -->
-      <div id="registerPanel" style="display:none;">
-        <label class="auth-field">
-  <div class="auth-label">手机号码</div>
-  <div class="auth-input-wrap">
-    <span class="auth-input-ico">📱</span>
-    <input id="regPhone" type="tel" class="auth-input" placeholder="用于接收订单物流通知" />
-  </div>
-</label>
-<!-- ✅ 短信验证码 -->
-<label class="auth-field">
-  <div class="auth-label">短信验证码</div>
-  <div class="auth-input-wrap">
-    <span class="auth-input-ico">💬</span>
-    <input
-      id="regCode"
-      type="text"
-      class="auth-input"
-      inputmode="numeric"
-      maxlength="10"
-      placeholder="请输入短信验证码"
-      style="padding-right: 110px;"
-    />
-    <button
-      id="regSendCodeBtn"
-      type="button"
-      class="auth-mini-btn"
-      style="position:absolute; right:10px; top:50%; transform:translateY(-50%); padding:6px 10px; border-radius:999px; border:1px solid #e5e7eb; background:#fff; cursor:pointer; font-size:12px; font-weight:700;"
-    >
-      获取验证码
-    </button>
-  </div>
-</label>
-<label class="auth-field">
-  <div class="auth-label">设置登录密码</div>
-  <div class="auth-input-wrap">
-    <span class="auth-input-ico">🔒</span>
-    <input id="regPassword" type="password" class="auth-input" placeholder="至少 6 位，建议字母 + 数字" />
-    <button type="button" class="auth-eye" data-eye-for="regPassword" aria-label="显示/隐藏密码">👁</button>
-  </div>
-</label>
-        <label class="auth-field">
-          <div class="auth-label">邀请码（选填）</div>
-          <input id="regInvite" type="text" class="auth-input" placeholder="有好友邀请可填写，没有可留空" />
-        </label>
-
-        <button id="registerSubmitBtn" class="auth-primary" type="button">注册并登录</button>
-
-        <div class="auth-footnote">
-          注册即表示你同意我们的 <span class="auth-footnote-link">服务条款</span> 与
-          <span class="auth-footnote-link">隐私政策</span>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
     <!-- 购物车抽屉 -->
     <div class="cart-drawer-backdrop" id="cartBackdrop"></div>
     <aside class="cart-drawer" id="cartDrawer">
@@ -1021,13 +1062,10 @@
       <button class="side-rail-item" data-scroll="#appDownloadSection" type="button">
         <span>📲</span><span>App 下载</span>
       </button>
-      <a
-  class="side-rail-item"
-  href="javascript:void(0)"
-  id="btnSupport"
->
-  <span>💬</span><span>联系客服</span>
-</a>
+
+      <a class="side-rail-item" href="javascript:void(0)" id="btnSupport">
+        <span>💬</span><span>联系客服</span>
+      </a>
     </aside>
 
     <!-- 页面主体 -->
@@ -1137,102 +1175,104 @@
             </aside>
           </section>
 
-         <!-- 商品区块 -->
-<!-- 新客体验专区 -->
-<section id="sectionHot" class="home-section">
-  <div class="section-header">
-    <div>
-      <div class="section-title"><span class="title-icon">🔥</span>新客体验专区</div>
-      <div class="section-sub">免费配送 · 无消费门槛 · 0元起配送</div>
-    </div>
+          <!-- 商品区块 -->
+          <!-- 新客体验专区 -->
+          <section id="sectionHot" class="home-section">
+            <div class="section-header">
+              <div>
+                <div class="section-title"><span class="title-icon">🔥</span>新客体验专区</div>
+                <div class="section-sub">免费配送 · 无消费门槛 · 0元起配送</div>
+              </div>
 
-    <!-- ✅ 电脑端：标题右侧 -->
-    <a
-  class="section-link--desktop"
-  href="newcomer.html"
->
-  查看更多 →
-</a>
-  </div>
+              <!-- ✅ 电脑端：标题右侧 -->
+              <a class="section-link--desktop" href="newcomer.html">
+                查看更多 →
+              </a>
+            </div>
 
-  <div class="product-grid" id="productGridHot"></div>
+            <div class="product-grid" id="productGridHot"></div>
 
-  <!-- ✅ 手机端：商品列表底部 -->
-   <a class="section-link--mobile-bottom" href="newcomer.html">
-    查看更多新客体验区商品 →
-  </a>
-</section>
+            <!-- ✅ 手机端：商品列表底部 -->
+            <a class="section-link--mobile-bottom" href="newcomer.html">
+              查看更多新客体验区商品 →
+            </a>
+          </section>
 
-<!-- 家庭必备 -->
-<section id="sectionDailySpecial" class="home-section">
-  <div class="section-header">
-    <div>
-      <div class="section-title"><span class="title-icon">💡</span>家庭必备</div>
-      <div class="section-sub">省钱专区</div>
-    </div>
+          <!-- 家庭必备 -->
+          <section id="sectionDailySpecial" class="home-section">
+            <div class="section-header">
+              <div>
+                <div class="section-title"><span class="title-icon">💡</span>家庭必备</div>
+                <div class="section-sub">省钱专区</div>
+              </div>
 
-    <a class="section-link--desktop" href="/user/DailySpecial.html">查看更多 →</a>
-  </div>
+              <a class="section-link--desktop" href="/user/DailySpecial.html">查看更多 →</a>
+            </div>
 
-  <div class="product-grid" id="productGridDaily"></div>
+            <div class="product-grid" id="productGridDaily"></div>
 
-  <a class="section-link--mobile-bottom" href="/user/DailySpecial.html">
-  查看更多家庭必备 →
-</a>
-</section>
+            <a class="section-link--mobile-bottom" href="/user/DailySpecial.html">
+              查看更多家庭必备 →
+            </a>
+          </section>
 
-<!-- 新品上市 -->
-<section id="sectionNew" class="home-section">
-  <div class="section-header">
-    <div>
-      <div class="section-title"><span class="title-icon">🆕</span>新品上市</div>
-      <div class="section-sub">最近 7 天上新</div>
-    </div>
+          <!-- 新品上市 -->
+          <section id="sectionNew" class="home-section">
+            <div class="section-header">
+              <div>
+                <div class="section-title"><span class="title-icon">🆕</span>新品上市</div>
+                <div class="section-sub">最近 7 天上新</div>
+              </div>
 
-    <a class="section-link--desktop" href="/user/New.html">查看更多</a>
-  </div>
+              <a class="section-link--desktop" href="/user/New.html">查看更多</a>
+            </div>
 
-  <div class="product-grid" id="productGridNew"></div>
+            <div class="product-grid" id="productGridNew"></div>
 
-  <a class="section-link section-link--mobile-bottom" href="/user/New.html">
-    查看更多新品 →
-  </a>
-</section>
+            <a class="section-link section-link--mobile-bottom" href="/user/New.html">
+              查看更多新品 →
+            </a>
+          </section>
 
-<!-- 畅销产品 -->
-<section id="sectionBest" class="home-section">
-  <div class="section-header">
-    <div>
-      <div class="section-title"><span class="title-icon">📈</span>畅销产品</div>
-      <div class="section-sub">大家都在买的 TOP 商品</div>
-    </div>
+          <!-- 畅销产品 -->
+          <section id="sectionBest" class="home-section">
+            <div class="section-header">
+              <div>
+                <div class="section-title"><span class="title-icon">📈</span>畅销产品</div>
+                <div class="section-sub">大家都在买的 TOP 商品</div>
+              </div>
 
-    <a class="section-link--desktop" href="/user/Best.html">查看更多</a>
-  </div>
+              <a class="section-link--desktop" href="/user/Best.html">查看更多</a>
+            </div>
 
-  <div class="product-grid" id="productGridBest"></div>
+            <div class="product-grid" id="productGridBest"></div>
 
-  <a class="section-link--mobile-bottom" href="/user/Best.html">
-    查看更多畅销商品 →
-  </a>
-</section>
+            <a class="section-link--mobile-bottom" href="/user/Best.html">
+              查看更多畅销商品 →
+            </a>
+          </section>
 
-<!-- 全部商品 -->
-<section id="sectionNormal" class="home-section">
-  <div class="section-header">
-    <div>
-      <div class="section-title"><span class="title-icon">🛒</span>全部商品</div>
-      <div class="section-sub">日常商品</div>
-    </div>
+          <!-- 全部商品 -->
+          <section id="sectionNormal" class="home-section">
+            <div class="section-header">
+              <div>
+                <div class="section-title"><span class="title-icon">🛒</span>全部商品</div>
+                <div class="section-sub">日常商品</div>
+              </div>
 
-   <a class="section-link--desktop" href="/user/Normal.html">查看更多</a>
-  </div>
+              <a class="section-link--desktop" href="/user/Normal.html">查看更多</a>
+            </div>
 
-  <div class="product-grid" id="productGridNormal"></div>
+            <div class="product-grid" id="productGridNormal"></div>
 
-  <a class="section-link--mobile-bottom" href="/user/Normal.html">查看更多商品</a>
-</section>
-          <section class="app-download-section" id="appDownloadSection" style="margin-top:24px;padding:12px 14px;border-radius:12px;background:#fff;border:1px dashed #d1d5db;font-size:13px;color:#6b7280;">
+            <a class="section-link--mobile-bottom" href="/user/Normal.html">查看更多商品</a>
+          </section>
+
+          <section
+            class="app-download-section"
+            id="appDownloadSection"
+            style="margin-top:24px;padding:12px 14px;border-radius:12px;background:#fff;border:1px dashed #d1d5db;font-size:13px;color:#6b7280;"
+          >
             <div style="font-size:14px;font-weight:700;margin-bottom:4px;color:#111827;">
               在鲜购拼好货 · App 下载
             </div>
@@ -1245,198 +1285,209 @@
     </main>
 
     <!-- ✅ 右侧 ZIP box 同步到左侧 ZIP（不改 index.js 也能工作） -->
- <script>
-  (function () {
-    function val(el) {
-      return el ? String(el.value || "").trim() : "";
-    }
-
-    function computeLocked(leftInput) {
-      if (!leftInput) return false;
-      if (leftInput.dataset && leftInput.dataset.lockedByDefaultAddress === "1") return true;
-      return !!(leftInput.readOnly || leftInput.disabled);
-    }
-
-    function setRightLockedUI(locked, zip) {
-      var rightInput = document.getElementById("zipInputRight");
-      var checkBtn = document.getElementById("zipCheckBtn");
-      var clearBtn = document.getElementById("zipClearBtn");
-      var tip = document.getElementById("zipResult");
-
-      if (rightInput) {
-        if (locked) {
-          rightInput.value = String(zip || rightInput.value || "");
-          rightInput.readOnly = true;
-          rightInput.disabled = true;
-          rightInput.setAttribute("readonly", "readonly");
-          rightInput.setAttribute("disabled", "disabled");
-          rightInput.style.pointerEvents = "none";
-          rightInput.style.caretColor = "transparent";
-          rightInput.title = "已使用默认地址 ZIP（如需更改请到个人中心修改默认地址）";
-        } else {
-          rightInput.readOnly = false;
-          rightInput.disabled = false;
-          rightInput.removeAttribute("readonly");
-          rightInput.removeAttribute("disabled");
-          rightInput.style.pointerEvents = "";
-          rightInput.style.caretColor = "";
-          rightInput.title = "";
-        }
-      }
-
-      if (checkBtn) checkBtn.disabled = !!locked;
-      if (clearBtn) clearBtn.disabled = !!locked;
-
-      if (tip) {
-        tip.textContent = locked
-          ? ("已自动使用默认地址 ZIP：" + (zip || "--") + "（如需更换请到：我的账户 → 地址管理）")
-          : "请输入 ZIP 以确认是否覆盖该地区，并自动选择你的区域团配送。";
-      }
-    }
-
-    document.addEventListener("DOMContentLoaded", function () {
-      var leftInput = document.getElementById("zipInput");
-      var leftBtn = document.getElementById("zipApplyBtn");
-
-      var rightInput = document.getElementById("zipInputRight");
-      var checkBtn = document.getElementById("zipCheckBtn");
-      var clearBtn = document.getElementById("zipClearBtn");
-      var zipResult = document.getElementById("zipResult");
-
-      if (!leftInput || !rightInput || !checkBtn) return;
-
-      // ① 初始同步一次锁定状态
-      setRightLockedUI(computeLocked(leftInput), val(leftInput));
-
-      // ② 监听左侧是否被 index.js 锁/解锁（最关键）
-      var obs = new MutationObserver(function () {
-        var locked = computeLocked(leftInput);
-        setRightLockedUI(locked, val(leftInput));
-      });
-      obs.observe(leftInput, {
-        attributes: true,
-        attributeFilter: ["disabled", "readonly", "style", "data-locked-by-default-address"],
-      });
-
-      // ③ 兜底：有些情况 dataset 改动不触发 attributeFilter（浏览器差异），加个轻量轮询
-      var last = "";
-      setInterval(function () {
-        var locked = computeLocked(leftInput);
-        var key = (locked ? "1" : "0") + "|" + val(leftInput);
-        if (key !== last) {
-          last = key;
-          setRightLockedUI(locked, val(leftInput));
-        }
-      }, 400);
-
-      // ④ 右侧点击：同步到左侧并触发左侧规则
-      checkBtn.addEventListener("click", function () {
-        if (computeLocked(leftInput)) {
-          if (zipResult) zipResult.textContent = "默认地址 ZIP 已锁定（不可修改）";
-          return;
+    <script>
+      (function () {
+        function val(el) {
+          return el ? String(el.value || "").trim() : "";
         }
 
-        var z = val(rightInput);
-        if (leftInput) leftInput.value = z;
-        if (leftBtn) leftBtn.click();
+        function computeLocked(leftInput) {
+          if (!leftInput) return false;
+          if (leftInput.dataset && leftInput.dataset.lockedByDefaultAddress === "1") return true;
+          return !!(leftInput.readOnly || leftInput.disabled);
+        }
 
-        if (zipResult) zipResult.textContent = z ? ("已提交 ZIP：" + z + "（右侧已同步左侧规则）") : "请输入 ZIP";
-      });
+        function setRightLockedUI(locked, zip) {
+          var rightInput = document.getElementById("zipInputRight");
+          var checkBtn = document.getElementById("zipCheckBtn");
+          var clearBtn = document.getElementById("zipClearBtn");
+          var tip = document.getElementById("zipResult");
 
-      rightInput.addEventListener("keydown", function (e) {
-        if (e.key === "Enter") checkBtn.click();
-      });
-
-      if (clearBtn) {
-        clearBtn.addEventListener("click", function () {
-          if (computeLocked(leftInput)) {
-            if (zipResult) zipResult.textContent = "默认地址 ZIP 已锁定（不可清除）";
-            return;
+          if (rightInput) {
+            if (locked) {
+              rightInput.value = String(zip || rightInput.value || "");
+              rightInput.readOnly = true;
+              rightInput.disabled = true;
+              rightInput.setAttribute("readonly", "readonly");
+              rightInput.setAttribute("disabled", "disabled");
+              rightInput.style.pointerEvents = "none";
+              rightInput.style.caretColor = "transparent";
+              rightInput.title = "已使用默认地址 ZIP（如需更改请到个人中心修改默认地址）";
+            } else {
+              rightInput.readOnly = false;
+              rightInput.disabled = false;
+              rightInput.removeAttribute("readonly");
+              rightInput.removeAttribute("disabled");
+              rightInput.style.pointerEvents = "";
+              rightInput.style.caretColor = "";
+              rightInput.title = "";
+            }
           }
-          rightInput.value = "";
-          leftInput.value = "";
-          if (zipResult) zipResult.textContent = "已清除 ZIP（右侧已同步左侧规则）";
+
+          if (checkBtn) checkBtn.disabled = !!locked;
+          if (clearBtn) clearBtn.disabled = !!locked;
+
+          if (tip) {
+            tip.textContent = locked
+              ? ("已自动使用默认地址 ZIP：" + (zip || "--") + "（如需更换请到：我的账户 → 地址管理）")
+              : "请输入 ZIP 以确认是否覆盖该地区，并自动选择你的区域团配送。";
+          }
+        }
+
+        document.addEventListener("DOMContentLoaded", function () {
+          var leftInput = document.getElementById("zipInput");
+          var leftBtn = document.getElementById("zipApplyBtn");
+
+          var rightInput = document.getElementById("zipInputRight");
+          var checkBtn = document.getElementById("zipCheckBtn");
+          var clearBtn = document.getElementById("zipClearBtn");
+          var zipResult = document.getElementById("zipResult");
+
+          if (!leftInput || !rightInput || !checkBtn) return;
+
+          // ① 初始同步一次锁定状态
+          setRightLockedUI(computeLocked(leftInput), val(leftInput));
+
+          // ② 监听左侧是否被 index.js 锁/解锁（最关键）
+          var obs = new MutationObserver(function () {
+            var locked = computeLocked(leftInput);
+            setRightLockedUI(locked, val(leftInput));
+          });
+          obs.observe(leftInput, {
+            attributes: true,
+            attributeFilter: ["disabled", "readonly", "style", "data-locked-by-default-address"],
+          });
+
+          // ③ 兜底轮询
+          var last = "";
+          setInterval(function () {
+            var locked = computeLocked(leftInput);
+            var key = (locked ? "1" : "0") + "|" + val(leftInput);
+            if (key !== last) {
+              last = key;
+              setRightLockedUI(locked, val(leftInput));
+            }
+          }, 400);
+
+          // ④ 右侧点击：同步到左侧并触发左侧规则
+          checkBtn.addEventListener("click", function () {
+            if (computeLocked(leftInput)) {
+              if (zipResult) zipResult.textContent = "默认地址 ZIP 已锁定（不可修改）";
+              return;
+            }
+
+            var z = val(rightInput);
+            if (leftInput) leftInput.value = z;
+            if (leftBtn) leftBtn.click();
+
+            if (zipResult) zipResult.textContent = z ? ("已提交 ZIP：" + z + "（右侧已同步左侧规则）") : "请输入 ZIP";
+          });
+
+          rightInput.addEventListener("keydown", function (e) {
+            if (e.key === "Enter") checkBtn.click();
+          });
+
+          if (clearBtn) {
+            clearBtn.addEventListener("click", function () {
+              if (computeLocked(leftInput)) {
+                if (zipResult) zipResult.textContent = "默认地址 ZIP 已锁定（不可清除）";
+                return;
+              }
+              rightInput.value = "";
+              leftInput.value = "";
+              if (zipResult) zipResult.textContent = "已清除 ZIP（右侧已同步左侧规则）";
+            });
+          }
         });
-      }
-    });
-  })();
-</script>
-<script>
-  (function () {
-    function pickAnchorEl() {
-      // 购物车从“分类栏下面”开始：优先 category-bar-wrap
-      return (
-        document.querySelector(".category-bar-wrap") ||
-        document.querySelector(".top-nav")
-      );
-    }
+      })();
+    </script>
 
-    function setCartTopOffset() {
-      var el = pickAnchorEl();
-      if (!el) return;
+    <!-- ✅ 关键：计算购物车抽屉/遮罩从分类栏下面开始 -->
+    <script>
+      (function () {
+        function pickAnchorEl() {
+          // 购物车从“分类栏下面”开始：优先 category-bar-wrap
+          return (
+            document.querySelector(".category-bar-wrap") ||
+            document.querySelector(".top-nav")
+          );
+        }
 
-      // sticky 顶部区域的 bottom = 购物车应该从哪里开始
-      var rect = el.getBoundingClientRect();
-      var offset = Math.max(0, Math.round(rect.bottom));
+        function setCartTopOffset() {
+          var el = pickAnchorEl();
+          if (!el) return;
 
-      document.documentElement.style.setProperty(
-        "--cart-top-offset",
-        offset + "px"
-      );
-    }
+          var rect = el.getBoundingClientRect();
+          var offset = Math.max(0, Math.round(rect.bottom));
 
-    function rafSet() {
-      requestAnimationFrame(setCartTopOffset);
-    }
+          document.documentElement.style.setProperty("--cart-top-offset", offset + "px");
 
-    // 暴露给 cart.js：打开购物车时可以手动刷新一次
-    window.__fb_setCartTopOffset = rafSet;
+          // ✅ 双保险：直接写到元素上（避免某些浏览器/样式覆盖）
+          var drawer = document.getElementById("cartDrawer");
+          if (drawer) {
+            drawer.style.top = offset + "px";
+            drawer.style.height = "calc(100% - " + offset + "px)";
+          }
+          var backdrop = document.getElementById("cartBackdrop");
+          if (backdrop) {
+            backdrop.style.top = offset + "px";
+            backdrop.style.height = "calc(100% - " + offset + "px)";
+          }
+        }
 
-    // 首次 & resize
-    if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", rafSet);
-    } else {
-      rafSet();
-    }
+        function rafSet() {
+          requestAnimationFrame(setCartTopOffset);
+        }
 
-    window.addEventListener("resize", rafSet, { passive: true });
-    window.addEventListener("orientationchange", rafSet, { passive: true });
+        // 暴露给 cart.js：打开购物车时可以手动刷新一次
+        window.__fb_setCartTopOffset = rafSet;
 
-    // 登录后 user-area 内容变化会改变顶部高度：监听一下
-    var userArea = document.querySelector(".user-area");
-    if (userArea && window.MutationObserver) {
-      var mo = new MutationObserver(rafSet);
-      mo.observe(userArea, { childList: true, subtree: true, characterData: true });
-    }
+        if (document.readyState === "loading") {
+          document.addEventListener("DOMContentLoaded", rafSet);
+        } else {
+          rafSet();
+        }
 
-    // 顶部区域高度变化（更稳）
-    var anchor = pickAnchorEl();
-    if (anchor && window.ResizeObserver) {
-      var ro = new ResizeObserver(rafSet);
-      ro.observe(anchor);
-    }
-  })();
-</script>
+        window.addEventListener("resize", rafSet, { passive: true });
+        window.addEventListener("orientationchange", rafSet, { passive: true });
+
+        var userArea = document.querySelector(".user-area");
+        if (userArea && window.MutationObserver) {
+          var mo = new MutationObserver(rafSet);
+          mo.observe(userArea, { childList: true, subtree: true, characterData: true });
+        }
+
+        var anchor = pickAnchorEl();
+        if (anchor && window.ResizeObserver) {
+          var ro = new ResizeObserver(rafSet);
+          ro.observe(anchor);
+        }
+      })();
+    </script>
+
     <!-- 公共购物车脚本 + 首页逻辑 -->
     <script src="assets/js/cart.js"></script>
     <script src="assets/js/index.js"></script>
 
-    <!-- 你的 footer / auth 客户端脚本（保持你原逻辑，但放在 body 内正确位置） -->
+    <!-- footer / auth -->
     <script src="/user/components/footer.js"></script>
     <script src="/assets/js/auth_client.js"></script>
-   <!--Start of Tawk.to Script-->
-<script type="text/javascript">
-var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date();
-(function(){
-var s1=document.createElement("script"),s0=document.getElementsByTagName("script")[0];
-s1.async=true;
-s1.src='https://embed.tawk.to/695611bc0a00df198198dcc1/1jds3aig5';
-s1.charset='UTF-8';
-s1.setAttribute('crossorigin','*');
-s0.parentNode.insertBefore(s1,s0);
-})();
-</script>
-<!--End of Tawk.to Script-->
-<script src="/assets/js/tawk_custom.js"></script>
-</body>
+
+    <!--Start of Tawk.to Script-->
+    <script type="text/javascript">
+      var Tawk_API = Tawk_API || {},
+        Tawk_LoadStart = new Date();
+      (function () {
+        var s1 = document.createElement("script"),
+          s0 = document.getElementsByTagName("script")[0];
+        s1.async = true;
+        s1.src = "https://embed.tawk.to/695611bc0a00df198198dcc1/1jds3aig5";
+        s1.charset = "UTF-8";
+        s1.setAttribute("crossorigin", "*");
+        s0.parentNode.insertBefore(s1, s0);
+      })();
+    </script>
+    <!--End of Tawk.to Script-->
+    <script src="/assets/js/tawk_custom.js"></script>
+  </body>
 </html>
