@@ -586,7 +586,7 @@ router.post("/checkout", requireLogin, async (req, res) => {
 
     let finalTotal = round2(baseTotal);
     let platformFee = 0;
-
+    let walletDeducted = false; // ✅ 新增：是否真的完成扣款
     await session.withTransaction(async () => {
       // 1) 钱包余额
       const u0 = await User.findById(userId).select("walletBalance").session(session);
@@ -644,6 +644,9 @@ router.post("/checkout", requireLogin, async (req, res) => {
 
         // 并发极端情况：扣失败 => 当作不扣，全部走 Stripe
         if (upd.modifiedCount !== 1) {
+           walletDeducted = true; // ✅ 扣款成功
+           } else {
+           walletDeducted = false;
           walletUsed = 0;
           remaining = round2(finalTotal);
 
@@ -666,7 +669,7 @@ router.post("/checkout", requireLogin, async (req, res) => {
       newBalance = Number(u1?.walletBalance || 0);
 
       // 6) 如果 remaining==0，直接标记已支付
-      if (remaining <= 0) {
+      if (remaining <= 0 && (walletUsed === 0 || walletDeducted === true)) {
         const now = new Date();
         await Order.updateOne(
           { _id: created._id },
