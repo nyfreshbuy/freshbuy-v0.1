@@ -34,9 +34,6 @@ import productsRouter from "./routes/products.js";
 import frontendProductsRouter from "./routes/frontendProducts.js";
 import categoriesRouter from "./routes/categories.js";
 
-// ✅ 你原本的旧 webhook（保留）
-import stripeWebhook from "./routes/stripe_webhook.js";
-
 // ✅ 你现在真正用的 Stripe 支付路由（包含 /publishable-key /order-intent /webhook）
 import stripePayRouter from "./routes/pay_stripe.js";
 
@@ -105,9 +102,6 @@ app.post(
   // 让请求继续交给 stripePayRouter 内部的 /webhook 处理
   (req, res, next) => next()
 );
-
-// ✅ 旧 webhook：也保留在 json 之前
-app.use("/api/stripe", stripeWebhook);
 
 app.use(cors());
 
