@@ -140,6 +140,7 @@ async function geocodeIfNeeded(addressText) {
  * 兼容前端传：
  * - mode
  * - deliveryMode
+ * - delivery_mode
  */
 function pickMode(body) {
   const raw = body?.mode ?? body?.deliveryMode ?? body?.delivery_mode ?? "";
@@ -149,8 +150,8 @@ function pickMode(body) {
 /**
  * ✅ deliveryDate 统一计算（这是你路线/派单的根）
  *
- * 规则（你要的混合筛选靠这个）：
- * - groupDay：必须传 deliveryDate（因为区域团固定配送日）
+ * 规则：
+ * - groupDay：必须传 deliveryDate（区域团固定配送日）
  * - normal / friendGroup / dealsDay：没传就默认“次日送”
  */
 function resolveDeliveryDate(mode, deliveryDate) {
@@ -180,9 +181,7 @@ function resolveDeliveryDate(mode, deliveryDate) {
  */
 async function resolveZoneFromPayload({ zoneId, ship, zip }) {
   const z0 = String(zoneId || ship?.zoneId || ship?.address?.zoneId || ship?.zone || "").trim();
-  if (z0) {
-    return { zoneKey: z0, zoneName: "" };
-  }
+  if (z0) return { zoneKey: z0, zoneName: "" };
 
   const z = String(zip || "").trim();
   if (!z) return { zoneKey: "", zoneName: "" };
@@ -202,17 +201,9 @@ async function resolveZoneFromPayload({ zoneId, ship, zip }) {
  * ✅ 统一构建订单：校验/金额/地理解析/配送日/区域批次
  * 返回：{ orderDoc, totalAmount, baseTotalAmount }
  *
- * ✅ 关键修改点（为“混合筛选 + 路线”服务）：
- * 1) deliveryDate：不再默认 today，而是：
- *    - normal/friendGroup/dealsDay 默认次日
- *    - groupDay 必须指定
- * 2) fulfillment：只要有 zoneKey，就全部归入 zone_group（包括 normal/friendGroup）
- *    这样你筛选某天某区：一把抓三种模式混在一起做路线
- * 3) batchKey 永远用 deliveryDate 的 ymd，而不是 createdAt 或 today
- *
- * ✅ 本次新增修复（解决“后台已支付但用户中心看不到”）：
+ * ✅ 本次关键修复（解决“信用卡已支付但用户中心看不到”）：
  * - requireLogin 下强制 userId 必须存在（不再允许生成无主订单）
- * - token 没带 phone 时，从 User 表补齐 phone，用于 customerPhone 绑定和后续认领
+ * - token 没带 phone 时，从 User 表补齐 phone
  */
 async function buildOrderPayload(req) {
   const body = req.body || {};
@@ -461,31 +452,17 @@ async function buildOrderPayload(req) {
   const finalDeliveryDate = resolveDeliveryDate(mode, deliveryDate);
   const batchKey = z ? buildBatchKey(finalDeliveryDate, z) : "";
 
-  // =====================================================
-  // ✅ 履约归类（路线/派单用）
-  // 改动：只要有 zone，就全部归入 zone_group（包含 normal/friendGroup）
-  // =====================================================
+  // ✅ 履约归类
   const fulfillment = z
-    ? {
-        groupType: "zone_group",
-        zoneId: z,
-        batchKey,
-        batchName: zoneName || "",
-      }
-    : {
-        groupType: "none",
-        zoneId: "",
-        batchKey: "",
-        batchName: "",
-      };
+    ? { groupType: "zone_group", zoneId: z, batchKey, batchName: zoneName || "" }
+    : { groupType: "none", zoneId: "", batchKey: "", batchName: "" };
 
   const orderDoc = {
     orderNo: genOrderNo(),
 
-    // ✅ 关键：requireLogin 下订单必须绑定 userId
     userId,
 
-    // ✅ 关键：订单归属手机号优先使用登录手机号（避免填收货号导致“我的订单”对不上）
+    // ✅ 订单归属手机号：优先登录手机号（避免用收货手机号导致“我的订单”对不上）
     customerPhone: (loginPhone10 || shipPhone10 || String(contactPhone)).trim(),
     customerName: String(contactName).trim(),
 
@@ -493,35 +470,21 @@ async function buildOrderPayload(req) {
     status: "pending",
     orderType,
 
-    // ✅ 配送方式
     deliveryMode: mode,
-
-    // ✅ 真正配送日
     deliveryDate: finalDeliveryDate,
 
-    // ✅ 履约归类（后台按批次/路线筛选用）
     fulfillment,
 
-    // ✅ 新增：派单归类（路线/派单主要用 dispatch）
+    // ✅ 派单归类（路线/派单主要用 dispatch）
     dispatch: z
-      ? {
-          zoneId: z,
-          batchKey,
-          batchName: zoneName || "",
-        }
-      : {
-          zoneId: "",
-          batchKey: "",
-          batchName: "",
-        },
+      ? { zoneId: z, batchKey, batchName: zoneName || "" }
+      : { zoneId: "", batchKey: "", batchName: "" },
 
-    // ✅ 金额
     subtotal,
     deliveryFee,
     discount,
     totalAmount,
 
-    // ✅ 明细字段
     taxableSubtotal,
     salesTax,
     platformFee,
@@ -529,15 +492,13 @@ async function buildOrderPayload(req) {
 
     payment: paymentSnap,
 
-    // ✅ 旧字段
     addressText: String(addressText).trim(),
     note: ship.note ? String(ship.note).trim() : "",
 
-    // ✅ 新结构化地址
     address: {
       fullText,
       zip,
-      zoneId: z, // ✅ 同步到 address.zoneId（你 schema 有索引）
+      zoneId: z,
       lat,
       lng,
     },
@@ -552,7 +513,7 @@ async function buildOrderPayload(req) {
 // ✅ 0.1) 我的订单
 // GET /api/orders/my?limit=5&days=30&status=pending
 //
-// ✅ 本次新增修复：
+// ✅ 修复：
 // - token 没 phone 时，从 User 表补齐 phone
 // - 自动认领：把历史没有 userId 的订单（按手机号匹配）绑定到当前用户
 // =====================================================
@@ -563,11 +524,8 @@ router.get("/my", requireLogin, async (req, res) => {
     const status = String(req.query.status || "").trim();
 
     const userId = toObjectIdMaybe(req.user?.id || req.user?._id);
-    if (!userId) {
-      return res.status(401).json({ success: false, message: "未登录" });
-    }
+    if (!userId) return res.status(401).json({ success: false, message: "未登录" });
 
-    // ✅ token 里没 phone：用 DB 补齐
     let rawPhone = String(req.user?.phone || "").trim();
     if (!rawPhone) {
       const u = await User.findById(userId).select("phone").lean();
@@ -575,7 +533,6 @@ router.get("/my", requireLogin, async (req, res) => {
     }
     const phone10 = normPhone(rawPhone);
 
-    // 先构造“匹配手机号”的 or（用于认领 + 查询）
     const phoneOr = [];
     if (rawPhone) phoneOr.push({ customerPhone: rawPhone });
     if (phone10) {
@@ -585,15 +542,12 @@ router.get("/my", requireLogin, async (req, res) => {
       phoneOr.push({ customerPhone: { $regex: phone10 + "$" } });
     }
 
-    // ✅ 自动认领：把历史没有 userId 的订单绑定到当前用户
+    // ✅ 自动认领（把无主订单补 userId）
     if (phoneOr.length) {
-      await Order.updateMany(
-        { userId: { $exists: false }, $or: phoneOr },
-        { $set: { userId } }
-      );
+      await Order.updateMany({ userId: { $exists: false }, $or: phoneOr }, { $set: { userId } });
     }
 
-    // ✅ 查询：优先用 userId；兼容历史按手机号查到的订单
+    // ✅ 查询（userId 为主，手机号为兼容兜底）
     const q = { $or: [{ userId }] };
     if (phoneOr.length) q.$or.push(...phoneOr);
 
@@ -724,7 +678,6 @@ router.post("/checkout", requireLogin, async (req, res) => {
       const docToCreate = {
         ...orderDoc,
 
-        // ✅ 写入平台费 + 最终总额
         platformFee,
         totalAmount: finalTotal,
 
@@ -733,7 +686,6 @@ router.post("/checkout", requireLogin, async (req, res) => {
         payment: {
           ...(orderDoc.payment || {}),
 
-          // ✅ 同步快照
           amountPlatformFee: Number(platformFee || 0),
           amountTotal: Number(finalTotal || 0),
 
@@ -806,7 +758,6 @@ router.post("/checkout", requireLogin, async (req, res) => {
       }
     });
 
-    // 重新读一次最新 payment
     const fresh = await Order.findById(created._id)
       .select(
         "payment status totalAmount orderNo deliveryMode fulfillment subtotal deliveryFee discount salesTax platformFee tipFee taxableSubtotal deliveryDate"
@@ -855,6 +806,9 @@ router.post("/checkout", requireLogin, async (req, res) => {
 // =====================================================
 // ✅ 1.2) Stripe 支付成功后的“落库确认”接口
 // POST /api/orders/:id/confirm-stripe
+//
+// ✅ 本次新增核心修复：
+// - 如果订单缺 userId：在这里强制绑定到当前登录用户（并同步 customerPhone）
 // =====================================================
 router.post("/:id([0-9a-fA-F]{24})/confirm-stripe", requireLogin, async (req, res) => {
   try {
@@ -875,6 +829,22 @@ router.post("/:id([0-9a-fA-F]{24})/confirm-stripe", requireLogin, async (req, re
 
     // ✅ 基本权限：只能确认自己的订单（或 admin）
     const uid = toObjectIdMaybe(req.user?.id || req.user?._id);
+
+    // 🔴【关键修复】Stripe 确认时，若订单缺 userId，则绑定到当前登录用户
+    if (uid && !doc.userId) {
+      doc.userId = uid;
+
+      // 同步把订单归属手机号统一为登录账号手机号（避免用收货电话导致“我的订单”对不上）
+      let loginPhoneRaw = String(req.user?.phone || "").trim();
+      if (!loginPhoneRaw) {
+        const u = await User.findById(uid).select("phone").lean();
+        loginPhoneRaw = String(u?.phone || "").trim();
+      }
+      const p10 = normPhone(loginPhoneRaw);
+      if (p10) doc.customerPhone = p10;
+    }
+
+    // 权限检查（绑定后再检查更合理）
     if (uid && doc.userId && String(doc.userId) !== String(uid) && req.user.role !== "admin") {
       return res.status(403).json({ success: false, message: "无权限" });
     }
