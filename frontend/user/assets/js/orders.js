@@ -1,5 +1,5 @@
 // frontend/user/assets/js/orders.js
-console.log("📘 orders.js 已加载（TABLE FINAL）");
+console.log("📘 orders.js 已加载（TABLE FINAL FIXED based on your version）");
 
 // =========================
 // 工具
@@ -73,7 +73,7 @@ function getRecentTableTbody() {
   return table.querySelector("tbody");
 }
 
-// 兜底：如果页面没有表格，就创建一个卡片容器
+// 兜底：如果页面没有表格，就创建一个卡片容器（一般不会走到）
 function ensureFallbackListContainer() {
   let el =
     $("ordersList") ||
@@ -98,31 +98,38 @@ function ensureFallbackListContainer() {
 }
 
 // =========================
-// 订单归一化
+// 订单归一化（✅ 关键修复：id 永远优先用 _id）
 // =========================
 function normalizeOrder(o) {
-  const id = toIdString(o._id || o.id || o.orderId || o.orderNo || "");
+  // ✅ id 只认数据库主键（用于详情页查询）
+  const id = toIdString(o._id || o.id || o.orderId || "");
+
+  // ✅ orderNo 单独存（用于展示）
+  const orderNo = toIdString(o.orderNo || o.order_number || o.no || "");
 
   const createdAt = o.createdAt || o.created_time || o.time || Date.now();
 
-  // 金额优先级：totalAmount > payment.amountTotal > payment.amountTotal(旧) > pricing.grand > subtotal+fees
-  const total =
-    safeNum(
-      o.totalAmount ??
-        o.payment?.amountTotal ??
-        o.payment?.paidTotal ??
-        o.pricing?.grand ??
-        o.grand ??
-        o.total ??
-        o.amount ??
-        0
-    ) ||
+  // 金额优先级：totalAmount > payment.amountTotal > payment.paidTotal > pricing.grand > subtotal+fees
+  const totalFromFields = safeNum(
+    o.totalAmount ??
+      o.payment?.amountTotal ??
+      o.payment?.paidTotal ??
+      o.pricing?.grand ??
+      o.grand ??
+      o.total ??
+      o.amount ??
+      0
+  );
+
+  const totalCalc =
     safeNum(o.subtotal, 0) +
-      safeNum(o.deliveryFee, 0) +
-      safeNum(o.salesTax, 0) +
-      safeNum(o.platformFee, 0) +
-      safeNum(o.tipFee, 0) -
-      safeNum(o.discount, 0);
+    safeNum(o.deliveryFee, 0) +
+    safeNum(o.salesTax, 0) +
+    safeNum(o.platformFee, 0) +
+    safeNum(o.tipFee, 0) -
+    safeNum(o.discount, 0);
+
+  const total = totalFromFields || totalCalc;
 
   const items = Array.isArray(o.items)
     ? o.items.map((it) => ({
@@ -131,21 +138,23 @@ function normalizeOrder(o) {
       }))
     : [];
 
-  const qty = items.reduce((s, it) => s + safeNum(it.qty, 1), 0);
+  const qty =
+    safeNum(o.itemsCount, 0) ||
+    items.reduce((s, it) => s + safeNum(it.qty, 1), 0);
 
   // 配送字段兼容
   const deliveryMode = o.deliveryMode || o.mode || "";
   const deliveryType = o.deliveryType || "";
 
-  // 状态兼容（你后台里 status=paid / payment.status=paid）
+  // 状态兼容（order.status 或 payment.status）
   const status = o.status || o.payment?.status || "";
 
-  // 支付方式兼容（你 schema：payment.method）
+  // 支付方式兼容（payment.method）
   const paymentMethod = o.payment?.method || o.method || "";
 
   return {
-    id,
-    orderNo: o.orderNo || id,
+    id, // ✅ 用于详情页 orderId
+    orderNo: orderNo || (id ? String(id).slice(-8) : ""), // 展示用：没 orderNo 也给个尾号
     createdAt,
     total: Number(total || 0),
     qty,
@@ -170,8 +179,6 @@ function formatPayMethod(method) {
 }
 
 function formatDelivery(o) {
-  // 你库里：deliveryMode normal/groupDay/dealsDay/friendGroup
-  // 你有时也会用 deliveryType groupDay/nextDay/friend
   const dm = String(o.deliveryMode || "").toLowerCase();
   const dt = String(o.deliveryType || "").toLowerCase();
 
@@ -185,14 +192,33 @@ function formatDelivery(o) {
 function formatStatus(s) {
   const v = String(s || "").toLowerCase();
 
-  // 你后端 status enum：pending/paid/packing/shipping/done/completed/cancel/cancelled
   if (v === "paid") return { text: "已支付", cls: "done" };
   if (v === "packing") return { text: "拣货中", cls: "pending" };
   if (v === "shipping") return { text: "配送中", cls: "pending" };
   if (v === "done" || v === "completed") return { text: "已完成", cls: "done" };
   if (v === "cancel" || v === "cancelled") return { text: "已取消", cls: "cancel" };
   if (v === "unpaid") return { text: "未支付", cls: "pending" };
+
   return { text: s || "—", cls: "pending" };
+}
+
+// =========================
+// ✅ UI 筛选 -> 真实状态映射（关键修复：避免一筛选全空）
+// =========================
+function statusFilterMatch(orderStatus, uiValue) {
+  const os = String(orderStatus || "").toLowerCase();
+  const ui = String(uiValue || "").toLowerCase();
+  if (!ui) return true;
+
+  // 你的下拉是：pending / shipping / done / cancel
+  // 但真实可能是：pending/paid/packing/shipping/done/completed/cancel/cancelled
+  if (ui === "pending") return ["pending", "unpaid", "paid", "packing"].includes(os);
+  if (ui === "shipping") return ["shipping", "delivering"].includes(os);
+  if (ui === "done") return ["done", "completed"].includes(os);
+  if (ui === "cancel") return ["cancel", "cancelled"].includes(os);
+
+  // 兜底：完全匹配
+  return os === ui;
 }
 
 // =========================
@@ -212,8 +238,9 @@ function renderOrderTableRows(tbody, orders) {
     const st = formatStatus(o.status);
     const tr = document.createElement("tr");
 
+    // ✅ 展示用 orderNo，但跳转用 id（ObjectId）
     tr.innerHTML = `
-      <td style="white-space:nowrap;">${o.orderNo || o.id}</td>
+      <td style="white-space:nowrap;font-family:ui-monospace, SFMono-Regular, Menlo, monospace;">${o.orderNo || "—"}</td>
       <td style="white-space:nowrap;">${fmtTime(o.createdAt)}</td>
       <td>${o.qty || 0}</td>
       <td>$${fmtMoney(o.total)}</td>
@@ -222,21 +249,22 @@ function renderOrderTableRows(tbody, orders) {
       <td><button class="btn-ghost" data-order-id="${o.id}" type="button">查看</button></td>
     `;
 
-    // 点击整行 or 按钮都进入详情
-    tr.addEventListener("click", (e) => {
-      // 如果点的是按钮，也走同一逻辑
-      const id = o.id;
-      if (!id) return;
-      window.location.href = "order_detail.html?orderId=" + encodeURIComponent(id);
-    });
+    // ✅ 只让“按钮”和“行”都跳转，但必须有 o.id
+    const go = () => {
+      if (!o.id) {
+        console.warn("⚠️ 该订单缺少 _id，无法跳转详情:", o.raw);
+        return;
+      }
+      window.location.href = "order_detail.html?orderId=" + encodeURIComponent(o.id);
+    };
+
+    tr.addEventListener("click", go);
 
     const btn = tr.querySelector("button[data-order-id]");
     if (btn) {
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
-        const id = btn.getAttribute("data-order-id");
-        if (!id) return;
-        window.location.href = "order_detail.html?orderId=" + encodeURIComponent(id);
+        go();
       });
     }
 
@@ -259,9 +287,10 @@ function renderRecentTableRows(tbody, orders) {
   for (const o of top5) {
     const st = formatStatus(o.status);
     const tr = document.createElement("tr");
+    tr.style.cursor = "pointer";
 
     tr.innerHTML = `
-      <td style="white-space:nowrap;">${o.orderNo || o.id}</td>
+      <td style="white-space:nowrap;font-family:ui-monospace, SFMono-Regular, Menlo, monospace;">${o.orderNo || "—"}</td>
       <td style="white-space:nowrap;">${fmtTime(o.createdAt)}</td>
       <td>$${fmtMoney(o.total)}</td>
       <td>${formatDelivery(o)}</td>
@@ -303,7 +332,7 @@ function renderFallbackCards(container, orders) {
 
     card.innerHTML = `
       <div style="display:flex;justify-content:space-between;font-size:13px;">
-        <span>订单号：${o.orderNo || o.id}</span>
+        <span>订单号：${o.orderNo || "—"}</span>
         <span>${fmtTime(o.createdAt)}</span>
       </div>
       <div style="margin:8px 0;font-size:13px;color:#374151;">
@@ -373,10 +402,9 @@ function applyFilters(orders, statusFilter, daysFilter) {
     }
   }
 
-  // 状态
+  // ✅ 状态（用映射匹配）
   if (statusFilter) {
-    const s = String(statusFilter).toLowerCase();
-    out = out.filter((o) => String(o.status || "").toLowerCase() === s);
+    out = out.filter((o) => statusFilterMatch(o.status, statusFilter));
   }
 
   // 默认按时间倒序
@@ -416,7 +444,6 @@ async function loadAndRenderOrders() {
   if (tbody2) {
     renderOrderTableRows(tbody2, filtered);
   } else {
-    // 没有表格就用卡片兜底
     const list = ensureFallbackListContainer();
     renderFallbackCards(list, filtered);
   }
@@ -424,7 +451,6 @@ async function loadAndRenderOrders() {
   // 2) 渲染“概览最近5单”
   const recentTbody = getRecentTableTbody();
   if (recentTbody) {
-    // recent 取全部订单里最新 5（不受状态筛选影响），但受时间范围影响也可以
     const recent = applyFilters(orders, "", daysFilter).slice(0, 5);
     renderRecentTableRows(recentTbody, recent);
   }
@@ -446,14 +472,12 @@ function bindFilterUi() {
   const btn = $("orderFilterBtn");
   if (btn && !btn.__bound) {
     btn.__bound = true;
-    btn.addEventListener("click", () => {
-      loadAndRenderOrders();
-    });
+    btn.addEventListener("click", () => loadAndRenderOrders());
   }
 
-  // 选择变化自动刷新（可选）
   const s = $("orderStatusFilter");
   const t = $("orderTimeFilter");
+
   if (s && !s.__bound) {
     s.__bound = true;
     s.addEventListener("change", () => loadAndRenderOrders());
@@ -471,7 +495,7 @@ function boot() {
   bindFilterUi();
   loadAndRenderOrders();
 
-  // 如果你是 tab 切换（点击“我的订单”）后才显示内容，这里做一次弱监听
+  // tab 切换弱监听：点到“订单”相关就刷新
   document.addEventListener("click", (e) => {
     const t = e.target;
     const text = (t?.innerText || "").trim();
