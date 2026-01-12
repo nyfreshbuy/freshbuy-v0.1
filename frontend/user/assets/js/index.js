@@ -1,4 +1,4 @@
-// assets/js/index.js
+// frontend/user/assets/js/index.js
 // =======================================================
 // 在鲜购拼好货 - 用户首页 JS（适配你现在这版 index.html 布局）
 // 1) 顶部分类
@@ -12,7 +12,7 @@
 // ✅ 9) 修复：点击 次日配送/好友拼单 时，右侧信息不再被 ZIP 匹配强制改回“区域团”
 // ✅ 10) 修复：右侧只渲染到 #deliveryInfoBody，不覆盖右侧 ZIP box
 // ✅ 11) 区域团：按 zone.name 区分“白石镇/大学点 vs 新鲜草原”的配送时间文案 + 真实截单倒计时
-// ✅ 12) ✅ 商品图片右下角数量徽章：插入 DOM + 加购后立刻显示 + 同步 cart 更新
+// ✅ 12) ✅ 商品图片右下角数量徽章：插入 DOM + 加购后立刻显示 + 同步 cart 更新（强兼容）
 // =======================================================
 console.log("✅ index.js UPDATED AT:", new Date().toISOString());
 console.log("Freshbuy index main script loaded (db-zones version)");
@@ -342,10 +342,12 @@ document.addEventListener("click", (e) => {
 
   const mode = pill.dataset.mode;
 
+  // ✅ 标记：用户手动选过模式（ZIP 匹配不再强制切回区域团）
   localStorage.setItem(MODE_USER_SELECTED_KEY, "1");
 
   renderDeliveryInfo(mode);
 
+  // ✅ 记住用户选择，并通知 cart.js
   try {
     function toCartModeKey(m) {
       if (m === "area-group") return "groupDay";
@@ -554,57 +556,157 @@ function setProductBadge(pid, qty) {
   }
 }
 
-// 尝试从 FreshCart / Cart / localStorage 里拿到购物车数据
+// ✅ 更强：从 FreshCart / Cart / localStorage 自动找“像购物车”的数据
 function getCartSnapshot() {
+  // 1) FreshCart（尽量多尝试常见方法/字段）
   try {
-    if (window.FreshCart) {
-      if (typeof window.FreshCart.getCart === "function") return window.FreshCart.getCart();
-      if (typeof window.FreshCart.getItems === "function")
-        return { items: window.FreshCart.getItems() };
+    const fc = window.FreshCart;
+    if (fc) {
+      if (typeof fc.getCart === "function") return fc.getCart();
+      if (typeof fc.getState === "function") return fc.getState();
+      if (typeof fc.getItems === "function") return { items: fc.getItems() };
+      if (Array.isArray(fc.items)) return { items: fc.items };
+      if (fc.cart) return fc.cart;
+      if (fc.state) return fc.state;
     }
   } catch {}
 
+  // 2) Cart（老版本）
   try {
-    if (window.Cart) {
-      if (typeof window.Cart.getCart === "function") return window.Cart.getCart();
-      if (typeof window.Cart.getItems === "function") return { items: window.Cart.getItems() };
+    const c = window.Cart;
+    if (c) {
+      if (typeof c.getCart === "function") return c.getCart();
+      if (typeof c.getState === "function") return c.getState();
+      if (typeof c.getItems === "function") return { items: c.getItems() };
+      if (Array.isArray(c.items)) return { items: c.items };
+      if (c.cart) return c.cart;
+      if (c.state) return c.state;
     }
   } catch {}
 
-  const keys = ["freshbuy_cart", "freshbuyCart", "cart", "fb_cart"];
-  for (const k of keys) {
-    try {
+  // 3) localStorage（强力兜底：自动扫描所有 key，只要像 cart 就尝试解析）
+  try {
+    const candidates = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k) continue;
+      const lk = k.toLowerCase();
+      if (lk.includes("cart")) candidates.push(k);
+    }
+
+    // 优先 freshbuy 的，再扫其它
+    candidates.sort((a, b) => {
+      const A = a.toLowerCase();
+      const B = b.toLowerCase();
+      const score = (s) =>
+        (s.includes("freshbuy") ? 10 : 0) +
+        (s.includes("fb") ? 3 : 0) +
+        (s.includes("cart") ? 1 : 0);
+      return score(B) - score(A);
+    });
+
+    for (const k of candidates) {
       const raw = localStorage.getItem(k);
       if (!raw) continue;
-      const parsed = JSON.parse(raw);
+      const t = raw.trim();
+      if (!t.startsWith("{") && !t.startsWith("[")) continue;
+
+      let parsed = null;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        continue;
+      }
       if (parsed) return parsed;
-    } catch {}
-  }
+    }
+  } catch {}
 
   return null;
 }
 
+// ✅ 更强：把各种“购物车结构”统一成 { pid: qty }
 function normalizeCartToQtyMap(cart) {
   const map = {};
   if (!cart) return map;
 
-  if (Array.isArray(cart.items)) {
-    cart.items.forEach((it) => {
-      const id = String(it.id || it.pid || it.productId || "").trim();
-      const qty = Number(it.qty ?? it.quantity ?? 0);
-      if (id) map[id] = (map[id] || 0) + qty;
+  // 递归找 items（支持嵌套：cart.items / data.items / state.cart.items 等）
+  function findItems(obj, depth = 0) {
+    if (!obj || typeof obj !== "object" || depth > 6) return null;
+    if (Array.isArray(obj)) {
+      // 有些直接就是 items 数组
+      if (obj.length && typeof obj[0] === "object") return obj;
+      return null;
+    }
+    if (Array.isArray(obj.items)) return obj.items;
+    if (Array.isArray(obj.cart?.items)) return obj.cart.items;
+    if (Array.isArray(obj.state?.items)) return obj.state.items;
+    if (Array.isArray(obj.state?.cart?.items)) return obj.state.cart.items;
+    if (Array.isArray(obj.data?.items)) return obj.data.items;
+    if (Array.isArray(obj.payload?.items)) return obj.payload.items;
+
+    for (const key of Object.keys(obj)) {
+      const got = findItems(obj[key], depth + 1);
+      if (got) return got;
+    }
+    return null;
+  }
+
+  const items = findItems(cart);
+
+  // 情况 1：items 数组
+  if (Array.isArray(items)) {
+    items.forEach((it) => {
+      const id =
+        String(
+          it.id ||
+            it.pid ||
+            it.productId ||
+            it.product_id ||
+            it.sku ||
+            it._id ||
+            it.product?._id ||
+            it.product?.id ||
+            it.product?.sku ||
+            ""
+        ).trim();
+
+      const qty = Number(
+        it.qty ??
+          it.quantity ??
+          it.count ??
+          it.num ??
+          it.amount ??
+          it.n ??
+          it.q ??
+          0
+      );
+
+      if (id) map[id] = (map[id] || 0) + (Number.isFinite(qty) ? qty : 0);
     });
     return map;
   }
 
+  // 情况 2：对象形式：{ [pid]: qty } 或 { [pid]: {qty} }
   if (typeof cart === "object") {
-    Object.keys(cart).forEach((k) => {
+    for (const k of Object.keys(cart)) {
       const v = cart[k];
-      if (k === "total" || k === "meta") return;
-      const id = String(k || "").trim();
-      const qty = Number(v?.qty ?? v?.quantity ?? v ?? 0);
-      if (id) map[id] = (map[id] || 0) + qty;
-    });
+      if (!k) continue;
+
+      const lk = String(k).toLowerCase();
+      if (
+        lk === "total" ||
+        lk === "meta" ||
+        lk === "items" ||
+        lk === "cart" ||
+        lk === "state" ||
+        lk === "data"
+      )
+        continue;
+
+      const id = String(k).trim();
+      const qty = Number(v?.qty ?? v?.quantity ?? v?.count ?? v ?? 0);
+      if (id && Number.isFinite(qty)) map[id] = (map[id] || 0) + qty;
+    }
   }
 
   return map;
@@ -658,7 +760,7 @@ function createProductCard(p, extraBadgeText) {
   const tagline = (p.tag || p.category || "").slice(0, 18);
   const limitQty = p.limitQty || p.limitPerUser || p.maxQty || p.purchaseLimit || 0;
 
-  // ✅✅✅ 关键：在图片容器里插入 .product-qty-badge（你之前缺了这个）
+  // ✅✅✅ 在图片容器里插入 .product-qty-badge
   article.innerHTML = `
     <div class="product-image-wrap">
       ${badgeText ? `<span class="special-badge">${badgeText}</span>` : ""}
@@ -726,7 +828,7 @@ function createProductCard(p, extraBadgeText) {
 
     cartApi.addItem(normalized, 1);
 
-    // ✅✅✅ 关键：加购后立刻显示徽章 +1（不依赖 cart.js 是否广播）
+    // ✅✅✅ 加购后立刻显示徽章 +1（不依赖 cart.js 是否广播）
     try {
       const badge = article.querySelector(`.product-qty-badge[data-pid="${pid}"]`);
       const cur = Number((badge?.textContent || "").replace("+", "")) || 0;
@@ -743,6 +845,13 @@ function createProductCard(p, extraBadgeText) {
         new CustomEvent("freshbuy:cartUpdated", { detail: { pid, delta: 1 } })
       );
     } catch {}
+
+    // ✅✅✅ 关键：避免“立即同步又被隐藏”（等 cart.js/localStorage 写入后再同步）
+    setTimeout(() => {
+      try {
+        trySyncBadgesFromCart();
+      } catch {}
+    }, 150);
   }
 
   const overlayAdd = article.querySelector('.overlay-btn.add[data-add-pid]');
@@ -835,6 +944,7 @@ async function loadHomeProductsFromSimple() {
 
     const allList = nonHotList;
 
+    // ✅ 家庭必备：严格筛选，不要用 allList 兜底，否则会塞正常价商品
     if (!familyList.length) familyList = [];
     if (!newList.length) newList = allList.slice(0, 12);
     if (!bestList.length) bestList = allList.slice(0, 12);
@@ -860,6 +970,7 @@ async function loadHomeProductsFromSimple() {
       });
     }
 
+    // ✅ 每个区块显示数量（电脑 8；手机按你配置）
     const hotLimit = getLimit("Hot");
     const dailyLimit = getLimit("DailySpecial");
     const newLimit = getLimit("New");
@@ -933,16 +1044,6 @@ async function apiLogin(phone, password) {
   if (!res.ok || !ok) throw new Error(data?.msg || data?.message || "登录失败");
   if (data?.token) setToken(data.token);
 
-  return data.user || null;
-}
-
-async function apiRegister(name, phone, password) {
-  const { res, data } = await apiFetch("/api/auth/register", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, phone, password }),
-  });
-  if (!res.ok || !data?.success) throw new Error(data?.msg || "注册失败");
   return data.user || null;
 }
 
@@ -1129,7 +1230,6 @@ if (loginSubmitBtn) {
       }
 
       applyLoggedInUI(phone);
-
       await applyZipFromDefaultAddressIfLoggedIn();
 
       alert("登录成功");
@@ -1141,6 +1241,7 @@ if (loginSubmitBtn) {
 }
 
 function isStrongPassword(pwd) {
+  // 至少8位，且必须包含字母+数字
   return /^(?=.*[A-Za-z])(?=.*\d).{8,}$/.test(String(pwd || ""));
 }
 
@@ -1171,10 +1272,6 @@ if (registerSubmitBtn) {
       alert(err.message || "注册失败");
     }
   });
-}
-
-function isStrongPassword2(pwd) {
-  return /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,}$/.test(String(pwd || ""));
 }
 
 // ===============================
@@ -1576,7 +1673,6 @@ function doSearch(keyword) {
     gridAll.innerHTML = "";
     show.forEach((p) => gridAll.appendChild(createProductCard(p, "")));
 
-    // ✅ 清空搜索后也同步一次徽章
     try {
       setTimeout(() => trySyncBadgesFromCart(), 0);
     } catch {}
@@ -1619,7 +1715,6 @@ function doSearch(keyword) {
       .forEach((p) => gridAll.appendChild(createProductCard(p, "")));
   }
 
-  // ✅ 搜索渲染后也同步一次徽章
   try {
     setTimeout(() => trySyncBadgesFromCart(), 0);
   } catch {}
@@ -1678,14 +1773,13 @@ function bindGlobalSearch() {
 
 // ================================
 // ✅ FIX: 登录后右上角“我/尾号xxxx”点击无反应
-// 文件：frontend/user/assets/js/index.js
-// 位置：放在文件最底部（最稳）
 // ================================
 (function bindUserTopRightClick() {
   function goUserCenter() {
     window.location.href = "/user/user_center.html";
   }
 
+  // 事件委托：永远能点
   document.addEventListener("click", (e) => {
     const user = e.target.closest("#userProfile");
     if (user) {
@@ -1696,11 +1790,12 @@ function bindGlobalSearch() {
     }
   });
 
+  // 兜底：再绑一次
   document.addEventListener("DOMContentLoaded", () => {
-    const userProfile = document.getElementById("userProfile");
-    if (userProfile && !userProfile.dataset.bound) {
-      userProfile.dataset.bound = "1";
-      userProfile.addEventListener("click", (e) => {
+    const up = document.getElementById("userProfile");
+    if (up && !up.dataset.bound) {
+      up.dataset.bound = "1";
+      up.addEventListener("click", (e) => {
         e.preventDefault();
         e.stopPropagation();
         goUserCenter();
@@ -1711,8 +1806,6 @@ function bindGlobalSearch() {
 
 // ================================
 // ✅ 商品图片右下角数量徽章：同步购物车数量
-// 文件：frontend/user/assets/js/index.js
-// 位置：放在文件最底部
 // ================================
 
 // ✅ 页面加载后同步一次
