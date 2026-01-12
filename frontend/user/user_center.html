@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <title>在鲜购拼好货 - 用户中心</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+
     <style>
       :root {
         --primary: #22c55e;
@@ -24,8 +25,8 @@
 
       body {
         margin: 0;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-          "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+          Arial, "Noto Sans", sans-serif;
         background: var(--bg);
         color: var(--text-main);
       }
@@ -396,17 +397,6 @@
         cursor: pointer;
       }
 
-      .tag-pill {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        padding: 2px 6px;
-        border-radius: 999px;
-        background: #ecfdf3;
-        color: #16a34a;
-        font-size: 11px;
-      }
-
       .table {
         width: 100%;
         border-collapse: collapse;
@@ -467,18 +457,6 @@
         background: #f9fafb;
         font-size: 12px;
         cursor: pointer;
-      }
-
-      .address-name {
-        font-weight: 600;
-        margin-bottom: 2px;
-      }
-
-      .address-tag-row {
-        margin-top: 4px;
-        display: flex;
-        gap: 4px;
-        flex-wrap: wrap;
       }
 
       /* 钱包 */
@@ -559,12 +537,6 @@
       .danger-text {
         color: #b91c1c;
         font-size: 12px;
-      }
-
-      .link-small {
-        font-size: 11px;
-        color: var(--primary);
-        cursor: pointer;
       }
     </style>
   </head>
@@ -666,9 +638,7 @@
 
             <div class="divider"></div>
 
-            <div class="content-subtitle">
-              📦 最近 5 笔订单（示例，可改成从 <code>/api/orders/my</code> 获取）
-            </div>
+            <div class="content-subtitle">📦 最近 5 笔订单</div>
             <table class="table" id="recentOrderTable">
               <thead>
                 <tr>
@@ -687,7 +657,7 @@
           <div class="content-section" id="tab-orders">
             <div class="content-title">我的订单</div>
             <div class="content-subtitle">
-              查看所有历史订单，按状态和时间筛选。（这里可以对接 <code>/api/orders/my</code>）
+              查看所有历史订单，按状态和时间筛选。（对接 <code>/api/orders/my</code>）
             </div>
 
             <div class="form-row">
@@ -695,7 +665,9 @@
                 <div class="form-label">订单状态</div>
                 <select class="form-select" id="orderStatusFilter">
                   <option value="">全部</option>
-                  <option value="pending">待配送</option>
+                  <option value="pending">待处理</option>
+                  <option value="paid">已支付</option>
+                  <option value="packing">拣货中</option>
                   <option value="shipping">配送中</option>
                   <option value="done">已完成</option>
                   <option value="cancel">已取消</option>
@@ -757,7 +729,15 @@
 
               <div class="form-field">
                 <div class="form-label">默认地址</div>
-                <label style="font-size: 12px; display: flex; gap: 6px; align-items: center; margin-top: 18px;">
+                <label
+                  style="
+                    font-size: 12px;
+                    display: flex;
+                    gap: 6px;
+                    align-items: center;
+                    margin-top: 18px;
+                  "
+                >
                   <input type="checkbox" id="addrDefault" />
                   设为默认地址（下单时优先选择）
                 </label>
@@ -803,7 +783,7 @@
             <div class="form-row">
               <button class="btn-primary" id="addrSaveBtn" type="button">请先点击下方地址编辑</button>
               <button class="btn-ghost" id="addrClearBtn" type="button">清空</button>
-              <div style="font-size:12px;color:#6b7280;" id="addrHint"></div>
+              <div style="font-size: 12px; color: #6b7280;" id="addrHint"></div>
             </div>
 
             <div class="address-list" id="addressList"></div>
@@ -832,12 +812,18 @@
             <div class="form-row">
               <div class="form-field">
                 <div class="form-label">充值金额（示例，仅前端）</div>
-                <input type="number" class="form-input" id="rechargeAmount" placeholder="例如 50 / 100 / 200" min="1" />
+                <input
+                  type="number"
+                  class="form-input"
+                  id="rechargeAmount"
+                  placeholder="例如 50 / 100 / 200"
+                  min="1"
+                />
               </div>
               <button class="btn-primary" id="rechargeBtn" type="button">去充值（跳转充值入口）</button>
             </div>
 
-            <div class="content-subtitle">💳 充值记录（可以接到 <code>/api/recharge/my</code>）</div>
+            <div class="content-subtitle">💳 充值记录（可接 <code>/api/recharge/my</code>）</div>
             <table class="table" id="rechargeTable">
               <thead>
                 <tr>
@@ -898,8 +884,12 @@
       </div>
     </main>
 
-    <!-- ✅ 方案A：只外链，不写任何内联业务脚本 -->
-  <script src="./assets/js/user_center.js?v=20251227"></script>
+    <!-- ✅ 只外链脚本（不写内联业务脚本） -->
+    <script src="./assets/js/user_center.js?v=20251227"></script>
+
+    <!-- ✅ 订单列表渲染脚本（你要的信用卡订单显示就在这里） -->
+    <script src="./assets/js/orders.js?v=20260112"></script>
+
     <!-- ✅ Google Places：只引一次，callback 触发 user_center.js 里的 window._initPlaces -->
     <script
       src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCFgt7ksBZeFbkPJIYTo9bhJ_5U311zOYQ&libraries=places&callback=_initPlaces"
