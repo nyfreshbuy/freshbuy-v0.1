@@ -1805,3 +1805,44 @@ body.modal-open{ overflow:hidden; }
 #cartDrawer.cart-drawer *{
   pointer-events: auto !important;
 }
+/* ✅ 测试：如果这条也不生效，说明你改的 main.css 也不是线上在用的 */
+#cartDrawer { outline: 6px solid red !important; }
+
+/* ✅ 数量控件（- 2 +）放大美化：只作用在抽屉内的小按钮 */
+#cartDrawer button:not(#goCartBtn) {
+  width: 36px !important;
+  height: 36px !important;
+  min-width: 36px !important;
+  padding: 0 !important;
+  font-size: 22px !important;
+  font-weight: 900 !important;
+  line-height: 1 !important;
+
+  border-radius: 10px !important;
+  border: 1px solid #d1d5db !important;
+  background: #ffffff !important;
+  color: #111827 !important;
+
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+#cartDrawer button:not(#goCartBtn):hover {
+  background: #f3f4f6 !important;
+  border-color: #9ca3af !important;
+}
+
+#cartDrawer input[type="number"],
+#cartDrawer input[type="text"] {
+  height: 36px !important;
+  width: 40px !important;
+  text-align: center !important;
+  font-size: 18px !important;
+  font-weight: 900 !important;
+
+  border-radius: 10px !important;
+  border: 1px solid #e5e7eb !important;
+  background: #f9fafb !important;
+  margin: 0 8px !important;
+}
