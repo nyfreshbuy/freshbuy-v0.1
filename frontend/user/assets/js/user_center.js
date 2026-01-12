@@ -889,3 +889,14 @@ document.getElementById("saveNicknameBtn")?.addEventListener("click", async () =
     if (location.hash === "#orders") showTab("orders");
   });
 })();
+// ✅ 强制加载 orders.js（防止用户中心页面没引入）
+(function ensureOrdersJsLoaded() {
+  // 如果已经有函数就不重复加载
+  if (typeof window.__reloadUserOrders === "function") return;
+
+  const s = document.createElement("script");
+  s.src = "/user/assets/js/orders.js?v=" + Date.now(); // ✅ 关键：防缓存
+  s.onload = () => console.log("✅ orders.js injected");
+  s.onerror = (e) => console.error("❌ orders.js inject failed", e);
+  document.head.appendChild(s);
+})();
