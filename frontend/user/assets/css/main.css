@@ -472,7 +472,30 @@ width: 100%;
   box-shadow: 0 2px 6px rgba(15, 23, 42, 0.25);
   z-index: 2;
 }
+/* ✅ 商品图片右下角：已下单/已加购数量徽章 */
+.product-qty-badge{
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
 
+  min-width: 34px;
+  height: 34px;
+  padding: 0 8px;
+
+  background: #22c55e;
+  color: #fff;
+  font-size: 18px;     /* 字体更大更清楚 */
+  font-weight: 900;
+
+  border-radius: 999px;
+  display: none;       /* 默认隐藏：qty>0 时用 JS 改成 flex */
+  align-items: center;
+  justify-content: center;
+
+  box-shadow: 0 6px 14px rgba(0,0,0,.28);
+  border: 2px solid #fff; /* 白边更清晰 */
+  z-index: 3;          /* 要盖过 special-badge(2) 和图片 */
+}
 /* 悬停时出现收藏 + 加购 */
 .product-overlay {
   position: absolute;
@@ -598,19 +621,47 @@ width: 100%;
   color: var(--text-sub);
 }
 
-/* 购物车侧边栏 */
+/* 购物车侧边栏（✅ 置于最外层，盖住 nav / side-rail / toast / 其他浮层） */
 .cart-drawer-backdrop {
   position: fixed;
   inset: 0;
   background: rgba(15, 23, 42, 0.4);
   display: none;
-  z-index: 45;
+
+  /* ✅ 关键：必须比 top-nav(999) / side-rail(1000) / toast(9999) 更高 */
+  z-index: 20000;
 }
 
 .cart-drawer-backdrop.active {
   display: block;
 }
 
+.cart-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 360px;
+  max-width: 90vw;
+  height: 100%;
+  background: #ffffff;
+  box-shadow: -2px 0 10px rgba(15, 23, 42, 0.2);
+  transform: translateX(100%);
+  transition: transform 0.22s ease-out;
+
+  /* ✅ 比 backdrop 高一层 */
+  z-index: 20001;
+
+  display: flex;
+  flex-direction: column;
+}
+
+.cart-drawer.active {
+  transform: translateX(0);
+}
+
+.cart-drawer-backdrop.active {
+  display: block;
+}
 .cart-drawer {
   position: fixed;
   top: 0;
@@ -1092,11 +1143,10 @@ html,
 body {
   width: 100%;
   max-width: 100%;
-  overflow-x: clip;         /* ✅ 更彻底的裁掉横向溢出 */
+  overflow-x: hidden;       /* ✅ 更彻底的裁掉横向溢出 */
   overscroll-behavior-x: none;
   touch-action: pan-y;      /* ✅ 页面默认只允许上下滑 */
 }
-
 /* ✅ 关键：分类条允许横向滑动 */
 .category-bar {
   touch-action: pan-x;      /* 允许左右滑 */

@@ -1535,3 +1535,39 @@ function bindGlobalSearch() {
     btn.textContent = isPwd ? "🙈" : "👁";
   });
 })();
+// ================================
+// ✅ FIX: 登录后右上角“我/尾号xxxx”点击无反应
+// 文件：frontend/user/assets/js/index.js
+// 位置：放在文件最底部（最稳）
+// ================================
+(function bindUserTopRightClick() {
+  function goUserCenter() {
+    // 你用户中心页面如果不是这个路径，请改成你真实文件
+    window.location.href = "/user/user_center.html";
+  }
+
+  // 用事件委托：即使登录后才显示/被重新渲染，也永远能点
+  document.addEventListener("click", (e) => {
+    const user = e.target.closest("#userProfile");
+    if (user) {
+      e.preventDefault();
+      e.stopPropagation();
+      goUserCenter();
+      return;
+    }
+  });
+
+  // 兜底：如果你后续不想用委托，也可以直接绑一次
+  document.addEventListener("DOMContentLoaded", () => {
+    const userProfile = document.getElementById("userProfile");
+    if (userProfile && !userProfile.dataset.bound) {
+      userProfile.dataset.bound = "1";
+      userProfile.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        goUserCenter();
+      });
+    }
+  });
+})();
+

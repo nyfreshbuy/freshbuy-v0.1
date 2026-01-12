@@ -556,7 +556,9 @@ router.post("/", requireLogin, async (req, res) => {
     });
   } catch (err) {
     console.error("POST /api/orders error:", err);
-    return res.status(err?.status || 500).json({ success: false, message: err?.message || "创建订单失败" });
+    return res
+      .status(err?.status || 500)
+      .json({ success: false, message: err?.message || "创建订单失败" });
   }
 });
 
@@ -586,7 +588,8 @@ router.post("/checkout", requireLogin, async (req, res) => {
 
     let finalTotal = round2(baseTotal);
     let platformFee = 0;
-    let walletDeducted = false; // ✅ 新增：是否真的完成扣款
+    let walletDeducted = false;
+
     await session.withTransaction(async () => {
       // 1) 钱包余额
       const u0 = await User.findById(userId).select("walletBalance").session(session);
@@ -605,7 +608,7 @@ router.post("/checkout", requireLogin, async (req, res) => {
         remaining = round2(finalTotal - walletUsed);
       }
 
-      // 4) 创建订单（严格按 model 字段写）
+      // 4) 创建订单（✅ 创建时一律 unpaid，避免“假paid/错归类”）
       const docToCreate = {
         ...orderDoc,
         platformFee,
@@ -619,13 +622,13 @@ router.post("/checkout", requireLogin, async (req, res) => {
           amountPlatformFee: Number(platformFee || 0),
           amountTotal: Number(finalTotal || 0),
 
-          // ✅ method / status（严格对齐 enum）
-          status: remaining <= 0 ? "paid" : "unpaid",
-          method: remaining <= 0 ? "wallet" : "stripe",
+          // ✅ 创建时永远 unpaid（扣款成功后再更新）
+          status: "unpaid",
+          method: remaining > 0 ? "stripe" : "wallet",
 
-          paidTotal: Number(walletUsed || 0),
-
-          wallet: { paid: Number(walletUsed || 0) },
+          // ✅ 创建时不提前写已付
+          paidTotal: 0,
+          wallet: { paid: 0 },
           stripe: { intentId: "", paid: 0 },
         },
       };
@@ -634,7 +637,7 @@ router.post("/checkout", requireLogin, async (req, res) => {
       created = created?.[0] || null;
       if (!created) throw new Error("创建订单失败");
 
-      // 5) 钱包扣款
+      // 5) 钱包扣款（✅ 判断必须是 modifiedCount===1 才算成功）
       if (walletUsed > 0) {
         const upd = await User.updateOne(
           { _id: userId, walletBalance: { $gte: walletUsed } },
@@ -642,11 +645,23 @@ router.post("/checkout", requireLogin, async (req, res) => {
           { session }
         );
 
-        // 并发极端情况：扣失败 => 当作不扣，全部走 Stripe
-        if (upd.modifiedCount !== 1) {
-           walletDeducted = true; // ✅ 扣款成功
-           } else {
-           walletDeducted = false;
+        if (upd.modifiedCount === 1) {
+          walletDeducted = true;
+
+          // ✅ 写回订单：钱包已付金额
+          await Order.updateOne(
+            { _id: created._id },
+            {
+              $set: {
+                "payment.wallet.paid": Number(walletUsed || 0),
+                "payment.paidTotal": Number(walletUsed || 0),
+              },
+            },
+            { session }
+          );
+        } else {
+          // 扣款失败：不扣钱包，全部走 Stripe
+          walletDeducted = false;
           walletUsed = 0;
           remaining = round2(finalTotal);
 
@@ -668,8 +683,8 @@ router.post("/checkout", requireLogin, async (req, res) => {
       const u1 = await User.findById(userId).select("walletBalance").session(session);
       newBalance = Number(u1?.walletBalance || 0);
 
-      // 6) 如果 remaining==0，直接标记已支付
-      if (remaining <= 0 && (walletUsed === 0 || walletDeducted === true)) {
+      // 6) 如果 remaining==0 且 钱包确实扣成功 => 标记已支付
+      if (remaining <= 0 && walletDeducted === true) {
         const now = new Date();
         await Order.updateOne(
           { _id: created._id },
@@ -679,8 +694,8 @@ router.post("/checkout", requireLogin, async (req, res) => {
               paidAt: now,
               "payment.status": "paid",
               "payment.method": "wallet",
-              "payment.paidTotal": finalTotal,
-              "payment.wallet.paid": finalTotal,
+              "payment.paidTotal": Number(walletUsed || 0),
+              "payment.wallet.paid": Number(walletUsed || 0),
             },
           },
           { session }
@@ -689,7 +704,9 @@ router.post("/checkout", requireLogin, async (req, res) => {
     });
 
     const fresh = await Order.findById(created._id)
-      .select("payment status totalAmount orderNo deliveryMode fulfillment subtotal deliveryFee discount salesTax platformFee tipFee taxableSubtotal deliveryDate")
+      .select(
+        "payment status totalAmount orderNo deliveryMode fulfillment subtotal deliveryFee discount salesTax platformFee tipFee taxableSubtotal deliveryDate"
+      )
       .lean();
 
     return res.json({
@@ -699,7 +716,7 @@ router.post("/checkout", requireLogin, async (req, res) => {
       totalAmount: round2(fresh?.totalAmount ?? finalTotal),
       walletUsed: round2(walletUsed),
       remaining: round2(remaining),
-      paid: remaining <= 0,
+      paid: remaining <= 0 && (fresh?.status === "paid" || fresh?.payment?.status === "paid"),
       walletBalance: round2(newBalance),
       payment: fresh?.payment || created.payment,
       status: fresh?.status || created.status,
@@ -913,7 +930,16 @@ router.get("/:id([0-9a-fA-F]{24})", async (req, res) => {
 router.patch("/:id/status", async (req, res) => {
   try {
     const { status } = req.body || {};
-    const allowed = ["pending", "paid", "packing", "shipping", "done", "completed", "cancel", "cancelled"];
+    const allowed = [
+      "pending",
+      "paid",
+      "packing",
+      "shipping",
+      "done",
+      "completed",
+      "cancel",
+      "cancelled",
+    ];
     if (!allowed.includes(status)) {
       return res.status(400).json({ success: false, message: "status 不合法" });
     }
@@ -939,7 +965,8 @@ router.patch("/:id/assign", async (req, res) => {
     const patch = {};
     if (driverId !== undefined) patch.driverId = toObjectIdMaybe(driverId);
     if (leaderId !== undefined) patch.leaderId = toObjectIdMaybe(leaderId);
-    if (deliveryDate !== undefined) patch.deliveryDate = deliveryDate ? startOfDay(new Date(deliveryDate)) : null;
+    if (deliveryDate !== undefined)
+      patch.deliveryDate = deliveryDate ? startOfDay(new Date(deliveryDate)) : null;
 
     const doc = await Order.findByIdAndUpdate(req.params.id, patch, { new: true });
     if (!doc) return res.status(404).json({ success: false, message: "订单不存在" });
