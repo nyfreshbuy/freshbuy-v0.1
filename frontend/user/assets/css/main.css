@@ -1783,3 +1783,25 @@ body.modal-open{ overflow:hidden; }
   border-color: rgba(34,197,94,.55);
   box-shadow: 0 0 0 4px rgba(34,197,94,.12);
 }
+/* =========================
+   ✅ FIX: 购物车抽屉被灰色遮罩挡住（遮罩层吃掉点击）
+   强制：抽屉 > 遮罩 > 页面
+   ========================= */
+
+#cartBackdrop.cart-drawer-backdrop{
+  z-index: 25000 !important;
+  pointer-events: auto !important;
+}
+
+#cartBackdrop.cart-drawer-backdrop:not(.active){
+  pointer-events: none !important;
+}
+
+#cartDrawer.cart-drawer{
+  z-index: 26000 !important;
+  pointer-events: auto !important;
+}
+
+#cartDrawer.cart-drawer *{
+  pointer-events: auto !important;
+}
