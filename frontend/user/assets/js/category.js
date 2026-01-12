@@ -230,7 +230,8 @@ function createProductCard(p) {
       ${badgeText ? `<span class="special-badge">${badgeText}</span>` : ""}
       <img src="${imageUrl}" class="product-image" alt="${p.name || ""}" />
     </a>
-
+    <!-- ✅ 新增：右下角数量徽章（默认隐藏，qty>0 才显示） -->
+    <div class="product-qty-badge" data-pid="${pid}"></div>
     <a class="product-name" href="${detailUrl}">
       ${p.name || ""}
     </a>

@@ -1570,4 +1570,114 @@ function bindGlobalSearch() {
     }
   });
 })();
+// ================================
+// ✅ 商品图片右下角数量徽章：同步购物车数量
+// 文件：frontend/user/assets/js/index.js
+// 位置：放在文件最底部
+// ================================
+function setProductBadge(pid, qty) {
+  const el = document.querySelector(`.product-qty-badge[data-pid="${pid}"]`);
+  if (!el) return;
+
+  const n = Number(qty || 0);
+  if (n > 0) {
+    el.textContent = n >= 99 ? "99+" : String(n);
+    el.style.display = "flex";
+  } else {
+    el.textContent = "";
+    el.style.display = "none";
+  }
+}
+
+// 尝试从 FreshCart / Cart / localStorage 里拿到购物车数据
+function getCartSnapshot() {
+  // 1) FreshCart（如果它提供 getCart / getItems）
+  try {
+    if (window.FreshCart) {
+      if (typeof window.FreshCart.getCart === "function") return window.FreshCart.getCart();
+      if (typeof window.FreshCart.getItems === "function") return { items: window.FreshCart.getItems() };
+    }
+  } catch {}
+
+  // 2) Cart（如果存在）
+  try {
+    if (window.Cart) {
+      if (typeof window.Cart.getCart === "function") return window.Cart.getCart();
+      if (typeof window.Cart.getItems === "function") return { items: window.Cart.getItems() };
+    }
+  } catch {}
+
+  // 3) localStorage（兜底：兼容不同 key）
+  const keys = ["freshbuy_cart", "freshbuyCart", "cart", "fb_cart"];
+  for (const k of keys) {
+    try {
+      const raw = localStorage.getItem(k);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw);
+      if (parsed) return parsed;
+    } catch {}
+  }
+
+  return null;
+}
+
+// 把各种结构统一成 { pid: qty }
+function normalizeCartToQtyMap(cart) {
+  const map = {};
+
+  if (!cart) return map;
+
+  // 常见结构 1：{ items: [{id, qty}] }
+  if (Array.isArray(cart.items)) {
+    cart.items.forEach((it) => {
+      const id = String(it.id || it.pid || it.productId || "").trim();
+      const qty = Number(it.qty ?? it.quantity ?? 0);
+      if (id) map[id] = (map[id] || 0) + qty;
+    });
+    return map;
+  }
+
+  // 常见结构 2：{ [pid]: qty }
+  if (typeof cart === "object") {
+    Object.keys(cart).forEach((k) => {
+      const v = cart[k];
+      // 跳过非商品字段
+      if (k === "total" || k === "meta") return;
+      const id = String(k || "").trim();
+      const qty = Number(v?.qty ?? v?.quantity ?? v ?? 0);
+      if (id) map[id] = (map[id] || 0) + qty;
+    });
+  }
+
+  return map;
+}
+
+function trySyncBadgesFromCart() {
+  const cart = getCartSnapshot();
+  const qtyMap = normalizeCartToQtyMap(cart);
+
+  // 页面上所有商品徽章都刷一遍（没有数量的就隐藏）
+  document.querySelectorAll(".product-qty-badge[data-pid]").forEach((el) => {
+    const pid = el.getAttribute("data-pid");
+    setProductBadge(pid, qtyMap[pid] || 0);
+  });
+}
+
+// ✅ 页面加载/渲染后同步一次
+document.addEventListener("DOMContentLoaded", () => {
+  setTimeout(() => trySyncBadgesFromCart(), 0);
+});
+
+// ✅ 如果 cart.js 有广播事件（你后续可以在 cart.js 里 dispatch 这个事件）
+window.addEventListener("freshbuy:cartUpdated", () => {
+  trySyncBadgesFromCart();
+});
+
+// ✅ 如果同一浏览器多标签页修改了购物车，也同步
+window.addEventListener("storage", (e) => {
+  if (!e || !e.key) return;
+  if (String(e.key).toLowerCase().includes("cart")) {
+    trySyncBadgesFromCart();
+  }
+});
 
