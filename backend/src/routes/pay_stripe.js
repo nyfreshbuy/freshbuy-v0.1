@@ -1,11 +1,7 @@
 // backend/src/routes/pay_stripe.js
 import express from "express";
 import Stripe from "stripe";
-import mongoose from "mongoose";
-
 import Order from "../models/order.js";
-import User from "../models/user.js";
-import Zone from "../models/Zone.js";
 import { requireLogin } from "../middlewares/auth.js";
 
 const router = express.Router();
@@ -20,19 +16,13 @@ const stripe = STRIPE_SECRET_KEY
   ? new Stripe(STRIPE_SECRET_KEY, { apiVersion: "2024-06-20" })
   : null;
 
-// ---------- utils ----------
-function safeNum(v, fb = 0) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : fb;
-}
-function round2(n) {
-  return Math.round(Number(n || 0) * 100) / 100;
-}
+// ---------- 工具 ----------
 function moneyToCents(n) {
-  return Math.round(Number(n || 0) * 100);
+  const v = Number(n || 0);
+  return Math.round(v * 100);
 }
 function centsToMoney(c) {
-  return round2(Number(c || 0) / 100);
+  return Number((Number(c || 0) / 100).toFixed(2));
 }
 function genOrderNo() {
   const d = new Date();
@@ -46,12 +36,12 @@ function genOrderNo() {
     pad(d.getSeconds());
   return "FB" + ts + "-" + Math.random().toString(36).slice(2, 7).toUpperCase();
 }
-function normPhone(p) {
-  const digits = String(p || "").replace(/\D/g, "");
-  if (!digits) return "";
-  if (digits.length === 11 && digits.startsWith("1")) return digits.slice(1);
-  if (digits.length >= 10) return digits.slice(-10);
-  return digits;
+function safeNum(v, fb = 0) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fb;
+}
+function round2(n) {
+  return Number(Number(n || 0).toFixed(2));
 }
 function isTruthy(v) {
   return v === true || v === "true" || v === 1 || v === "1";
@@ -63,33 +53,13 @@ function isDealLike(it) {
   if (String(it.type || "").toLowerCase() === "hot") return true;
   return false;
 }
-function toObjectIdMaybe(v) {
-  const s = String(v || "").trim();
-  return mongoose.Types.ObjectId.isValid(s) ? new mongoose.Types.ObjectId(s) : null;
-}
-function startOfDayFromYMD(ymd) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(ymd || ""))) return null;
-  const d = new Date(String(ymd) + "T00:00:00.000Z");
-  return Number.isNaN(d.getTime()) ? null : d;
-}
-function toYMD(d) {
-  const x = new Date(d);
-  if (Number.isNaN(x.getTime())) return "";
-  const y = x.getFullYear();
-  const m = String(x.getMonth() + 1).padStart(2, "0");
-  const day = String(x.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-function buildBatchKey(deliveryDate, zoneId) {
-  const ymd = toYMD(deliveryDate);
-  return `${ymd}|zone:${String(zoneId || "").trim()}`;
-}
 
-// ---------- totals (server-authoritative) ----------
+// ---------- 金额重算（服务端权威） ----------
 function computeTotalsFromPayload(payload) {
   const items = Array.isArray(payload?.items) ? payload.items : [];
 
   let subtotal = 0;
+
   for (const it of items) {
     const qty = Math.max(1, safeNum(it.qty, 1));
     const price = safeNum(it.price, 0);
@@ -98,15 +68,14 @@ function computeTotalsFromPayload(payload) {
   subtotal = round2(subtotal);
 
   const mode = String(payload?.mode || "normal").trim();
+  let shipping = 0;
+  if (mode === "dealsDay") shipping = 0;
+  else if (mode === "groupDay") shipping = subtotal >= 49.99 ? 0 : 4.99;
+  else if (mode === "friendGroup") shipping = 4.99;
+  else shipping = 4.99;
+  shipping = round2(shipping);
 
-  let deliveryFee = 0;
-  if (mode === "dealsDay") deliveryFee = 0;
-  else if (mode === "groupDay") deliveryFee = subtotal >= 49.99 ? 0 : 4.99;
-  else if (mode === "friendGroup") deliveryFee = 4.99;
-  else deliveryFee = 4.99;
-  deliveryFee = round2(deliveryFee);
-
-  // taxableSubtotal
+  // taxableSubtotal：用 items taxable/hasTax
   let taxableSubtotal = 0;
   for (const it of items) {
     const qty = Math.max(1, safeNum(it.qty, 1));
@@ -116,48 +85,17 @@ function computeTotalsFromPayload(payload) {
   }
   taxableSubtotal = round2(taxableSubtotal);
 
-  // taxRate from payload.pricing.taxRate
-  const salesTaxRate = safeNum(payload?.pricing?.taxRate, 0);
-  const salesTax = round2(taxableSubtotal * salesTaxRate);
+  const taxRate = safeNum(payload?.pricing?.taxRate, 0);
+  const salesTax = round2(taxableSubtotal * taxRate);
 
-  // tip
+  // 平台费：Stripe 2%
+  const platformFee = round2((subtotal + shipping + salesTax) * 0.02);
+
   const tipFee = Math.max(0, round2(safeNum(payload?.pricing?.tip, 0)));
 
-  // platformFee: 你 schema 的 pre-validate 会根据 payment.method==="stripe" 自动算 2%
-  // 这里只把 payment.method 设为 stripe，并把 platformFee 先置 0 让 pre-validate 算。
-  const discount = 0;
+  const totalAmount = round2(subtotal + shipping + salesTax + platformFee + tipFee);
 
-  // totalAmount 先返回一个“预估”，真正入库总额以 Order pre-validate 计算为准
-  const totalEstimated = round2(subtotal + deliveryFee + salesTax + tipFee + round2((subtotal + deliveryFee + salesTax - discount) * 0.02));
-
-  return {
-    subtotal,
-    deliveryFee,
-    taxableSubtotal,
-    salesTaxRate: round2(salesTaxRate),
-    salesTax,
-    tipFee,
-    discount,
-    totalEstimated,
-  };
-}
-
-// ---------- Zone resolve ----------
-async function resolveZoneFromPayload({ zoneId, shipping }) {
-  const z0 = String(zoneId || shipping?.zoneId || shipping?.address?.zoneId || "").trim();
-  if (z0) return { zoneId: z0, zoneName: "" };
-
-  const zip = String(shipping?.zip || shipping?.postalCode || "").trim();
-  if (!zip) return { zoneId: "", zoneName: "" };
-
-  const doc =
-    (await Zone.findOne({ zips: zip }).select("key name zoneId code").lean()) ||
-    (await Zone.findOne({ zipWhitelist: zip }).select("key name zoneId code").lean());
-
-  if (!doc) return { zoneId: "", zoneName: "" };
-  const zoneKey = String(doc.key || doc.code || doc.zoneId || "").trim();
-  const zoneName = String(doc.name || "").trim();
-  return { zoneId: zoneKey, zoneName };
+  return { subtotal, shipping, taxableSubtotal, taxRate, salesTax, platformFee, tipFee, totalAmount };
 }
 
 // ---------- 1) publishable key ----------
@@ -168,20 +106,17 @@ router.get("/publishable-key", (req, res) => {
   return res.json({ success: true, key: STRIPE_PUBLISHABLE_KEY });
 });
 
-// ---------- 2) create/reuse order + PaymentIntent ----------
-// POST /api/pay/stripe/order-intent
+// ---------- 2) 创建/复用订单 + PaymentIntent ----------
 router.post("/order-intent", requireLogin, express.json(), async (req, res) => {
   try {
-    if (!stripe) {
-      return res.status(500).json({ success: false, message: "Stripe 未初始化（缺少 STRIPE_SECRET_KEY）" });
-    }
+    if (!stripe) return res.status(500).json({ success: false, message: "Stripe 未初始化（缺少 STRIPE_SECRET_KEY）" });
 
     const user = req.user;
     const payload = req.body || {};
-    const intentKey = String(payload.intentKey || "").trim(); // 前端幂等键
-    if (!intentKey) return res.status(400).json({ success: false, message: "缺少 intentKey" });
 
-    // shipping validate
+    const intentKey = String(payload.intentKey || "").trim();
+    if (!intentKey) return res.status(400).json({ success: false, message: "缺少 intentKey（前端幂等键）" });
+
     const s = payload.shipping || {};
     if (!s.firstName || !s.lastName || !s.phone || !s.street1 || !s.city || !s.state || !s.zip) {
       return res.status(400).json({ success: false, message: "收货信息不完整" });
@@ -191,160 +126,131 @@ router.post("/order-intent", requireLogin, express.json(), async (req, res) => {
     }
 
     const items = Array.isArray(payload.items) ? payload.items : [];
-    if (!items.length) return res.status(400).json({ success: false, message: "购物车为空" });
-
-    // dealsDay only deals
     const hasNonDeal = items.some((it) => !isDealLike(it));
-    if (String(payload.mode || "") === "dealsDay" && hasNonDeal) {
+    if (payload.mode === "dealsDay" && hasNonDeal) {
       return res.status(400).json({ success: false, message: "爆品日订单只能包含爆品商品" });
     }
 
-    // totals
     const totals = computeTotalsFromPayload(payload);
-
-    // stripe min
-    if (!totals.totalEstimated || totals.totalEstimated <= 0) {
+    if (!totals.totalAmount || totals.totalAmount <= 0) {
       return res.status(400).json({ success: false, message: "金额异常" });
     }
-    if (totals.totalEstimated < 0.5) {
+    if (totals.totalAmount < 0.5) {
       return res.status(400).json({ success: false, message: "信用卡支付最低 $0.50，请增加金额或改用钱包" });
     }
 
-    // min subtotal rules
-    const mode = String(payload.mode || "normal").trim();
-    if ((mode === "groupDay" || mode === "normal") && totals.subtotal < 49.99) {
+    // 最低消费
+    if ((payload.mode === "groupDay" || payload.mode === "normal") && totals.subtotal < 49.99) {
       return res.status(400).json({ success: false, message: "未满足最低消费 $49.99，无法下单" });
     }
-    if (mode === "friendGroup" && totals.subtotal < 29) {
+    if (payload.mode === "friendGroup" && totals.subtotal < 29) {
       return res.status(400).json({ success: false, message: "未满足好友拼单最低消费 $29，无法下单" });
     }
 
-    // delivery info
+    // 关键：这些是你 order model 里真实字段
     const deliveryType = String(payload.deliveryType || "").trim();
-    const deliveryDateStr = String(payload.deliveryDate || "").trim(); // YYYY-MM-DD
-    const deliveryDateObj = startOfDayFromYMD(deliveryDateStr);
-    if (!deliveryType || !deliveryDateObj) {
+    const deliveryDate = payload.deliveryDate ? new Date(payload.deliveryDate) : null;
+
+    if (!deliveryType || !deliveryDate || Number.isNaN(deliveryDate.getTime())) {
       return res.status(400).json({ success: false, message: "缺少 deliveryType / deliveryDate" });
     }
 
-    // phone10
-    let loginPhoneRaw = String(user?.phone || "").trim();
-    if (!loginPhoneRaw && user?._id) {
-      const u = await User.findById(user._id).select("phone").lean().catch(() => null);
-      loginPhoneRaw = String(u?.phone || "").trim();
-    }
-    const phone10 = normPhone(s.phone || loginPhoneRaw);
-
-    // resolve zone
-    let zoneId = String(payload.zoneKey || payload.zoneId || "").trim();
-    let zoneName = String(payload.zoneName || "").trim();
-    if (!zoneId) {
-      const rz = await resolveZoneFromPayload({ zoneId: payload.zoneId, shipping: s });
-      zoneId = rz.zoneId;
-      zoneName = rz.zoneName;
-    }
-    const batchKey = buildBatchKey(deliveryDateObj, zoneId);
-
-    // ✅ 幂等复用：用 schema 存在的 payment.idempotencyKey 来做 intentKey
+    // ---------- 2.1 查找幂等订单 ----------
     let doc = await Order.findOne({
       userId: user._id,
       "payment.method": "stripe",
       "payment.idempotencyKey": intentKey,
-      "payment.status": "unpaid",
+      "payment.status": { $in: ["unpaid"] },
     }).catch(() => null);
 
-    // 如果已经有 intentId（schema: payment.stripe.intentId），直接返回复用
+    // 如果已存在 intentId：直接复用
     if (doc?.payment?.stripe?.intentId) {
-      const intentId = String(doc.payment.stripe.intentId || "");
-      const pi = await stripe.paymentIntents.retrieve(intentId).catch(() => null);
-
       return res.json({
         success: true,
         orderId: String(doc._id),
         orderNo: doc.orderNo,
-        clientSecret: pi?.client_secret || "",
-        paymentIntentId: intentId,
+        clientSecret: "", // 不存 clientSecret 也行；前端可以重新 create 或你愿意存也可扩展
+        paymentIntentId: doc.payment.stripe.intentId,
         reused: true,
       });
     }
 
-    // create order (unpaid/pending)
+    // ---------- 2.2 创建订单（字段严格对齐 model） ----------
     if (!doc) {
       doc = await Order.create({
         orderNo: genOrderNo(),
-
-        userId: user._id,
+        userId: user._id, // ✅ 关键：必须绑定 userId，否则“我的订单”查不到
         customerName: [s.firstName, s.lastName].filter(Boolean).join(" ").trim(),
-        customerPhone: phone10 || String(s.phone || "").trim(),
+        customerPhone: s.phone,
 
-        deliveryType: String(payload.deliveryType || "home").trim() || "home",
-        deliveryMode: mode, // ✅ schema 对齐
+        deliveryType,
+        deliveryMode: String(payload.mode || "normal"), // ✅ 关键：用 deliveryMode，不要用 mode
 
-        deliveryDate: deliveryDateObj,
-
-        fulfillment: zoneId
-          ? { groupType: "zone_group", zoneId, batchKey, batchName: zoneName || "" }
-          : { groupType: "none", zoneId: "", batchKey: "", batchName: "" },
-
-        dispatch: zoneId ? { zoneId, batchKey, batchName: zoneName || "" } : { zoneId: "", batchKey: "", batchName: "" },
-
-        status: "pending",
-
-        // money fields（让 pre-validate 再统一）
-        subtotal: totals.subtotal,
-        deliveryFee: totals.deliveryFee,
-        discount: totals.discount,
-        taxableSubtotal: totals.taxableSubtotal,
-        salesTaxRate: totals.salesTaxRate,
-        salesTax: totals.salesTax,
-        tipFee: totals.tipFee,
-
-        // payment (schema对齐)
-        payment: {
-          status: "unpaid",
-          method: "stripe",
-          amountTotal: undefined,
-          paidTotal: 0,
-
-          // ✅ 用 schema 存在字段存 intentKey
-          idempotencyKey: intentKey,
-
-          stripe: {
-            intentId: "", // 后面写回
-            paid: 0,
-          },
-        },
-
-        addressText: String(s.fullText || "").trim(),
-        note: String(s.note || "").trim(),
-
+        // 地址
+        addressText: s.fullText || "",
+        note: s.note || "",
         address: {
-          fullText: String(s.fullText || "").trim(),
-          zip: String(s.zip || "").trim(),
-          zoneId: String(payload.zoneId || zoneId || "").trim(),
+          fullText: s.fullText || "",
+          zip: s.zip || "",
+          zoneId: payload.zoneId || "",
           lat: s.lat,
           lng: s.lng,
         },
 
+        // 金额（与你 model 一致）
+        subtotal: totals.subtotal,
+        deliveryFee: totals.shipping,
+        taxableSubtotal: totals.taxableSubtotal,
+        salesTaxRate: totals.taxRate,
+        salesTax: totals.salesTax,
+        platformFee: totals.platformFee,
+        tipFee: totals.tipFee,
+        discount: 0,
+        totalAmount: totals.totalAmount,
+
+        // 支付块（与你 model 一致）
+        payment: {
+          status: "unpaid",
+          method: "stripe",
+          paidTotal: 0,
+          idempotencyKey: intentKey,
+
+          amountSubtotal: totals.subtotal,
+          amountDeliveryFee: totals.shipping,
+          amountTax: totals.salesTax,
+          amountPlatformFee: totals.platformFee,
+          amountTip: totals.tipFee,
+          amountDiscount: 0,
+          amountTotal: totals.totalAmount,
+
+          stripe: {
+            intentId: "", // 下面写入
+            paid: 0,
+          },
+        },
+
+        // 订单状态
+        status: "pending",
+
         items: items.map((it) => ({
           productId: it.productId || undefined,
-          legacyProductId: String(it.legacyProductId || it._id || it.id || "").trim(),
-          name: String(it.name || ""),
-          sku: String(it.sku || ""),
+          legacyProductId: "",
+          name: it.name || "",
+          sku: it.sku || "",
           price: safeNum(it.price, 0),
           qty: Math.max(1, safeNum(it.qty, 1)),
-          image: String(it.image || ""),
+          image: it.image || "",
           lineTotal: round2(safeNum(it.price, 0) * Math.max(1, safeNum(it.qty, 1))),
           cost: safeNum(it.cost, 0),
           hasTax: isTruthy(it.taxable) || isTruthy(it.hasTax),
         })),
+
+        deliveryDate, // ✅ 你 model 里是 Date
       });
     }
 
-    // create PaymentIntent
-    // ✅ 这里 amount 用 doc.totalAmount（让 pre-validate 的 platformFee 生效后金额一致）
-    // doc 是 create 后的文档，pre-validate 已经跑过了
-    const cents = moneyToCents(doc.totalAmount);
+    // ---------- 2.3 创建 PaymentIntent ----------
+    const cents = moneyToCents(totals.totalAmount);
 
     const intent = await stripe.paymentIntents.create(
       {
@@ -355,26 +261,25 @@ router.post("/order-intent", requireLogin, express.json(), async (req, res) => {
           orderId: String(doc._id),
           orderNo: String(doc.orderNo),
           userId: String(user._id),
-          customerPhone: phone10 || "",
-          intentKey: intentKey,
+          intentKey,
           amountCents: String(cents),
         },
       },
       {
+        // ✅ 避免“同 intentKey 不同金额”冲突
         idempotencyKey: `fb_pi_${intentKey}__${cents}`,
       }
     );
 
-    // ✅ 写回 schema 正确字段：payment.stripe.intentId
-    await Order.updateOne(
-      { _id: doc._id },
-      {
-        $set: {
-          "payment.stripe.intentId": String(intent.id),
-          "payment.amountTotal": Number(doc.totalAmount || 0),
-        },
-      }
-    );
+    // ✅ 写回 model 真实字段：payment.stripe.intentId
+    doc.payment = doc.payment || {};
+    doc.payment.method = "stripe";
+    doc.payment.status = "unpaid";
+    doc.payment.idempotencyKey = intentKey;
+    doc.payment.stripe = doc.payment.stripe || {};
+    doc.payment.stripe.intentId = intent.id;
+
+    await doc.save();
 
     return res.json({
       success: true,
@@ -383,22 +288,14 @@ router.post("/order-intent", requireLogin, express.json(), async (req, res) => {
       clientSecret: intent.client_secret,
       paymentIntentId: intent.id,
       reused: false,
-      totalAmount: doc.totalAmount,
     });
   } catch (err) {
-    if (err?.type === "StripeIdempotencyError" || err?.rawType === "idempotency_error") {
-      console.error("❌ StripeIdempotencyError:", err?.message || err);
-      return res.status(400).json({
-        success: false,
-        message: "Stripe 幂等键冲突：同一 intentKey 被用于不同金额参数。请刷新页面重试。",
-      });
-    }
     console.error("POST /api/pay/stripe/order-intent error:", err);
     return res.status(500).json({ success: false, message: err?.message || "创建 Stripe 支付失败" });
   }
 });
 
-// ---------- 3) Webhook (MUST be raw) ----------
+// ---------- 3) Webhook：支付成功后改 paid ----------
 router.post("/webhook", express.raw({ type: "application/json" }), async (req, res) => {
   try {
     if (!stripe) return res.status(500).send("stripe not initialized");
@@ -417,87 +314,58 @@ router.post("/webhook", express.raw({ type: "application/json" }), async (req, r
     if (event.type === "payment_intent.succeeded") {
       const pi = event.data.object;
 
-      const orderId = String(pi.metadata?.orderId || "").trim();
-      const orderNo = String(pi.metadata?.orderNo || "").trim();
-      const intentKey = String(pi.metadata?.intentKey || "").trim();
-      const metaUserId = String(pi.metadata?.userId || "").trim();
-      const metaPhone = String(pi.metadata?.customerPhone || "").trim();
+      const orderId = pi.metadata?.orderId ? String(pi.metadata.orderId) : "";
+      const intentKey = pi.metadata?.intentKey ? String(pi.metadata.intentKey) : "";
 
-      const amountPaid = centsToMoney(pi.amount_received || pi.amount || 0);
-      const now = new Date();
+      const paid = centsToMoney(pi.amount_received || pi.amount || 0);
 
-      const q =
-        orderId && mongoose.Types.ObjectId.isValid(orderId)
-          ? { _id: orderId }
-          : orderNo
-          ? { orderNo }
-          : intentKey
-          ? { "payment.idempotencyKey": intentKey }
-          : { "payment.stripe.intentId": String(pi.id) };
+      // ✅ 用 orderId 优先定位；兜底用 intentId / idempotencyKey
+      const q = orderId
+        ? { _id: orderId }
+        : {
+            $or: [
+              { "payment.stripe.intentId": String(pi.id) },
+              { "payment.idempotencyKey": intentKey },
+            ],
+          };
 
-      const patch = {
-        status: "paid",
-        paidAt: now,
+      await Order.updateOne(q, {
+        $set: {
+          status: "paid",
+          paidAt: new Date(),
 
-        "payment.status": "paid",
-        "payment.method": "stripe",
-        "payment.paidTotal": amountPaid,
-        "payment.amountTotal": undefined,
-
-        "payment.stripe.intentId": String(pi.id),
-        "payment.stripe.paid": amountPaid,
-      };
-
-      // ✅ 兜底补 userId / phone（防止出现“无主订单”导致用户中心看不到）
-      const uid = toObjectIdMaybe(metaUserId);
-      if (uid) patch.userId = uid;
-
-      const p10 = normPhone(metaPhone);
-      if (p10) patch.customerPhone = p10;
-
-      const r = await Order.updateOne(q, { $set: patch });
-
-      console.log("✅ webhook paid updated:", {
-        matched: r?.matchedCount,
-        modified: r?.modifiedCount,
-        pi: pi?.id,
-        orderId: orderId || null,
-        orderNo: orderNo || null,
-        intentKey: intentKey || null,
-        metaUserId: metaUserId || null,
-        amountPaid,
+          "payment.status": "paid",
+          "payment.method": "stripe",
+          "payment.paidTotal": paid,
+          "payment.stripe.intentId": String(pi.id),
+          "payment.stripe.paid": paid,
+        },
       });
+
+      console.log("✅ webhook paid:", { pi: pi.id, orderId: orderId || null, intentKey: intentKey || null, paid });
     }
 
     if (event.type === "payment_intent.payment_failed") {
       const pi = event.data.object;
-      const orderId = String(pi.metadata?.orderId || "").trim();
-      const orderNo = String(pi.metadata?.orderNo || "").trim();
-      const intentKey = String(pi.metadata?.intentKey || "").trim();
+      const orderId = pi.metadata?.orderId ? String(pi.metadata.orderId) : "";
+      const intentKey = pi.metadata?.intentKey ? String(pi.metadata.intentKey) : "";
 
-      const q =
-        orderId && mongoose.Types.ObjectId.isValid(orderId)
-          ? { _id: orderId }
-          : orderNo
-          ? { orderNo }
-          : intentKey
-          ? { "payment.idempotencyKey": intentKey }
-          : { "payment.stripe.intentId": String(pi.id) };
+      const q = orderId
+        ? { _id: orderId }
+        : {
+            $or: [
+              { "payment.stripe.intentId": String(pi.id) },
+              { "payment.idempotencyKey": intentKey },
+            ],
+          };
 
       await Order.updateOne(q, {
         $set: {
           "payment.status": "unpaid",
-          "payment.idempotencyKey": intentKey || undefined,
         },
       });
 
-      console.warn("⚠️ webhook payment_failed:", {
-        pi: pi?.id,
-        orderId: orderId || null,
-        orderNo: orderNo || null,
-        intentKey: intentKey || null,
-        err: pi?.last_payment_error?.message || "",
-      });
+      console.warn("⚠️ webhook failed:", { pi: pi.id, orderId: orderId || null, intentKey: intentKey || null });
     }
 
     return res.json({ received: true });
