@@ -1,8 +1,11 @@
 // backend/src/routes/pay_stripe.js
 import express from "express";
 import Stripe from "stripe";
+import mongoose from "mongoose";
 
 import Order from "../models/order.js";
+import User from "../models/user.js";
+import Zone from "../models/Zone.js";
 import { requireLogin } from "../middlewares/auth.js";
 
 const router = express.Router();
@@ -53,6 +56,35 @@ function isDealLike(it) {
   if (String(it.tag || "").includes("爆品")) return true;
   if (String(it.type || "").toLowerCase() === "hot") return true;
   return false;
+}
+function normPhone(p) {
+  const digits = String(p || "").replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.length === 11 && digits.startsWith("1")) return digits.slice(1);
+  if (digits.length >= 10) return digits.slice(-10);
+  return digits;
+}
+function toObjectIdMaybe(v) {
+  const s = String(v || "").trim();
+  return mongoose.Types.ObjectId.isValid(s) ? new mongoose.Types.ObjectId(s) : null;
+}
+function toYMD(d) {
+  const x = new Date(d);
+  if (Number.isNaN(x.getTime())) return "";
+  const y = x.getFullYear();
+  const m = String(x.getMonth() + 1).padStart(2, "0");
+  const day = String(x.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+function startOfDayFromYMD(ymd) {
+  if (!ymd || typeof ymd !== "string") return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return null;
+  const d = new Date(ymd + "T00:00:00.000Z");
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+function buildBatchKey(deliveryDate, zoneKey) {
+  const ymd = toYMD(deliveryDate);
+  return `${ymd}|zone:${String(zoneKey || "").trim()}`;
 }
 
 // ---------- 金额重算（服务端权威） ----------
@@ -123,6 +155,28 @@ function computeTotalsFromPayload(payload) {
   };
 }
 
+// ---------- Zone resolve（可选，但帮你把 zoneKey 对齐） ----------
+async function resolveZoneFromPayload({ zoneId, shipping }) {
+  const z0 = String(zoneId || shipping?.zoneId || shipping?.address?.zoneId || "").trim();
+  if (z0) return { zoneKey: z0, zoneName: "" };
+
+  const zip = String(shipping?.zip || shipping?.postalCode || "").trim();
+  if (!zip) return { zoneKey: "", zoneName: "" };
+
+  try {
+    const doc =
+      (await Zone.findOne({ zips: zip }).select("key name zoneId code").lean()) ||
+      (await Zone.findOne({ zipWhitelist: zip }).select("key name zoneId code").lean());
+    if (!doc) return { zoneKey: "", zoneName: "" };
+
+    const zoneKey = String(doc.key || doc.code || doc.zoneId || "").trim();
+    const zoneName = String(doc.name || "").trim();
+    return { zoneKey, zoneName };
+  } catch (e) {
+    return { zoneKey: "", zoneName: "" };
+  }
+}
+
 // ---------- 1) 给前端取 publishable key ----------
 router.get("/publishable-key", (req, res) => {
   if (!STRIPE_PUBLISHABLE_KEY) {
@@ -135,8 +189,9 @@ router.get("/publishable-key", (req, res) => {
 // 前端 POST /api/pay/stripe/order-intent
 router.post("/order-intent", requireLogin, express.json(), async (req, res) => {
   try {
-    if (!stripe)
+    if (!stripe) {
       return res.status(500).json({ success: false, message: "Stripe 未初始化（缺少 STRIPE_SECRET_KEY）" });
+    }
 
     const user = req.user;
     const payload = req.body || {};
@@ -147,7 +202,7 @@ router.post("/order-intent", requireLogin, express.json(), async (req, res) => {
       return res.status(400).json({ success: false, message: "缺少 intentKey（前端幂等键）" });
     }
 
-    // ✅ 地址基本校验（Stripe intent 也要严格，避免 webhook paid 但没法履约）
+    // ✅ 地址基本校验
     const s = payload.shipping || {};
     if (!s.firstName || !s.lastName || !s.phone || !s.street1 || !s.city || !s.state || !s.zip) {
       return res.status(400).json({ success: false, message: "收货信息不完整" });
@@ -156,13 +211,14 @@ router.post("/order-intent", requireLogin, express.json(), async (req, res) => {
       return res.status(400).json({ success: false, message: "缺少坐标（请从 Places 下拉选择地址）" });
     }
 
-    // ✅ 规则：dealsDay 只能全爆品（服务端再校验一次）
+    // ✅ dealsDay 只能全爆品
     const items = Array.isArray(payload.items) ? payload.items : [];
     const hasDeal = items.some((it) => isDealLike(it));
     const hasNonDeal = items.some((it) => !isDealLike(it));
     if (payload.mode === "dealsDay" && hasNonDeal) {
       return res.status(400).json({ success: false, message: "爆品日订单只能包含爆品商品" });
     }
+    // （保持你原逻辑：groupDay/normal 不允许全爆品等，你可在 orders.js 再做更严校验）
 
     // ✅ 重算金额（服务端权威）
     const totals = computeTotalsFromPayload(payload);
@@ -184,20 +240,40 @@ router.post("/order-intent", requireLogin, express.json(), async (req, res) => {
     }
 
     // ✅ 派单关键字段（你前端已加）
-    const deliveryType = String(payload.deliveryType || "").trim(); // groupDay/nextDay/friend
+    const deliveryType = String(payload.deliveryType || "").trim();
     const deliveryDate = String(payload.deliveryDate || "").trim(); // YYYY-MM-DD
-    const zoneKey = String(payload.zoneKey || "").trim();
+    const deliveryDateObj = startOfDayFromYMD(deliveryDate);
 
     if (!deliveryType || !deliveryDate) {
       return res.status(400).json({ success: false, message: "缺少 deliveryType / deliveryDate" });
     }
+
+    const deliveryMode = String(payload.mode || "normal").trim();
+
+    // zone：优先 payload.zoneKey，否则尝试从 zoneId/zip 自动匹配
+    let zoneKey = String(payload.zoneKey || "").trim();
+    let zoneName = String(payload.zoneName || "").trim();
+    if (!zoneKey) {
+      const rz = await resolveZoneFromPayload({ zoneId: payload.zoneId, shipping: s });
+      zoneKey = rz.zoneKey;
+      zoneName = rz.zoneName;
+    }
+
+    // 订单归属手机号：统一 10 位（用于 /api/orders/my 的匹配）
+    // 优先：收货电话，其次：登录用户电话（如果有）
+    let loginPhoneRaw = String(user?.phone || "").trim();
+    if (!loginPhoneRaw && user?._id) {
+      const u = await User.findById(user._id).select("phone").lean().catch(() => null);
+      loginPhoneRaw = String(u?.phone || "").trim();
+    }
+    const phone10 = normPhone(s.phone || loginPhoneRaw);
 
     // ---------- 2.1) 先找是否已有未支付订单（同 user + intentKey） ----------
     let doc = await Order.findOne({
       userId: user._id,
       "payment.method": "stripe",
       "payment.intentKey": intentKey,
-      "payment.status": { $in: ["unpaid", "requires_payment_method", "pending"] },
+      "payment.status": { $in: ["unpaid", "requires_payment_method", "pending", "requires_action"] },
     }).catch(() => null);
 
     // ✅ 如果存在且有 paymentIntentId：直接返回它（幂等）
@@ -227,28 +303,49 @@ router.post("/order-intent", requireLogin, express.json(), async (req, res) => {
     if (!doc) {
       const orderNo = genOrderNo();
 
+      const ddForBatch = deliveryDateObj || new Date(deliveryDate + "T00:00:00.000Z");
+      const batchKey = zoneKey ? buildBatchKey(ddForBatch, zoneKey) : "";
+
       doc = await Order.create({
         orderNo,
 
+        // ✅ 关键：必须有 userId（用户中心就靠它）
         userId: user._id,
-        customerName: [s.firstName, s.lastName].filter(Boolean).join(" ").trim(),
-        customerPhone: s.phone,
 
-        // ✅ 派单/路线字段
-        mode: payload.mode,
+        customerName: [s.firstName, s.lastName].filter(Boolean).join(" ").trim(),
+        // ✅ 关键：手机号统一 10 位，避免 /api/orders/my 匹配不到
+        customerPhone: phone10 || String(s.phone || "").trim(),
+
+        // ✅ 字段对齐：用 deliveryMode（你 orders.js 用的是 deliveryMode）
+        deliveryMode,
+
+        // ✅ 你原本字段（保留兼容旧页面）
+        mode: deliveryMode,
         deliveryType,
-        deliveryDate,
+
+        // ✅ 推荐 Date（如果你 schema 允许）；否则保留 string 也行
+        deliveryDate: deliveryDateObj || deliveryDate,
+
+        // zone（兼容 + 给派单/路线使用）
         zoneKey,
-        groupDay: payload.groupDay === true || deliveryType === "groupDay",
+        zoneName,
+
+        fulfillment: zoneKey
+          ? { groupType: "zone_group", zoneId: zoneKey, batchKey, batchName: zoneName || "" }
+          : { groupType: "none", zoneId: "", batchKey: "", batchName: "" },
+
+        dispatch: zoneKey
+          ? { zoneId: zoneKey, batchKey, batchName: zoneName || "" }
+          : { zoneId: "", batchKey: "", batchName: "" },
 
         // 订单状态（Stripe 创建 intent 时先 pending/unpaid）
         status: "pending",
         orderType:
-          payload.mode === "groupDay"
+          deliveryMode === "groupDay"
             ? "area_group"
-            : payload.mode === "dealsDay"
+            : deliveryMode === "dealsDay"
             ? "area_group"
-            : payload.mode === "friendGroup"
+            : deliveryMode === "friendGroup"
             ? "friend"
             : "normal",
 
@@ -258,7 +355,12 @@ router.post("/order-intent", requireLogin, express.json(), async (req, res) => {
         discount: 0,
         totalAmount: totals.total,
 
-        // ✅ 支付快照（新字段）
+        taxableSubtotal: totals.taxableAmount,
+        salesTax: totals.tax,
+        platformFee: totals.serviceFee,
+        tipFee: totals.tip,
+
+        // ✅ 支付快照
         payment: {
           status: "unpaid",
           method: "stripe",
@@ -277,6 +379,16 @@ router.post("/order-intent", requireLogin, express.json(), async (req, res) => {
           taxRate: totals.taxRate,
           serviceRate: totals.serviceRate,
           taxableAmount: totals.taxableAmount,
+
+          // Stripe 字段占位（后面写回）
+          stripePaymentIntentId: "",
+          stripeClientSecret: "",
+          stripeChargeId: "",
+          paidAt: null,
+          paidTotal: 0,
+          stripePaid: 0,
+          walletPaid: 0,
+          lastError: "",
         },
 
         // 地址（兼容字段）
@@ -302,14 +414,13 @@ router.post("/order-intent", requireLogin, express.json(), async (req, res) => {
           lineTotal: round2(safeNum(it.price, 0) * safeNum(it.qty, 1)),
           cost: safeNum(it.cost, 0),
           isSpecial: !!isDealLike(it),
+          hasTax: isTruthy(it.taxable) || isTruthy(it.hasTax),
           taxable: isTruthy(it.taxable) || isTruthy(it.hasTax),
         })),
       });
     }
 
     // ---------- 2.3) 创建 PaymentIntent（Stripe 幂等） ----------
-    // ✅ 关键修复：Stripe 的 idempotencyKey 必须和“服务端最终参数”绑定
-    // 否则同 key 不同 amount 会报 StripeIdempotencyError
     const cents = moneyToCents(totals.total);
 
     const intent = await stripe.paymentIntents.create(
@@ -321,11 +432,13 @@ router.post("/order-intent", requireLogin, express.json(), async (req, res) => {
           orderId: String(doc._id),
           orderNo: String(doc.orderNo),
           userId: String(user._id),
+          customerPhone: phone10 || "",
           intentKey: intentKey,
           amountCents: String(cents),
         },
       },
       {
+        // ✅ 关键：幂等键和金额绑定，避免同 intentKey 但金额变了报错
         idempotencyKey: `fb_pi_${intentKey}__${cents}`,
       }
     );
@@ -344,13 +457,13 @@ router.post("/order-intent", requireLogin, express.json(), async (req, res) => {
       reused: false,
     });
   } catch (err) {
-    // ✅ 针对 Stripe 幂等错误，给更直观提示
+    // ✅ Stripe 幂等错误提示
     if (err?.type === "StripeIdempotencyError" || err?.rawType === "idempotency_error") {
       console.error("❌ StripeIdempotencyError:", err?.message || err);
       return res.status(400).json({
         success: false,
         message:
-          "Stripe 幂等键冲突：同一 intentKey 被用于不同金额参数。已修复版本应避免此问题；请刷新页面重试或更换购物车/小费后再试。",
+          "Stripe 幂等键冲突：同一 intentKey 被用于不同金额参数。请刷新页面重试，或更换购物车/小费后再试。",
       });
     }
 
@@ -383,14 +496,16 @@ router.post("/webhook", express.raw({ type: "application/json" }), async (req, r
     if (event.type === "payment_intent.succeeded") {
       const pi = event.data.object;
 
-      const orderId = pi.metadata?.orderId;
-      const orderNo = pi.metadata?.orderNo;
-      const intentKey = pi.metadata?.intentKey;
+      const orderId = String(pi.metadata?.orderId || "").trim();
+      const orderNo = String(pi.metadata?.orderNo || "").trim();
+      const intentKey = String(pi.metadata?.intentKey || "").trim();
+      const metaUserId = String(pi.metadata?.userId || "").trim();
+      const metaPhone = String(pi.metadata?.customerPhone || "").trim();
 
       const amountPaid = centsToMoney(pi.amount_received || pi.amount || 0);
 
       const q =
-        orderId
+        orderId && mongoose.Types.ObjectId.isValid(orderId)
           ? { _id: orderId }
           : orderNo
           ? { orderNo }
@@ -404,30 +519,41 @@ router.post("/webhook", express.raw({ type: "application/json" }), async (req, r
           orderId,
           orderNo,
           intentKey,
+          metaUserId,
         });
       } else {
-        const r = await Order.updateOne(q, {
-          $set: {
-            // payment
-            "payment.status": "paid",
-            "payment.paidAt": new Date(),
-            "payment.paidTotal": amountPaid,
-            "payment.stripeChargeId": String(pi.latest_charge || ""),
-            "payment.stripePaymentIntentId": String(pi.id || ""),
+        const patch = {
+          // payment
+          "payment.status": "paid",
+          "payment.method": "stripe",
+          "payment.paidAt": new Date(),
+          "payment.paidTotal": amountPaid,
+          "payment.stripeChargeId": String(pi.latest_charge || ""),
+          "payment.stripePaymentIntentId": String(pi.id || ""),
 
-            // order status
-            status: "paid",
-            paidAt: new Date(),
-          },
-        });
+          // order
+          status: "paid",
+          paidAt: new Date(),
+        };
+
+        // ✅ 关键兜底：如果订单缺 userId，这里用 metadata 补齐
+        // 注意：schema 若是 ObjectId，建议写 ObjectId
+        if (metaUserId && mongoose.Types.ObjectId.isValid(metaUserId)) {
+          patch.userId = new mongoose.Types.ObjectId(metaUserId);
+        }
+        const p10 = normPhone(metaPhone);
+        if (p10) patch.customerPhone = p10;
+
+        const r = await Order.updateOne(q, { $set: patch });
 
         console.log("✅ webhook paid updated:", {
           matched: r?.matchedCount,
           modified: r?.modifiedCount,
           pi: pi?.id,
-          orderId,
-          orderNo,
-          intentKey,
+          orderId: orderId || null,
+          orderNo: orderNo || null,
+          intentKey: intentKey || null,
+          metaUserId: metaUserId || null,
           amountPaid,
         });
       }
@@ -437,12 +563,12 @@ router.post("/webhook", express.raw({ type: "application/json" }), async (req, r
     if (event.type === "payment_intent.payment_failed") {
       const pi = event.data.object;
 
-      const orderId = pi.metadata?.orderId;
-      const orderNo = pi.metadata?.orderNo;
-      const intentKey = pi.metadata?.intentKey;
+      const orderId = String(pi.metadata?.orderId || "").trim();
+      const orderNo = String(pi.metadata?.orderNo || "").trim();
+      const intentKey = String(pi.metadata?.intentKey || "").trim();
 
       const q =
-        orderId
+        orderId && mongoose.Types.ObjectId.isValid(orderId)
           ? { _id: orderId }
           : orderNo
           ? { orderNo }
@@ -461,9 +587,9 @@ router.post("/webhook", express.raw({ type: "application/json" }), async (req, r
 
       console.warn("⚠️ webhook payment_failed:", {
         pi: pi?.id,
-        orderId,
-        orderNo,
-        intentKey,
+        orderId: orderId || null,
+        orderNo: orderNo || null,
+        intentKey: intentKey || null,
         err: pi?.last_payment_error?.message || "",
       });
     }
