@@ -900,3 +900,101 @@ document.getElementById("saveNicknameBtn")?.addEventListener("click", async () =
   s.onerror = (e) => console.error("❌ orders.js inject failed", e);
   document.head.appendChild(s);
 })();
+// ===== 修改密码（新增）=====
+(function () {
+  const $ = (id) => document.getElementById(id);
+
+  function getToken() {
+    // 兼容你项目里常见 token key
+    const keys = ["freshbuy_token", "token", "jwt", "access_token", "auth_token"];
+    for (const k of keys) {
+      const v = localStorage.getItem(k);
+      if (v && String(v).trim()) return String(v).trim();
+    }
+    return "";
+  }
+
+  async function changePassword() {
+    const oldPassword = ($("ucOldPwd")?.value || "").trim();
+    const newPassword = ($("ucNewPwd")?.value || "").trim();
+    const newPassword2 = ($("ucNewPwd2")?.value || "").trim();
+    const msg = $("ucPwdMsg");
+
+    if (!msg) return;
+
+    msg.textContent = "";
+    msg.style.color = "#6b7280";
+
+    if (!oldPassword) {
+      msg.textContent = "请输入当前密码";
+      msg.style.color = "#ef4444";
+      return;
+    }
+    if (newPassword.length < 6) {
+      msg.textContent = "新密码至少 6 位";
+      msg.style.color = "#ef4444";
+      return;
+    }
+    if (newPassword !== newPassword2) {
+      msg.textContent = "两次输入的新密码不一致";
+      msg.style.color = "#ef4444";
+      return;
+    }
+
+    const token = getToken();
+    if (!token) {
+      msg.textContent = "未登录或 token 丢失，请重新登录后再修改密码";
+      msg.style.color = "#ef4444";
+      return;
+    }
+
+    const btn = $("btnChangePwd");
+    if (btn) {
+      btn.disabled = true;
+      btn.style.opacity = "0.7";
+      btn.textContent = "提交中...";
+    }
+
+    try {
+      const res = await fetch("/api/users/change-password", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + token,
+        },
+        credentials: "include",
+        body: JSON.stringify({ oldPassword, newPassword }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        msg.textContent = data.message || "修改失败，请检查当前密码是否正确";
+        msg.style.color = "#ef4444";
+        return;
+      }
+
+      msg.textContent = "✅ 密码修改成功，请用新密码下次登录";
+      msg.style.color = "#16a34a";
+
+      $("ucOldPwd").value = "";
+      $("ucNewPwd").value = "";
+      $("ucNewPwd2").value = "";
+    } catch (e) {
+      msg.textContent = "网络错误，稍后再试";
+      msg.style.color = "#ef4444";
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.style.opacity = "1";
+        btn.textContent = "修改密码";
+      }
+    }
+  }
+
+  document.addEventListener("click", (e) => {
+    if (e.target && e.target.id === "btnChangePwd") {
+      e.preventDefault();
+      changePassword();
+    }
+  });
+})();

@@ -868,6 +868,30 @@
                 <div class="form-label">登录手机号（只读）</div>
                 <input type="text" class="form-input" id="settingsPhone" readonly />
               </div>
+              <!-- ===== 修改密码（新增）===== -->
+<div style="margin-top:14px; border-top:1px dashed #e5e7eb; padding-top:14px;">
+  <div style="font-weight:700; margin-bottom:10px;">修改密码</div>
+
+  <div style="display:grid; grid-template-columns: 1fr 260px; gap:10px; align-items:center;">
+    <input id="ucOldPwd" type="password" placeholder="当前密码" autocomplete="current-password"
+      style="width:100%; padding:10px 12px; border:1px solid #e5e7eb; border-radius:12px;" />
+    <div style="color:#6b7280; font-size:12px;">请输入当前密码</div>
+
+    <input id="ucNewPwd" type="password" placeholder="新密码（至少 6 位）" autocomplete="new-password"
+      style="width:100%; padding:10px 12px; border:1px solid #e5e7eb; border-radius:12px;" />
+    <div style="color:#6b7280; font-size:12px;">建议字母+数字</div>
+
+    <input id="ucNewPwd2" type="password" placeholder="确认新密码" autocomplete="new-password"
+      style="width:100%; padding:10px 12px; border:1px solid #e5e7eb; border-radius:12px;" />
+    <button id="btnChangePwd"
+      style="height:42px; border:0; border-radius:999px; padding:0 14px; cursor:pointer; background:#16a34a; color:#fff; font-weight:700;">
+      修改密码
+    </button>
+  </div>
+
+  <div id="ucPwdMsg" style="margin-top:10px; font-size:13px;"></div>
+</div>
+<!-- ===== 修改密码（新增）END ===== -->
               <button class="btn-ghost" id="changePhoneBtn" type="button">更换手机号（建议短信验证）</button>
             </div>
 

@@ -1,5 +1,6 @@
 // backend/src/routes/users.js
 import express from "express";
+import bcrypt from "bcryptjs"; // ✅ 新增：用于校验/加密密码
 import User from "../models/user.js";
 import Address from "../models/Address.js"; // ✅ 关键：从 Address 集合取默认地址
 import { requireLogin } from "../middlewares/auth.js";
@@ -143,6 +144,60 @@ router.patch("/me", requireLogin, async (req, res) => {
   } catch (err) {
     console.error("PATCH /api/users/me error:", err);
     return res.status(500).json({ success: false, message: "Update nickname failed" });
+  }
+});
+
+// ===============================
+// ✅ 修改密码（新增）
+// POST /api/users/change-password
+// body: { oldPassword: "xxx", newPassword: "yyy" }
+// ===============================
+router.post("/change-password", requireLogin, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ success: false, message: "未登录" });
+
+    const oldPassword = String(req.body?.oldPassword || "").trim();
+    const newPassword = String(req.body?.newPassword || "").trim();
+
+    if (!oldPassword) {
+      return res.status(400).json({ success: false, message: "缺少当前密码" });
+    }
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({ success: false, message: "新密码至少 6 位" });
+    }
+
+    // ⚠️ 兼容你 User 模型可能是 password 或 passwordHash
+    // 同时兼容 schema 里把密码字段设置为 select:false 的情况
+    const u = await User.findById(userId).select("+password +passwordHash _id");
+
+    if (!u) {
+      return res.status(404).json({ success: false, message: "用户不存在" });
+    }
+
+    const hashed = u.passwordHash || u.password || "";
+    if (!hashed) {
+      return res
+        .status(400)
+        .json({ success: false, message: "该账号未设置密码，无法修改" });
+    }
+
+    const ok = await bcrypt.compare(oldPassword, hashed);
+    if (!ok) {
+      return res.status(400).json({ success: false, message: "当前密码不正确" });
+    }
+
+    const newHashed = await bcrypt.hash(newPassword, 10);
+
+    if (u.passwordHash !== undefined) u.passwordHash = newHashed;
+    if (u.password !== undefined) u.password = newHashed;
+
+    await u.save();
+
+    return res.json({ success: true, message: "密码已更新" });
+  } catch (err) {
+    console.error("POST /api/users/change-password error:", err);
+    return res.status(500).json({ success: false, message: "修改密码失败" });
   }
 });
 
