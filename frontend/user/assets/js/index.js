@@ -543,19 +543,20 @@ function isNewProduct(p) {
 // ✅✅✅ 商品图片右下角数量徽章工具函数
 // ================================
 function setProductBadge(pid, qty) {
-  const el = document.querySelector(`.product-qty-badge[data-pid="${pid}"]`);
-  if (!el) return;
+  const els = document.querySelectorAll(`.product-qty-badge[data-pid="${pid}"]`);
+  if (!els || !els.length) return;
 
   const n = Number(qty || 0);
-  if (n > 0) {
-    el.textContent = n >= 99 ? "99+" : String(n);
-    el.style.display = "flex";
-  } else {
-    el.textContent = "";
-    el.style.display = "none";
-  }
+  els.forEach((el) => {
+    if (n > 0) {
+      el.textContent = n >= 99 ? "99+" : String(n);
+      el.style.display = "flex";
+    } else {
+      el.textContent = "";
+      el.style.display = "none";
+    }
+  });
 }
-
 // ✅ 更强：从 FreshCart / Cart / localStorage 自动找“像购物车”的数据
 function getCartSnapshot() {
   // 1) FreshCart（尽量多尝试常见方法/字段）
@@ -827,7 +828,7 @@ function createProductCard(p, extraBadgeText) {
     };
 
     cartApi.addItem(normalized, 1);
-
+    setTimeout(() => trySyncBadgesFromCart(), 0);
     // ✅✅✅ 加购后立刻显示徽章 +1（不依赖 cart.js 是否广播）
     try {
       const badge = article.querySelector(`.product-qty-badge[data-pid="${pid}"]`);
