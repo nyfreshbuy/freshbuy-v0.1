@@ -404,51 +404,59 @@ console.log("✅ /admin/assets/js/packing.js loaded");
   // ✅ 修改：A4 不干胶 2"×4"，每页 10 个（2 列×5 行），按 routeSeq 顺序分页打印
   function buildLabelsPrintHtml(list) {
     const style = `
-  /* ✅ 固定 A4 画布，不让浏览器自己算可用区导致漂移 */
+  /* ✅ 固定 A4 画布，避免浏览器二次计算导致漂移 */
   @page { size: A4; margin: 0; }
 
+  :root{
+    --pw: 210mm;     /* A4 宽 */
+    --ph: 297mm;     /* A4 高 */
+    --m: 8mm;        /* 页边距（等于你原来的 @page margin） */
+    --cg: 6mm;       /* 列间距 */
+    --rg: 4mm;       /* 行间距 */
+
+    /* ✅ 自动计算：2列×5行刚好填满可用区域 */
+    --lw: calc((var(--pw) - (2 * var(--m)) - var(--cg)) / 2);
+    --lh: calc((var(--ph) - (2 * var(--m)) - (4 * var(--rg))) / 5);
+  }
+
   html, body {
-    width: 210mm;
-    height: 297mm;
+    width: var(--pw);
+    height: var(--ph);
     margin: 0;
     padding: 0;
   }
 
-  /* ✅ 每页就是一张 A4，自己用 padding 做边距 */
   .page{
-    width: 210mm;
-    height: 297mm;
+    width: var(--pw);
+    height: var(--ph);
     box-sizing: border-box;
-    padding: 8mm;                 /* 你原来 @page margin:8mm 的效果搬到这里 */
+    padding: var(--m);
     page-break-after: always;
     break-after: page;
-    overflow: hidden;             /* 防止内容把页面撑开导致错位 */
+    overflow: hidden;
   }
   .page:last-child{ page-break-after:auto; break-after:auto; }
 
-  /* ✅ 2列×5行：每张 2"×4" => 50.8mm × 101.6mm */
+  /* ✅ 顶格排布，不要居中（居中会导致你看到“漂在中间”） */
   .sheet{
     display: grid;
-    grid-template-columns: repeat(2, 50.8mm);
-    grid-template-rows: repeat(5, 101.6mm);
-
-    column-gap: 6mm;
-    row-gap: 4mm;
-
-    justify-content: center;
-    align-content: center;
-
+    grid-template-columns: repeat(2, var(--lw));
+    grid-template-rows: repeat(5, var(--lh));
+    column-gap: var(--cg);
+    row-gap: var(--rg);
+    justify-content: start;
+    align-content: start;
     width: 100%;
-    height: 100%;                /* ✅ 不要用 calc，直接吃满 page 内容区 */
+    height: 100%;
   }
 
   .label{
-    width: 50.8mm;
-    height: 101.6mm;
-
+    width: var(--lw);
+    height: var(--lh);
     box-sizing: border-box;
+
     padding: 5mm;
-    padding-top: 16mm;           /* 给右上角大号序号留空间 */
+    padding-top: 16mm; /* 给右上角大号序号留空间 */
 
     font-family: Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
     font-size: 11pt;
@@ -462,7 +470,7 @@ console.log("✅ /admin/assets/js/packing.js loaded");
     position: relative;
   }
 
-  /* ✅ 送货顺序：超大字体（贴纸右上角） */
+  /* ✅ 送货顺序：超大字体 */
   .route-seq-big{
     position: absolute;
     top: 3mm;
@@ -485,16 +493,7 @@ console.log("✅ /admin/assets/js/packing.js loaded");
     body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .route-seq-big { font-size: 48pt; }
   }
-
-  .label .name { font-weight: 800; font-size: 12pt; }
-  .label .addr { margin-top: 2mm; font-size: 10pt; }
-  .label .note { margin-top: 2mm; font-size: 9.5pt; }
-  .label .ord  { margin-top: 2mm; font-size: 9pt; opacity: .9; }
-
-  /* 🧪 对位测试用（对齐后再关） */
-  /* .label { outline: 1px dashed rgba(0,0,0,.25); } */
 `;
-
     // ✅ 每页 10 个贴纸
     const perPage = 10;
 
