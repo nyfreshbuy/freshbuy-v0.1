@@ -59,6 +59,13 @@
   const rechargeTbody = document.querySelector("#rechargeTable tbody");
   const couponListEl = document.getElementById("couponList");
 
+  // ✅ 修改密码（你HTML新增的）
+  const ucOldPwd = document.getElementById("ucOldPwd");
+  const ucNewPwd = document.getElementById("ucNewPwd");
+  const ucNewPwd2 = document.getElementById("ucNewPwd2");
+  const btnChangePwd = document.getElementById("btnChangePwd");
+  const ucPwdMsg = document.getElementById("ucPwdMsg");
+
   // =========================
   // utils
   // =========================
@@ -134,6 +141,35 @@
   }
 
   // =========================
+  // ✅ 修改密码：提示/按钮
+  // =========================
+  function setPwdMsg(text, ok = false) {
+    if (!ucPwdMsg) return;
+    ucPwdMsg.textContent = text || "";
+    ucPwdMsg.style.color = ok ? "#16a34a" : "#ef4444";
+  }
+
+  function setPwdBtnLoading(loading) {
+    if (!btnChangePwd) return;
+    if (loading) {
+      btnChangePwd.disabled = true;
+      btnChangePwd.style.opacity = "0.7";
+      btnChangePwd.textContent = "提交中...";
+    } else {
+      btnChangePwd.disabled = false;
+      btnChangePwd.style.opacity = "1";
+      const oldPwd = String(ucOldPwd?.value || "").trim();
+      btnChangePwd.textContent = oldPwd ? "修改密码" : "设置密码";
+    }
+  }
+
+  function refreshPwdBtnText() {
+    if (!btnChangePwd) return;
+    const oldPwd = String(ucOldPwd?.value || "").trim();
+    btnChangePwd.textContent = oldPwd ? "修改密码" : "设置密码";
+  }
+
+  // =========================
   // apiFetch（带token）
   // =========================
   async function apiFetch(path, options = {}) {
@@ -168,6 +204,84 @@
       throw new Error(json.message || json.msg || json.error || "请求失败");
     }
     return json;
+  }
+
+  // =========================
+  // ✅ 修改/设置密码（统一走 /api/users/change-password）
+  // =========================
+  async function submitChangePassword() {
+    const token = AUTH.getToken();
+    if (!token) {
+      setPwdMsg("未登录或 token 丢失，请重新登录", false);
+      return;
+    }
+
+    const oldPassword = String(ucOldPwd?.value || "").trim();
+    const newPassword = String(ucNewPwd?.value || "").trim();
+    const newPassword2 = String(ucNewPwd2?.value || "").trim();
+
+    if (!newPassword || newPassword.length < 6) {
+      setPwdMsg("新密码至少 6 位", false);
+      return;
+    }
+    if (newPassword !== newPassword2) {
+      setPwdMsg("两次输入的新密码不一致", false);
+      return;
+    }
+
+    setPwdMsg("");
+    setPwdBtnLoading(true);
+
+    try {
+      // ✅ 后端已支持：有旧密码则校验；无旧密码则当“首次设置”
+      const r = await apiFetch("/api/users/change-password", {
+        method: "POST",
+        body: JSON.stringify({ oldPassword, newPassword }),
+      });
+
+      setPwdMsg(r.message || "操作成功", true);
+
+      if (ucOldPwd) ucOldPwd.value = "";
+      if (ucNewPwd) ucNewPwd.value = "";
+      if (ucNewPwd2) ucNewPwd2.value = "";
+    } catch (e) {
+      const msg = String(e?.message || "");
+      // 更友好的提示
+      if (msg.includes("缺少当前密码")) {
+        setPwdMsg("该账号已设置密码：请输入“当前密码”再修改。", false);
+      } else if (msg.includes("当前密码不正确")) {
+        setPwdMsg("当前密码不正确，请重试。", false);
+      } else {
+        setPwdMsg(msg || "操作失败，请稍后再试", false);
+      }
+    } finally {
+      setPwdBtnLoading(false);
+    }
+  }
+
+  function bindPasswordOnce() {
+    if (!btnChangePwd) return;
+    if (btnChangePwd.__bound) return;
+    btnChangePwd.__bound = true;
+
+    btnChangePwd.addEventListener("click", (e) => {
+      e.preventDefault();
+      submitChangePassword();
+    });
+
+    // 回车提交
+    [ucOldPwd, ucNewPwd, ucNewPwd2].forEach((el) => {
+      if (!el) return;
+      el.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          submitChangePassword();
+        }
+      });
+      el.addEventListener("input", () => refreshPwdBtnText());
+    });
+
+    refreshPwdBtnText();
   }
 
   // =========================
@@ -505,52 +619,48 @@
   }
 
   // =========================
-// 账号设置：昵称（✅ 写入后端 + 本地缓存）
-// 依赖后端：PATCH /api/users/me {nickname}
-// =========================
-async function saveNicknameToServer(nickname) {
-  const r = await apiFetch("/api/users/me", {
-    method: "PATCH",
-    body: JSON.stringify({ nickname }),
-  });
-  return r.user || r.data || r;
-}
-
-function applyNicknameUI(nick, phoneForAvatar = "") {
-  const showNick = nick || "在鲜购用户";
-
-  nicknameDisplay && (nicknameDisplay.textContent = showNick);
-  topUserName && (topUserName.textContent = showNick);
-  settingsNickname && (settingsNickname.value = showNick);
-
-  const avatarText = getAvatarText(showNick || phoneForAvatar);
-  topAvatar && (topAvatar.textContent = avatarText);
-  mainAvatar && (mainAvatar.textContent = avatarText);
-}
-
-document.getElementById("saveNicknameBtn")?.addEventListener("click", async () => {
-  const newNick = document.getElementById("settingsNickname")?.value?.trim() || "";
-  if (!newNick) return alert("昵称不能为空");
-
-  try {
-    // ✅ 写入后端
-    const u = await saveNicknameToServer(newNick);
-
-    // ✅ 用后端返回为准（避免前端和DB不一致）
-    const nickSaved = u.nickname || u.name || newNick;
-    const phoneSaved = u.phone || localStorage.getItem(AUTH.phoneKey) || "";
-
-    // ✅ 本地也存一份做缓存（可选，但建议保留）
-    localStorage.setItem(AUTH.nickKey, nickSaved);
-
-    // ✅ 刷新UI
-    applyNicknameUI(nickSaved, phoneSaved);
-
-    alert("昵称已保存（已写入账号）");
-  } catch (e) {
-    alert("保存失败：" + (e.message || ""));
+  // 账号设置：昵称（✅ 写入后端 + 本地缓存）
+  // =========================
+  async function saveNicknameToServer(nickname) {
+    const r = await apiFetch("/api/users/me", {
+      method: "PATCH",
+      body: JSON.stringify({ nickname }),
+    });
+    return r.user || r.data || r;
   }
-});
+
+  function applyNicknameUI(nick, phoneForAvatar = "") {
+    const showNick = nick || "在鲜购用户";
+
+    nicknameDisplay && (nicknameDisplay.textContent = showNick);
+    topUserName && (topUserName.textContent = showNick);
+    settingsNickname && (settingsNickname.value = showNick);
+
+    const avatarText = getAvatarText(showNick || phoneForAvatar);
+    topAvatar && (topAvatar.textContent = avatarText);
+    mainAvatar && (mainAvatar.textContent = avatarText);
+  }
+
+  document.getElementById("saveNicknameBtn")?.addEventListener("click", async () => {
+    const newNick = document.getElementById("settingsNickname")?.value?.trim() || "";
+    if (!newNick) return alert("昵称不能为空");
+
+    try {
+      const u = await saveNicknameToServer(newNick);
+
+      const nickSaved = u.nickname || u.name || newNick;
+      const phoneSaved = u.phone || localStorage.getItem(AUTH.phoneKey) || "";
+
+      localStorage.setItem(AUTH.nickKey, nickSaved);
+
+      applyNicknameUI(nickSaved, phoneSaved);
+
+      alert("昵称已保存（已写入账号）");
+    } catch (e) {
+      alert("保存失败：" + (e.message || ""));
+    }
+  });
+
   // =========================
   // ✅ Places Autocomplete（强制下拉选择）
   // =========================
@@ -615,7 +725,6 @@ document.getElementById("saveNicknameBtn")?.addEventListener("click", async () =
     });
   }
 
-  // Google script callback 会调用这个
   window._initPlaces = function () {
     initStreetAutocomplete();
   };
@@ -689,7 +798,6 @@ document.getElementById("saveNicknameBtn")?.addEventListener("click", async () =
     };
   }
 
-  // ✅ 校验：新增必须下拉选择；编辑如果已有 placeId/lat/lng 可直接保存
   function validateAddr(a) {
     if (!a.firstName) return "请填写名 (First Name)";
     if (!a.lastName) return "请填写姓 (Last Name)";
@@ -701,8 +809,10 @@ document.getElementById("saveNicknameBtn")?.addEventListener("click", async () =
 
     const hasPlace =
       !!a.placeId &&
-      typeof a.lat === "number" && isFinite(a.lat) &&
-      typeof a.lng === "number" && isFinite(a.lng);
+      typeof a.lat === "number" &&
+      isFinite(a.lat) &&
+      typeof a.lng === "number" &&
+      isFinite(a.lng);
 
     if (!hasPlace) {
       if (!STREET_SELECTED) return "请从下拉提示中选择正确街道地址（不要手动输入）";
@@ -745,7 +855,6 @@ document.getElementById("saveNicknameBtn")?.addEventListener("click", async () =
         </div>
       `;
 
-      // 点击进入编辑（PUT）
       div.addEventListener("click", () => {
         if (!id) return setAddrHint("该地址缺少 id，无法编辑", false);
 
@@ -766,12 +875,11 @@ document.getElementById("saveNicknameBtn")?.addEventListener("click", async () =
         streetEl.dataset.lat = typeof a.lat === "number" ? String(a.lat) : "";
         streetEl.dataset.lng = typeof a.lng === "number" ? String(a.lng) : "";
 
-        // 老数据没 place：要求重新下拉选一次
         if (!a.placeId || typeof a.lat !== "number" || typeof a.lng !== "number") {
           STREET_SELECTED = false;
           setAddrHint("⚠️ 该地址缺少 Places 验证信息：请重新从下拉选择街道地址后再点“更新地址”", false);
         } else {
-          STREET_SELECTED = true; // ✅ 有 place 就允许直接保存
+          STREET_SELECTED = true;
           setAddrHint("✅ 已进入编辑模式：点击“更新地址”保存修改", true);
         }
 
@@ -795,16 +903,13 @@ document.getElementById("saveNicknameBtn")?.addEventListener("click", async () =
     }
   }
 
-  // ✅ 新增
   async function createAddressToDb(addr) {
-    // 如果你的后端新增不是这个路径，就改这里：
     await apiFetch(`/api/addresses`, {
       method: "POST",
       body: JSON.stringify(addr),
     });
   }
 
-  // ✅ 更新
   async function updateAddressToDb(id, addr) {
     await apiFetch(`/api/addresses/${encodeURIComponent(id)}`, {
       method: "PUT",
@@ -836,7 +941,6 @@ document.getElementById("saveNicknameBtn")?.addEventListener("click", async () =
 
           setAddrHint(isEdit ? "✅ 地址已更新（PUT）" : "✅ 地址已新增（POST）", true);
 
-          // 保存后回到“新增模式”
           clearAddrForm(true);
           await loadAddresses();
         } catch (e) {
@@ -864,18 +968,21 @@ document.getElementById("saveNicknameBtn")?.addEventListener("click", async () =
     // 1) 菜单
     bindMenu();
 
-    // 2) 地址按钮
+    // ✅ 2) 修改密码按钮绑定（新增）
+    bindPasswordOnce();
+
+    // 3) 地址按钮
     bindAddressButtonsOnce();
 
-    // 3) 初始值
+    // 4) 初始值
     setBalance(0);
     if (overviewCoupons) overviewCoupons.textContent = "0 张";
     if (overviewOrders) overviewOrders.textContent = "0 单";
 
-    // 4) 用户信息
+    // 5) 用户信息
     await loadUserInfo();
 
-    // 5) 首屏数据（不炸）
+    // 6) 首屏数据（不炸）
     await Promise.allSettled([
       loadWallet(),
       loadOrdersRecent(),
@@ -889,6 +996,7 @@ document.getElementById("saveNicknameBtn")?.addEventListener("click", async () =
     if (location.hash === "#orders") showTab("orders");
   });
 })();
+
 // ✅ 强制加载 orders.js（防止用户中心页面没引入）
 (function ensureOrdersJsLoaded() {
   // 如果已经有函数就不重复加载
@@ -899,144 +1007,4 @@ document.getElementById("saveNicknameBtn")?.addEventListener("click", async () =
   s.onload = () => console.log("✅ orders.js injected");
   s.onerror = (e) => console.error("❌ orders.js inject failed", e);
   document.head.appendChild(s);
-})();
-// ===== 修改/设置密码（新版：自动识别是否已设置密码）=====
-(function () {
-  const $ = (id) => document.getElementById(id);
-
-  function getToken() {
-    const keys = ["freshbuy_token", "token", "jwt", "access_token", "auth_token"];
-    for (const k of keys) {
-      const v = localStorage.getItem(k);
-      if (v && String(v).trim()) return String(v).trim();
-    }
-    return "";
-  }
-
-  function setMsg(text, ok = false) {
-    const msg = $("ucPwdMsg");
-    if (!msg) return;
-    msg.textContent = text || "";
-    msg.style.color = ok ? "#16a34a" : "#ef4444";
-  }
-
-  function setBtn(loading, textWhenIdle) {
-    const btn = $("btnChangePwd");
-    if (!btn) return;
-    if (loading) {
-      btn.disabled = true;
-      btn.style.opacity = "0.7";
-      btn.textContent = "提交中...";
-    } else {
-      btn.disabled = false;
-      btn.style.opacity = "1";
-      btn.textContent = textWhenIdle || "修改密码";
-    }
-  }
-
-  // 调后端接口（带 token）
-  async function postWithToken(url, body) {
-    const token = getToken();
-    if (!token) throw new Error("未登录或 token 丢失，请重新登录");
-
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: "Bearer " + token,
-      },
-      credentials: "include",
-      body: JSON.stringify(body || {}),
-    });
-
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || data?.success === false) {
-      throw new Error(data?.message || `请求失败(${res.status})`);
-    }
-    return data;
-  }
-
-  async function submitPassword() {
-    const oldPassword = ($("ucOldPwd")?.value || "").trim();
-    const newPassword = ($("ucNewPwd")?.value || "").trim();
-    const newPassword2 = ($("ucNewPwd2")?.value || "").trim();
-
-    // 基础校验
-    if (newPassword.length < 6) return setMsg("新密码至少 6 位", false);
-    if (newPassword !== newPassword2) return setMsg("两次输入的新密码不一致", false);
-
-    setMsg(""); // 清空提示
-    setBtn(true);
-
-    try {
-      // ✅ 优先策略：
-      // 1) 如果用户没填旧密码：优先走 set-password（首次设置）
-      // 2) 如果用户填了旧密码：优先走 change-password（修改）
-      if (!oldPassword) {
-        // 尝试首次设置密码
-        const r = await postWithToken("/api/users/set-password", { newPassword });
-        setMsg("✅ 密码设置成功（下次可用密码登录）", true);
-
-        // 清空输入
-        if ($("ucOldPwd")) $("ucOldPwd").value = "";
-        if ($("ucNewPwd")) $("ucNewPwd").value = "";
-        if ($("ucNewPwd2")) $("ucNewPwd2").value = "";
-
-        // 按钮文案回归“修改密码”
-        setBtn(false, "修改密码");
-        return;
-      }
-
-      // 用户填了旧密码：走修改密码
-      const r = await postWithToken("/api/users/change-password", { oldPassword, newPassword });
-      setMsg("✅ 密码修改成功，请用新密码下次登录", true);
-
-      if ($("ucOldPwd")) $("ucOldPwd").value = "";
-      if ($("ucNewPwd")) $("ucNewPwd").value = "";
-      if ($("ucNewPwd2")) $("ucNewPwd2").value = "";
-
-      setBtn(false, "修改密码");
-    } catch (e) {
-      const msg = String(e?.message || "");
-
-      // ✅ 自动兜底逻辑：
-      // A) 走 change-password 失败，且提示“未设置密码” -> 提示用户不需要旧密码，直接设置
-      if (msg.includes("未设置密码") || msg.includes("无法修改")) {
-        setMsg("该账号尚未设置密码：请清空“当前密码”，直接填写新密码后点击按钮进行“设置密码”。", false);
-        setBtn(false, "设置密码");
-        return;
-      }
-
-      // B) 走 set-password 失败，且提示“已设置密码” -> 提示必须输入旧密码
-      if (msg.includes("已设置密码") || msg.includes("请使用修改密码")) {
-        setMsg("该账号已设置密码：请输入“当前密码”再修改。", false);
-        setBtn(false, "修改密码");
-        return;
-      }
-
-      setMsg(msg || "操作失败，请稍后再试", false);
-      setBtn(false, "修改密码");
-    }
-  }
-
-  // 点击按钮触发
-  document.addEventListener("click", (e) => {
-    if (e.target && e.target.id === "btnChangePwd") {
-      e.preventDefault();
-      submitPassword();
-    }
-  });
-
-  // ✅ 交互优化：用户把“当前密码”清空时，按钮提示变成“设置密码”
-  document.addEventListener("input", (e) => {
-    if (!e.target) return;
-    const id = e.target.id;
-
-    if (id === "ucOldPwd" || id === "ucNewPwd" || id === "ucNewPwd2") {
-      const oldPassword = ($("ucOldPwd")?.value || "").trim();
-      // 没填旧密码 -> 更像“首次设置”
-      const btn = $("btnChangePwd");
-      if (btn) btn.textContent = oldPassword ? "修改密码" : "设置密码";
-    }
-  });
 })();

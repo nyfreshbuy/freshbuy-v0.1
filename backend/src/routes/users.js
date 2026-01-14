@@ -1,8 +1,8 @@
 // backend/src/routes/users.js
 import express from "express";
-import bcrypt from "bcryptjs"; // ✅ 用于校验/加密密码
+import bcrypt from "bcryptjs"; // ✅ 用于校验旧密码（新密码不在路由里hash，交给User model）
 import User from "../models/user.js";
-import Address from "../models/Address.js"; // ✅ 关键：从 Address 集合取默认地址
+import Address from "../models/Address.js"; // ✅ 从 Address 集合取默认地址
 import { requireLogin } from "../middlewares/auth.js";
 
 const router = express.Router();
@@ -60,7 +60,6 @@ async function getDefaultAddress(userId) {
 // ===============================
 router.get("/me", requireLogin, async (req, res) => {
   try {
-    // requireLogin 里你用的是 req.user.id
     const u = await User.findById(req.user.id).select(
       "_id name nickname phone role email accountSettings isActive createdAt updatedAt"
     );
@@ -79,11 +78,11 @@ router.get("/me", requireLogin, async (req, res) => {
         role: u.role,
         phone: u.phone,
         name: u.name,
-        nickname: u.nickname || "", // ✅ 返回昵称
+        nickname: u.nickname || "",
         email: u.email || "",
         accountSettings: u.accountSettings || {},
         isActive: u.isActive,
-        defaultAddress, // ✅ Address 集合默认地址
+        defaultAddress,
         createdAt: u.createdAt,
         updatedAt: u.updatedAt,
       },
@@ -146,9 +145,11 @@ router.patch("/me", requireLogin, async (req, res) => {
 });
 
 // ===============================
-// ✅ 修改密码（已有密码账号）
+// ✅ 修改密码/首次设置密码（统一入口）
 // POST /api/users/change-password
-// body: { oldPassword: "xxx", newPassword: "yyy" }
+// body:
+// 1) 已设置过密码：{ oldPassword, newPassword }
+// 2) 未设置过密码（短信登录用户）：{ newPassword }（oldPassword 可为空）
 // ===============================
 router.post("/change-password", requireLogin, async (req, res) => {
   try {
@@ -158,38 +159,37 @@ router.post("/change-password", requireLogin, async (req, res) => {
     const oldPassword = String(req.body?.oldPassword || "").trim();
     const newPassword = String(req.body?.newPassword || "").trim();
 
-    if (!oldPassword) {
-      return res.status(400).json({ success: false, message: "缺少当前密码" });
-    }
     if (!newPassword || newPassword.length < 6) {
       return res.status(400).json({ success: false, message: "新密码至少 6 位" });
     }
 
-    // 兼容 schema 里把密码字段设置为 select:false
-    const u = await User.findById(userId).select("+password +passwordHash _id");
+    // ✅ password 在 schema 里 select:false，所以必须 select("+password")
+    const u = await User.findById(userId).select("+password _id");
+    if (!u) return res.status(404).json({ success: false, message: "用户不存在" });
 
-    if (!u) {
-      return res.status(404).json({ success: false, message: "用户不存在" });
+    const existedHash = u.password || "";
+
+    // ✅ 如果已有密码：必须校验 oldPassword
+    if (existedHash) {
+      if (!oldPassword) {
+        return res.status(400).json({ success: false, message: "缺少当前密码" });
+      }
+
+      const ok = await bcrypt.compare(oldPassword, existedHash);
+      if (!ok) {
+        return res.status(400).json({ success: false, message: "当前密码不正确" });
+      }
     }
 
-    const hashed = u.passwordHash || u.password || "";
-    if (!hashed) {
-      return res.status(400).json({ success: false, message: "该账号未设置密码，无法修改" });
-    }
-
-    const ok = await bcrypt.compare(oldPassword, hashed);
-    if (!ok) {
-      return res.status(400).json({ success: false, message: "当前密码不正确" });
-    }
-
-    const newHashed = await bcrypt.hash(newPassword, 10);
-
-    if (u.passwordHash !== undefined) u.passwordHash = newHashed;
-    if (u.password !== undefined) u.password = newHashed;
-
+    // ✅ 关键：不要在这里 bcrypt.hash(newPassword)
+    // 交给 User model 的 pre("save") 自动加密，避免双重hash
+    u.password = newPassword;
     await u.save();
 
-    return res.json({ success: true, message: "密码已更新" });
+    return res.json({
+      success: true,
+      message: existedHash ? "密码已更新" : "密码设置成功",
+    });
   } catch (err) {
     console.error("POST /api/users/change-password error:", err);
     return res.status(500).json({ success: false, message: "修改密码失败" });
@@ -197,9 +197,10 @@ router.post("/change-password", requireLogin, async (req, res) => {
 });
 
 // ===============================
-// ✅ 设置密码（首次设置，仅限无密码账号）
+// ✅ 设置密码（可保留的独立接口）
 // POST /api/users/set-password
 // body: { newPassword: "yyy" }
+// 仅允许“未设置过密码”的账号使用
 // ===============================
 router.post("/set-password", requireLogin, async (req, res) => {
   try {
@@ -207,33 +208,22 @@ router.post("/set-password", requireLogin, async (req, res) => {
     if (!userId) return res.status(401).json({ success: false, message: "未登录" });
 
     const newPassword = String(req.body?.newPassword || "").trim();
-
     if (!newPassword || newPassword.length < 6) {
       return res.status(400).json({ success: false, message: "新密码至少 6 位" });
     }
 
-    // 兼容 schema 里把密码字段设置为 select:false
-    const u = await User.findById(userId).select("+password +passwordHash _id");
+    const u = await User.findById(userId).select("+password _id");
+    if (!u) return res.status(404).json({ success: false, message: "用户不存在" });
 
-    if (!u) {
-      return res.status(404).json({ success: false, message: "用户不存在" });
-    }
-
-    // 如果已经有密码，则不允许走“设置密码”
-    const existed = u.passwordHash || u.password || "";
-    if (existed) {
+    if (u.password) {
       return res.status(400).json({
         success: false,
         message: "该账号已设置密码，请使用修改密码",
       });
     }
 
-    const newHashed = await bcrypt.hash(newPassword, 10);
-
-    // 兼容字段名
-    if (u.passwordHash !== undefined) u.passwordHash = newHashed;
-    if (u.password !== undefined) u.password = newHashed;
-
+    // ✅ 同样：不要手动hash，交给model
+    u.password = newPassword;
     await u.save();
 
     return res.json({ success: true, message: "密码设置成功" });
