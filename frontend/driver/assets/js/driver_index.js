@@ -4,6 +4,20 @@ console.log("driver_index.js loaded (NEW) - FIXED ROUTES");
   const API_BASE = ""; // 同域部署留空
   const $ = (id) => document.getElementById(id);
 
+  // =========================
+  // ✅ 起始地址（可编辑保存）
+  // =========================
+  const ORIGIN_KEY = "freshbuy_driver_origin";
+
+  function getSavedOrigin() {
+    return String(localStorage.getItem(ORIGIN_KEY) || "").trim();
+  }
+  function setSavedOrigin(v) {
+    const val = String(v || "").trim();
+    if (val) localStorage.setItem(ORIGIN_KEY, val);
+    else localStorage.removeItem(ORIGIN_KEY);
+  }
+
   // ====== AUTH（司机端 token 优先 + 兼容你项目里已有 key）======
   const AUTH = {
     tokenKeys: [
@@ -47,6 +61,11 @@ console.log("driver_index.js loaded (NEW) - FIXED ROUTES");
   const btnRefresh = $("btnRefresh");
   const btnNavAll = $("btnNavAll");
   const btnPing = $("btnPing");
+
+  // ✅ 起始地址控件（来自你刚加到 index.html 的那段）
+  const startAddressInput = $("startAddressInput");
+  const saveStartAddressBtn = $("saveStartAddressBtn");
+  const clearStartAddressBtn = $("clearStartAddressBtn");
 
   // 可选：如果你页面里有这些显示位
   const apiHint = $("apiHint");
@@ -312,22 +331,51 @@ console.log("driver_index.js loaded (NEW) - FIXED ROUTES");
     return `https://www.google.com/maps/search/?api=1&query=${q}`;
   }
 
-  function buildGoogleMapsDirections(stops) {
-    const points = stops
-      .map((s) => (s.lat != null && s.lng != null ? `${s.lat},${s.lng}` : s.addr))
-      .filter(Boolean);
+  // ✅ 过滤掉 0,0 之类的坏点（你之前 Maps 报错的根源）
+  function isZeroCoordText(s) {
+    const t = String(s || "").replace(/\s+/g, "");
+    return (
+      t === "0,0" ||
+      t === "0.0,0.0" ||
+      t === "0.000000,0.000000" ||
+      t === "0.0000000,0.0000000"
+    );
+  }
+
+  function buildGoogleMapsDirectionsWithOptionalOrigin(stops, originText) {
+    const points = (stops || [])
+      .map((s) => {
+        // 有效坐标才用坐标，否则用 addr
+        if (s && s.lat != null && s.lng != null) {
+          const lat = Number(s.lat);
+          const lng = Number(s.lng);
+          if (Number.isFinite(lat) && Number.isFinite(lng) && !(lat === 0 && lng === 0)) {
+            return `${lat},${lng}`;
+          }
+        }
+        return String(s?.addr || "").trim();
+      })
+      .filter(Boolean)
+      .filter((p) => !isZeroCoordText(p)); // ✅ 干掉 0,0
 
     if (!points.length) return "";
 
+    // Google Maps dir api 有上限，这里保守切 22
     const maxStops = 22;
     const sliced = points.slice(0, maxStops);
-    const origin = encodeURIComponent(sliced[0]);
+
     const destination = encodeURIComponent(sliced[sliced.length - 1]);
-    const waypointsArr = sliced.slice(1, -1);
-    const waypoints = waypointsArr.length
-      ? `&waypoints=${encodeURIComponent(waypointsArr.join("|"))}`
+    const waypointsArr = sliced.slice(0, -1); // ✅ 注意：这里不把第一站当 origin（因为我们要用可选 origin）
+
+    const waypoints =
+      waypointsArr.length > 0 ? `&waypoints=${encodeURIComponent(waypointsArr.join("|"))}` : "";
+
+    // ✅ origin：优先用保存的起始地址；没有就不传，让谷歌用“你的位置”
+    const originPart = originText && originText.trim()
+      ? `&origin=${encodeURIComponent(originText.trim())}`
       : "";
-    return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}${waypoints}&travelmode=driving`;
+
+    return `https://www.google.com/maps/dir/?api=1${originPart}&destination=${destination}${waypoints}&travelmode=driving`;
   }
 
   // ====== API calls（自动探测）======
@@ -581,9 +629,16 @@ console.log("driver_index.js loaded (NEW) - FIXED ROUTES");
 
   function navAll() {
     if (!ORDERS.length) return showErr("没有订单，无法全程导航");
+
+    // ✅ 这里让保存的起始地址作为 origin
+    const originText = getSavedOrigin();
+
+    // stops：仍然按你的订单点做 stops（内部会过滤 0,0 坏点）
     const stops = ORDERS.map((o) => ({ addr: o.addr, lat: o.lat, lng: o.lng }));
-    const url = buildGoogleMapsDirections(stops);
-    if (!url) return showErr("缺少地址/坐标，无法生成路线导航");
+
+    const url = buildGoogleMapsDirectionsWithOptionalOrigin(stops, originText);
+    if (!url) return showErr("缺少有效地址/坐标，无法生成路线导航");
+
     window.open(url, "_blank", "noreferrer");
   }
 
@@ -592,6 +647,25 @@ console.log("driver_index.js loaded (NEW) - FIXED ROUTES");
     if (tokenHint) tokenHint.textContent = AUTH.getToken() ? "FOUND" : "MISSING";
 
     if (dateInput) dateInput.value = fmtDateISO(new Date());
+
+    // ✅ 起始地址：页面加载回填 + 保存/清空按钮绑定
+    if (startAddressInput) startAddressInput.value = getSavedOrigin();
+
+    if (saveStartAddressBtn) {
+      saveStartAddressBtn.addEventListener("click", () => {
+        const v = (startAddressInput?.value || "").trim();
+        setSavedOrigin(v);
+        showOk(v ? "✅ 起始地址已保存（全程导航会从这里出发）" : "✅ 起始地址已清空");
+      });
+    }
+
+    if (clearStartAddressBtn) {
+      clearStartAddressBtn.addEventListener("click", () => {
+        if (startAddressInput) startAddressInput.value = "";
+        setSavedOrigin("");
+        showOk("✅ 起始地址已清空");
+      });
+    }
 
     if (btnLogout) {
       btnLogout.addEventListener("click", () => {

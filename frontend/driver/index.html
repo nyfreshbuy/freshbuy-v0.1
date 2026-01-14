@@ -136,6 +136,19 @@
 
       .hint { color: var(--muted); font-size: 13px; padding: 10px 0; }
       code { color: #a5b4fc; }
+
+      /* ✅ 起始地址小卡片（与整体风格一致） */
+      .originBox {
+        margin-top: 10px;
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: rgba(255,255,255,.04);
+      }
+      .originTitle { font-size: 13px; font-weight: 800; }
+      .originHint { margin-top: 6px; font-size: 12px; color: var(--muted); line-height: 1.5; }
+      .originActions { display:flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+      .btn.small { padding: 9px 10px; border-radius: 12px; font-size: 12px; }
     </style>
   </head>
 
@@ -176,6 +189,30 @@
             <select id="batchSelect" style="min-width: 260px;">
               <option value="">（可选）先加载批次</option>
             </select>
+          </div>
+
+          <!-- ✅ 新增：起始地址（可编辑保存） -->
+          <div class="originBox">
+            <div class="originTitle">起始地址（可保存）</div>
+            <div class="originHint">
+              用于「全程导航」的出发点。保存后会记住，下次打开页面仍然保留。<br />
+              示例：<code>199-26 48th Ave, Fresh Meadows, NY 11365</code>
+            </div>
+
+            <div class="row" style="margin-top:10px;">
+              <input
+                class="input"
+                id="startAddressInput"
+                type="text"
+                placeholder="输入起始地址（仓库/自提点/司机出发地）"
+                style="width:100%;"
+              />
+            </div>
+
+            <div class="originActions">
+              <button class="btn small primary" id="saveStartAddressBtn" type="button">保存起始地址</button>
+              <button class="btn small" id="clearStartAddressBtn" type="button">清空</button>
+            </div>
           </div>
 
           <div class="row">
