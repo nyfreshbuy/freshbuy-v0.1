@@ -404,80 +404,96 @@ console.log("✅ /admin/assets/js/packing.js loaded");
   // ✅ 修改：A4 不干胶 2"×4"，每页 10 个（2 列×5 行），按 routeSeq 顺序分页打印
   function buildLabelsPrintHtml(list) {
     const style = `
-      @page { size: A4; margin: 8mm; }
-      @media print { body { margin: 0; } }
+  /* ✅ 固定 A4 画布，不让浏览器自己算可用区导致漂移 */
+  @page { size: A4; margin: 0; }
 
-      /* 每页一个 sheet，10 个贴纸 */
-      .page { page-break-after: always; break-after: page; }
-      .page:last-child { page-break-after: auto; break-after: auto; }
+  html, body {
+    width: 210mm;
+    height: 297mm;
+    margin: 0;
+    padding: 0;
+  }
 
-      /* ✅ 2列×5行：每张 2"×4" => 50.8mm × 101.6mm */
-      .sheet{
-        display: grid;
-        grid-template-columns: repeat(2, 50.8mm);
-        grid-template-rows: repeat(5, 101.6mm);
+  /* ✅ 每页就是一张 A4，自己用 padding 做边距 */
+  .page{
+    width: 210mm;
+    height: 297mm;
+    box-sizing: border-box;
+    padding: 8mm;                 /* 你原来 @page margin:8mm 的效果搬到这里 */
+    page-break-after: always;
+    break-after: page;
+    overflow: hidden;             /* 防止内容把页面撑开导致错位 */
+  }
+  .page:last-child{ page-break-after:auto; break-after:auto; }
 
-        column-gap: 6mm;
-        row-gap: 4mm;
+  /* ✅ 2列×5行：每张 2"×4" => 50.8mm × 101.6mm */
+  .sheet{
+    display: grid;
+    grid-template-columns: repeat(2, 50.8mm);
+    grid-template-rows: repeat(5, 101.6mm);
 
-        justify-content: center;
-        align-content: center;
+    column-gap: 6mm;
+    row-gap: 4mm;
 
-        width: 100%;
-        height: calc(297mm - 16mm);
-      }
+    justify-content: center;
+    align-content: center;
 
-      .label{
-        width: 50.8mm;
-        height: 101.6mm;
+    width: 100%;
+    height: 100%;                /* ✅ 不要用 calc，直接吃满 page 内容区 */
+  }
 
-        box-sizing: border-box;
-        padding: 5mm;
-        padding-top: 16mm; /* ✅ 给右上角超大序号留空间 */
+  .label{
+    width: 50.8mm;
+    height: 101.6mm;
 
-        font-family: Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
-        font-size: 11pt;
-        line-height: 1.25;
+    box-sizing: border-box;
+    padding: 5mm;
+    padding-top: 16mm;           /* 给右上角大号序号留空间 */
 
-        overflow: hidden;
-        break-inside: avoid;
+    font-family: Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+    font-size: 11pt;
+    line-height: 1.25;
 
-        border: none;
-        border-radius: 6mm;
-        position: relative;
-      }
+    overflow: hidden;
+    break-inside: avoid;
 
-      /* ✅ 送货顺序：超大字体（贴纸右上角） */
-      .route-seq-big{
-        position: absolute;
-        top: 3mm;
-        right: 3mm;
+    border: none;
+    border-radius: 6mm;
+    position: relative;
+  }
 
-        font-size: 44pt;
-        font-weight: 900;
-        line-height: 1;
+  /* ✅ 送货顺序：超大字体（贴纸右上角） */
+  .route-seq-big{
+    position: absolute;
+    top: 3mm;
+    right: 3mm;
 
-        color: #000;
-        border: 2.2mm solid #000;
-        border-radius: 5mm;
+    font-size: 44pt;
+    font-weight: 900;
+    line-height: 1;
 
-        padding: 2mm 4mm;
-        min-width: 14mm;
-        text-align: center;
-      }
+    color: #000;
+    border: 2.2mm solid #000;
+    border-radius: 5mm;
 
-      @media print {
-        .route-seq-big { font-size: 48pt; }
-      }
+    padding: 2mm 4mm;
+    min-width: 14mm;
+    text-align: center;
+  }
 
-      .label .name { font-weight: 800; font-size: 12pt; }
-      .label .addr { margin-top: 2mm; font-size: 10pt; }
-      .label .note { margin-top: 2mm; font-size: 9.5pt; }
-      .label .ord  { margin-top: 2mm; font-size: 9pt; opacity: .9; }
+  @media print {
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .route-seq-big { font-size: 48pt; }
+  }
 
-      /* 🧪 如果你要对位测试，把下面打开（打印对齐后再关掉） */
-      /* .label { outline: 1px dashed rgba(0,0,0,.25); } */
-    `;
+  .label .name { font-weight: 800; font-size: 12pt; }
+  .label .addr { margin-top: 2mm; font-size: 10pt; }
+  .label .note { margin-top: 2mm; font-size: 9.5pt; }
+  .label .ord  { margin-top: 2mm; font-size: 9pt; opacity: .9; }
+
+  /* 🧪 对位测试用（对齐后再关） */
+  /* .label { outline: 1px dashed rgba(0,0,0,.25); } */
+`;
 
     // ✅ 每页 10 个贴纸
     const perPage = 10;
