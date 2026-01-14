@@ -266,7 +266,7 @@ console.log("静态前端目录是否存在:", fs.existsSync(frontendPath));
 app.use(express.static(frontendPath));
 app.use("/assets", express.static(path.join(frontendPath, "user/assets")));
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
-
+app.use("/uploads", express.static(path.resolve("uploads")));
 // =======================
 // 测试接口
 // =======================

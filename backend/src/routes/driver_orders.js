@@ -1,6 +1,11 @@
 // backend/src/routes/driver_orders.js
 import express from "express";
 import mongoose from "mongoose";
+import path from "path";
+import fs from "fs";
+import multer from "multer";
+import Twilio from "twilio";
+
 import Order from "../models/order.js";
 import { requireLogin } from "../middlewares/auth.js";
 
@@ -8,6 +13,59 @@ const router = express.Router();
 router.use(express.json());
 
 console.log("🚚 driver_orders.js loaded");
+
+// =====================
+// ✅ Twilio + 公网链接（短信里必须是完整 URL）
+// 环境变量：
+// - TWILIO_ACCOUNT_SID
+// - TWILIO_AUTH_TOKEN
+// - TWILIO_FROM
+// - APP_BASE_URL   例：https://nyfreshbuy.com
+// =====================
+const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID || "";
+const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN || "";
+const TWILIO_FROM = process.env.TWILIO_FROM || "";
+const APP_BASE_URL = String(process.env.APP_BASE_URL || "").replace(/\/+$/, "");
+
+const twilioClient =
+  TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN
+    ? new Twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+    : null;
+
+function toE164US(phone) {
+  const raw = String(phone || "").trim();
+  if (!raw) return "";
+  if (raw.startsWith("+")) return raw; // 尽量保留已是 E164 的号码
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+  if (digits.length === 10) return `+1${digits}`;
+  return "";
+}
+
+function absUrl(maybePath) {
+  const s = String(maybePath || "").trim();
+  if (!s) return "";
+  if (s.startsWith("http://") || s.startsWith("https://")) return s;
+  if (!APP_BASE_URL) return s; // 没配置 base，就只能返回相对路径
+  return APP_BASE_URL + (s.startsWith("/") ? s : "/" + s);
+}
+
+// =====================
+// ✅ 上传：送达照片（存本地 uploads/delivery）
+// 注意：生产环境要在 server.js 加： app.use("/uploads", express.static(path.resolve("uploads")))
+// =====================
+const UPLOAD_DIR = path.resolve("uploads/delivery");
+fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
+  filename: (req, file, cb) => {
+    const extRaw = path.extname(file.originalname || "").toLowerCase();
+    const safeExt = [".jpg", ".jpeg", ".png", ".webp"].includes(extRaw) ? extRaw : ".jpg";
+    cb(null, `proof_${Date.now()}_${Math.random().toString(16).slice(2)}${safeExt}`);
+  },
+});
+const upload = multer({ storage });
 
 // =====================
 // 权限：司机
@@ -159,8 +217,158 @@ function normalizeOrderOut(o, routeIndexComputed = null) {
 
     totalAmount: o.totalAmount,
     routeIndex: storedRouteIndex ?? routeIndexComputed,
+
+    // ✅ 新增：送达信息 + 照片（司机端要显示/复制链接）
+    deliveredAt: o.deliveredAt,
+    proofPhotos: Array.isArray(o.proofPhotos) ? o.proofPhotos : [],
   };
 }
+
+// =====================================================
+// ✅ 司机上传送达照片（先上传，再标记送达）
+// POST /api/driver/orders/:id/proof-photo
+// form-data: file
+// =====================================================
+router.post(
+  "/orders/:id/proof-photo",
+  requireLogin,
+  requireDriver,
+  upload.single("file"),
+  async (req, res) => {
+    try {
+      const orderId = String(req.params.id || "").trim();
+      if (!mongoose.Types.ObjectId.isValid(orderId)) {
+        return res.status(400).json({ success: false, message: "订单ID不合法" });
+      }
+      if (!req.file) {
+        return res.status(400).json({ success: false, message: "缺少图片文件 file" });
+      }
+
+      const o = await Order.findById(orderId);
+      if (!o) return res.status(404).json({ success: false, message: "订单不存在" });
+
+      // ✅ 保存相对路径（后面发短信用 absUrl 拼完整链接）
+      const url = `/uploads/delivery/${req.file.filename}`;
+
+      o.proofPhotos = Array.isArray(o.proofPhotos) ? o.proofPhotos : [];
+      o.proofPhotos.push({
+        url,
+        uploadedAt: new Date(),
+        uploadedBy: req.user._id,
+      });
+
+      await o.save();
+
+      return res.json({
+        success: true,
+        orderId,
+        url,
+        absoluteUrl: absUrl(url),
+      });
+    } catch (err) {
+      console.error("POST /api/driver/orders/:id/proof-photo error:", err);
+      return res.status(500).json({ success: false, message: "上传失败" });
+    }
+  }
+);
+
+// =====================================================
+// ✅ 司机标记送达：同步后台 + 自动短信通知客户（含照片链接）
+// PATCH /api/driver/orders/:id/mark-delivered
+// body: { note?: string }
+// =====================================================
+router.patch("/orders/:id/mark-delivered", requireLogin, requireDriver, async (req, res) => {
+  try {
+    const orderId = String(req.params.id || "").trim();
+    if (!mongoose.Types.ObjectId.isValid(orderId)) {
+      return res.status(400).json({ success: false, message: "订单ID不合法" });
+    }
+
+    const note = String(req.body?.note || "").trim();
+    const o = await Order.findById(orderId);
+    if (!o) return res.status(404).json({ success: false, message: "订单不存在" });
+
+    const prevStatus = String(o.status || "").toLowerCase();
+    const alreadyDelivered = ["delivered", "done", "completed"].includes(prevStatus);
+
+    // ✅ 先写入送达（后台订单管理一刷新就能同步）
+    o.status = "delivered";
+    o.deliveredAt = new Date();
+    o.deliveredBy = req.user._id;
+    if (note) o.deliveryNote = note;
+
+    await o.save();
+
+    // ✅ 最新照片（没有也可以发“已送达”短信）
+    const proofArr = Array.isArray(o.proofPhotos) ? o.proofPhotos : [];
+    const lastProof = proofArr.length ? proofArr[proofArr.length - 1] : null;
+    const photoUrl = absUrl(lastProof?.url || "");
+
+    // ✅ 客户手机号（兼容字段）
+    const rawPhone =
+      o?.user?.phone ||
+      o?.customerPhone ||
+      o?.phone ||
+      (o?.shippingAddress && o.shippingAddress.phone) ||
+      "";
+    const to = toE164US(rawPhone);
+
+    let smsSent = false;
+    let smsError = "";
+
+    // ✅ 防重复：已经送达过就不再发（避免重复短信）
+    if (!alreadyDelivered && twilioClient && TWILIO_FROM && to) {
+      const orderNo = o.orderNo || o.no || String(o._id || "").slice(-6);
+      const addr =
+        (typeof o.address === "string" && o.address) ||
+        o.addressText ||
+        o.fullAddress ||
+        (o.address && o.address.fullText) ||
+        "";
+
+      const text =
+        `【在鲜购 Freshbuy】您的订单已送达 ✅\n` +
+        `订单号：${orderNo}\n` +
+        (addr ? `地址：${addr}\n` : "") +
+        (photoUrl ? `送达照片：${photoUrl}\n` : "") +
+        `如有问题请回复本短信。`;
+
+      try {
+        // ✅ 短信（SMS）。如要彩信MMS可加 mediaUrl: [photoUrl]
+        await twilioClient.messages.create({
+          from: TWILIO_FROM,
+          to,
+          body: text,
+        });
+
+        smsSent = true;
+
+        // ✅ 写个记录字段（不影响其它功能；字段不存在也没关系，Mongo 会加上）
+        o.deliverySms = o.deliverySms || {};
+        o.deliverySms.sentAt = new Date();
+        o.deliverySms.to = to;
+        o.deliverySms.photoUrl = photoUrl;
+        await o.save().catch(() => {});
+      } catch (err) {
+        smsError = err?.message || "send sms failed";
+        console.error("❌ delivery sms failed:", smsError);
+      }
+    }
+
+    return res.json({
+      success: true,
+      orderId,
+      status: o.status,
+      deliveredAt: o.deliveredAt,
+      photoUrl,
+      smsSent,
+      smsError,
+    });
+  } catch (err) {
+    console.error("PATCH /api/driver/orders/:id/mark-delivered error:", err);
+    return res.status(500).json({ success: false, message: "标记送达失败" });
+  }
+});
 
 /**
  * =====================================================
@@ -177,7 +385,7 @@ router.get("/batches", requireLogin, requireDriver, async (req, res) => {
     const statusRaw = String(req.query.status || "").trim();
     const statusList = statusRaw
       ? statusRaw.split(",").map((x) => x.trim()).filter(Boolean)
-      : ["paid", "packing", "shipping", "delivering", "配送中", "done", "completed"];
+      : ["paid", "packing", "shipping", "delivering", "配送中", "delivered", "done", "completed"]; // ✅ 加 delivered
 
     const driverMatch = buildDriverMatch(req);
     if (!driverMatch) return res.status(401).json({ success: false, message: "用户信息异常" });
@@ -187,7 +395,6 @@ router.get("/batches", requireLogin, requireDriver, async (req, res) => {
         $match: {
           ...driverMatch,
           status: { $in: statusList },
-          // ✅ 有 deliveryDate 用 deliveryDate；没有就用 createdAt 兜底
           $or: [
             { deliveryDate: { $gte: range.start, $lt: range.end } },
             { deliveryDate: { $exists: false }, createdAt: { $gte: range.start, $lt: range.end } },
@@ -198,10 +405,7 @@ router.get("/batches", requireLogin, requireDriver, async (req, res) => {
       {
         $project: {
           batchKey: {
-            $ifNull: [
-              "$batchId", // ✅ 后台批次：PK20260110-6SYD
-              { $ifNull: ["$dispatch.batchKey", "$fulfillment.batchKey"] },
-            ],
+            $ifNull: ["$batchId", { $ifNull: ["$dispatch.batchKey", "$fulfillment.batchKey"] }],
           },
         },
       },
@@ -232,7 +436,7 @@ router.get("/batch/orders", requireLogin, requireDriver, async (req, res) => {
     const statusRaw = String(req.query.status || "").trim();
     const statusList = statusRaw
       ? statusRaw.split(",").map((x) => x.trim()).filter(Boolean)
-      : ["paid", "packing", "shipping", "delivering", "配送中", "done", "completed"];
+      : ["paid", "packing", "shipping", "delivering", "配送中", "delivered", "done", "completed"]; // ✅ 加 delivered
 
     const driverMatch = buildDriverMatch(req);
     if (!driverMatch) return res.status(401).json({ success: false, message: "用户信息异常" });
@@ -240,11 +444,7 @@ router.get("/batch/orders", requireLogin, requireDriver, async (req, res) => {
     const orders = await Order.find({
       ...driverMatch,
       status: { $in: statusList },
-      $or: [
-        { batchId: batchKey }, // ✅ 兼容后台 batchId=PK...
-        { "dispatch.batchKey": batchKey },
-        { "fulfillment.batchKey": batchKey },
-      ],
+      $or: [{ batchId: batchKey }, { "dispatch.batchKey": batchKey }, { "fulfillment.batchKey": batchKey }],
     })
       .sort({ createdAt: 1 })
       .lean();
@@ -268,7 +468,6 @@ router.get("/batch/orders", requireLogin, requireDriver, async (req, res) => {
  * =====================================================
  * ✅ 司机端：按天任务列表
  * GET /api/driver/orders?date=YYYY-MM-DD&status=...
- * （如果你 mount 在 /api/driver，则此路由为 /api/driver?date=...）
  * =====================================================
  */
 router.get("/", requireLogin, requireDriver, async (req, res) => {
@@ -280,7 +479,7 @@ router.get("/", requireLogin, requireDriver, async (req, res) => {
     const statusRaw = String(req.query.status || "").trim();
     const statusList = statusRaw
       ? statusRaw.split(",").map((x) => x.trim()).filter(Boolean)
-      : ["paid", "packing", "shipping", "delivering", "配送中", "done", "completed"];
+      : ["paid", "packing", "shipping", "delivering", "配送中", "delivered", "done", "completed"]; // ✅ 加 delivered
 
     const driverMatch = buildDriverMatch(req);
     if (!driverMatch) return res.status(401).json({ success: false, message: "用户信息异常" });
@@ -288,7 +487,6 @@ router.get("/", requireLogin, requireDriver, async (req, res) => {
     const orders = await Order.find({
       ...driverMatch,
       status: { $in: statusList },
-      // ✅ deliveryDate 没有就用 createdAt
       $or: [
         { deliveryDate: { $gte: range.start, $lt: range.end } },
         { deliveryDate: { $exists: false }, createdAt: { $gte: range.start, $lt: range.end } },
