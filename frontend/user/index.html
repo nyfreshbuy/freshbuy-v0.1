@@ -1045,7 +1045,7 @@
                 <input type="checkbox" id="loginRemember" />
                 <span>记住我</span>
               </label>
-              <button id="forgotPwdLink" class="auth-link" type="button">忘记密码？</button>
+              <button class="auth-link" id="forgotPwdLink" type="button">忘记密码？</button>
             </div>
 
             <button id="loginSubmitBtn" class="auth-primary" type="button">登录</button>
@@ -1064,8 +1064,48 @@
                 <span class="auth-input-ico">📱</span>
                 <input id="regPhone" type="tel" class="auth-input" placeholder="用于接收订单物流通知" />
               </div>
-            </label>
+              <!-- ✅ 找回密码面板（新增） -->
+<div id="forgotPanel" style="display:none;">
+  <div style="display:grid; gap:10px;">
 
+    <div style="font-size:13px; color:#6b7280; line-height:1.5;">
+      输入注册手机号，我们发送短信验证码；验证通过后设置新密码。
+    </div>
+
+    <div class="auth-field">
+      <div class="auth-label">手机号</div>
+      <input id="fpPhone" class="auth-input" placeholder="例如：+1 917xxxxxxx" autocomplete="tel" />
+    </div>
+
+    <div class="auth-field" style="display:grid; grid-template-columns: 1fr 140px; gap:10px; align-items:end;">
+      <div>
+        <div class="auth-label">验证码</div>
+        <input id="fpCode" class="auth-input" placeholder="6位验证码" inputmode="numeric" />
+      </div>
+      <button id="fpSendCodeBtn" type="button" class="auth-btn ghost">发送验证码</button>
+    </div>
+
+    <div class="auth-field">
+      <div class="auth-label">新密码（至少 6 位）</div>
+      <input id="fpNewPwd" class="auth-input" type="password" autocomplete="new-password" placeholder="新密码" />
+    </div>
+
+    <div class="auth-field">
+      <div class="auth-label">确认新密码</div>
+      <input id="fpNewPwd2" class="auth-input" type="password" autocomplete="new-password" placeholder="再输入一次" />
+    </div>
+
+    <button id="fpResetBtn" type="button" class="auth-btn primary">验证并重置密码</button>
+
+    <div id="fpMsg" style="min-height:18px; font-size:13px; color:#ef4444;"></div>
+
+    <button id="backToLoginBtn" type="button" class="auth-link" style="justify-self:start;">
+      ← 返回登录
+    </button>
+  </div>
+</div>
+            </label>
+       
             <!-- ✅ 短信验证码 -->
             <label class="auth-field">
               <div class="auth-label">短信验证码</div>

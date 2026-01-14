@@ -61,7 +61,7 @@ import adminPicklist from "./routes/admin_picklist.js";
 import authVerifyRegisterRouter from "./routes/auth_verify_register.js";
 import authVerifyResetPasswordRouter from "./routes/auth_verify_reset_password.js";
 import driverDispatchRoutes from "./routes/driver_dispatch.js";
-
+import resetPwdRouter from "./routes/auth_reset_password.js";
 // =======================
 // ESM 环境下的 __dirname
 // =======================
@@ -208,7 +208,7 @@ console.log("✅ wallet 已挂载到 /api/wallet");
 
 // ---- 下单 ----
 app.use("/api/orders", ordersRouter);
-
+app.use("/api/auth", resetPwdRouter);
 // ---- 通用商品 / 分类 ----
 app.use("/api/products", productsRouter);
 app.use("/api/frontend/products", frontendProductsRouter);

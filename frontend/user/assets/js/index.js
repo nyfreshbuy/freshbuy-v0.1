@@ -1012,6 +1012,7 @@ async function loadHomeProductsFromSimple() {
 }
 
 // =========================
+// =========================
 // 3) 登录 / 注册弹窗 + 顶部头像（✅ Mongo 真实接口版）
 // =========================
 const AUTH_TOKEN_KEY = "freshbuy_token";
@@ -1124,6 +1125,9 @@ const authTitle = document.getElementById("authTitle");
 const loginPanel = document.getElementById("loginPanel");
 const registerPanel = document.getElementById("registerPanel");
 
+// ✅ 新增：找回密码面板（你 index.html 里要有）
+const forgotPanel = document.getElementById("forgotPanel");
+
 const loginPhone = document.getElementById("loginPhone");
 const loginPassword = document.getElementById("loginPassword");
 const loginRemember = document.getElementById("loginRemember");
@@ -1139,6 +1143,17 @@ const registerSubmitBtn = document.getElementById("registerSubmitBtn");
 const userProfile = document.getElementById("userProfile");
 const userNameLabel = document.getElementById("userNameLabel");
 const userAvatar = document.getElementById("userAvatar");
+
+// ✅ 忘记密码面板控件（你 forgotPanel 里要有这些 id）
+const forgotPwdLink = document.getElementById("forgotPwdLink");
+const fpPhone = document.getElementById("fpPhone");
+const fpCode = document.getElementById("fpCode");
+const fpNewPwd = document.getElementById("fpNewPwd");
+const fpNewPwd2 = document.getElementById("fpNewPwd2");
+const fpSendCodeBtn = document.getElementById("fpSendCodeBtn");
+const fpResetBtn = document.getElementById("fpResetBtn");
+const fpMsg = document.getElementById("fpMsg");
+const backToLoginBtn = document.getElementById("backToLoginBtn");
 
 function applyLoggedInUI(phone) {
   if (!phone) return;
@@ -1183,22 +1198,40 @@ function closeAuthModal() {
   document.body.classList.remove("modal-open");
 }
 
+function setAuthTitle(t) {
+  if (authTitle) authTitle.textContent = t || "登录";
+}
+
+// ✅✅✅ 关键：支持 forgot 模式
 function switchAuthMode(mode) {
-  if (!tabLogin || !tabRegister || !loginPanel || !registerPanel || !authTitle)
-    return;
-  if (mode === "login") {
-    tabLogin.classList.add("active");
-    tabRegister.classList.remove("active");
-    loginPanel.style.display = "";
-    registerPanel.style.display = "none";
-    authTitle.textContent = "登录";
-  } else {
-    tabLogin.classList.remove("active");
+  if (!tabLogin || !tabRegister || !loginPanel || !registerPanel || !authTitle) return;
+
+  // 全部先隐藏
+  loginPanel.style.display = "none";
+  registerPanel.style.display = "none";
+  if (forgotPanel) forgotPanel.style.display = "none";
+
+  // tabs
+  tabLogin.classList.remove("active");
+  tabRegister.classList.remove("active");
+
+  if (mode === "register") {
     tabRegister.classList.add("active");
-    loginPanel.style.display = "none";
     registerPanel.style.display = "";
-    authTitle.textContent = "注册";
+    setAuthTitle("注册");
+    return;
   }
+
+  if (mode === "forgot") {
+    setAuthTitle("找回密码");
+    if (forgotPanel) forgotPanel.style.display = "";
+    return;
+  }
+
+  // 默认 login
+  tabLogin.classList.add("active");
+  loginPanel.style.display = "";
+  setAuthTitle("登录");
 }
 
 if (loginBtn) loginBtn.addEventListener("click", () => openAuthModal("login"));
@@ -1212,6 +1245,226 @@ if (authBackdrop) {
 }
 if (tabLogin) tabLogin.addEventListener("click", () => switchAuthMode("login"));
 if (tabRegister) tabRegister.addEventListener("click", () => switchAuthMode("register"));
+
+// ====== 注册发送验证码 ======
+if (regSendCodeBtn) {
+  regSendCodeBtn.addEventListener("click", async () => {
+    const phone = (regPhone && regPhone.value.trim()) || "";
+    if (!phone) return alert("请先输入手机号");
+
+    try {
+      await apiSendSmsCode(phone);
+      alert("验证码已发送");
+    } catch (e) {
+      alert(e.message || "发送失败");
+    }
+  });
+}
+
+// ====== 登录提交 ======
+if (loginSubmitBtn) {
+  loginSubmitBtn.addEventListener("click", async () => {
+    const phone = (loginPhone && loginPhone.value.trim()) || "";
+    const pwd = (loginPassword && loginPassword.value) || "";
+    if (!phone || !pwd) return alert("请填写手机号和密码");
+
+    try {
+      await apiLogin(phone, pwd);
+
+      if (loginRemember && loginRemember.checked) {
+        localStorage.setItem("freshbuy_login_phone", phone);
+      } else {
+        localStorage.removeItem("freshbuy_login_phone");
+      }
+
+      applyLoggedInUI(phone);
+      await applyZipFromDefaultAddressIfLoggedIn();
+
+      alert("登录成功");
+      closeAuthModal();
+    } catch (err) {
+      alert(err.message || "登录失败");
+    }
+  });
+}
+
+function isStrongPassword(pwd) {
+  // 至少8位，且必须包含字母+数字
+  return /^(?=.*[A-Za-z])(?=.*\d).{8,}$/.test(String(pwd || ""));
+}
+
+// ====== 注册提交 ======
+if (registerSubmitBtn) {
+  registerSubmitBtn.addEventListener("click", async () => {
+    const phone = (regPhone && regPhone.value.trim()) || "";
+    const pwd = (regPassword && regPassword.value) || "";
+    const code = (regCode && regCode.value.trim()) || "";
+
+    if (!phone) return alert("请填写手机号");
+    if (!code) return alert("请填写验证码");
+    if (!pwd) return alert("请填写密码");
+    if (!isStrongPassword(pwd)) return alert("密码至少8位，且必须包含字母和数字");
+
+    const name = "用户" + String(phone).slice(-4);
+
+    try {
+      await apiVerifyRegister({ phone, code, password: pwd, name });
+
+      localStorage.setItem("freshbuy_login_phone", phone);
+      applyLoggedInUI(phone);
+
+      await applyZipFromDefaultAddressIfLoggedIn();
+
+      alert("注册成功，已自动登录");
+      closeAuthModal();
+    } catch (err) {
+      alert(err.message || "注册失败");
+    }
+  });
+}
+
+// =========================
+// ✅ 忘记密码：弹窗内切换面板（不跳新页）
+// 依赖：已有 apiSendSmsCode() + 新接口 POST /api/auth/reset-password
+// =========================
+function setFpMsg(text, ok = false) {
+  if (!fpMsg) return;
+  fpMsg.textContent = text || "";
+  fpMsg.style.color = ok ? "#16a34a" : "#ef4444";
+}
+
+function isValidPhoneLoose(phone) {
+  const s = String(phone || "").trim();
+  const digits = s.replace(/[^\d]/g, "");
+  return digits.length >= 8;
+}
+function isValidCodeLoose(code) {
+  return /^\d{4,8}$/.test(String(code || "").trim());
+}
+
+let fpCooldownTimer = null;
+let fpCooldownLeft = 0;
+
+function startFpCooldown(sec = 60) {
+  if (!fpSendCodeBtn) return;
+  fpCooldownLeft = sec;
+  fpSendCodeBtn.disabled = true;
+  fpSendCodeBtn.textContent = `已发送(${fpCooldownLeft}s)`;
+
+  if (fpCooldownTimer) clearInterval(fpCooldownTimer);
+  fpCooldownTimer = setInterval(() => {
+    fpCooldownLeft -= 1;
+    if (fpCooldownLeft <= 0) {
+      clearInterval(fpCooldownTimer);
+      fpCooldownTimer = null;
+      fpSendCodeBtn.disabled = false;
+      fpSendCodeBtn.textContent = "发送验证码";
+      return;
+    }
+    fpSendCodeBtn.textContent = `已发送(${fpCooldownLeft}s)`;
+  }, 1000);
+}
+
+async function postJson(url, body) {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(body || {}),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data?.success === false) {
+    throw new Error(data?.message || data?.msg || `请求失败(${res.status})`);
+  }
+  return data;
+}
+
+// 1) 点击“忘记密码？” -> 切面板
+if (forgotPwdLink) {
+  forgotPwdLink.addEventListener("click", () => {
+    setFpMsg("");
+    // 默认带上登录框手机号（有的话）
+    try {
+      const p = (loginPhone && loginPhone.value.trim()) || "";
+      if (fpPhone && p && !fpPhone.value.trim()) fpPhone.value = p;
+    } catch {}
+    switchAuthMode("forgot");
+  });
+}
+
+// 2) 返回登录
+if (backToLoginBtn) {
+  backToLoginBtn.addEventListener("click", () => {
+    setFpMsg("");
+    switchAuthMode("login");
+  });
+}
+
+// 3) 发送验证码（复用你现有 /api/sms/send-code）
+if (fpSendCodeBtn) {
+  fpSendCodeBtn.addEventListener("click", async () => {
+    const phone = (fpPhone?.value || "").trim();
+    if (!isValidPhoneLoose(phone)) return setFpMsg("请输入正确手机号（建议带 +1）", false);
+
+    setFpMsg("");
+    fpSendCodeBtn.disabled = true;
+
+    try {
+      await apiSendSmsCode(phone);
+      setFpMsg("✅ 验证码已发送，请查收短信", true);
+      startFpCooldown(60);
+    } catch (e) {
+      fpSendCodeBtn.disabled = false;
+      setFpMsg("发送失败：" + (e.message || ""), false);
+    }
+  });
+}
+
+// 4) 重置密码（调用后端新接口 /api/auth/reset-password）
+if (fpResetBtn) {
+  fpResetBtn.addEventListener("click", async () => {
+    const phone = (fpPhone?.value || "").trim();
+    const code = (fpCode?.value || "").trim();
+    const newPassword = (fpNewPwd?.value || "").trim();
+    const newPassword2 = (fpNewPwd2?.value || "").trim();
+
+    if (!isValidPhoneLoose(phone)) return setFpMsg("请输入正确手机号（建议带 +1）", false);
+    if (!isValidCodeLoose(code)) return setFpMsg("请输入短信验证码（4-8 位数字）", false);
+    if (!newPassword || newPassword.length < 6) return setFpMsg("新密码至少 6 位", false);
+    if (newPassword !== newPassword2) return setFpMsg("两次输入的新密码不一致", false);
+
+    setFpMsg("");
+    fpResetBtn.disabled = true;
+    fpResetBtn.textContent = "提交中...";
+
+    try {
+      await postJson("/api/auth/reset-password", { phone, code, newPassword });
+
+      setFpMsg("✅ 密码已重置成功！请用新密码登录。", true);
+
+      // 切回登录并自动填手机号
+      setTimeout(() => {
+        try {
+          if (loginPhone) loginPhone.value = phone;
+          if (loginPassword) loginPassword.value = "";
+        } catch {}
+        switchAuthMode("login");
+      }, 600);
+    } catch (e) {
+      setFpMsg("重置失败：" + (e.message || ""), false);
+    } finally {
+      fpResetBtn.disabled = false;
+      fpResetBtn.textContent = "验证并重置密码";
+    }
+  });
+}
+
+// 输入优化：验证码只保留数字
+if (fpCode) {
+  fpCode.addEventListener("input", () => {
+    fpCode.value = String(fpCode.value || "").replace(/[^\d]/g, "").slice(0, 8);
+  });
+}
 // ================================
 // ✅ 忘记密码按钮：跳转到找回密码页
 // ================================
