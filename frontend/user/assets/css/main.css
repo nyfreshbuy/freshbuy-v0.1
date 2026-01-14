@@ -473,28 +473,77 @@ width: 100%;
   z-index: 2;
 }
 /* ✅ 商品图片右下角：已下单/已加购数量徽章 */
-.product-qty-badge{
+/* ✅ 商品图片右下角：+/− 步进器（叮咚/盒马风） */
+.product-stepper{
   position: absolute;
   right: 8px;
   bottom: 8px;
+  z-index: 3;
 
-  min-width: 34px;
-  height: 34px;
-  padding: 0 8px;
+  display: none;                 /* qty>0 才显示（JS 控制） */
+  align-items: center;
+  gap: 6px;
 
-  background: #22c55e;
-  color: #fff;
-  font-size: 18px;     /* 字体更大更清楚 */
-  font-weight: 900;
+  background: rgba(15,23,42,.72);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 
+  border: 1px solid rgba(255,255,255,.18);
   border-radius: 999px;
-  display: none;       /* 默认隐藏：qty>0 时用 JS 改成 flex */
+  padding: 6px 8px;
+
+  box-shadow: 0 10px 24px rgba(0,0,0,.28);
+}
+
+.product-stepper button{
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  border: none;
+  cursor: pointer;
+
+  display: inline-flex;
   align-items: center;
   justify-content: center;
 
-  box-shadow: 0 6px 14px rgba(0,0,0,.28);
-  border: 2px solid #fff; /* 白边更清晰 */
-  z-index: 3;          /* 要盖过 special-badge(2) 和图片 */
+  font-size: 18px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.product-stepper .stepper-minus{
+  background: rgba(255,255,255,.92);
+  color: #111827;
+}
+
+.product-stepper .stepper-plus{
+  background: #22c55e;
+  color: #fff;
+}
+
+.product-stepper .stepper-qty{
+  min-width: 22px;
+  text-align: center;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 900;
+}
+
+/* 手机更好点按 */
+@media (max-width: 768px){
+  .product-stepper{
+    right: 6px;
+    bottom: 6px;
+    padding: 6px 8px;
+  }
+  .product-stepper button{
+    width: 32px;
+    height: 32px;
+    font-size: 20px;
+  }
+  .product-stepper .stepper-qty{
+    font-size: 16px;
+  }
 }
 /* 悬停时出现收藏 + 加购 */
 .product-overlay {

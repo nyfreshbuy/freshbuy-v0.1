@@ -43,11 +43,7 @@ async function apiFetch(url, options = {}) {
     data = null;
   }
 
-  // token 失效自动清理
-  if (res.status === 401) {
-    clearToken();
-  }
-
+  if (res.status === 401) clearToken();
   return { res, data };
 }
 
@@ -59,7 +55,6 @@ async function apiLogin(phone, password) {
   if (!res.ok || !data?.success) throw new Error(data?.msg || "登录失败");
   setToken(data.token);
 
-  // 立刻验证 /me（保证 token 真能用）
   const me = await apiMe();
   if (!me) throw new Error("登录态验证失败（/me 未通过）");
   return me;
@@ -81,7 +76,6 @@ async function apiMe() {
   const { res, data } = await apiFetch("/api/auth/me", { method: "GET" });
   if (!res.ok || !data?.success) return null;
 
-  // ✅ 兼容两种返回：{ success, user } 或 { success, data:{user}}
   return data.user || data.data?.user || null;
 }
 
@@ -145,7 +139,7 @@ let currentFilter = "all";
 })();
 
 // ============================
-// 2) 判断商品属于哪个大类（和首页规则一致）
+// 2) 判断商品属于哪个大类
 // ============================
 function isProductInCategory(p, catKey) {
   const cat = (p.category || "").toString();
@@ -172,6 +166,7 @@ function isProductInCategory(p, catKey) {
       return true;
   }
 }
+
 // ============================
 // 2.5) 爆品判定（分类页排除爆品）
 // ============================
@@ -183,7 +178,15 @@ function hasKeywordSimple(p, keyword) {
   if (!p) return false;
   const kw = String(keyword).toLowerCase();
   const norm = (v) => (v ? String(v).toLowerCase() : "");
-  const fields = [p.tag, p.type, p.category, p.subCategory, p.mainCategory, p.subcategory, p.section];
+  const fields = [
+    p.tag,
+    p.type,
+    p.category,
+    p.subCategory,
+    p.mainCategory,
+    p.subcategory,
+    p.section,
+  ];
   if (fields.some((f) => norm(f).includes(kw))) return true;
   if (Array.isArray(p.tags) && p.tags.some((t) => norm(t).includes(kw))) return true;
   if (Array.isArray(p.labels) && p.labels.some((t) => norm(t).includes(kw))) return true;
@@ -195,18 +198,155 @@ function isHotProduct(p) {
     isTrueFlag(p?.isHot) ||
     isTrueFlag(p?.isHotDeal) ||
     isTrueFlag(p?.hotDeal) ||
-    // 关键词命中（和你其他页一致）
     hasKeywordSimple(p, "爆品") ||
     hasKeywordSimple(p, "爆品日") ||
     hasKeywordSimple(p, "hot")
   );
 }
+
 // ============================
-// 3) 商品卡片：图片 + 标题可进详情页
+// ✅ 分类页：读购物车数量（兼容 Cart / FreshCart / localStorage(fresh_cart_v1)）
+// ============================
+const CART_STORAGE_KEY = "fresh_cart_v1";
+
+// 返回：{ [pid]: qty }
+function getQtyMapSafe() {
+  // ✅ 优先：Cart.getState（你 cart.js 里有）
+  try {
+    if (window.Cart && typeof window.Cart.getState === "function") {
+      const st = window.Cart.getState();
+      const items = Array.isArray(st?.items) ? st.items : [];
+      const map = {};
+      items.forEach((it) => {
+        const pid = it?.product?.id;
+        const qty = Number(it?.qty || 0);
+        if (pid) map[String(pid)] = qty;
+      });
+      return map;
+    }
+  } catch {}
+
+  // ✅ 次优：FreshCart.getState（如果你只暴露 FreshCart）
+  try {
+    if (window.FreshCart && typeof window.FreshCart.getState === "function") {
+      const st = window.FreshCart.getState();
+      const items = Array.isArray(st?.items) ? st.items : [];
+      const map = {};
+      items.forEach((it) => {
+        const pid = it?.product?.id;
+        const qty = Number(it?.qty || 0);
+        if (pid) map[String(pid)] = qty;
+      });
+      return map;
+    }
+  } catch {}
+
+  // ✅ localStorage fresh_cart_v1（你 cart.js 存的）
+  try {
+    const raw = localStorage.getItem(CART_STORAGE_KEY);
+    const data = raw ? JSON.parse(raw) : null;
+    const items = Array.isArray(data?.items) ? data.items : [];
+    const map = {};
+    items.forEach((it) => {
+      const pid = it?.product?.id;
+      const qty = Number(it?.qty || 0);
+      if (pid) map[String(pid)] = qty;
+    });
+    return map;
+  } catch {}
+
+  // ✅ 兜底：旧 key（如果你以前用过）
+  try {
+    const legacy = JSON.parse(localStorage.getItem("freshbuy_cart") || "{}");
+    const map = {};
+    Object.keys(legacy || {}).forEach((k) => {
+      const v = legacy[k];
+      const qty = Number(v?.qty ?? v?.quantity ?? v?.count ?? 0);
+      map[String(k)] = qty;
+    });
+    return map;
+  } catch {}
+
+  return {};
+}
+
+// ✅ 把步进器数量刷新到每张卡片上
+function updateCategorySteppers() {
+  const qtyMap = getQtyMapSafe();
+
+  document.querySelectorAll(".product-card[data-pid]").forEach((card) => {
+    const pid = String(card.dataset.pid || "");
+    if (!pid) return;
+
+    const qty = Number(qtyMap[pid] || 0);
+
+    const wrap = card.querySelector(".qty-stepper");
+    const minusBtn = card.querySelector(".qty-minus");
+    const plusBtn = card.querySelector(".qty-plus");
+    const numEl = card.querySelector(".qty-num");
+
+    if (!wrap || !minusBtn || !plusBtn || !numEl) return;
+
+    if (qty > 0) {
+      wrap.classList.add("active");
+      numEl.textContent = String(qty);
+      minusBtn.disabled = false;
+    } else {
+      wrap.classList.remove("active");
+      numEl.textContent = "0";
+      minusBtn.disabled = true;
+    }
+  });
+}
+
+// ============================
+// ✅ 分类页：步进器动作（+ / -）
+// ============================
+function cartAdd(pid, productForCart) {
+  if (window.Cart && typeof window.Cart.addItem === "function") {
+    window.Cart.addItem(productForCart, 1);
+    return true;
+  }
+  if (window.FreshCart && typeof window.FreshCart.addItem === "function") {
+    window.FreshCart.addItem(productForCart, 1);
+    return true;
+  }
+  return false;
+}
+
+function cartChangeQty(pid, delta) {
+  if (window.Cart && typeof window.Cart.changeQty === "function") {
+    window.Cart.changeQty(pid, delta);
+    return true;
+  }
+  if (window.FreshCart && typeof window.FreshCart.changeQty === "function") {
+    window.FreshCart.changeQty(pid, delta);
+    return true;
+  }
+  return false;
+}
+
+function cartRemove(pid) {
+  if (window.Cart && typeof window.Cart.removeItem === "function") {
+    window.Cart.removeItem(pid);
+    return true;
+  }
+  if (window.FreshCart && typeof window.FreshCart.removeItem === "function") {
+    window.FreshCart.removeItem(pid);
+    return true;
+  }
+  return false;
+}
+
+// ============================
+// 3) 商品卡片：图片 + 标题可进详情页 + ✅ 步进器
 // ============================
 function createProductCard(p) {
   const article = document.createElement("article");
   article.className = "product-card";
+
+  const pid = p._id || p.id || "";
+  article.dataset.pid = pid; // ✅ 必须有
 
   const priceNum = Number(p.price || p.flashPrice || p.specialPrice || 0);
   const originNum = Number(p.originPrice || p.price || 0);
@@ -217,21 +357,39 @@ function createProductCard(p) {
   const imageUrl =
     p.image && String(p.image).trim()
       ? p.image
-      : `https://picsum.photos/seed/${p._id || p.id || Math.random()}/500/400`;
+      : `https://picsum.photos/seed/${pid || Math.random()}/500/400`;
 
   const badgeText =
     p.specialEnabled || p.isSpecial || (p.tag || "").includes("爆品") ? "特价" : "";
 
-  const pid = p._id || p.id || "";
   const detailUrl = pid ? `product_detail.html?id=${encodeURIComponent(pid)}` : "#";
+
+  // ✅ 统一给购物车的 product 结构（和 cart.js 兼容）
+  const productForCart = {
+    id: pid || p.name,
+    name: p.name || "商品",
+    price: finalPrice,
+    priceNum: finalPrice,
+    tag: p.tag || "",
+    type: p.type || "",
+    taxable: !!p.taxable,
+    isDeal: !!(p.isDeal || p.specialEnabled || p.isSpecial || (p.tag || "").includes("爆品")),
+    imageUrl: p.image || p.imageUrl || p.img || "",
+  };
 
   article.innerHTML = `
     <a class="product-image-wrap" href="${detailUrl}">
       ${badgeText ? `<span class="special-badge">${badgeText}</span>` : ""}
       <img src="${imageUrl}" class="product-image" alt="${p.name || ""}" />
     </a>
-    <!-- ✅ 新增：右下角数量徽章（默认隐藏，qty>0 才显示） -->
-    <div class="product-qty-badge" data-pid="${pid}"></div>
+
+    <!-- ✅ 右下角步进器（像叮咚/盒马） -->
+    <div class="qty-stepper" data-pid="${pid}">
+      <button class="qty-minus" type="button" aria-label="减">−</button>
+      <span class="qty-num">0</span>
+      <button class="qty-plus" type="button" aria-label="加">+</button>
+    </div>
+
     <a class="product-name" href="${detailUrl}">
       ${p.name || ""}
     </a>
@@ -245,70 +403,74 @@ function createProductCard(p) {
 
     <div class="product-bottom-row">
       <span class="product-tagline">${p.tag || p.subCategory || ""}</span>
-      <button class="btn-add-cart">加入购物车</button>
+      <button class="btn-add-cart" type="button">加入购物车</button>
     </div>
   `;
 
-  const limitQty = p.limitQty || p.limitPerUser || p.maxQty || p.purchaseLimit || 0;
-
+  // ✅ “加入购物车”= 等同点一次 +
   const addBtn = article.querySelector(".btn-add-cart");
   if (addBtn) {
     addBtn.addEventListener("click", (ev) => {
       ev.preventDefault();
       ev.stopPropagation();
+      if (!pid) return;
 
-      const productForCart = {
-        id: p._id || p.id || p.name,
-        name: p.name || "商品",
-        price: finalPrice,
-        isDeal: !!(
-          p.isDeal ||
-          p.specialEnabled ||
-          p.isSpecial ||
-          (p.tag || "").includes("爆品")
-        ),
-      };
+      const ok = cartAdd(pid, productForCart);
+      if (!ok) console.warn("Cart/FreshCart 未初始化，请检查 cart.js 引入");
+    });
+  }
 
-      // ✅ 新购物车
-      if (window.Cart && typeof window.Cart.addItem === "function") {
-        window.Cart.addItem(productForCart, 1);
-        return;
-      }
+  // ✅ 步进器按钮
+  const minusBtn = article.querySelector(".qty-minus");
+  const plusBtn = article.querySelector(".qty-plus");
 
-      // ✅ 老版本兼容
-      if (window.FreshCart && typeof FreshCart.addToCartWithLimit === "function") {
-        FreshCart.addToCartWithLimit({
-          id: productForCart.id,
-          name: productForCart.name,
-          priceNum: finalPrice,
-          limitQty,
-        });
-        return;
-      }
+  if (plusBtn) {
+    plusBtn.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (!pid) return;
 
-      console.warn("Cart / FreshCart 未初始化，请检查 cart.js 是否正确引入");
+      const qtyMap = getQtyMapSafe();
+      const cur = Number(qtyMap[String(pid)] || 0);
+
+      if (cur <= 0) cartAdd(pid, productForCart);
+      else cartChangeQty(String(pid), +1);
+    });
+  }
+
+  if (minusBtn) {
+    minusBtn.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (!pid) return;
+
+      const qtyMap = getQtyMapSafe();
+      const cur = Number(qtyMap[String(pid)] || 0);
+
+      if (cur <= 1) cartRemove(String(pid));
+      else cartChangeQty(String(pid), -1);
     });
   }
 
   return article;
 }
+
 function rebuildSubCategoryPills() {
   const wrap = document.getElementById("subCategoryPills");
   if (!wrap) {
-    console.warn("未找到 #subCategoryPills（请在 category.html 给子分类按钮容器加 id=subCategoryPills）");
+    console.warn(
+      "未找到 #subCategoryPills（请在 category.html 给子分类按钮容器加 id=subCategoryPills）"
+    );
     return;
   }
 
-  // 从当前分类商品里提取 subCategory
   const set = new Set();
   currentProducts.forEach((p) => {
     const s = String(p.subCategory || "").trim();
     if (s) set.add(s);
   });
-
   const subs = Array.from(set);
 
-  // 生成按钮：全部 + 各子类
   wrap.innerHTML = "";
 
   const makeBtn = (label, val, active) => {
@@ -325,14 +487,12 @@ function rebuildSubCategoryPills() {
     return btn;
   };
 
-  // “全部”
   wrap.appendChild(makeBtn("全部", "all", currentFilter === "all"));
-
-  // 子分类（不限制数量的话就用 subs.forEach）
   subs.forEach((s) => wrap.appendChild(makeBtn(s, s, currentFilter === s)));
 }
+
 // ============================
-// 4) 加载当前分类商品（改：走真实 API + 禁用缓存 + 兼容多种返回格式）
+// 4) 加载当前分类商品
 // ============================
 async function loadCategoryProducts() {
   if (!gridEl) return;
@@ -340,9 +500,6 @@ async function loadCategoryProducts() {
   if (emptyTipEl) emptyTipEl.style.display = "none";
 
   try {
-    // ✅ 关键：不要用 /api/products-simple（它大概率是旧/内存接口）
-    // 你后台商品管理通常对应的是 /api/products 或 /api/public/products 之类
-    // 这里先用 /api/products（如果你项目里是别的路径，把这一行改成你实际的公开商品列表接口）
     const { res, data } = await apiFetch(`/api/products?ts=${Date.now()}`, {
       method: "GET",
       cache: "no-store",
@@ -350,29 +507,30 @@ async function loadCategoryProducts() {
 
     if (!res.ok) throw new Error(data?.message || data?.msg || "加载失败");
 
-    const list =
-      Array.isArray(data) ? data :
-      Array.isArray(data.items) ? data.items :
-      Array.isArray(data.products) ? data.products :
-      Array.isArray(data.data) ? data.data :
-      Array.isArray(data.list) ? data.list :
-      [];
+    const list = Array.isArray(data)
+      ? data
+      : Array.isArray(data.items)
+      ? data.items
+      : Array.isArray(data.products)
+      ? data.products
+      : Array.isArray(data.data)
+      ? data.data
+      : Array.isArray(data.list)
+      ? data.list
+      : [];
 
-    // ✅ 如果你后端是软删除：过滤掉 deleted / inactive
-    const cleaned = list.filter(p => !p.isDeleted && p.deleted !== true && p.status !== "deleted");
+    const cleaned = list.filter((p) => !p.isDeleted && p.deleted !== true && p.status !== "deleted");
 
-   currentProducts = cleaned.filter(
-  (p) => isProductInCategory(p, currentCatKey) && !isHotProduct(p)
-);
-if (categoryStatEl) categoryStatEl.textContent = `共 ${currentProducts.length} 个商品`;
+    // ✅ 分类页排除爆品
+    currentProducts = cleaned.filter(
+      (p) => isProductInCategory(p, currentCatKey) && !isHotProduct(p)
+    );
 
-// ✅ 每次加载后默认“全部”
-currentFilter = "all";
+    if (categoryStatEl) categoryStatEl.textContent = `共 ${currentProducts.length} 个商品`;
 
-// ✅ 关键：生成动态子分类按钮
-rebuildSubCategoryPills();
-
-applyFilterAndRender();
+    currentFilter = "all";
+    rebuildSubCategoryPills();
+    applyFilterAndRender();
   } catch (err) {
     console.error("加载分类商品失败:", err);
     if (emptyTipEl) {
@@ -381,6 +539,7 @@ applyFilterAndRender();
     }
   }
 }
+
 // ============================
 // 5) 筛选 + 排序 + 搜索
 // ============================
@@ -402,10 +561,10 @@ function applyFilterAndRender() {
     );
   }
 
- // ✅ 子分类筛选：currentFilter = "all" 或具体 subCategory
-if (currentFilter && currentFilter !== "all") {
-  list = list.filter((p) => String(p.subCategory || "") === String(currentFilter));
-}
+  if (currentFilter && currentFilter !== "all") {
+    list = list.filter((p) => String(p.subCategory || "") === String(currentFilter));
+  }
+
   const sortVal = sortSelectEl?.value || "default";
   if (sortVal === "priceAsc" || sortVal === "priceDesc") {
     list.sort((a, b) => {
@@ -423,14 +582,17 @@ if (currentFilter && currentFilter !== "all") {
   if (emptyTipEl) emptyTipEl.style.display = "none";
 
   list.forEach((p) => gridEl.appendChild(createProductCard(p)));
+
+  // ✅ 渲染完立刻刷新步进器数量
+  updateCategorySteppers();
 }
 
 // ============================
-// 6) 顶部登录 UI（token版）
+// 6) 顶部登录 UI
 // ============================
 function applyLoggedInUI(phone) {
   const loginBtn = document.getElementById("loginBtn");
-  const registerBtn = document.getElementById("registerBtn"); // category.html 可能没有
+  const registerBtn = document.getElementById("registerBtn");
   const userProfile = document.getElementById("userProfile");
   const userNameLabel = document.getElementById("userNameLabel");
   const userAvatar = document.getElementById("userAvatar");
@@ -445,24 +607,7 @@ function applyLoggedInUI(phone) {
   if (userNameLabel) userNameLabel.textContent = tail ? "尾号 " + tail : "我的账户";
   if (userAvatar) userAvatar.textContent = "我";
 }
-function logoutAndResetUI() {
-  // 1️⃣ 清所有登录相关本地状态
-  localStorage.removeItem("freshbuy_token");
-  localStorage.removeItem("freshbuy_login_phone");
-  localStorage.removeItem("freshbuy_is_logged_in"); // 旧的，一并清
 
-  // 2️⃣ 还原顶部 UI
-  const loginBtn = document.getElementById("loginBtn");
-  const registerBtn = document.getElementById("registerBtn");
-  const userProfile = document.getElementById("userProfile");
-
-  if (loginBtn) loginBtn.style.display = "";
-  if (registerBtn) registerBtn.style.display = "";
-  if (userProfile) userProfile.style.display = "none";
-
-  // 3️⃣ 可选：强制刷新，确保所有页面一致
-  window.location.href = window.location.pathname;
-}
 function applyLoggedOutUI() {
   const loginBtn = document.getElementById("loginBtn");
   const registerBtn = document.getElementById("registerBtn");
@@ -473,7 +618,6 @@ function applyLoggedOutUI() {
 }
 
 async function initAuthUIFromStorage() {
-  // 清掉旧模拟字段，避免 UI 混乱
   localStorage.removeItem("freshbuy_is_logged_in");
 
   const tk = getToken();
@@ -494,13 +638,12 @@ async function initAuthUIFromStorage() {
 }
 
 // ============================
-// 7) 登录弹窗（必须和首页一样的 DOM 结构才能显示）
-// 你需要在 category.html 里加入 authBackdrop 那一整段弹窗 HTML（跟首页复制）
+// 7) 登录弹窗（保持你原逻辑）
 // ============================
 const authBackdrop = document.getElementById("authBackdrop");
 const authCloseBtn = document.getElementById("authCloseBtn");
 const loginBtnTop = document.getElementById("loginBtn");
-const registerBtnTop = document.getElementById("registerBtn"); // category.html 可能没有
+const registerBtnTop = document.getElementById("registerBtn");
 
 const tabLogin = document.getElementById("tabLogin");
 const tabRegister = document.getElementById("tabRegister");
@@ -513,7 +656,7 @@ const loginPhone = document.getElementById("loginPhone");
 const loginPassword = document.getElementById("loginPassword");
 const loginRemember = document.getElementById("loginRemember");
 
-const regName = document.getElementById("regName"); // 可能没有
+const regName = document.getElementById("regName");
 const regPhone = document.getElementById("regPhone");
 const regPassword = document.getElementById("regPassword");
 
@@ -558,7 +701,6 @@ function switchAuthMode(mode) {
   }
 }
 
-// 顶部按钮打开弹窗
 if (loginBtnTop) loginBtnTop.addEventListener("click", () => openAuthModal("login"));
 if (registerBtnTop) registerBtnTop.addEventListener("click", () => openAuthModal("register"));
 
@@ -571,7 +713,6 @@ if (authBackdrop) {
 if (tabLogin) tabLogin.addEventListener("click", () => switchAuthMode("login"));
 if (tabRegister) tabRegister.addEventListener("click", () => switchAuthMode("register"));
 
-// 真登录
 if (loginSubmitBtn) {
   loginSubmitBtn.addEventListener("click", async () => {
     const phone = (loginPhone && loginPhone.value.trim()) || "";
@@ -594,15 +735,13 @@ if (loginSubmitBtn) {
   });
 }
 
-// 真注册（注册后自动登录）
 if (registerSubmitBtn) {
   registerSubmitBtn.addEventListener("click", async () => {
     const phone = (regPhone && regPhone.value.trim()) || "";
     const pwd = (regPassword && regPassword.value) || "";
     if (!phone || !pwd) return alert("请填写手机号和密码");
 
-    const name =
-      (regName && regName.value.trim()) || "用户" + String(phone).slice(-4);
+    const name = (regName && regName.value.trim()) || "用户" + String(phone).slice(-4);
 
     try {
       await apiRegister(name, phone, pwd);
@@ -616,6 +755,22 @@ if (registerSubmitBtn) {
     } catch (e) {
       alert(e.message || "注册失败");
     }
+  });
+}
+
+// ============================
+// ✅ 分类页：实时监听购物车变化（关键）
+// ============================
+function bindRealtimeCartListeners() {
+  // 1) cart.js 每次变更都会 dispatch 这个事件
+  window.addEventListener("freshcart:updated", () => {
+    updateCategorySteppers();
+  });
+
+  // 2) 多标签页同步（localStorage 变更）
+  window.addEventListener("storage", (e) => {
+    if (!e) return;
+    if (e.key === CART_STORAGE_KEY) updateCategorySteppers();
   });
 }
 
@@ -638,11 +793,9 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // 返回首页
   const btnGoHome = document.getElementById("btnGoHome");
   if (btnGoHome) btnGoHome.addEventListener("click", () => (window.location.href = "/user/index.html"));
 
-  // 点击头像 -> 用户中心（建议走 token，不拼 phone query）
   const userProfile = document.getElementById("userProfile");
   if (userProfile) {
     userProfile.addEventListener("click", () => {
@@ -652,9 +805,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   initAuthUIFromStorage();
 
-  // 购物车 UI
-  if (window.FreshCart && FreshCart.initCartUI) {
-    FreshCart.initCartUI({
+  // 购物车 UI（抽屉）
+  if (window.FreshCart && window.FreshCart.initCartUI) {
+    window.FreshCart.initCartUI({
       cartIconId: "cartIcon",
       cartBackdropId: "cartBackdrop",
       cartDrawerId: "cartDrawer",
@@ -670,4 +823,10 @@ document.addEventListener("DOMContentLoaded", () => {
   } else {
     console.warn("FreshCart.initCartUI 不存在，请确认已经引入 cart.js");
   }
+
+  // ✅ 开启实时监听
+  bindRealtimeCartListeners();
+
+  // ✅ 首次也刷新一次
+  updateCategorySteppers();
 });

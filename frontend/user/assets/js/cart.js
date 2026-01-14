@@ -9,6 +9,11 @@
 // ✅ 修复：结算页金额区（配送费/总计）不更新 —— 新增 checkout 金额 DOM 同步（支持 id + data-cart-*）
 // ✅ 新增：taxable 字段写入/读取（用于后续 NY 税计算）
 //
+// ✅ 本次修复（你要求的）：
+// 1) 增加 Cart.getQty(productId) → 首页/分类页步进器可稳定读取数量
+// 2) Cart.clear() 改为走 handleCartChange() → 会触发 freshcart:updated(qtyMap) 让步进器归零
+// 3) FreshCart 同步暴露 getQty
+//
 // 说明：
 // - 购物车页：用 data-cart-subtotal / data-cart-shipping / data-cart-total
 // - 顶部抽屉：用 FreshCart.initCartUI(config) 的 id
@@ -640,14 +645,15 @@ console.log("✅ cart.js loaded on", location.pathname);
   // ==============================
 
   function getAuthToken() {
-  return (
-    localStorage.getItem("freshbuy_token") ||
-    localStorage.getItem("jwt") ||          // ✅ 补上
-    localStorage.getItem("token") ||
-    localStorage.getItem("auth_token") ||
-    ""
-  );
-}
+    return (
+      localStorage.getItem("freshbuy_token") ||
+      localStorage.getItem("jwt") || // ✅ 补上
+      localStorage.getItem("token") ||
+      localStorage.getItem("auth_token") ||
+      ""
+    );
+  }
+
   function pickDefaultAddressFromList(list) {
     const arr = Array.isArray(list) ? list : [];
     if (!arr.length) return null;
@@ -852,8 +858,15 @@ console.log("✅ cart.js loaded on", location.pathname);
     }
 
     try {
+      const qtyMap = {};
+      cartState.items.forEach((it) => {
+        const pid = it?.product?.id;
+        if (pid) qtyMap[pid] = Number(it.qty) || 0;
+      });
+
       const detail = {
         items: cartState.items,
+        qtyMap, // ✅ 给分类页/首页用（无需自己遍历 items）
         mode: cartState.mode,
         zone: cartState.zone,
         count: getCartItemCount(),
@@ -866,50 +879,50 @@ console.log("✅ cart.js loaded on", location.pathname);
   // ==============================
   // 11. 绑定购物车页事件
   // ==============================
-function bindCartDOMEventsPage() {
-  // 1) 列表 +/- 删除
-  const listEl = document.querySelector("[data-cart-items]");
-  if (listEl) {
-    listEl.addEventListener("click", (e) => {
-      const target = e.target;
-      const id = target.getAttribute("data-id");
-      if (!id) return;
+  function bindCartDOMEventsPage() {
+    // 1) 列表 +/- 删除
+    const listEl = document.querySelector("[data-cart-items]");
+    if (listEl) {
+      listEl.addEventListener("click", (e) => {
+        const target = e.target;
+        const id = target.getAttribute("data-id");
+        if (!id) return;
 
-      if (target.classList.contains("cart-btn-plus")) {
-        Cart.changeQty(id, 1);
-      } else if (target.classList.contains("cart-btn-minus")) {
-        Cart.changeQty(id, -1);
-      } else if (target.classList.contains("cart-btn-remove")) {
-        Cart.removeItem(id);
-      }
-    });
+        if (target.classList.contains("cart-btn-plus")) {
+          Cart.changeQty(id, 1);
+        } else if (target.classList.contains("cart-btn-minus")) {
+          Cart.changeQty(id, -1);
+        } else if (target.classList.contains("cart-btn-remove")) {
+          Cart.removeItem(id);
+        }
+      });
+    }
+
+    // 2) ✅ 去结算按钮
+    const checkoutBtn =
+      document.querySelector("[data-cart-checkout-btn]") || document.getElementById("btnCheckout");
+
+    if (checkoutBtn) {
+      checkoutBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+
+        // 如果按钮被逻辑禁用，就不处理
+        if (checkoutBtn.disabled) return;
+
+        // cart.html -> 跳到 checkout.html
+        const path = String(location.pathname || "");
+        const isCheckoutPage = path.includes("checkout");
+
+        if (isCheckoutPage) {
+          // 如果你结算页也复用这个按钮：直接下单
+          quickCheckout();
+        } else {
+          window.location.href = "/user/checkout.html";
+        }
+      });
+    }
   }
 
-  // 2) ✅ 去结算按钮
-  const checkoutBtn =
-    document.querySelector("[data-cart-checkout-btn]") ||
-    document.getElementById("btnCheckout");
-
-  if (checkoutBtn) {
-    checkoutBtn.addEventListener("click", (e) => {
-      e.preventDefault();
-
-      // 如果按钮被逻辑禁用，就不处理
-      if (checkoutBtn.disabled) return;
-
-      // cart.html -> 跳到 checkout.html
-      const path = String(location.pathname || "");
-      const isCheckoutPage = path.includes("checkout");
-
-      if (isCheckoutPage) {
-        // 如果你结算页也复用这个按钮：直接下单
-        quickCheckout();
-      } else {
-        window.location.href = "/user/checkout.html";
-      }
-    });
-  }
-}
   // ==============================
   // 12. 顶部抽屉渲染（header UI）
   // ==============================
@@ -997,28 +1010,36 @@ function bindCartDOMEventsPage() {
   function bindHeaderEvents() {
     if (!headerUIConfig) return;
 
-    const { cartIconId, cartBackdropId, cartDrawerId, cartCloseBtnId, cartItemsListId, goCartBtnId, cartPageUrl } =
-      headerUIConfig;
+    const {
+      cartIconId,
+      cartBackdropId,
+      cartDrawerId,
+      cartCloseBtnId,
+      cartItemsListId,
+      goCartBtnId,
+      cartPageUrl,
+    } = headerUIConfig;
 
     const icon = cartIconId && document.getElementById(cartIconId);
     const drawer = cartDrawerId && document.getElementById(cartDrawerId);
     const backdrop = cartBackdropId && document.getElementById(cartBackdropId);
     const closeBtn = cartCloseBtnId && document.getElementById(cartCloseBtnId);
 
-   function openDrawer() {
-  // ✅ 先触发一次 offset 计算（你的 __fb_setCartTopOffset 是 rAF 版本）
-  try {
-    if (typeof window.__fb_setCartTopOffset === "function") {
-      window.__fb_setCartTopOffset();
-    }
-  } catch (e) {}
+    function openDrawer() {
+      // ✅ 先触发一次 offset 计算（你的 __fb_setCartTopOffset 是 rAF 版本）
+      try {
+        if (typeof window.__fb_setCartTopOffset === "function") {
+          window.__fb_setCartTopOffset();
+        }
+      } catch (e) {}
 
-  // ✅ 关键：等下一帧 offset 写入 CSS 变量后，再打开抽屉
-  requestAnimationFrame(() => {
-    if (drawer) drawer.classList.add("active");
-    if (backdrop) backdrop.classList.add("active");
-  });
-}
+      // ✅ 关键：等下一帧 offset 写入 CSS 变量后，再打开抽屉
+      requestAnimationFrame(() => {
+        if (drawer) drawer.classList.add("active");
+        if (backdrop) backdrop.classList.add("active");
+      });
+    }
+
     function closeDrawer() {
       if (drawer) drawer.classList.remove("active");
       if (backdrop) backdrop.classList.remove("active");
@@ -1172,16 +1193,14 @@ function bindCartDOMEventsPage() {
       }
     },
 
+    // ✅ 修复：清空购物车也必须触发 freshcart:updated(qtyMap) 让首页/分类页归零
     clear() {
       cartState.items = [];
       cartState.mode = "groupDay";
       cartState.mixedTipShown = false;
-      saveCartToStorage();
-      renderCartItemsPage();
-      renderCartSummaryPage();
-      renderHeaderCart();
-      renderCheckoutPricing();
-      updateCartBadge();
+
+      // 走统一入口：会 render + save + dispatch
+      handleCartChange({ fromAdd: false });
     },
 
     setZone(zone) {
@@ -1204,6 +1223,14 @@ function bindCartDOMEventsPage() {
 
     getSubtotal() {
       return calcCartSubtotal(cartState.items);
+    },
+
+    // ✅ 新增：给首页/分类页步进器用
+    getQty(productId) {
+      const id = String(productId || "");
+      if (!id) return 0;
+      const it = cartState.items.find((x) => x?.product?.id === id);
+      return it ? (Number(it.qty) || 0) : 0;
     },
   };
 
@@ -1271,6 +1298,9 @@ function bindCartDOMEventsPage() {
     getState: Cart.getState,
     getCount: Cart.getCount,
     getSubtotal: Cart.getSubtotal,
+
+    // ✅ 同步暴露
+    getQty: Cart.getQty,
   };
 
   window.Cart = Cart;
