@@ -994,116 +994,204 @@
     </div>
 
     <!-- 登录 / 注册弹窗（只保留一套，避免 ID 冲突） -->
-    <div class="auth-backdrop" id="authBackdrop">
-      <div class="auth-card" role="dialog" aria-modal="true" aria-labelledby="authTitle">
-        <!-- Header -->
-        <div class="auth-header">
-          <div class="auth-brand">
-            <div class="auth-logo">鲜</div>
-            <div class="auth-brand-text">
-              <div class="auth-brand-title" id="authTitle">登录</div>
-              <div class="auth-brand-sub">欢迎回来，在鲜购拼好货</div>
-            </div>
-          </div>
-
-          <button id="authCloseBtn" class="auth-close" type="button" aria-label="关闭">✕</button>
+<div class="auth-backdrop" id="authBackdrop">
+  <div class="auth-card" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+    <!-- Header -->
+    <div class="auth-header">
+      <div class="auth-brand">
+        <div class="auth-logo">鲜</div>
+        <div class="auth-brand-text">
+          <div class="auth-brand-title" id="authTitle">登录</div>
+          <div class="auth-brand-sub">欢迎回来，在鲜购拼好货</div>
         </div>
-
-        <!-- Tabs -->
-        <div class="auth-tabs" role="tablist" aria-label="登录注册切换">
-          <button id="tabLogin" class="auth-tab active" data-mode="login" type="button" role="tab" aria-selected="true">
-            登录
-          </button>
-          <button id="tabRegister" class="auth-tab" data-mode="register" type="button" role="tab" aria-selected="false">
-            注册
-          </button>
-        </div>
-
-        <!-- Body -->
-        <div class="auth-body">
-          <!-- Login -->
-          <div id="loginPanel">
-            <label class="auth-field">
-              <div class="auth-label">手机号码</div>
-              <div class="auth-input-wrap">
-                <span class="auth-input-ico">📱</span>
-                <input id="loginPhone" type="tel" class="auth-input" placeholder="请输入手机号" />
-              </div>
-            </label>
-
-            <label class="auth-field">
-              <div class="auth-label">登录密码</div>
-              <div class="auth-input-wrap">
-                <span class="auth-input-ico">🔒</span>
-                <input id="loginPassword" type="password" class="auth-input" placeholder="请输入密码" />
-                <button type="button" class="auth-eye" data-eye-for="loginPassword" aria-label="显示/隐藏密码">👁</button>
-              </div>
-            </label>
-
-            <div class="auth-row">
-              <label class="auth-check">
-                <input type="checkbox" id="loginRemember" />
-                <span>记住我</span>
-              </label>
-              <button class="auth-link" id="forgotPwdLink" type="button">忘记密码？</button>
-            </div>
-
-            <button id="loginSubmitBtn" class="auth-primary" type="button">登录</button>
-
-            <div class="auth-footnote">
-              登录即表示你同意我们的 <span class="auth-footnote-link">服务条款</span> 与
-              <span class="auth-footnote-link">隐私政策</span>
-            </div>
-          </div>
-
-          <!-- Register -->
-          <div id="registerPanel" style="display:none;">
-            <label class="auth-field">
-              <div class="auth-label">手机号码</div>
-              <div class="auth-input-wrap">
-                <span class="auth-input-ico">📱</span>
-                <input id="regPhone" type="tel" class="auth-input" placeholder="用于接收订单物流通知" />
-              </div>
-              <!-- ✅ 找回密码面板（新增） -->
-<div id="forgotPanel" style="display:none;">
-  <div style="display:grid; gap:10px;">
-
-    <div style="font-size:13px; color:#6b7280; line-height:1.5;">
-      输入注册手机号，我们发送短信验证码；验证通过后设置新密码。
-    </div>
-
-    <div class="auth-field">
-      <div class="auth-label">手机号</div>
-      <input id="fpPhone" class="auth-input" placeholder="例如：+1 917xxxxxxx" autocomplete="tel" />
-    </div>
-
-    <div class="auth-field" style="display:grid; grid-template-columns: 1fr 140px; gap:10px; align-items:end;">
-      <div>
-        <div class="auth-label">验证码</div>
-        <input id="fpCode" class="auth-input" placeholder="6位验证码" inputmode="numeric" />
       </div>
-      <button id="fpSendCodeBtn" type="button" class="auth-btn ghost">发送验证码</button>
+
+      <button id="authCloseBtn" class="auth-close" type="button" aria-label="关闭">✕</button>
     </div>
 
-    <div class="auth-field">
-      <div class="auth-label">新密码（至少 6 位）</div>
-      <input id="fpNewPwd" class="auth-input" type="password" autocomplete="new-password" placeholder="新密码" />
+    <!-- Tabs -->
+    <div class="auth-tabs" role="tablist" aria-label="登录注册切换">
+      <button
+        id="tabLogin"
+        class="auth-tab active"
+        data-mode="login"
+        type="button"
+        role="tab"
+        aria-selected="true"
+      >
+        登录
+      </button>
+      <button
+        id="tabRegister"
+        class="auth-tab"
+        data-mode="register"
+        type="button"
+        role="tab"
+        aria-selected="false"
+      >
+        注册
+      </button>
     </div>
 
-    <div class="auth-field">
-      <div class="auth-label">确认新密码</div>
-      <input id="fpNewPwd2" class="auth-input" type="password" autocomplete="new-password" placeholder="再输入一次" />
+    <!-- Body -->
+    <div class="auth-body">
+      <!-- ===================== -->
+      <!-- Login -->
+      <!-- ===================== -->
+      <div id="loginPanel">
+        <label class="auth-field">
+          <div class="auth-label">手机号码</div>
+          <div class="auth-input-wrap">
+            <span class="auth-input-ico">📱</span>
+            <input id="loginPhone" type="tel" class="auth-input" placeholder="请输入手机号" />
+          </div>
+        </label>
+
+        <label class="auth-field">
+          <div class="auth-label">登录密码</div>
+          <div class="auth-input-wrap">
+            <span class="auth-input-ico">🔒</span>
+            <input id="loginPassword" type="password" class="auth-input" placeholder="请输入密码" />
+            <button type="button" class="auth-eye" data-eye-for="loginPassword" aria-label="显示/隐藏密码">👁</button>
+          </div>
+        </label>
+
+        <div class="auth-row">
+          <label class="auth-check">
+            <input type="checkbox" id="loginRemember" />
+            <span>记住我</span>
+          </label>
+          <button class="auth-link" id="forgotPwdLink" type="button">忘记密码？</button>
+        </div>
+
+        <button id="loginSubmitBtn" class="auth-primary" type="button">登录</button>
+
+        <div class="auth-footnote">
+          登录即表示你同意我们的 <span class="auth-footnote-link">服务条款</span> 与
+          <span class="auth-footnote-link">隐私政策</span>
+        </div>
+      </div>
+
+      <!-- ===================== -->
+      <!-- Register -->
+      <!-- ===================== -->
+      <div id="registerPanel" style="display:none;">
+        <label class="auth-field">
+          <div class="auth-label">手机号码</div>
+          <div class="auth-input-wrap">
+            <span class="auth-input-ico">📱</span>
+            <input id="regPhone" type="tel" class="auth-input" placeholder="用于接收订单物流通知" />
+          </div>
+        </label>
+
+        <!-- ✅ 短信验证码 -->
+        <label class="auth-field">
+          <div class="auth-label">短信验证码</div>
+          <div class="auth-input-wrap">
+            <span class="auth-input-ico">💬</span>
+            <input
+              id="regCode"
+              type="text"
+              class="auth-input"
+              inputmode="numeric"
+              maxlength="10"
+              placeholder="请输入短信验证码"
+              style="padding-right: 110px;"
+            />
+            <button
+              id="regSendCodeBtn"
+              type="button"
+              class="auth-mini-btn"
+              style="position:absolute; right:10px; top:50%; transform:translateY(-50%);
+                     padding:6px 10px; border-radius:999px; border:1px solid #e5e7eb;
+                     background:#fff; cursor:pointer; font-size:12px; font-weight:700;"
+            >
+              获取验证码
+            </button>
+          </div>
+        </label>
+
+        <label class="auth-field">
+          <div class="auth-label">设置登录密码</div>
+          <div class="auth-input-wrap">
+            <span class="auth-input-ico">🔒</span>
+            <input id="regPassword" type="password" class="auth-input" placeholder="至少 6 位，建议字母 + 数字" />
+            <button type="button" class="auth-eye" data-eye-for="regPassword" aria-label="显示/隐藏密码">👁</button>
+          </div>
+        </label>
+
+        <label class="auth-field">
+          <div class="auth-label">邀请码（选填）</div>
+          <input id="regInvite" type="text" class="auth-input" placeholder="有好友邀请可填写，没有可留空" />
+        </label>
+
+        <button id="registerSubmitBtn" class="auth-primary" type="button">注册并登录</button>
+
+        <div class="auth-footnote">
+          注册即表示你同意我们的 <span class="auth-footnote-link">服务条款</span> 与
+          <span class="auth-footnote-link">隐私政策</span>
+        </div>
+      </div>
+
+      <!-- ===================== -->
+      <!-- ✅ Forgot Password -->
+      <!-- ===================== -->
+      <div id="forgotPanel" style="display:none;">
+        <div style="display:grid; gap:10px;">
+          <div style="font-size:13px; color:#6b7280; line-height:1.5;">
+            输入注册手机号，我们发送短信验证码；验证通过后设置新密码。
+          </div>
+
+          <label class="auth-field">
+            <div class="auth-label">手机号</div>
+            <input id="fpPhone" class="auth-input" placeholder="例如：+1 917xxxxxxx" autocomplete="tel" />
+          </label>
+
+          <div class="auth-field" style="display:grid; grid-template-columns: 1fr 140px; gap:10px; align-items:end;">
+            <div>
+              <div class="auth-label">验证码</div>
+              <input id="fpCode" class="auth-input" placeholder="4-8 位数字" inputmode="numeric" />
+            </div>
+
+            <button
+              id="fpSendCodeBtn"
+              type="button"
+              class="auth-mini-btn"
+              style="height:40px; border-radius:12px; border:1px solid #e5e7eb; background:#fff;
+                     cursor:pointer; font-size:13px; font-weight:700;"
+            >
+              发送验证码
+            </button>
+          </div>
+
+          <label class="auth-field">
+            <div class="auth-label">新密码（至少 6 位）</div>
+            <input id="fpNewPwd" class="auth-input" type="password" autocomplete="new-password" placeholder="新密码" />
+          </label>
+
+          <label class="auth-field">
+            <div class="auth-label">确认新密码</div>
+            <input id="fpNewPwd2" class="auth-input" type="password" autocomplete="new-password" placeholder="再输入一次" />
+          </label>
+
+          <button id="fpResetBtn" class="auth-primary" type="button">验证并重置密码</button>
+
+          <div id="fpMsg" style="min-height:18px; font-size:13px; color:#ef4444;"></div>
+
+          <button
+            id="backToLoginBtn"
+            type="button"
+            class="auth-link"
+            style="justify-self:start;"
+          >
+            ← 返回登录
+          </button>
+        </div>
+      </div>
     </div>
-
-    <button id="fpResetBtn" type="button" class="auth-btn primary">验证并重置密码</button>
-
-    <div id="fpMsg" style="min-height:18px; font-size:13px; color:#ef4444;"></div>
-
-    <button id="backToLoginBtn" type="button" class="auth-link" style="justify-self:start;">
-      ← 返回登录
-    </button>
   </div>
 </div>
+
             </label>
        
             <!-- ✅ 短信验证码 -->
