@@ -12,7 +12,7 @@
 // ✅ 9) 修复：点击 次日配送/好友拼单 时，右侧信息不再被 ZIP 匹配强制改回“区域团”
 // ✅ 10) 修复：右侧只渲染到 #deliveryInfoBody，不覆盖右侧 ZIP box
 // ✅ 11) 区域团：按 zone.name 区分“白石镇/大学点 vs 新鲜草原”的配送时间文案 + 真实截单倒计时
-// ✅ 12) ✅ 商品图片右下角数量徽章：插入 DOM + 加购后立刻显示 + 同步 cart 更新（强兼容）
+// ✅ 12) ✅ 商品图片右下角数量控件（盒马风格）：+- + 数字，qty=0 整组不显示
 // =======================================================
 console.log("✅ index.js UPDATED AT:", new Date().toISOString());
 console.log("Freshbuy index main script loaded (db-zones version)");
@@ -39,14 +39,14 @@ async function loadCategories() {
 
 const SECTION_LIMITS = {
   desktop: {
-    default: 8, // 电脑端所有区块默认 8
+    default: 8,
   },
   mobile: {
-    Hot: 6, // 新客体验专区
-    DailySpecial: 8, // 家庭必备
-    New: 6, // 新品上市
-    Best: 8, // 产销商品
-    Normal: 4, // 全部商品
+    Hot: 6,
+    DailySpecial: 8,
+    New: 6,
+    Best: 8,
+    Normal: 4,
     default: 6,
   },
 };
@@ -85,7 +85,6 @@ function renderCategoryPills(list) {
   });
 }
 
-// 顶部“查看全部” & 左侧快捷入口滚动
 function scrollToSection(selectorOrId) {
   const sel =
     selectorOrId.startsWith("#") || selectorOrId.startsWith(".")
@@ -98,7 +97,6 @@ function scrollToSection(selectorOrId) {
   window.scrollTo({ top: offset, behavior: "smooth" });
 }
 
-// 左侧快捷入口
 document.querySelectorAll(".side-rail-item[data-scroll]").forEach((btn) => {
   btn.addEventListener("click", () => {
     const target = btn.dataset.scroll;
@@ -110,26 +108,21 @@ document.querySelectorAll(".side-rail-item[data-scroll]").forEach((btn) => {
 // =========================
 // 1) 配送模式 + 倒计时 + 好友拼单弹窗
 // =========================
-
-// ✅ 右侧只渲染到 deliveryInfoBody，保留 ZIP box
 const deliveryHint = document.getElementById("deliveryHint");
 const deliveryInfo = document.getElementById("deliveryInfo");
 const deliveryInfoBody = document.getElementById("deliveryInfoBody");
 
-// ✅ 用户是否“手动选择过配送模式”
 const MODE_USER_SELECTED_KEY = "freshbuy_user_selected_mode";
 
-// ✅ 区域团时间文案：按 zone.name 区分
-// weekday: 0=周日 ... 6=周六
 const ZONE_SCHEDULE = {
   "白石镇/大学点地区": {
     eta: "本周六 18:00 - 22:00",
-    cutoff: { weekday: 5, hour: 23, minute: 59, second: 59 }, // 周六 23:59:59 ✅
+    cutoff: { weekday: 5, hour: 23, minute: 59, second: 59 },
     cutoffText: "周五 23:59:59",
   },
   "新鲜草原地区": {
     eta: "本周五 18:00 - 22:00",
-    cutoff: { weekday: 4, hour: 23, minute: 59, second: 59 }, // 周五 23:59:59 ✅
+    cutoff: { weekday: 4, hour: 23, minute: 59, second: 59 },
     cutoffText: "周四 23:59:59",
   },
 };
@@ -167,9 +160,6 @@ let countdownTimer = null;
 let friendEndTime = null;
 let friendCountdownTimer = null;
 
-// =========================
-// ✅ 区域团：真实截单倒计时（按 zone 的 cutoff 计算）
-// =========================
 function getNextCutoffDate(cutoff) {
   const now = new Date();
   const target = new Date(now);
@@ -187,7 +177,6 @@ function getNextCutoffDate(cutoff) {
     0
   );
 
-  // 今天就是截单日但已过点 → 推到下周
   if (addDays === 0 && target.getTime() <= now.getTime()) {
     target.setDate(target.getDate() + 7);
   }
@@ -197,7 +186,6 @@ function getNextCutoffDate(cutoff) {
 
 function startAreaGroupCountdownTo(endDate) {
   if (countdownTimer) clearInterval(countdownTimer);
-
   groupEndTime = endDate instanceof Date ? endDate : null;
   countdownTimer = setInterval(updateAreaCountdown, 1000);
   updateAreaCountdown();
@@ -220,15 +208,9 @@ function updateAreaCountdown() {
   const s = String(Math.floor(diff / 1000)).padStart(2, "0");
 
   el.textContent = `${h}:${m}:${s}`;
-
-  if (groupEndTime <= now && countdownTimer) {
-    clearInterval(countdownTimer);
-  }
+  if (groupEndTime <= now && countdownTimer) clearInterval(countdownTimer);
 }
 
-// =========================
-// 好友拼单倒计时到今晚 24:00
-// =========================
 function startFriendCountdownToMidnight() {
   if (friendCountdownTimer) clearInterval(friendCountdownTimer);
   const now = new Date();
@@ -256,11 +238,9 @@ function updateFriendCountdown() {
     clearInterval(friendCountdownTimer);
 }
 
-// ✅ 统一：只写 #deliveryInfoBody，不覆盖右侧 ZIP box
 function renderDeliveryInfo(mode) {
   if (!deliveryHint || !deliveryInfoBody) return;
 
-  // ✅ 用 ZIP 匹配到的区域名（优先）
   const z = getSavedZoneBrief();
   const zoneName = z?.name || deliveryStats["area-group"].areaName || "区域团";
   const schedule = getZoneSchedule(zoneName);
@@ -327,10 +307,8 @@ function renderDeliveryInfo(mode) {
   `;
 }
 
-// 默认区域团拼单
 renderDeliveryInfo("area-group");
 
-// 点击切换配送模式（+ 好友拼单弹窗）
 document.addEventListener("click", (e) => {
   const pill = e.target.closest(".delivery-pill");
   if (!pill) return;
@@ -342,12 +320,10 @@ document.addEventListener("click", (e) => {
 
   const mode = pill.dataset.mode;
 
-  // ✅ 标记：用户手动选过模式（ZIP 匹配不再强制切回区域团）
   localStorage.setItem(MODE_USER_SELECTED_KEY, "1");
 
   renderDeliveryInfo(mode);
 
-  // ✅ 记住用户选择，并通知 cart.js
   try {
     function toCartModeKey(m) {
       if (m === "area-group") return "groupDay";
@@ -405,7 +381,6 @@ if (shareCopyBtn && shareInput) {
   });
 }
 
-// 如果通过好友拼单链接进入，自动切换模式
 window.addEventListener("DOMContentLoaded", () => {
   const params = new URLSearchParams(window.location.search || "");
   if (params.get("mode") === "friend-group") {
@@ -414,7 +389,6 @@ window.addEventListener("DOMContentLoaded", () => {
   }
 });
 
-// ✅ 最终兜底：强制恢复顶部商品分类
 setTimeout(() => {
   try {
     renderCategoryPills(fallbackCategories);
@@ -425,7 +399,7 @@ setTimeout(() => {
 }, 0);
 
 // =========================
-// 2) 商品卡片 + 首页商品（按你现在的 5 个区块）
+// 2) 商品卡片 + 首页商品
 // =========================
 const cartConfig = {
   cartIconId: "cartIcon",
@@ -441,12 +415,10 @@ const cartConfig = {
   cartPageUrl: "/user/cart.html",
 };
 
-// 小工具：后端勾选框可能是 true/"true"/1/"1"
 function isTrueFlag(v) {
   return v === true || v === "true" || v === 1 || v === "1";
 }
 
-// 小工具：在各种字段里找关键字（支持 tags/labels/type/category/tag）
 function hasKeyword(p, keyword) {
   if (!p) return false;
   const kw = String(keyword).toLowerCase();
@@ -470,7 +442,6 @@ function hasKeyword(p, keyword) {
   return false;
 }
 
-// 是否爆品
 function isHotProduct(p) {
   return (
     isTrueFlag(p.isHot) ||
@@ -540,26 +511,31 @@ function isNewProduct(p) {
 }
 
 // ================================
-// ✅✅✅ 商品图片右下角数量徽章工具函数
+// ✅ 盒马风格：右下角数量控件（qty=0 整组隐藏）
 // ================================
 function setProductBadge(pid, qty) {
-  const els = document.querySelectorAll(`.product-qty-badge[data-pid="${pid}"]`);
-  if (!els || !els.length) return;
+  const wrapEls = document.querySelectorAll(`.product-qty-ctrl[data-pid="${pid}"]`);
+  if (!wrapEls || !wrapEls.length) return;
 
   const n = Number(qty || 0);
-  els.forEach((el) => {
+
+  wrapEls.forEach((wrap) => {
+    const numEl = wrap.querySelector(`.qty-num[data-qty-num="${pid}"]`);
+    const minusBtn = wrap.querySelector(`.qty-btn.minus[data-qty-minus="${pid}"]`);
+
     if (n > 0) {
-      el.textContent = n >= 99 ? "99+" : String(n);
-      el.style.display = "flex";
+      if (numEl) numEl.textContent = n >= 99 ? "99+" : String(n);
+      wrap.style.display = "inline-flex";
+      if (minusBtn) minusBtn.disabled = false;
     } else {
-      el.textContent = "";
-      el.style.display = "none";
+      if (numEl) numEl.textContent = "0";
+      wrap.style.display = "none";
     }
   });
 }
+
 // ✅ 更强：从 FreshCart / Cart / localStorage 自动找“像购物车”的数据
 function getCartSnapshot() {
-  // 1) FreshCart（尽量多尝试常见方法/字段）
   try {
     const fc = window.FreshCart;
     if (fc) {
@@ -572,7 +548,6 @@ function getCartSnapshot() {
     }
   } catch {}
 
-  // 2) Cart（老版本）
   try {
     const c = window.Cart;
     if (c) {
@@ -585,7 +560,6 @@ function getCartSnapshot() {
     }
   } catch {}
 
-  // 3) localStorage（强力兜底：自动扫描所有 key，只要像 cart 就尝试解析）
   try {
     const candidates = [];
     for (let i = 0; i < localStorage.length; i++) {
@@ -595,7 +569,6 @@ function getCartSnapshot() {
       if (lk.includes("cart")) candidates.push(k);
     }
 
-    // 优先 freshbuy 的，再扫其它
     candidates.sort((a, b) => {
       const A = a.toLowerCase();
       const B = b.toLowerCase();
@@ -625,16 +598,13 @@ function getCartSnapshot() {
   return null;
 }
 
-// ✅ 更强：把各种“购物车结构”统一成 { pid: qty }
 function normalizeCartToQtyMap(cart) {
   const map = {};
   if (!cart) return map;
 
-  // 递归找 items（支持嵌套：cart.items / data.items / state.cart.items 等）
   function findItems(obj, depth = 0) {
     if (!obj || typeof obj !== "object" || depth > 6) return null;
     if (Array.isArray(obj)) {
-      // 有些直接就是 items 数组
       if (obj.length && typeof obj[0] === "object") return obj;
       return null;
     }
@@ -654,7 +624,6 @@ function normalizeCartToQtyMap(cart) {
 
   const items = findItems(cart);
 
-  // 情况 1：items 数组
   if (Array.isArray(items)) {
     items.forEach((it) => {
       const id =
@@ -687,7 +656,6 @@ function normalizeCartToQtyMap(cart) {
     return map;
   }
 
-  // 情况 2：对象形式：{ [pid]: qty } 或 { [pid]: {qty} }
   if (typeof cart === "object") {
     for (const k of Object.keys(cart)) {
       const v = cart[k];
@@ -717,8 +685,9 @@ function trySyncBadgesFromCart() {
   const cart = getCartSnapshot();
   const qtyMap = normalizeCartToQtyMap(cart);
 
-  document.querySelectorAll(".product-qty-badge[data-pid]").forEach((el) => {
-    const pid = el.getAttribute("data-pid");
+  // ✅ 这里必须同步 product-qty-ctrl（而不是不存在的 product-qty-badge）
+  document.querySelectorAll(".product-qty-ctrl[data-pid]").forEach((wrap) => {
+    const pid = wrap.getAttribute("data-pid");
     setProductBadge(pid, qtyMap[pid] || 0);
   });
 }
@@ -727,10 +696,8 @@ function createProductCard(p, extraBadgeText) {
   const article = document.createElement("article");
   article.className = "product-card";
 
-  // ✅ 统一主键：优先 _id（MongoDB），其次 id / sku
   const pid = String(p._id || p.id || p.sku || "").trim();
 
-  // ✅ 价格：优先显示特价（sale/special/flash），并展示划线原价
   const basePrice = Number(p.price ?? p.originPrice ?? p.regularPrice ?? 0);
   const salePrice = Number(
     p.salePrice ?? p.specialPrice ?? p.discountPrice ?? p.flashPrice ?? 0
@@ -761,14 +728,17 @@ function createProductCard(p, extraBadgeText) {
   const tagline = (p.tag || p.category || "").slice(0, 18);
   const limitQty = p.limitQty || p.limitPerUser || p.maxQty || p.purchaseLimit || 0;
 
-  // ✅✅✅ 在图片容器里插入 .product-qty-badge
   article.innerHTML = `
     <div class="product-image-wrap">
       ${badgeText ? `<span class="special-badge">${badgeText}</span>` : ""}
       <img src="${imageUrl}" class="product-image" alt="${p.name || ""}" />
 
-      <!-- ✅ 商品图片右下角数量徽章（JS 会控制显示/隐藏） -->
-      <div class="product-qty-badge" data-pid="${pid}"></div>
+      <!-- ✅ 盒马风格：右下角数量控件（qty=0 时整组隐藏） -->
+      <div class="product-qty-ctrl" data-pid="${pid}" style="display:none;">
+        <button type="button" class="qty-btn minus" data-qty-minus="${pid}" aria-label="减少">−</button>
+        <span class="qty-num" data-qty-num="${pid}">0</span>
+        <button type="button" class="qty-btn plus" data-qty-plus="${pid}" aria-label="增加">+</button>
+      </div>
 
       <div class="product-overlay">
         <div class="overlay-btn-row">
@@ -795,21 +765,26 @@ function createProductCard(p, extraBadgeText) {
     </button>
   `;
 
+  // ✅ 点击卡片跳详情（但点击 qty / 按钮不跳）
   article.addEventListener("click", () => {
     if (!pid) return;
     window.location.href = "product_detail.html?id=" + encodeURIComponent(pid);
   });
 
-  function doAdd(ev) {
-    ev.stopPropagation();
-
+  function getCartApi() {
     const cartApi =
       (window.FreshCart &&
         typeof window.FreshCart.addItem === "function" &&
         window.FreshCart) ||
       (window.Cart && typeof window.Cart.addItem === "function" && window.Cart) ||
       null;
+    return cartApi;
+  }
 
+  function doAdd(ev) {
+    ev.stopPropagation();
+
+    const cartApi = getCartApi();
     if (!cartApi) {
       alert("购物车模块暂未启用（请确认 cart.js 已加载）");
       return;
@@ -828,26 +803,23 @@ function createProductCard(p, extraBadgeText) {
     };
 
     cartApi.addItem(normalized, 1);
-    setTimeout(() => trySyncBadgesFromCart(), 0);
-    // ✅✅✅ 加购后立刻显示徽章 +1（不依赖 cart.js 是否广播）
+
+    // ✅ 立即把控件显示出来（不依赖 cart.js 广播）
     try {
-      const badge = article.querySelector(`.product-qty-badge[data-pid="${pid}"]`);
-      const cur = Number((badge?.textContent || "").replace("+", "")) || 0;
+      const ctrl = article.querySelector(`.product-qty-ctrl[data-pid="${pid}"]`);
+      const numEl = article.querySelector(`.qty-num[data-qty-num="${pid}"]`);
+      const cur = Number(numEl?.textContent || 0) || 0;
       const next = Math.min(cur + 1, 99);
-      if (badge) {
-        badge.textContent = next >= 99 ? "99+" : String(next);
-        badge.style.display = "flex";
-      }
+      setProductBadge(pid, next);
     } catch {}
 
-    // ✅ 通知全站：购物车已更新（给 trySyncBadgesFromCart / cart.js 用）
     try {
       window.dispatchEvent(
         new CustomEvent("freshbuy:cartUpdated", { detail: { pid, delta: 1 } })
       );
     } catch {}
 
-    // ✅✅✅ 关键：避免“立即同步又被隐藏”（等 cart.js/localStorage 写入后再同步）
+    // ✅ 等 cart.js/localStorage 真正写入后，再同步一次（避免被覆盖）
     setTimeout(() => {
       try {
         trySyncBadgesFromCart();
@@ -855,17 +827,87 @@ function createProductCard(p, extraBadgeText) {
     }, 150);
   }
 
+  // ✅ 加入购物车按钮
   const overlayAdd = article.querySelector('.overlay-btn.add[data-add-pid]');
   if (overlayAdd) overlayAdd.addEventListener("click", doAdd);
 
   const fixedAdd = article.querySelector('.product-add-fixed[data-add-pid]');
   if (fixedAdd) fixedAdd.addEventListener("click", doAdd);
 
+  // ✅ 收藏
   const favBtn = article.querySelector(".overlay-btn.fav");
   if (favBtn) {
     favBtn.addEventListener("click", (ev) => {
       ev.stopPropagation();
       alert("收藏功能后续接入，这里先做占位提示。");
+    });
+  }
+
+  // ===============================
+  // ✅✅✅ 盒马风格：+- 事件绑定（真正生效）
+  // ===============================
+  const qtyCtrl = article.querySelector(`.product-qty-ctrl[data-pid="${pid}"]`);
+  if (qtyCtrl) {
+    // 点击控件本身不跳详情
+    qtyCtrl.addEventListener("click", (ev) => ev.stopPropagation());
+  }
+
+  const plusBtn = article.querySelector(`.qty-btn.plus[data-qty-plus="${pid}"]`);
+  if (plusBtn) {
+    plusBtn.addEventListener("click", (ev) => {
+      // 复用加购逻辑
+      doAdd(ev);
+    });
+  }
+
+  const minusBtn = article.querySelector(`.qty-btn.minus[data-qty-minus="${pid}"]`);
+  if (minusBtn) {
+    minusBtn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+
+      const cartApi = getCartApi();
+      if (!cartApi) return;
+
+      // 当前显示数量（先用UI，UI没有再用购物车快照）
+      let cur = 0;
+      try {
+        const numEl = article.querySelector(`.qty-num[data-qty-num="${pid}"]`);
+        cur = Number(numEl?.textContent || 0) || 0;
+      } catch {}
+      if (!cur) {
+        const map = normalizeCartToQtyMap(getCartSnapshot());
+        cur = Number(map[pid] || 0) || 0;
+      }
+
+      const next = Math.max(0, cur - 1);
+
+      // ✅ 调用 cart.js 的“减一”能力（多兼容）
+      if (typeof cartApi.removeItem === "function") {
+        cartApi.removeItem(pid, 1);
+      } else if (typeof cartApi.decreaseItem === "function") {
+        cartApi.decreaseItem(pid, 1);
+      } else if (typeof cartApi.updateQty === "function") {
+        cartApi.updateQty(pid, next);
+      } else if (typeof cartApi.setQty === "function") {
+        cartApi.setQty(pid, next);
+      } else {
+        // 没有减法API也至少把UI正确隐藏
+      }
+
+      // ✅ 立即更新UI（0 则整组隐藏）
+      setProductBadge(pid, next);
+
+      try {
+        window.dispatchEvent(
+          new CustomEvent("freshbuy:cartUpdated", { detail: { pid, delta: -1 } })
+        );
+      } catch {}
+
+      setTimeout(() => {
+        try {
+          trySyncBadgesFromCart();
+        } catch {}
+      }, 150);
     });
   }
 
@@ -945,7 +987,6 @@ async function loadHomeProductsFromSimple() {
 
     const allList = nonHotList;
 
-    // ✅ 家庭必备：严格筛选，不要用 allList 兜底，否则会塞正常价商品
     if (!familyList.length) familyList = [];
     if (!newList.length) newList = allList.slice(0, 12);
     if (!bestList.length) bestList = allList.slice(0, 12);
@@ -971,7 +1012,6 @@ async function loadHomeProductsFromSimple() {
       });
     }
 
-    // ✅ 每个区块显示数量（电脑 8；手机按你配置）
     const hotLimit = getLimit("Hot");
     const dailyLimit = getLimit("DailySpecial");
     const newLimit = getLimit("New");
@@ -990,7 +1030,7 @@ async function loadHomeProductsFromSimple() {
     renderIntoGrid("productGridBest", bestShow, "best");
     renderIntoGrid("productGridNormal", allShow, "all");
 
-    // ✅✅✅ 商品渲染完后同步一次徽章（如果购物车里已有数量）
+    // ✅ 商品渲染完后同步一次数量控件
     try {
       setTimeout(() => trySyncBadgesFromCart(), 0);
     } catch {}
@@ -1000,7 +1040,7 @@ async function loadHomeProductsFromSimple() {
 }
 
 // =========================
-// 3) 登录 / 注册弹窗 + 顶部头像（✅ Mongo 真实接口版）
+// 3) 登录 / 注册弹窗 + 顶部头像
 // =========================
 const AUTH_TOKEN_KEY = "freshbuy_token";
 
@@ -1048,7 +1088,6 @@ async function apiLogin(phone, password) {
   return data.user || null;
 }
 
-// ✅ 发送短信验证码（Twilio Verify）
 async function apiSendSmsCode(phone) {
   const { res, data } = await apiFetch("/api/sms/send-code", {
     method: "POST",
@@ -1059,7 +1098,6 @@ async function apiSendSmsCode(phone) {
   return data;
 }
 
-// ✅ 注册：验证码校验 + 创建账号 + 返回 token（后端接口）
 async function apiVerifyRegister({ phone, code, password, name }) {
   const { res, data } = await apiFetch("/api/auth/verify-register", {
     method: "POST",
@@ -1074,7 +1112,6 @@ async function apiVerifyRegister({ phone, code, password, name }) {
   return data.user || null;
 }
 
-// 轻量 me（只有 id/role/phone）
 async function apiMe() {
   const token = getToken();
   if (!token) return null;
@@ -1083,7 +1120,6 @@ async function apiMe() {
   return data.user || null;
 }
 
-// ✅✅✅ 正确来源：从 Address 集合拿默认地址（唯一正确来源）
 async function apiGetDefaultAddress() {
   const token = getToken();
   if (!token) return null;
@@ -1091,7 +1127,6 @@ async function apiGetDefaultAddress() {
   try {
     const { res, data } = await apiFetch("/api/addresses/my", { cache: "no-store" });
     console.log("[apiGetDefaultAddress]", res.status, data);
-
     if (!res.ok || !data?.success) return null;
     return data.defaultAddress || null;
   } catch (e) {
@@ -1242,7 +1277,6 @@ if (loginSubmitBtn) {
 }
 
 function isStrongPassword(pwd) {
-  // 至少8位，且必须包含字母+数字
   return /^(?=.*[A-Za-z])(?=.*\d).{8,}$/.test(String(pwd || ""));
 }
 
@@ -1276,7 +1310,7 @@ if (registerSubmitBtn) {
 }
 
 // ===============================
-// ✅ ZIP 锁定/解锁（左右同步）仅锁 ZIP 输入框，不影响其它按钮
+// ✅ ZIP 锁定/解锁（左右同步）
 // ===============================
 function hardLockInput(el, zip) {
   if (!el) return;
@@ -1434,7 +1468,6 @@ function getSavedZoneBrief() {
   }
 }
 
-// ✅ 不再覆盖 #deliveryInfo，而是渲染到 #deliveryInfoBody，并且不强制切模式
 function applyZoneToUI(zip, payload) {
   const zipStatus = $("zipStatus");
   const deliveryHintEl = $("deliveryHint");
@@ -1728,7 +1761,7 @@ function doSearch(keyword) {
 }
 
 // =========================
-// 🔍 顶部搜索栏（globalSearchInput）
+// 🔍 顶部搜索栏
 // =========================
 function bindGlobalSearch() {
   const input = document.getElementById("globalSearchInput");
@@ -1753,7 +1786,7 @@ function bindGlobalSearch() {
   });
 }
 
-// ===== 密码显示/隐藏（登录 & 注册）=====
+// ===== 密码显示/隐藏 =====
 (function bindPasswordEyeToggle() {
   document.addEventListener("click", (e) => {
     const btn = e.target.closest(".auth-eye[data-eye-for]");
@@ -1780,7 +1813,6 @@ function bindGlobalSearch() {
     window.location.href = "/user/user_center.html";
   }
 
-  // 事件委托：永远能点
   document.addEventListener("click", (e) => {
     const user = e.target.closest("#userProfile");
     if (user) {
@@ -1791,7 +1823,6 @@ function bindGlobalSearch() {
     }
   });
 
-  // 兜底：再绑一次
   document.addEventListener("DOMContentLoaded", () => {
     const up = document.getElementById("userProfile");
     if (up && !up.dataset.bound) {
@@ -1806,20 +1837,16 @@ function bindGlobalSearch() {
 })();
 
 // ================================
-// ✅ 商品图片右下角数量徽章：同步购物车数量
+// ✅ 数量控件：同步购物车数量
 // ================================
-
-// ✅ 页面加载后同步一次
 document.addEventListener("DOMContentLoaded", () => {
   setTimeout(() => trySyncBadgesFromCart(), 0);
 });
 
-// ✅ cart.js 或 doAdd() 广播时同步
 window.addEventListener("freshbuy:cartUpdated", () => {
   trySyncBadgesFromCart();
 });
 
-// ✅ 多标签页同步
 window.addEventListener("storage", (e) => {
   if (!e || !e.key) return;
   if (String(e.key).toLowerCase().includes("cart")) {

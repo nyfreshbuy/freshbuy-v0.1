@@ -472,29 +472,30 @@ width: 100%;
   box-shadow: 0 2px 6px rgba(15, 23, 42, 0.25);
   z-index: 2;
 }
-/* ✅ 商品图片右下角：已下单/已加购数量徽章 */
-/* ✅ 商品图片右下角：+/− 步进器（叮咚/盒马风） */
-.product-stepper{
+/* ✅ 商品图片右下角：已加购数量徽章（跟你截图一致） */
+.product-qty-badge{
   position: absolute;
   right: 8px;
   bottom: 8px;
-  z-index: 3;
 
-  display: none;                 /* qty>0 才显示（JS 控制） */
-  align-items: center;
-  gap: 6px;
+  min-width: 34px;
+  height: 34px;
+  padding: 0 8px;
 
-  background: rgba(15,23,42,.72);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: #22c55e;
+  color: #fff;
+  font-size: 18px;
+  font-weight: 900;
 
-  border: 1px solid rgba(255,255,255,.18);
   border-radius: 999px;
-  padding: 6px 8px;
+  display: none;          /* qty>0 时 JS 改成 flex */
+  align-items: center;
+  justify-content: center;
 
-  box-shadow: 0 10px 24px rgba(0,0,0,.28);
+  box-shadow: 0 6px 14px rgba(0,0,0,.28);
+  border: 2px solid #fff;
+  z-index: 3;
 }
-
 .product-stepper button{
   width: 30px;
   height: 30px;
@@ -1894,4 +1895,57 @@ body.modal-open{ overflow:hidden; }
   border: 1px solid #e5e7eb !important;
   background: #f9fafb !important;
   margin: 0 8px !important;
+}
+/* =========================================
+   ✅ 盒马风格：商品图右下角 - 数字 +
+   qty=0 时整组隐藏（JS 控制 display）
+   ========================================= */
+
+.product-image-wrap { position: relative; }
+
+.product-qty-ctrl{
+  position:absolute;
+  right:12px;
+  bottom:12px;
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:6px;
+  border-radius:999px;
+  background: rgba(255,255,255,0.92);
+  border: 1px solid rgba(229,231,235,0.9);
+  box-shadow: 0 10px 22px rgba(15,23,42,0.18);
+  z-index: 6;
+}
+
+.product-qty-ctrl .qty-btn{
+  width:28px;
+  height:28px;
+  border-radius:999px;
+  border:none;
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  color:#fff;
+  font-size:18px;
+  font-weight:900;
+  line-height:1;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+}
+
+.product-qty-ctrl .qty-btn:active{ transform: scale(0.98); }
+
+.product-qty-ctrl .qty-num{
+  min-width: 22px;
+  text-align:center;
+  font-size:14px;
+  font-weight:800;
+  color:#16a34a;
+}
+
+@media (max-width:480px){
+  .product-qty-ctrl{ right:10px; bottom:10px; padding:5px; gap:5px; }
+  .product-qty-ctrl .qty-btn{ width:26px; height:26px; font-size:17px; }
+  .product-qty-ctrl .qty-num{ font-size:13px; }
 }
