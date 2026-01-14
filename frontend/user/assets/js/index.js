@@ -1212,7 +1212,24 @@ if (authBackdrop) {
 }
 if (tabLogin) tabLogin.addEventListener("click", () => switchAuthMode("login"));
 if (tabRegister) tabRegister.addEventListener("click", () => switchAuthMode("register"));
+// ================================
+// ✅ 忘记密码按钮：跳转到找回密码页
+// ================================
+(function bindForgotPassword() {
+  function goForgot() {
+    // 你后面要做找回密码页面，就用这个路径
+    window.location.href = "/user/forgot_password.html?v=" + Date.now();
+  }
 
+  // 事件委托：弹窗打开/切换 tab 后也能点到
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest("#forgotPwdLink");
+    if (!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    goForgot();
+  });
+})();
 if (regSendCodeBtn) {
   regSendCodeBtn.addEventListener("click", async () => {
     const phone = (regPhone && regPhone.value.trim()) || "";
