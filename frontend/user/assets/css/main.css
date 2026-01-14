@@ -1949,3 +1949,32 @@ body.modal-open{ overflow:hidden; }
   .product-qty-ctrl .qty-btn{ width:26px; height:26px; font-size:17px; }
   .product-qty-ctrl .qty-num{ font-size:13px; }
 }
+/* =========================================
+   ✅ 手机端：所有首页商品网格一行 2 个（强制覆盖）
+   文件：frontend/user/assets/css/main.css
+   位置：粘贴到最底部（最后一行）
+========================================= */
+@media (max-width: 768px) {
+  /* 你首页 5 个区块的 grid 容器 id（index.js 里用到的） */
+  #productGridHot,
+  #productGridDaily,
+  #productGridNew,
+  #productGridBest,
+  #productGridNormal {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  /* 防止某些地方把卡片设成 block/100% 导致看起来像 1 列 */
+  #productGridHot .product-card,
+  #productGridDaily .product-card,
+  #productGridNew .product-card,
+  #productGridBest .product-card,
+  #productGridNormal .product-card {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+}
