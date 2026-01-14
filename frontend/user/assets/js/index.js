@@ -533,7 +533,99 @@ function setProductBadge(pid, qty) {
     }
   });
 }
+function isMobileView2() {
+  return window.matchMedia("(max-width: 768px)").matches;
+}
 
+/** 同步某个 pid 的所有数量控件（图片那份 + 按钮那份） */
+function setProductQtyCtrl(pid, qty) {
+  const wraps = document.querySelectorAll(`.product-qtyty-ctrl-fix, .product-qty-ctrl[data-pid="${pid}"]`);
+  const n = Math.max(0, Number(qty || 0));
+
+  wraps.forEach((wrap) => {
+    const numEl = wrap.querySelector(`.qty-num[data-qty-num="${pid}"]`);
+    if (numEl) numEl.textContent = n >= 99 ? "99+" : String(n);
+
+    // ✅ 手机端：qty>0 就显示（覆盖在图片上那份）
+    // ✅ 电脑端：qty>0 才显示，并且要“替换按钮”
+    if (n > 0) {
+      wrap.style.display = "inline-flex";
+    } else {
+      wrap.style.display = "none";
+    }
+  });
+
+  // ✅ 电脑端按钮替换逻辑：qty>0 隐藏加入购物车按钮
+  if (!isMobileView2()) {
+    document.querySelectorAll(`.product-buy-row`).forEach((row) => {
+      const ctrl = row.querySelector(`.product-qty-ctrl[data-pid="${pid}"]`);
+      const btn = row.querySelector(`.product-add-fixed[data-add-pid="${pid}"]`);
+      if (!ctrl || !btn) return;
+
+      if (n > 0) {
+        btn.style.display = "none";
+        ctrl.style.display = "inline-flex";
+      } else {
+        btn.style.display = "";
+        ctrl.style.display = "none";
+      }
+    });
+  }
+}
+
+/** 从 cart snapshot 取当前 pid 数量 */
+function getQtyByPid(pid) {
+  const cart = getCartSnapshot();
+  const map = normalizeCartToQtyMap(cart);
+  return Number(map[pid] || 0);
+}
+
+/** 增减 qty：确保 - 只减 1 个 */
+function changeQtyByPid(pid, delta, productForAdd) {
+  const cartApi =
+    (window.FreshCart && typeof window.FreshCart.addItem === "function" && window.FreshCart) ||
+    (window.Cart && typeof window.Cart.addItem === "function" && window.Cart) ||
+    null;
+
+  if (!cartApi) {
+    alert("购物车模块暂未启用（请确认 cart.js 已加载）");
+    return;
+  }
+
+  const cur = getQtyByPid(pid);
+  const next = Math.max(0, cur + delta);
+
+  // ✅ 优先用 updateQty / setQty（如果你的 cart.js 有）
+  if (typeof cartApi.updateQty === "function") {
+    cartApi.updateQty(pid, next);
+  } else if (typeof cartApi.setQty === "function") {
+    cartApi.setQty(pid, next);
+  } else if (delta < 0 && typeof cartApi.removeOne === "function") {
+    cartApi.removeOne(pid); // 有些实现会提供 removeOne
+  } else if (delta < 0 && typeof cartApi.removeItem === "function" && next === 0) {
+    cartApi.removeItem(pid);
+  } else {
+    // ✅ 兜底：用 addItem 增加 / 减少（减法用 -1）
+    // ⚠️ 你的 cart.js 如果不支持负数，就会无效；那就需要改 cart.js（我也能帮你）
+    cartApi.addItem(productForAdd, delta);
+  }
+
+  // ✅ UI 先乐观更新一次（立刻响应）
+  setProductQtyCtrl(pid, next);
+
+  // ✅ 再异步从 cart 真实数据同步一次（防止写入延迟）
+  setTimeout(() => {
+    try {
+      const real = getQtyByPid(pid);
+      setProductQtyCtrl(pid, real);
+    } catch {}
+  }, 120);
+
+  // 广播
+  try {
+    window.dispatchEvent(new CustomEvent("freshbuy:cartUpdated", { detail: { pid, delta } }));
+  } catch {}
+}
 // ✅ 更强：从 FreshCart / Cart / localStorage 自动找“像购物车”的数据
 function getCartSnapshot() {
   try {
@@ -760,9 +852,18 @@ function createProductCard(p, extraBadgeText) {
 
     <div class="product-tagline">${tagline}</div>
 
-    <button type="button" class="product-add-fixed" data-add-pid="${pid}">
-      加入购物车
-    </button>
+    <div class="product-buy-row">
+  <button type="button" class="product-add-fixed" data-add-pid="${pid}">
+    加入购物车
+  </button>
+
+  <!-- ✅ 数量控件：手机端显示在图上；电脑端显示在按钮位（qty>0 才显示） -->
+  <div class="product-qty-ctrl" data-pid="${pid}" style="display:none;">
+    <button type="button" class="qty-btn minus" data-qty-minus="${pid}" aria-label="减少">−</button>
+    <span class="qty-num" data-qty-num="${pid}">0</span>
+    <button type="button" class="qty-btn plus" data-qty-plus="${pid}" aria-label="增加">+</button>
+  </div>
+</div>
   `;
 
   // ✅ 点击卡片跳详情（但点击 qty / 按钮不跳）
@@ -913,8 +1014,49 @@ function createProductCard(p, extraBadgeText) {
 
   return article;
 }
-
+setProductQtyCtrl(pid, getQtyByPid(pid)); // ✅ 让电脑端马上从按钮切换成 -数字+
 // IP 建议 ZIP（不强制）—— ✅ 如果 ZIP 已被“默认地址锁定”，则不要再用 IP 覆盖
+// ✅ 绑定 +/-（两份控件一起生效）
+function bindQtyButtons() {
+  const minusBtns = article.querySelectorAll(`.qty-btn.minus[data-qty-minus="${pid}"]`);
+  const plusBtns = article.querySelectorAll(`.qty-btn.plus[data-qty-plus="${pid}"]`);
+
+  // ✅ 这个对象用来 addItem 增加时用
+  const normalized = {
+    id: pid,
+    name: p.name || "商品",
+    price: finalPrice,
+    priceNum: finalPrice,
+    image: p.image || imageUrl,
+    tag: p.tag || "",
+    type: p.type || "",
+    isSpecial: isHotProduct(p),
+    isDeal: isHotProduct(p),
+  };
+
+  minusBtns.forEach((btn) => {
+    btn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      changeQtyByPid(pid, -1, normalized); // ✅ - 永远只减 1
+    });
+  });
+
+  plusBtns.forEach((btn) => {
+    btn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      changeQtyByPid(pid, +1, normalized);
+    });
+  });
+}
+
+bindQtyButtons();
+
+// ✅ 初次渲染就同步一次 qty（如果购物车里已有）
+setTimeout(() => {
+  try {
+    setProductQtyCtrl(pid, getQtyByPid(pid));
+  } catch {}
+}, 0);
 async function tryPrefillZipFromIP() {
   const confirmed = localStorage.getItem("freshbuy_zone_ok") === "1";
   if (confirmed) return;

@@ -1949,3 +1949,69 @@ body.modal-open{ overflow:hidden; }
   .product-qty-ctrl .qty-btn{ width:26px; height:26px; font-size:17px; }
   .product-qty-ctrl .qty-num{ font-size:13px; }
 }
+/* =========================
+   商品数量控件：手机覆盖在图上；电脑显示在按钮位（qty>0）
+   ========================= */
+
+.product-buy-row{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+
+/* 统一控件样式 */
+.product-qty-ctrl{
+  align-items:center;
+  gap:10px;
+  background:#ffffff;
+  border:1px solid #e5e7eb;
+  border-radius:999px;
+  padding:6px 10px;
+  box-shadow:0 6px 16px rgba(15,23,42,.12);
+}
+
+.product-qty-ctrl .qty-btn{
+  width:42px;
+  height:32px;
+  border:none;
+  border-radius:999px;
+  background:#22c55e;
+  color:#fff;
+  font-size:20px;
+  font-weight:800;
+  cursor:pointer;
+}
+
+.product-qty-ctrl .qty-num{
+  min-width:26px;
+  text-align:center;
+  font-size:16px;
+  font-weight:800;
+  color:#111827;
+}
+
+/* ✅ 手机端：把“图片内那份”控件覆盖在图片上 */
+@media (max-width: 768px){
+  .product-image-wrap{
+    position:relative;
+  }
+  .product-image-wrap .product-qty-ctrl{
+    position:absolute;
+    left:50%;
+    top:50%;
+    transform:translate(-50%,-50%);
+    z-index:6;
+  }
+
+  /* 手机端按钮照常显示（你说继续保持这样子） */
+  .product-buy-row .product-qty-ctrl{
+    display:none !important; /* ✅ 电脑端那份在手机隐藏 */
+  }
+}
+
+/* ✅ 电脑端：不在图片上显示，只在按钮位显示 */
+@media (min-width: 769px){
+  .product-image-wrap .product-qty-ctrl{
+    display:none !important;
+  }
+}
