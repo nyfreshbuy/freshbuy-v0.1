@@ -510,5 +510,70 @@ router.get("/", requireLogin, requireDriver, async (req, res) => {
     return res.status(500).json({ success: false, message: "获取司机任务失败" });
   }
 });
+/**
+ * =====================================================
+ * ✅ 司机端：更新订单状态（送达 / 配送中）
+ * PATCH /api/driver/orders/:id/status
+ * body: { status: "delivered" | "delivering" }
+ * =====================================================
+ */
+router.patch("/:id/status", requireLogin, requireDriver, async (req, res) => {
+  try {
+    const orderId = String(req.params.id || "").trim();
+    if (!mongoose.Types.ObjectId.isValid(orderId)) {
+      return res.status(400).json({ success: false, message: "订单ID不合法" });
+    }
 
+    const status = String(req.body?.status || "").trim().toLowerCase();
+
+    const ALLOWED = ["delivering", "delivered", "done"];
+    if (!ALLOWED.includes(status)) {
+      return res.status(400).json({ success: false, message: "不允许的状态：" + status });
+    }
+
+    const patch = { status };
+
+    if (status === "delivering") {
+      patch.deliveryStatus = "delivering";
+    }
+
+    if (status === "delivered" || status === "done") {
+      patch.status = "done";
+      patch.deliveryStatus = "delivered";
+      patch.deliveredAt = new Date();
+    }
+
+    const updated = await Order.findOneAndUpdate(
+      {
+        _id: new mongoose.Types.ObjectId(orderId),
+
+        // ✅ 司机只能改自己订单
+        $or: [
+          { driverId: req.user._id },
+          { "dispatch.driverId": req.user._id },
+        ],
+      },
+      { $set: patch },
+      { new: true }
+    ).lean();
+
+    if (!updated) {
+      return res.status(404).json({ success: false, message: "订单不存在或无权限" });
+    }
+
+    return res.json({
+      success: true,
+      message: "订单状态已更新（司机端）",
+      order: {
+        id: updated._id.toString(),
+        status: updated.status,
+        deliveryStatus: updated.deliveryStatus,
+        deliveredAt: updated.deliveredAt || null,
+      },
+    });
+  } catch (err) {
+    console.error("PATCH /api/driver/orders/:id/status error:", err);
+    return res.status(500).json({ success: false, message: "司机更新状态失败" });
+  }
+});
 export default router;

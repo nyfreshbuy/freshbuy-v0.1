@@ -115,7 +115,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use("/api/sms", smsVerifyRouter);
 app.use("/api/admin", adminPicklist);
 app.use("/api/driver", driverDispatchRoutes);
-
+app.use("/api/admin/orders", adminOrdersRouter);
 // ---- 基础工具 / 公共 ----
 app.use("/api/geocode", geocodeRouter);
 console.log("✅ geocode 已挂载到 /api/geocode");
@@ -183,9 +183,6 @@ console.log("✅ admin_recharge 已挂载到 /api/admin/recharge");
 // 营销中心
 app.use("/api/admin", adminMarketingRouter);
 console.log("✅ admin_marketing 已挂载到 /api/admin");
-
-// 后台订单管理
-app.use("/api/admin/orders", adminOrdersRouter);
 // ✅ DEBUG: 确认 adminOrdersRouter 是否真的挂载生效
 app.get("/api/admin/orders/__mounted", (req, res) => {
   res.json({ ok: true, where: "server.js", mounted: "/api/admin/orders" });
