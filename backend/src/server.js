@@ -99,7 +99,6 @@ const app = express();
 app.post(
   "/api/pay/stripe/webhook",
   express.raw({ type: "application/json" }),
-  // 让请求继续交给 stripePayRouter 内部的 /webhook 处理
   (req, res, next) => next()
 );
 
@@ -110,16 +109,25 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // =======================
-// 其他路由（保持你的顺序）
+// 其他路由（保持你的顺序，但修正重复挂载）
 // =======================
 app.use("/api/sms", smsVerifyRouter);
+
 // ✅✅✅ 先挂最具体的（避免被 /api/admin 吃掉）
+// （只挂一次！）
 app.use("/api/admin/orders", adminOrdersRouter);
+
 // ✅✅✅ 先挂最具体的（避免被 /api/driver 吃掉）
+// （只挂一次！driver_orders.js 只负责 /api/driver/orders/...）
 app.use("/api/driver/orders", driverOrdersRouter);
+
+// 你原来挂的 picklist（保持）
 app.use("/api/admin", adminPicklist);
+
+// 司机派单/路线（保持在 /api/driver 下）
+// ⚠️ 注意：这里不要再挂 driverOrdersRouter 到 /api/driver
 app.use("/api/driver", driverDispatchRoutes);
-app.use("/api/admin/orders", adminOrdersRouter);
+
 // ---- 基础工具 / 公共 ----
 app.use("/api/geocode", geocodeRouter);
 console.log("✅ geocode 已挂载到 /api/geocode");
@@ -160,11 +168,11 @@ app.use("/api/user", userMeRouter);
 app.use("/api/payments", paymentsRouter);
 
 // ✅✅✅ 你真正的 Stripe 支付路由：/api/pay/stripe/...
-// 由于我们把 /api/pay/stripe/webhook 提前 raw 了，所以这里就安全了
 app.use("/api/pay/stripe", stripePayRouter);
 
 // ---- 司机 ----
 app.use("/api/driver", driverRouter);
+
 // ---- 后台 ----
 app.use("/api/admin/dashboard", adminDashboardrouter);
 app.use("/api/admin/zones", adminZonesRouter);
@@ -184,6 +192,7 @@ console.log("✅ admin_recharge 已挂载到 /api/admin/recharge");
 // 营销中心
 app.use("/api/admin", adminMarketingRouter);
 console.log("✅ admin_marketing 已挂载到 /api/admin");
+
 // ✅ DEBUG: 确认 adminOrdersRouter 是否真的挂载生效
 app.get("/api/admin/orders/__mounted", (req, res) => {
   res.json({ ok: true, where: "server.js", mounted: "/api/admin/orders" });
@@ -193,6 +202,7 @@ app.get("/api/admin/orders/__mounted", (req, res) => {
 app.patch("/api/admin/orders/__ping-status", (req, res) => {
   res.json({ ok: true, hit: "/api/admin/orders/__ping-status" });
 });
+
 // 后台商品管理
 app.use("/api/admin/products", adminProductsRouter);
 
@@ -215,6 +225,7 @@ console.log("✅ wallet 已挂载到 /api/wallet");
 // ---- 下单 ----
 app.use("/api/orders", ordersRouter);
 app.use("/api/auth", resetPwdRouter);
+
 // ---- 通用商品 / 分类 ----
 app.use("/api/products", productsRouter);
 app.use("/api/frontend/products", frontendProductsRouter);
@@ -273,6 +284,7 @@ app.use(express.static(frontendPath));
 app.use("/assets", express.static(path.join(frontendPath, "user/assets")));
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 app.use("/uploads", express.static(path.resolve("uploads")));
+
 // =======================
 // 测试接口
 // =======================
@@ -362,6 +374,7 @@ async function start() {
 }
 
 start();
+
 // ===============================
 // 🧹 定时清理送达照片（每天凌晨 3 点跑一次）
 // ===============================
