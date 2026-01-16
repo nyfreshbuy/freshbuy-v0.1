@@ -1,4 +1,4 @@
-console.log("driver_index.js loaded (NEW) - FIXED ROUTES");
+console.log("driver_index.js loaded (FINAL) - ROUTES ALIGNED 2026-01-15");
 
 (() => {
   const API_BASE = ""; // 同域部署留空
@@ -62,7 +62,7 @@ console.log("driver_index.js loaded (NEW) - FIXED ROUTES");
   const btnNavAll = $("btnNavAll");
   const btnPing = $("btnPing");
 
-  // ✅ 起始地址控件（来自你刚加到 index.html 的那段）
+  // ✅ 起始地址控件（来自你 index.html 那段）
   const startAddressInput = $("startAddressInput");
   const saveStartAddressBtn = $("saveStartAddressBtn");
   const clearStartAddressBtn = $("clearStartAddressBtn");
@@ -157,6 +157,7 @@ console.log("driver_index.js loaded (NEW) - FIXED ROUTES");
 
     const hasBody = options.body != null;
     const isForm = hasBody && options.body instanceof FormData;
+
     if (hasBody && !isForm && !headers["Content-Type"]) {
       headers["Content-Type"] = "application/json";
     }
@@ -298,6 +299,13 @@ console.log("driver_index.js loaded (NEW) - FIXED ROUTES");
       const lat = Number(o.lat ?? o.address?.lat ?? o.deliveryAddress?.lat ?? NaN);
       const lng = Number(o.lng ?? o.address?.lng ?? o.deliveryAddress?.lng ?? NaN);
 
+      // ✅ 后端会返回 proofPhotos / deliveredAt
+      const proofPhotos = Array.isArray(o.proofPhotos) ? o.proofPhotos : [];
+      const lastPhotoUrl =
+        (proofPhotos.length && (proofPhotos[proofPhotos.length - 1]?.absoluteUrl || proofPhotos[proofPhotos.length - 1]?.url)) ||
+        o.lastPhotoUrl ||
+        "";
+
       return {
         id,
         orderNo,
@@ -309,6 +317,9 @@ console.log("driver_index.js loaded (NEW) - FIXED ROUTES");
         amount,
         lat: Number.isFinite(lat) ? lat : null,
         lng: Number.isFinite(lng) ? lng : null,
+        deliveredAt: o.deliveredAt || null,
+        proofPhotos,
+        lastPhotoUrl,
         raw: o,
       };
     });
@@ -316,7 +327,7 @@ console.log("driver_index.js loaded (NEW) - FIXED ROUTES");
 
   function statusBadge(status) {
     const s = String(status || "").toLowerCase();
-    if (["done", "delivered", "完成", "已送达"].some((k) => s.includes(String(k).toLowerCase()))) {
+    if (["done", "delivered", "completed", "完成", "已送达"].some((k) => s.includes(String(k).toLowerCase()))) {
       return { text: "已送达", cls: "badge ok" };
     }
     if (["cancel", "取消", "failed", "异常"].some((k) => s.includes(String(k).toLowerCase()))) {
@@ -331,7 +342,7 @@ console.log("driver_index.js loaded (NEW) - FIXED ROUTES");
     return `https://www.google.com/maps/search/?api=1&query=${q}`;
   }
 
-  // ✅ 过滤掉 0,0 之类的坏点（你之前 Maps 报错的根源）
+  // ✅ 过滤掉 0,0 之类的坏点
   function isZeroCoordText(s) {
     const t = String(s || "").replace(/\s+/g, "");
     return (
@@ -345,7 +356,6 @@ console.log("driver_index.js loaded (NEW) - FIXED ROUTES");
   function buildGoogleMapsDirectionsWithOptionalOrigin(stops, originText) {
     const points = (stops || [])
       .map((s) => {
-        // 有效坐标才用坐标，否则用 addr
         if (s && s.lat != null && s.lng != null) {
           const lat = Number(s.lat);
           const lng = Number(s.lng);
@@ -356,24 +366,21 @@ console.log("driver_index.js loaded (NEW) - FIXED ROUTES");
         return String(s?.addr || "").trim();
       })
       .filter(Boolean)
-      .filter((p) => !isZeroCoordText(p)); // ✅ 干掉 0,0
+      .filter((p) => !isZeroCoordText(p));
 
     if (!points.length) return "";
 
-    // Google Maps dir api 有上限，这里保守切 22
+    // Google Maps directions 上限（保守 22）
     const maxStops = 22;
     const sliced = points.slice(0, maxStops);
 
     const destination = encodeURIComponent(sliced[sliced.length - 1]);
-    const waypointsArr = sliced.slice(0, -1); // ✅ 注意：这里不把第一站当 origin（因为我们要用可选 origin）
-
+    const waypointsArr = sliced.slice(0, -1);
     const waypoints =
       waypointsArr.length > 0 ? `&waypoints=${encodeURIComponent(waypointsArr.join("|"))}` : "";
 
-    // ✅ origin：优先用保存的起始地址；没有就不传，让谷歌用“你的位置”
-    const originPart = originText && originText.trim()
-      ? `&origin=${encodeURIComponent(originText.trim())}`
-      : "";
+    const originPart =
+      originText && originText.trim() ? `&origin=${encodeURIComponent(originText.trim())}` : "";
 
     return `https://www.google.com/maps/dir/?api=1${originPart}&destination=${destination}${waypoints}&travelmode=driving`;
   }
@@ -411,15 +418,15 @@ console.log("driver_index.js loaded (NEW) - FIXED ROUTES");
     return data;
   }
 
-  // ✅ FIX 1：批次接口换成你后端真实路由：/api/driver/orders/batches
+  // ✅ 批次列表：优先 /api/driver/orders/batches（因为 server.js 挂载了 /api/driver/orders -> driver_orders.js）
   async function loadBatchesByDate(dateStr) {
     clearMsg();
     if (batchSelect) batchSelect.innerHTML = `<option value="">加载中…</option>`;
 
     const q = encodeURIComponent(dateStr);
     const candidates = [
-      `${API_BASE}/api/driver/orders/batches?date=${q}`, // ✅ 你的 driver_orders.js
-      `${API_BASE}/api/driver/batches?date=${q}`,       // 备选（未来别名）
+      `${API_BASE}/api/driver/orders/batches?date=${q}`,
+      `${API_BASE}/api/driver/batches?date=${q}`,
     ];
 
     const { data, used } = await tryFetchCandidates("batches", candidates);
@@ -449,7 +456,6 @@ console.log("driver_index.js loaded (NEW) - FIXED ROUTES");
     showOk(`已加载批次：${BATCHES.length} 个（默认选中第一个）`);
   }
 
-  // ✅ FIX 2：按批次拉单接口换成你后端真实路由：/api/driver/orders/batch/orders
   async function loadOrdersByBatchKey(batchKey) {
     clearMsg();
     if (routeSub) routeSub.textContent = `批次：${batchKey} · 加载中…`;
@@ -457,8 +463,8 @@ console.log("driver_index.js loaded (NEW) - FIXED ROUTES");
 
     const q = encodeURIComponent(batchKey);
     const candidates = [
-      `${API_BASE}/api/driver/orders/batch/orders?batchKey=${q}`, // ✅ 你的 driver_orders.js
-      `${API_BASE}/api/driver/batch/orders?batchKey=${q}`,        // 备选
+      `${API_BASE}/api/driver/orders/batch/orders?batchKey=${q}`,
+      `${API_BASE}/api/driver/batch/orders?batchKey=${q}`,
     ];
 
     const { data, used } = await tryFetchCandidates("ordersByBatch", candidates);
@@ -468,7 +474,6 @@ console.log("driver_index.js loaded (NEW) - FIXED ROUTES");
     renderOrders();
   }
 
-  // ✅ FIX 3：按日期拉单走你后端真实路由：/api/driver/orders?date=...
   async function loadOrdersByDate(dateStr) {
     clearMsg();
     if (routeSub) routeSub.textContent = `日期：${dateStr} · 加载中…`;
@@ -476,9 +481,9 @@ console.log("driver_index.js loaded (NEW) - FIXED ROUTES");
 
     const q = encodeURIComponent(dateStr);
     const candidates = [
-      `${API_BASE}/api/driver/orders?date=${q}`,               // ✅ 你的 driver_orders.js
-      `${API_BASE}/api/driver/orders/byDate?date=${q}`,        // 备选
-      `${API_BASE}/api/driver/orders/date/${q}`,               // 备选
+      `${API_BASE}/api/driver/orders?date=${q}`,
+      `${API_BASE}/api/driver/orders/byDate?date=${q}`,
+      `${API_BASE}/api/driver/orders/date/${q}`,
     ];
 
     const { data, used } = await tryFetchCandidates("ordersByDate", candidates);
@@ -522,6 +527,8 @@ console.log("driver_index.js loaded (NEW) - FIXED ROUTES");
       const navTarget = o.lat != null && o.lng != null ? `${o.lat},${o.lng}` : addrLine;
       const navUrl = buildGoogleMapsSingle(navTarget);
 
+      const delivered = ["done", "delivered", "completed"].includes(String(o.status || "").toLowerCase());
+
       return `
         <div class="stop" data-id="${escapeHtml(o.id)}">
           <div class="stop-top">
@@ -532,6 +539,14 @@ console.log("driver_index.js loaded (NEW) - FIXED ROUTES");
                 ${who ? `<div><b>收货：</b>${escapeHtml(who)}</div>` : ``}
                 <div><b>路线序：</b>${Number.isFinite(o.routeIndex) ? o.routeIndex : "-"}</div>
                 ${amt ? `<div><b>金额：</b>${escapeHtml(amt)}</div>` : ``}
+                ${o.deliveredAt ? `<div><b>送达时间：</b>${escapeHtml(String(o.deliveredAt))}</div>` : ``}
+                ${o.lastPhotoUrl ? `
+                  <div>
+                    <b>送达照片：</b>
+                    <a href="${escapeHtml(o.lastPhotoUrl)}" target="_blank" rel="noreferrer">打开</a>
+                    <button class="btn mini" data-act="copyPhoto" data-url="${escapeHtml(o.lastPhotoUrl)}">复制链接</button>
+                  </div>
+                ` : ``}
               </div>
             </div>
             <div class="${badge.cls}">${escapeHtml(badge.text)}</div>
@@ -539,7 +554,13 @@ console.log("driver_index.js loaded (NEW) - FIXED ROUTES");
 
           <div class="actions">
             <a class="btn mini info" href="${navUrl}" target="_blank" rel="noreferrer">单点导航</a>
-            <button class="btn mini primary" data-act="delivered" data-id="${escapeHtml(o.id)}">标记送达</button>
+
+            <button class="btn mini primary"
+              data-act="delivered"
+              data-id="${escapeHtml(o.id)}"
+              ${delivered ? "disabled" : ""}>
+              ${delivered ? "已送达" : "标记送达"}
+            </button>
 
             <label class="btn mini" style="cursor:pointer;">
               上传照片
@@ -567,38 +588,23 @@ console.log("driver_index.js loaded (NEW) - FIXED ROUTES");
         inp.value = "";
       });
     });
+
+    stopList.querySelectorAll("button[data-act='copyPhoto']").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const u = btn.getAttribute("data-url") || "";
+        try {
+          await navigator.clipboard.writeText(u);
+          showOk("已复制照片链接 ✅");
+        } catch {
+          showErr("复制失败：浏览器不允许 clipboard（可手动复制链接）");
+        }
+      });
+    });
   }
 
   // ====== actions ======
-  async function markDelivered(orderId) {
-    if (!orderId) return;
-    clearMsg();
 
-    const id = encodeURIComponent(orderId);
-    const candidates = [
-      `${API_BASE}/api/driver/orders/${id}/delivered`,
-      `${API_BASE}/api/driver/order/${id}/delivered`,
-      `${API_BASE}/api/driver/orders/${id}/status`,
-      `${API_BASE}/api/admin/orders/${id}/status`, // 兜底
-    ];
-
-    try {
-      const { used } = await tryFetchCandidates(
-        "delivered",
-        candidates,
-        { method: "POST", body: JSON.stringify({ status: "done" }) }
-      );
-      ACTIVE_API.delivered = used;
-
-      const it = ORDERS.find((x) => x.id === orderId);
-      if (it) it.status = "done";
-      showOk("已标记送达/完成 ✅");
-      renderOrders();
-    } catch (e) {
-      showErr(`标记失败：${e.message}（后端可能未实现 delivered/status 接口）`);
-    }
-  }
-
+  // ✅ 上传照片：对齐后端 POST /api/driver/orders/:id/proof-photo
   async function uploadPhoto(orderId, file) {
     if (!orderId || !file) return;
     clearMsg();
@@ -607,33 +613,71 @@ console.log("driver_index.js loaded (NEW) - FIXED ROUTES");
     const form = new FormData();
     form.append("file", file);
 
-    const candidates = [
-      `${API_BASE}/api/driver/orders/${id}/photo`,
-      `${API_BASE}/api/driver/order/${id}/photo`,
-      `${API_BASE}/api/driver/orders/${id}/upload`,
-    ];
+    const url = `${API_BASE}/api/driver/orders/${id}/proof-photo`;
 
-    let lastErr = null;
-    for (const url of candidates) {
-      try {
-        await fetchJSON(url, { method: "POST", body: form });
-        ACTIVE_API.photo = url;
-        showOk("照片已上传 ✅");
-        return;
-      } catch (e) {
-        lastErr = e;
+    try {
+      const data = await fetchJSON(url, { method: "POST", body: form });
+      ACTIVE_API.photo = url;
+
+      const it = ORDERS.find((x) => x.id === orderId);
+      if (it) {
+        it.proofPhotos = it.proofPhotos || [];
+        it.proofPhotos.push({
+          url: data?.url || "",
+          absoluteUrl: data?.absoluteUrl || "",
+        });
+        it.lastPhotoUrl = data?.absoluteUrl || data?.url || "";
       }
+
+      showOk(`照片已上传 ✅${(data?.absoluteUrl || data?.url) ? `\n链接：${data.absoluteUrl || data.url}` : ""}`);
+      renderOrders();
+      return data;
+    } catch (e) {
+      showErr(`上传失败：${e.message}\n（请确认后端已实现 POST ${url.replace(API_BASE, "")}）`);
     }
-    showErr(`上传失败：${lastErr?.message || "未知错误"}（后端可能未实现 photo/upload 接口）`);
+  }
+
+  // ✅ 标记送达：对齐后端 PATCH /api/driver/orders/:id/mark-delivered（会发短信+返回 photoUrl）
+  async function markDelivered(orderId) {
+    if (!orderId) return;
+    clearMsg();
+
+    const id = encodeURIComponent(orderId);
+    const url = `${API_BASE}/api/driver/orders/${id}/mark-delivered`;
+
+    try {
+      const data = await fetchJSON(url, {
+        method: "PATCH",
+        body: JSON.stringify({ note: "" }),
+      });
+
+      ACTIVE_API.delivered = url;
+
+      const it = ORDERS.find((x) => x.id === orderId);
+      if (it) {
+        it.status = data?.status || "delivered";
+        it.deliveryStatus = "delivered";
+        it.deliveredAt = data?.deliveredAt || new Date().toISOString();
+        if (data?.photoUrl) it.lastPhotoUrl = data.photoUrl;
+      }
+
+      showOk(
+        `已标记送达 ✅` +
+          (data?.photoUrl ? `\n照片：${data.photoUrl}` : "") +
+          (data?.smsSent ? `\n短信：已发送` : (data?.smsError ? `\n短信失败：${data.smsError}` : ""))
+      );
+
+      renderOrders();
+      return data;
+    } catch (e) {
+      showErr(`标记失败：${e.message}\n（请确认后端已实现 PATCH ${url.replace(API_BASE, "")}）`);
+    }
   }
 
   function navAll() {
     if (!ORDERS.length) return showErr("没有订单，无法全程导航");
 
-    // ✅ 这里让保存的起始地址作为 origin
     const originText = getSavedOrigin();
-
-    // stops：仍然按你的订单点做 stops（内部会过滤 0,0 坏点）
     const stops = ORDERS.map((o) => ({ addr: o.addr, lat: o.lat, lng: o.lng }));
 
     const url = buildGoogleMapsDirectionsWithOptionalOrigin(stops, originText);
@@ -645,10 +689,9 @@ console.log("driver_index.js loaded (NEW) - FIXED ROUTES");
   // ====== init ======
   async function init() {
     if (tokenHint) tokenHint.textContent = AUTH.getToken() ? "FOUND" : "MISSING";
-
     if (dateInput) dateInput.value = fmtDateISO(new Date());
 
-    // ✅ 起始地址：页面加载回填 + 保存/清空按钮绑定
+    // ✅ 起始地址：回填 + 保存/清空
     if (startAddressInput) startAddressInput.value = getSavedOrigin();
 
     if (saveStartAddressBtn) {
@@ -670,7 +713,7 @@ console.log("driver_index.js loaded (NEW) - FIXED ROUTES");
     if (btnLogout) {
       btnLogout.addEventListener("click", () => {
         AUTH.clear();
-        location.href = "/driver/login.html"; // 没有就改成你的司机登录页
+        location.href = "/driver/login.html";
       });
     }
 

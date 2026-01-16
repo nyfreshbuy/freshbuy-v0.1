@@ -12,7 +12,7 @@ import { requireLogin } from "../middlewares/auth.js";
 const router = express.Router();
 router.use(express.json());
 
-console.log("🚚 driver_orders.js loaded");
+console.log("🚚 driver_orders.js loaded ✅ VERSION=2026-01-15-fixed");
 
 // =====================
 // ✅ Twilio + 公网链接（短信里必须是完整 URL）
@@ -35,7 +35,7 @@ const twilioClient =
 function toE164US(phone) {
   const raw = String(phone || "").trim();
   if (!raw) return "";
-  if (raw.startsWith("+")) return raw; // 尽量保留已是 E164 的号码
+  if (raw.startsWith("+")) return raw;
   const digits = raw.replace(/\D/g, "");
   if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
   if (digits.length === 10) return `+1${digits}`;
@@ -46,13 +46,14 @@ function absUrl(maybePath) {
   const s = String(maybePath || "").trim();
   if (!s) return "";
   if (s.startsWith("http://") || s.startsWith("https://")) return s;
-  if (!APP_BASE_URL) return s; // 没配置 base，就只能返回相对路径
+  if (!APP_BASE_URL) return s;
   return APP_BASE_URL + (s.startsWith("/") ? s : "/" + s);
 }
 
 // =====================
 // ✅ 上传：送达照片（存本地 uploads/delivery）
-// 注意：生产环境要在 server.js 加： app.use("/uploads", express.static(path.resolve("uploads")))
+// 你 server.js 里要有：app.use("/uploads", express.static(...))
+// 你现在 server.js 已经有 /uploads 静态目录，OK
 // =====================
 const UPLOAD_DIR = path.resolve("uploads/delivery");
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -185,7 +186,7 @@ function buildDriverMatch(req) {
     or.push({ "fulfillment.driverPhone": phone });
   }
 
-  // 4) driverName（很多后台只存名字）
+  // 4) driverName
   if (name) {
     or.push({ driverName: name });
     or.push({ "dispatch.driverName": name });
@@ -218,19 +219,19 @@ function normalizeOrderOut(o, routeIndexComputed = null) {
     totalAmount: o.totalAmount,
     routeIndex: storedRouteIndex ?? routeIndexComputed,
 
-    // ✅ 新增：送达信息 + 照片（司机端要显示/复制链接）
+    // ✅ 送达信息 + 照片
     deliveredAt: o.deliveredAt,
     proofPhotos: Array.isArray(o.proofPhotos) ? o.proofPhotos : [],
   };
 }
 
 // =====================================================
-// ✅ 司机上传送达照片（先上传，再标记送达）
+// ✅ 司机上传送达照片
 // POST /api/driver/orders/:id/proof-photo
 // form-data: file
 // =====================================================
 router.post(
-  "/orders/:id/proof-photo",
+  "/:id/proof-photo",
   requireLogin,
   requireDriver,
   upload.single("file"),
@@ -247,7 +248,6 @@ router.post(
       const o = await Order.findById(orderId);
       if (!o) return res.status(404).json({ success: false, message: "订单不存在" });
 
-      // ✅ 保存相对路径（后面发短信用 absUrl 拼完整链接）
       const url = `/uploads/delivery/${req.file.filename}`;
 
       o.proofPhotos = Array.isArray(o.proofPhotos) ? o.proofPhotos : [];
@@ -277,7 +277,7 @@ router.post(
 // PATCH /api/driver/orders/:id/mark-delivered
 // body: { note?: string }
 // =====================================================
-router.patch("/orders/:id/mark-delivered", requireLogin, requireDriver, async (req, res) => {
+router.patch("/:id/mark-delivered", requireLogin, requireDriver, async (req, res) => {
   try {
     const orderId = String(req.params.id || "").trim();
     if (!mongoose.Types.ObjectId.isValid(orderId)) {
@@ -291,8 +291,9 @@ router.patch("/orders/:id/mark-delivered", requireLogin, requireDriver, async (r
     const prevStatus = String(o.status || "").toLowerCase();
     const alreadyDelivered = ["delivered", "done", "completed"].includes(prevStatus);
 
-    // ✅ 先写入送达（后台订单管理一刷新就能同步）
-    o.status = "delivered";
+    // ✅ 写入送达（后台订单管理刷新同步）
+    o.status = "done"; // ✅ 统一用 done，避免你前端/后台 status 显示不一致
+    o.deliveryStatus = "delivered";
     o.deliveredAt = new Date();
     o.deliveredBy = req.user._id;
     if (note) o.deliveryNote = note;
@@ -316,7 +317,7 @@ router.patch("/orders/:id/mark-delivered", requireLogin, requireDriver, async (r
     let smsSent = false;
     let smsError = "";
 
-    // ✅ 防重复：已经送达过就不再发（避免重复短信）
+    // ✅ 防重复：已经送达过就不再发短信
     if (!alreadyDelivered && twilioClient && TWILIO_FROM && to) {
       const orderNo = o.orderNo || o.no || String(o._id || "").slice(-6);
       const addr =
@@ -334,16 +335,16 @@ router.patch("/orders/:id/mark-delivered", requireLogin, requireDriver, async (r
         `如有问题请回复本短信。`;
 
       try {
-        // ✅ 短信（SMS）。如要彩信MMS可加 mediaUrl: [photoUrl]
+        // ✅ 普通短信 SMS（如果你想发彩信MMS，把下面注释打开）
         await twilioClient.messages.create({
           from: TWILIO_FROM,
           to,
           body: text,
+          // mediaUrl: photoUrl ? [photoUrl] : undefined,
         });
 
         smsSent = true;
 
-        // ✅ 写个记录字段（不影响其它功能；字段不存在也没关系，Mongo 会加上）
         o.deliverySms = o.deliverySms || {};
         o.deliverySms.sentAt = new Date();
         o.deliverySms.to = to;
@@ -359,6 +360,7 @@ router.patch("/orders/:id/mark-delivered", requireLogin, requireDriver, async (r
       success: true,
       orderId,
       status: o.status,
+      deliveryStatus: o.deliveryStatus,
       deliveredAt: o.deliveredAt,
       photoUrl,
       smsSent,
@@ -373,7 +375,7 @@ router.patch("/orders/:id/mark-delivered", requireLogin, requireDriver, async (r
 /**
  * =====================================================
  * ✅ 司机端批次列表（当天）
- * GET /api/driver/batches?date=YYYY-MM-DD&status=...
+ * GET /api/driver/orders/batches?date=YYYY-MM-DD&status=...
  * =====================================================
  */
 router.get("/batches", requireLogin, requireDriver, async (req, res) => {
@@ -385,7 +387,7 @@ router.get("/batches", requireLogin, requireDriver, async (req, res) => {
     const statusRaw = String(req.query.status || "").trim();
     const statusList = statusRaw
       ? statusRaw.split(",").map((x) => x.trim()).filter(Boolean)
-      : ["paid", "packing", "shipping", "delivering", "配送中", "delivered", "done", "completed"]; // ✅ 加 delivered
+      : ["paid", "packing", "shipping", "delivering", "delivered", "done", "completed"];
 
     const driverMatch = buildDriverMatch(req);
     if (!driverMatch) return res.status(401).json({ success: false, message: "用户信息异常" });
@@ -417,7 +419,7 @@ router.get("/batches", requireLogin, requireDriver, async (req, res) => {
     const batches = rows.map((r) => ({ batchKey: String(r._id), count: Number(r.count || 0) }));
     return res.json({ success: true, date, total: batches.length, batches });
   } catch (err) {
-    console.error("GET /api/driver/batches error:", err);
+    console.error("GET /api/driver/orders/batches error:", err);
     return res.status(500).json({ success: false, message: "获取批次失败" });
   }
 });
@@ -425,7 +427,7 @@ router.get("/batches", requireLogin, requireDriver, async (req, res) => {
 /**
  * =====================================================
  * ✅ 司机端按批次拉单
- * GET /api/driver/batch/orders?batchKey=...&status=...
+ * GET /api/driver/orders/batch/orders?batchKey=...&status=...
  * =====================================================
  */
 router.get("/batch/orders", requireLogin, requireDriver, async (req, res) => {
@@ -436,7 +438,7 @@ router.get("/batch/orders", requireLogin, requireDriver, async (req, res) => {
     const statusRaw = String(req.query.status || "").trim();
     const statusList = statusRaw
       ? statusRaw.split(",").map((x) => x.trim()).filter(Boolean)
-      : ["paid", "packing", "shipping", "delivering", "配送中", "delivered", "done", "completed"]; // ✅ 加 delivered
+      : ["paid", "packing", "shipping", "delivering", "delivered", "done", "completed"];
 
     const driverMatch = buildDriverMatch(req);
     if (!driverMatch) return res.status(401).json({ success: false, message: "用户信息异常" });
@@ -459,7 +461,7 @@ router.get("/batch/orders", requireLogin, requireDriver, async (req, res) => {
       orders: sorted.map((o, i) => normalizeOrderOut(o, hasAnyIdx ? null : i + 1)),
     });
   } catch (err) {
-    console.error("GET /api/driver/batch/orders error:", err);
+    console.error("GET /api/driver/orders/batch/orders error:", err);
     return res.status(500).json({ success: false, message: "按批次获取失败" });
   }
 });
@@ -479,7 +481,7 @@ router.get("/", requireLogin, requireDriver, async (req, res) => {
     const statusRaw = String(req.query.status || "").trim();
     const statusList = statusRaw
       ? statusRaw.split(",").map((x) => x.trim()).filter(Boolean)
-      : ["paid", "packing", "shipping", "delivering", "配送中", "delivered", "done", "completed"]; // ✅ 加 delivered
+      : ["paid", "packing", "shipping", "delivering", "delivered", "done", "completed"];
 
     const driverMatch = buildDriverMatch(req);
     if (!driverMatch) return res.status(401).json({ success: false, message: "用户信息异常" });
@@ -510,70 +512,85 @@ router.get("/", requireLogin, requireDriver, async (req, res) => {
     return res.status(500).json({ success: false, message: "获取司机任务失败" });
   }
 });
-/**
- * =====================================================
- * ✅ 司机端：更新订单状态（送达 / 配送中）
- * PATCH /api/driver/orders/:id/status
- * body: { status: "delivered" | "delivering" }
- * =====================================================
- */
+
+// =====================================================
+// ✅ 司机端：更新订单状态（只保留这一份，不重复注册）
+// PATCH /api/driver/orders/:id/status
+// body: { status: "delivering" | "delivered" | "done" }
+// =====================================================
+function oid(id) {
+  return new mongoose.Types.ObjectId(String(id));
+}
+
+async function driverUpdateStatus(req, res, statusRaw) {
+  const orderId = String(req.params.id || "").trim();
+  if (!mongoose.Types.ObjectId.isValid(orderId)) {
+    return res.status(400).json({ success: false, message: "订单ID不合法" });
+  }
+
+  const status = String(statusRaw || req.body?.status || "").trim().toLowerCase();
+  const ALLOWED = ["delivering", "delivered", "done"];
+  if (!ALLOWED.includes(status)) {
+    return res.status(400).json({ success: false, message: "不允许的状态：" + status });
+  }
+
+  const patch = {};
+
+  // ✅ 配送中
+  if (status === "delivering") {
+    patch.status = "shipping";
+    patch.deliveryStatus = "delivering";
+  }
+
+  // ✅ 送达
+  if (status === "delivered" || status === "done") {
+    patch.status = "done";
+    patch.deliveryStatus = "delivered";
+    patch.deliveredAt = new Date();
+  }
+
+  const updated = await Order.findOneAndUpdate(
+    {
+      _id: oid(orderId),
+      $or: [{ driverId: req.user._id }, { "dispatch.driverId": req.user._id }],
+    },
+    { $set: patch },
+    { new: true }
+  ).lean();
+
+  if (!updated) {
+    return res.status(404).json({ success: false, message: "订单不存在或无权限" });
+  }
+
+  return res.json({
+    success: true,
+    message: "司机端状态更新成功",
+    data: {
+      id: updated._id.toString(),
+      status: updated.status,
+      deliveryStatus: updated.deliveryStatus || "",
+      deliveredAt: updated.deliveredAt || null,
+    },
+  });
+}
+
 router.patch("/:id/status", requireLogin, requireDriver, async (req, res) => {
   try {
-    const orderId = String(req.params.id || "").trim();
-    if (!mongoose.Types.ObjectId.isValid(orderId)) {
-      return res.status(400).json({ success: false, message: "订单ID不合法" });
-    }
-
-    const status = String(req.body?.status || "").trim().toLowerCase();
-
-    const ALLOWED = ["delivering", "delivered", "done"];
-    if (!ALLOWED.includes(status)) {
-      return res.status(400).json({ success: false, message: "不允许的状态：" + status });
-    }
-
-    const patch = { status };
-
-    if (status === "delivering") {
-      patch.deliveryStatus = "delivering";
-    }
-
-    if (status === "delivered" || status === "done") {
-      patch.status = "done";
-      patch.deliveryStatus = "delivered";
-      patch.deliveredAt = new Date();
-    }
-
-    const updated = await Order.findOneAndUpdate(
-      {
-        _id: new mongoose.Types.ObjectId(orderId),
-
-        // ✅ 司机只能改自己订单
-        $or: [
-          { driverId: req.user._id },
-          { "dispatch.driverId": req.user._id },
-        ],
-      },
-      { $set: patch },
-      { new: true }
-    ).lean();
-
-    if (!updated) {
-      return res.status(404).json({ success: false, message: "订单不存在或无权限" });
-    }
-
-    return res.json({
-      success: true,
-      message: "订单状态已更新（司机端）",
-      order: {
-        id: updated._id.toString(),
-        status: updated.status,
-        deliveryStatus: updated.deliveryStatus,
-        deliveredAt: updated.deliveredAt || null,
-      },
-    });
+    return await driverUpdateStatus(req, res);
   } catch (err) {
     console.error("PATCH /api/driver/orders/:id/status error:", err);
     return res.status(500).json({ success: false, message: "司机更新状态失败" });
   }
 });
+
+// ✅ 兼容旧前端：PATCH /api/driver/orders/:id/delivered
+router.patch("/:id/delivered", requireLogin, requireDriver, async (req, res) => {
+  try {
+    return await driverUpdateStatus(req, res, "delivered");
+  } catch (err) {
+    console.error("PATCH /api/driver/orders/:id/delivered error:", err);
+    return res.status(500).json({ success: false, message: "司机标记送达失败" });
+  }
+});
+
 export default router;

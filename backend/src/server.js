@@ -113,6 +113,10 @@ app.use(express.urlencoded({ extended: true }));
 // 其他路由（保持你的顺序）
 // =======================
 app.use("/api/sms", smsVerifyRouter);
+// ✅✅✅ 先挂最具体的（避免被 /api/admin 吃掉）
+app.use("/api/admin/orders", adminOrdersRouter);
+// ✅✅✅ 先挂最具体的（避免被 /api/driver 吃掉）
+app.use("/api/driver/orders", driverOrdersRouter);
 app.use("/api/admin", adminPicklist);
 app.use("/api/driver", driverDispatchRoutes);
 app.use("/api/admin/orders", adminOrdersRouter);
@@ -161,9 +165,6 @@ app.use("/api/pay/stripe", stripePayRouter);
 
 // ---- 司机 ----
 app.use("/api/driver", driverRouter);
-app.use("/api/driver/orders", driverOrdersRouter);
-app.use("/api/driver", driverOrdersRouter);
-
 // ---- 后台 ----
 app.use("/api/admin/dashboard", adminDashboardrouter);
 app.use("/api/admin/zones", adminZonesRouter);
