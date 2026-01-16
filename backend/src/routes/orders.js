@@ -955,11 +955,12 @@ router.patch("/:id/status", async (req, res) => {
     return res.status(500).json({ success: false, message: "更新状态失败" });
   }
 });
+
 // =====================================================
 // ✅ Admin 更新订单状态（后台订单管理用）
 // PATCH /api/admin/orders/:id/status
 // =====================================================
-router.patch("/admin/orders/:id/status", requireLogin, async (req, res) => {
+router.patch("/admin/:id/status", requireLogin, async (req, res) => {
   try {
     // ✅ 管理员权限
     if (req.user?.role !== "admin") {
