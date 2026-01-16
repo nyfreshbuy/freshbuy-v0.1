@@ -8,7 +8,7 @@ import fs from "fs";
 import multer from "multer";
 
 import { connectDB } from "./db.js";
-
+import { cleanupDeliveryPhotos } from "./jobs/cleanup_delivery_photos.js";
 // =======================
 // 路由导入
 // =======================
@@ -356,3 +356,15 @@ async function start() {
 }
 
 start();
+// ===============================
+// 🧹 定时清理送达照片（每天凌晨 3 点跑一次）
+// ===============================
+const KEEP_DAYS = Number(process.env.PROOF_PHOTO_KEEP_DAYS || 14);
+
+// 立即跑一次（重启时）
+cleanupDeliveryPhotos(KEEP_DAYS).catch(console.error);
+
+// 每 24 小时跑一次
+setInterval(() => {
+  cleanupDeliveryPhotos(KEEP_DAYS).catch(console.error);
+}, 24 * 60 * 60 * 1000);

@@ -929,17 +929,19 @@ router.get("/:id([0-9a-fA-F]{24})", async (req, res) => {
 // =====================================================
 router.patch("/:id/status", async (req, res) => {
   try {
-    const { status } = req.body || {};
+    const status = String(req.body?.status || "").trim().toLowerCase();
     const allowed = [
-      "pending",
-      "paid",
-      "packing",
-      "shipping",
-      "done",
-      "completed",
-      "cancel",
-      "cancelled",
-    ];
+  "pending",
+  "paid",
+  "packing",
+  "shipping",
+  "delivering",
+  "delivered",
+  "done",
+  "completed",
+  "cancel",
+  "cancelled",
+];
     if (!allowed.includes(status)) {
       return res.status(400).json({ success: false, message: "status 不合法" });
     }
@@ -953,7 +955,58 @@ router.patch("/:id/status", async (req, res) => {
     return res.status(500).json({ success: false, message: "更新状态失败" });
   }
 });
+// =====================================================
+// ✅ Admin 更新订单状态（后台订单管理用）
+// PATCH /api/admin/orders/:id/status
+// =====================================================
+router.patch("/admin/orders/:id/status", requireLogin, async (req, res) => {
+  try {
+    // ✅ 管理员权限
+    if (req.user?.role !== "admin") {
+      return res.status(403).json({ success: false, message: "需要管理员权限" });
+    }
 
+    const id = String(req.params.id || "").trim();
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: "订单ID不合法" });
+    }
+
+    const status = String(req.body?.status || "").trim().toLowerCase();
+    const allowed = [
+      "pending",
+      "paid",
+      "packing",
+      "shipping",
+      "delivering",
+      "delivered",
+      "done",
+      "completed",
+      "cancel",
+      "cancelled",
+    ];
+    if (!allowed.includes(status)) {
+      return res.status(400).json({ success: false, message: "status 不合法" });
+    }
+
+    const patch = { status };
+
+    // ✅ 如果是送达类状态，顺便写 deliveredAt（避免右上角判断混乱）
+    if (["delivered", "done", "completed"].includes(status)) {
+      patch.deliveredAt = new Date();
+    }
+
+    const doc = await Order.findByIdAndUpdate(id, patch, { new: true });
+    if (!doc) return res.status(404).json({ success: false, message: "订单不存在" });
+
+    return res.json({
+      success: true,
+      data: { id: doc._id.toString(), status: doc.status, deliveredAt: doc.deliveredAt || null },
+    });
+  } catch (err) {
+    console.error("PATCH /api/admin/orders/:id/status error:", err);
+    return res.status(500).json({ success: false, message: "更新状态失败" });
+  }
+});
 // =====================================================
 // 5) 派单
 // PATCH /api/orders/:id/assign
