@@ -1978,24 +1978,11 @@ body.modal-open{ overflow:hidden; }
     min-width: 0 !important;
   }
 }
-/* ✅ Top action row: allow wrap, avoid pushing page wider */
-.top-actions,
-.header-actions,
-.nav-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;   /* ✅ 关键：不够宽就换行 */
-  min-width: 0;
-}
+/* ✅ iOS 弹窗打开/输入时常见横向溢出兜底 */
+html, body { overflow-x: hidden; }
 
-/* ✅ user pill should shrink instead of expanding */
-.user-pill,
-#userChip,
-.user-info {
-  min-width: 0;
-  max-width: 60vw;         /* ✅ 防止撑爆 */
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+/* 如果你有给 body 加 width:100vw（或 JS 动态写入），这里强制回正 */
+body {
+  width: 100% !important;
+  max-width: 100% !important;
 }
