@@ -752,7 +752,52 @@
         padding: 16px 18px 14px;
         font-size: 13px;
       }
+      /* =========================
+   ✅ 修复：输入框图标遮挡文字
+   ========================= */
 
+/* 包裹层必须相对定位，方便把图标/眼睛按钮绝对定位 */
+.auth-input-wrap {
+  position: relative;
+  width: 100%;
+}
+
+/* 左侧图标固定在输入框内左侧，不参与文本流 */
+.auth-input-ico {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  font-size: 14px;
+  opacity: 0.85;
+}
+
+/* 输入框给左侧图标留空位（关键） */
+.auth-input {
+  width: 100%;
+  padding-left: 40px;   /* ✅ 给左侧图标留空间 */
+  padding-right: 44px;  /* ✅ 给右侧眼睛按钮留空间 */
+  box-sizing: border-box;
+}
+
+/* 右侧“眼睛”按钮固定在输入框内右侧 */
+.auth-eye {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  line-height: 1;
+  padding: 4px;
+}
+
+/* 注册验证码这种右侧有按钮的输入框：右侧留更大空间（你已有 inline padding-right 也行） */
+#regCode {
+  padding-left: 40px;   /* ✅ 补上左侧图标空位 */
+}
       /* 左侧快捷入口栏 */
       @media (min-width: 901px) {
         .page {
