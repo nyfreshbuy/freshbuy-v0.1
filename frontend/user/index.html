@@ -752,52 +752,55 @@
         padding: 16px 18px 14px;
         font-size: 13px;
       }
+
       /* =========================
-   ✅ 修复：输入框图标遮挡文字
-   ========================= */
+         ✅ 关键修复：图标放在输入框外面（永不遮挡）
+         ========================= */
+      .auth-input-row {
+        display: grid;
+        grid-template-columns: 36px minmax(0, 1fr);
+        gap: 10px;
+        align-items: center;
+      }
+      .auth-ico-out {
+        width: 36px;
+        height: 40px;
+        border-radius: 12px;
+        border: 1px solid #e5e7eb;
+        background: #f9fafb;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        color: #6b7280;
+        flex: 0 0 auto;
+      }
+      .auth-input-wrap {
+        position: relative;
+        width: 100%;
+      }
+      .auth-input {
+        width: 100%;
+        padding-left: 12px;   /* ✅ 不再需要给图标留空 */
+        padding-right: 44px;  /* ✅ 预留眼睛按钮空间 */
+        box-sizing: border-box;
+      }
+      .auth-eye {
+        position: absolute;
+        right: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        border: none;
+        background: transparent;
+        cursor: pointer;
+        line-height: 1;
+        padding: 4px;
+      }
+      /* 注册验证码有右侧按钮，需要更大右内边距 */
+      #regCode {
+        padding-right: 120px !important;
+      }
 
-/* 包裹层必须相对定位，方便把图标/眼睛按钮绝对定位 */
-.auth-input-wrap {
-  position: relative;
-  width: 100%;
-}
-
-/* 左侧图标固定在输入框内左侧，不参与文本流 */
-.auth-input-ico {
-  position: absolute;
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  pointer-events: none;
-  font-size: 14px;
-  opacity: 0.85;
-}
-
-/* 输入框给左侧图标留空位（关键） */
-.auth-input {
-  width: 100%;
-  padding-left: 40px;   /* ✅ 给左侧图标留空间 */
-  padding-right: 44px;  /* ✅ 给右侧眼睛按钮留空间 */
-  box-sizing: border-box;
-}
-
-/* 右侧“眼睛”按钮固定在输入框内右侧 */
-.auth-eye {
-  position: absolute;
-  right: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  line-height: 1;
-  padding: 4px;
-}
-
-/* 注册验证码这种右侧有按钮的输入框：右侧留更大空间（你已有 inline padding-right 也行） */
-#regCode {
-  padding-left: 40px;   /* ✅ 补上左侧图标空位 */
-}
       /* 左侧快捷入口栏 */
       @media (min-width: 901px) {
         .page {
@@ -860,103 +863,82 @@
       #tawkchat-container {
         display: none !important;
       }
+
       /* ===============================
-   购物车侧边栏字体整体优化
-   =============================== */
-
-/* 整个购物车容器 */
-.cart-panel,
-.cart-drawer,
-#cartPanel {
-  font-size: 16px;              /* 基础字体放大 */
-}
-
-/* 标题：购物车 */
-.cart-panel h3,
-.cart-header,
-.cart-title {
-  font-size: 20px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-}
-
-/* 单个商品条目 */
-.cart-item {
-  padding: 12px 0;
-  border-bottom: 1px solid #e5e7eb;
-}
-
-/* 商品名称 */
-.cart-item-name,
-.cart-item-title {
-  font-size: 17px;
-  font-weight: 600;
-  line-height: 1.4;
-  color: #111827;
-  margin-bottom: 4px;
-}
-
-/* 商品规格 / 副标题（如果有） */
-.cart-item-sub {
-  font-size: 14px;
-  color: #6b7280;
-}
-
-/* 价格 */
-.cart-item-price {
-  font-size: 16px;
-  font-weight: 600;
-  color: #16a34a;
-}
-
-/* 数量控制区域 */
-.cart-qty,
-.cart-quantity {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 6px;
-}
-
-/* - / + 按钮 */
-.cart-qty button,
-.cart-quantity button {
-  width: 28px;
-  height: 28px;
-  font-size: 18px;
-  font-weight: 600;
-  border-radius: 6px;
-  border: 1px solid #d1d5db;
-  background: #f9fafb;
-  cursor: pointer;
-}
-
-/* 数量数字 */
-.cart-qty span,
-.cart-quantity span,
-.cart-qty-value {
-  min-width: 26px;
-  text-align: center;
-  font-size: 16px;
-  font-weight: 600;
-}
-
-/* 底部合计金额 */
-.cart-total,
-.cart-summary {
-  margin-top: 14px;
-  font-size: 18px;
-  font-weight: 700;
-}
-
-/* Checkout 按钮 */
-.cart-checkout-btn,
-.cart-footer button {
-  font-size: 17px;
-  font-weight: 700;
-  padding: 12px;
-  border-radius: 12px;
-}
+         购物车侧边栏字体整体优化
+         =============================== */
+      .cart-panel,
+      .cart-drawer,
+      #cartPanel {
+        font-size: 16px;
+      }
+      .cart-panel h3,
+      .cart-header,
+      .cart-title {
+        font-size: 20px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+      }
+      .cart-item {
+        padding: 12px 0;
+        border-bottom: 1px solid #e5e7eb;
+      }
+      .cart-item-name,
+      .cart-item-title {
+        font-size: 17px;
+        font-weight: 600;
+        line-height: 1.4;
+        color: #111827;
+        margin-bottom: 4px;
+      }
+      .cart-item-sub {
+        font-size: 14px;
+        color: #6b7280;
+      }
+      .cart-item-price {
+        font-size: 16px;
+        font-weight: 600;
+        color: #16a34a;
+      }
+      .cart-qty,
+      .cart-quantity {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 6px;
+      }
+      .cart-qty button,
+      .cart-quantity button {
+        width: 28px;
+        height: 28px;
+        font-size: 18px;
+        font-weight: 600;
+        border-radius: 6px;
+        border: 1px solid #d1d5db;
+        background: #f9fafb;
+        cursor: pointer;
+      }
+      .cart-qty span,
+      .cart-quantity span,
+      .cart-qty-value {
+        min-width: 26px;
+        text-align: center;
+        font-size: 16px;
+        font-weight: 600;
+      }
+      .cart-total,
+      .cart-summary {
+        margin-top: 14px;
+        font-size: 18px;
+        font-weight: 700;
+      }
+      .cart-checkout-btn,
+      .cart-footer button {
+        font-size: 17px;
+        font-weight: 700;
+        padding: 12px;
+        border-radius: 12px;
+      }
     </style>
   </head>
 
@@ -1039,203 +1021,213 @@
     </div>
 
     <!-- 登录 / 注册弹窗（只保留一套，避免 ID 冲突） -->
-<div class="auth-backdrop" id="authBackdrop">
-  <div class="auth-card" role="dialog" aria-modal="true" aria-labelledby="authTitle">
-    <!-- Header -->
-    <div class="auth-header">
-      <div class="auth-brand">
-        <div class="auth-logo">鲜</div>
-        <div class="auth-brand-text">
-          <div class="auth-brand-title" id="authTitle">登录</div>
-          <div class="auth-brand-sub">欢迎回来，在鲜购拼好货</div>
-        </div>
-      </div>
-
-      <button id="authCloseBtn" class="auth-close" type="button" aria-label="关闭">✕</button>
-    </div>
-
-    <!-- Tabs -->
-    <div class="auth-tabs" role="tablist" aria-label="登录注册切换">
-      <button
-        id="tabLogin"
-        class="auth-tab active"
-        data-mode="login"
-        type="button"
-        role="tab"
-        aria-selected="true"
-      >
-        登录
-      </button>
-      <button
-        id="tabRegister"
-        class="auth-tab"
-        data-mode="register"
-        type="button"
-        role="tab"
-        aria-selected="false"
-      >
-        注册
-      </button>
-    </div>
-
-    <!-- Body -->
-    <div class="auth-body">
-      <!-- ===================== -->
-      <!-- Login -->
-      <!-- ===================== -->
-      <div id="loginPanel">
-        <label class="auth-field">
-          <div class="auth-label">手机号码</div>
-          <div class="auth-input-wrap">
-            <span class="auth-input-ico">📱</span>
-            <input id="loginPhone" type="tel" class="auth-input" placeholder="请输入手机号" />
-          </div>
-        </label>
-
-        <label class="auth-field">
-          <div class="auth-label">登录密码</div>
-          <div class="auth-input-wrap">
-            <span class="auth-input-ico">🔒</span>
-            <input id="loginPassword" type="password" class="auth-input" placeholder="请输入密码" />
-            <button type="button" class="auth-eye" data-eye-for="loginPassword" aria-label="显示/隐藏密码">👁</button>
-          </div>
-        </label>
-
-        <div class="auth-row">
-          <label class="auth-check">
-            <input type="checkbox" id="loginRemember" />
-            <span>记住我</span>
-          </label>
-          <button class="auth-link" id="forgotPwdLink" type="button">忘记密码？</button>
-        </div>
-
-        <button id="loginSubmitBtn" class="auth-primary" type="button">登录</button>
-
-        <div class="auth-footnote">
-          登录即表示你同意我们的 <span class="auth-footnote-link">服务条款</span> 与
-          <span class="auth-footnote-link">隐私政策</span>
-        </div>
-      </div>
-
-      <!-- ===================== -->
-      <!-- Register -->
-      <!-- ===================== -->
-      <div id="registerPanel" style="display:none;">
-        <label class="auth-field">
-          <div class="auth-label">手机号码</div>
-          <div class="auth-input-wrap">
-            <span class="auth-input-ico">📱</span>
-            <input id="regPhone" type="tel" class="auth-input" placeholder="用于接收订单物流通知" />
-          </div>
-        </label>
-
-        <!-- ✅ 短信验证码 -->
-        <label class="auth-field">
-          <div class="auth-label">短信验证码</div>
-          <div class="auth-input-wrap">
-            <span class="auth-input-ico">💬</span>
-            <input
-              id="regCode"
-              type="text"
-              class="auth-input"
-              inputmode="numeric"
-              maxlength="10"
-              placeholder="请输入短信验证码"
-              style="padding-right: 110px;"
-            />
-            <button
-              id="regSendCodeBtn"
-              type="button"
-              class="auth-mini-btn"
-              style="position:absolute; right:10px; top:50%; transform:translateY(-50%);
-                     padding:6px 10px; border-radius:999px; border:1px solid #e5e7eb;
-                     background:#fff; cursor:pointer; font-size:12px; font-weight:700;"
-            >
-              获取验证码
-            </button>
-          </div>
-        </label>
-
-        <label class="auth-field">
-          <div class="auth-label">设置登录密码</div>
-          <div class="auth-input-wrap">
-            <span class="auth-input-ico">🔒</span>
-            <input id="regPassword" type="password" class="auth-input" placeholder="至少 6 位，建议字母 + 数字" />
-            <button type="button" class="auth-eye" data-eye-for="regPassword" aria-label="显示/隐藏密码">👁</button>
-          </div>
-        </label>
-
-        <label class="auth-field">
-          <div class="auth-label">邀请码（选填）</div>
-          <input id="regInvite" type="text" class="auth-input" placeholder="有好友邀请可填写，没有可留空" />
-        </label>
-
-        <button id="registerSubmitBtn" class="auth-primary" type="button">注册并登录</button>
-
-        <div class="auth-footnote">
-          注册即表示你同意我们的 <span class="auth-footnote-link">服务条款</span> 与
-          <span class="auth-footnote-link">隐私政策</span>
-        </div>
-      </div>
-
-      <!-- ===================== -->
-      <!-- ✅ Forgot Password -->
-      <!-- ===================== -->
-      <div id="forgotPanel" style="display:none;">
-        <div style="display:grid; gap:10px;">
-          <div style="font-size:13px; color:#6b7280; line-height:1.5;">
-            输入注册手机号，我们发送短信验证码；验证通过后设置新密码。
-          </div>
-
-          <label class="auth-field">
-            <div class="auth-label">手机号</div>
-            <input id="fpPhone" class="auth-input" placeholder="例如：+1 917xxxxxxx" autocomplete="tel" />
-          </label>
-
-          <div class="auth-field" style="display:grid; grid-template-columns: 1fr 140px; gap:10px; align-items:end;">
-            <div>
-              <div class="auth-label">验证码</div>
-              <input id="fpCode" class="auth-input" placeholder="4-8 位数字" inputmode="numeric" />
+    <div class="auth-backdrop" id="authBackdrop">
+      <div class="auth-card" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+        <!-- Header -->
+        <div class="auth-header">
+          <div class="auth-brand">
+            <div class="auth-logo">鲜</div>
+            <div class="auth-brand-text">
+              <div class="auth-brand-title" id="authTitle">登录</div>
+              <div class="auth-brand-sub">欢迎回来，在鲜购拼好货</div>
             </div>
-
-            <button
-              id="fpSendCodeBtn"
-              type="button"
-              class="auth-mini-btn"
-              style="height:40px; border-radius:12px; border:1px solid #e5e7eb; background:#fff;
-                     cursor:pointer; font-size:13px; font-weight:700;"
-            >
-              发送验证码
-            </button>
           </div>
 
-          <label class="auth-field">
-            <div class="auth-label">新密码（至少 6 位）</div>
-            <input id="fpNewPwd" class="auth-input" type="password" autocomplete="new-password" placeholder="新密码" />
-          </label>
+          <button id="authCloseBtn" class="auth-close" type="button" aria-label="关闭">✕</button>
+        </div>
 
-          <label class="auth-field">
-            <div class="auth-label">确认新密码</div>
-            <input id="fpNewPwd2" class="auth-input" type="password" autocomplete="new-password" placeholder="再输入一次" />
-          </label>
-
-          <button id="fpResetBtn" class="auth-primary" type="button">验证并重置密码</button>
-
-          <div id="fpMsg" style="min-height:18px; font-size:13px; color:#ef4444;"></div>
-
+        <!-- Tabs -->
+        <div class="auth-tabs" role="tablist" aria-label="登录注册切换">
           <button
-            id="backToLoginBtn"
+            id="tabLogin"
+            class="auth-tab active"
+            data-mode="login"
             type="button"
-            class="auth-link"
-            style="justify-self:start;"
+            role="tab"
+            aria-selected="true"
           >
-            ← 返回登录
+            登录
+          </button>
+          <button
+            id="tabRegister"
+            class="auth-tab"
+            data-mode="register"
+            type="button"
+            role="tab"
+            aria-selected="false"
+          >
+            注册
           </button>
         </div>
+
+        <!-- Body -->
+        <div class="auth-body">
+          <!-- ===================== -->
+          <!-- Login -->
+          <!-- ===================== -->
+          <div id="loginPanel">
+            <label class="auth-field">
+              <div class="auth-label">手机号码</div>
+              <div class="auth-input-row">
+                <span class="auth-ico-out">📱</span>
+                <div class="auth-input-wrap">
+                  <input id="loginPhone" type="tel" class="auth-input" placeholder="请输入手机号" />
+                </div>
+              </div>
+            </label>
+
+            <label class="auth-field">
+              <div class="auth-label">登录密码</div>
+              <div class="auth-input-row">
+                <span class="auth-ico-out">🔒</span>
+                <div class="auth-input-wrap">
+                  <input id="loginPassword" type="password" class="auth-input" placeholder="请输入密码" />
+                  <button type="button" class="auth-eye" data-eye-for="loginPassword" aria-label="显示/隐藏密码">👁</button>
+                </div>
+              </div>
+            </label>
+
+            <div class="auth-row">
+              <label class="auth-check">
+                <input type="checkbox" id="loginRemember" />
+                <span>记住我</span>
+              </label>
+              <button class="auth-link" id="forgotPwdLink" type="button">忘记密码？</button>
+            </div>
+
+            <button id="loginSubmitBtn" class="auth-primary" type="button">登录</button>
+
+            <div class="auth-footnote">
+              登录即表示你同意我们的 <span class="auth-footnote-link">服务条款</span> 与
+              <span class="auth-footnote-link">隐私政策</span>
+            </div>
+          </div>
+
+          <!-- ===================== -->
+          <!-- Register -->
+          <!-- ===================== -->
+          <div id="registerPanel" style="display:none;">
+            <label class="auth-field">
+              <div class="auth-label">手机号码</div>
+              <div class="auth-input-row">
+                <span class="auth-ico-out">📱</span>
+                <div class="auth-input-wrap">
+                  <input id="regPhone" type="tel" class="auth-input" placeholder="用于接收订单物流通知" />
+                </div>
+              </div>
+            </label>
+
+            <!-- ✅ 短信验证码 -->
+            <label class="auth-field">
+              <div class="auth-label">短信验证码</div>
+              <div class="auth-input-row">
+                <span class="auth-ico-out">💬</span>
+                <div class="auth-input-wrap">
+                  <input
+                    id="regCode"
+                    type="text"
+                    class="auth-input"
+                    inputmode="numeric"
+                    maxlength="10"
+                    placeholder="请输入短信验证码"
+                  />
+                  <button
+                    id="regSendCodeBtn"
+                    type="button"
+                    class="auth-mini-btn"
+                    style="position:absolute; right:10px; top:50%; transform:translateY(-50%);
+                           padding:6px 10px; border-radius:999px; border:1px solid #e5e7eb;
+                           background:#fff; cursor:pointer; font-size:12px; font-weight:700;"
+                  >
+                    获取验证码
+                  </button>
+                </div>
+              </div>
+            </label>
+
+            <label class="auth-field">
+              <div class="auth-label">设置登录密码</div>
+              <div class="auth-input-row">
+                <span class="auth-ico-out">🔒</span>
+                <div class="auth-input-wrap">
+                  <input id="regPassword" type="password" class="auth-input" placeholder="至少 6 位，建议字母 + 数字" />
+                  <button type="button" class="auth-eye" data-eye-for="regPassword" aria-label="显示/隐藏密码">👁</button>
+                </div>
+              </div>
+            </label>
+
+            <label class="auth-field">
+              <div class="auth-label">邀请码（选填）</div>
+              <input id="regInvite" type="text" class="auth-input" placeholder="有好友邀请可填写，没有可留空" />
+            </label>
+
+            <button id="registerSubmitBtn" class="auth-primary" type="button">注册并登录</button>
+
+            <div class="auth-footnote">
+              注册即表示你同意我们的 <span class="auth-footnote-link">服务条款</span> 与
+              <span class="auth-footnote-link">隐私政策</span>
+            </div>
+          </div>
+
+          <!-- ===================== -->
+          <!-- ✅ Forgot Password -->
+          <!-- ===================== -->
+          <div id="forgotPanel" style="display:none;">
+            <div style="display:grid; gap:10px;">
+              <div style="font-size:13px; color:#6b7280; line-height:1.5;">
+                输入注册手机号，我们发送短信验证码；验证通过后设置新密码。
+              </div>
+
+              <label class="auth-field">
+                <div class="auth-label">手机号</div>
+                <input id="fpPhone" class="auth-input" placeholder="例如：+1 917xxxxxxx" autocomplete="tel" />
+              </label>
+
+              <div class="auth-field" style="display:grid; grid-template-columns: 1fr 140px; gap:10px; align-items:end;">
+                <div>
+                  <div class="auth-label">验证码</div>
+                  <input id="fpCode" class="auth-input" placeholder="4-8 位数字" inputmode="numeric" />
+                </div>
+
+                <button
+                  id="fpSendCodeBtn"
+                  type="button"
+                  class="auth-mini-btn"
+                  style="height:40px; border-radius:12px; border:1px solid #e5e7eb; background:#fff;
+                         cursor:pointer; font-size:13px; font-weight:700;"
+                >
+                  发送验证码
+                </button>
+              </div>
+
+              <label class="auth-field">
+                <div class="auth-label">新密码（至少 6 位）</div>
+                <input id="fpNewPwd" class="auth-input" type="password" autocomplete="new-password" placeholder="新密码" />
+              </label>
+
+              <label class="auth-field">
+                <div class="auth-label">确认新密码</div>
+                <input id="fpNewPwd2" class="auth-input" type="password" autocomplete="new-password" placeholder="再输入一次" />
+              </label>
+
+              <button id="fpResetBtn" class="auth-primary" type="button">验证并重置密码</button>
+
+              <div id="fpMsg" style="min-height:18px; font-size:13px; color:#ef4444;"></div>
+
+              <button
+                id="backToLoginBtn"
+                type="button"
+                class="auth-link"
+                style="justify-self:start;"
+              >
+                ← 返回登录
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
-  </div>
-</div>
+
     <!-- 购物车抽屉 -->
     <div class="cart-drawer-backdrop" id="cartBackdrop"></div>
     <aside class="cart-drawer" id="cartDrawer">
@@ -1390,8 +1382,7 @@
             </aside>
           </section>
 
-          <!-- 商品区块 -->
-          <!-- 新客体验专区 -->
+          <!-- 商品区块（以下保持原样） -->
           <section id="sectionHot" class="home-section">
             <div class="section-header">
               <div>
@@ -1399,7 +1390,6 @@
                 <div class="section-sub">免费配送 · 无消费门槛 · 0元起配送</div>
               </div>
 
-              <!-- ✅ 电脑端：标题右侧 -->
               <a class="section-link--desktop" href="newcomer.html">
                 查看更多 →
               </a>
@@ -1407,13 +1397,11 @@
 
             <div class="product-grid" id="productGridHot"></div>
 
-            <!-- ✅ 手机端：商品列表底部 -->
             <a class="section-link--mobile-bottom" href="newcomer.html">
               查看更多新客体验区商品 →
             </a>
           </section>
 
-          <!-- 家庭必备 -->
           <section id="sectionDailySpecial" class="home-section">
             <div class="section-header">
               <div>
@@ -1431,7 +1419,6 @@
             </a>
           </section>
 
-          <!-- 新品上市 -->
           <section id="sectionNew" class="home-section">
             <div class="section-header">
               <div>
@@ -1449,7 +1436,6 @@
             </a>
           </section>
 
-          <!-- 畅销产品 -->
           <section id="sectionBest" class="home-section">
             <div class="section-header">
               <div>
@@ -1467,7 +1453,6 @@
             </a>
           </section>
 
-          <!-- 全部商品 -->
           <section id="sectionNormal" class="home-section">
             <div class="section-header">
               <div>
@@ -1621,7 +1606,6 @@
     <script>
       (function () {
         function pickAnchorEl() {
-          // 购物车从“分类栏下面”开始：优先 category-bar-wrap
           return (
             document.querySelector(".category-bar-wrap") ||
             document.querySelector(".top-nav")
@@ -1637,7 +1621,6 @@
 
           document.documentElement.style.setProperty("--cart-top-offset", offset + "px");
 
-          // ✅ 双保险：直接写到元素上（避免某些浏览器/样式覆盖）
           var drawer = document.getElementById("cartDrawer");
           if (drawer) {
             drawer.style.top = offset + "px";
@@ -1654,7 +1637,6 @@
           requestAnimationFrame(setCartTopOffset);
         }
 
-        // 暴露给 cart.js：打开购物车时可以手动刷新一次
         window.__fb_setCartTopOffset = rafSet;
 
         if (document.readyState === "loading") {
