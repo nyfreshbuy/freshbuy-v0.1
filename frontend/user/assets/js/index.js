@@ -2118,3 +2118,12 @@ window.addEventListener("storage", (e) => {
     scheduleBadgeSync();
   }
 });
+// ✅ iOS: focus input can cause horizontal scroll drift
+window.addEventListener("focusin", (e) => {
+  const t = e.target;
+  if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) {
+    document.documentElement.scrollLeft = 0;
+    document.body.scrollLeft = 0;
+    window.scrollTo(0, window.scrollY);
+  }
+});
