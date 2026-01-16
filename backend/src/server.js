@@ -186,7 +186,15 @@ console.log("✅ admin_marketing 已挂载到 /api/admin");
 
 // 后台订单管理
 app.use("/api/admin/orders", adminOrdersRouter);
+// ✅ DEBUG: 确认 adminOrdersRouter 是否真的挂载生效
+app.get("/api/admin/orders/__mounted", (req, res) => {
+  res.json({ ok: true, where: "server.js", mounted: "/api/admin/orders" });
+});
 
+// ✅ DEBUG: 直接测试 status 路由是否存在（不进 admin_orders.js 也能确认路径）
+app.patch("/api/admin/orders/__ping-status", (req, res) => {
+  res.json({ ok: true, hit: "/api/admin/orders/__ping-status" });
+});
 // 后台商品管理
 app.use("/api/admin/products", adminProductsRouter);
 

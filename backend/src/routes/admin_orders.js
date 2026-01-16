@@ -6,6 +6,7 @@ import { requireLogin } from "../middlewares/auth.js";
 const router = express.Router();
 router.use(express.json());
 router.use(requireLogin); // ✅ 让后面所有路由都有 req.user
+console.log("✅ admin_orders.js loaded ✅  VERSION=2026-01-15");
 function requireAdmin(req, res, next) {
   if (!req.user) return res.status(401).json({ success: false, message: "未登录" });
   if (req.user.role !== "admin") return res.status(403).json({ success: false, message: "需要管理员权限" });
