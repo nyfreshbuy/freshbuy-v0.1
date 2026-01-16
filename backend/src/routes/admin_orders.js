@@ -595,38 +595,62 @@ router.patch("/:id/assign-driver", requireAdmin, async (req, res) => {
     return res.status(500).json({ success: false, message: err.message || "服务器错误" });
   }
 });
-router.patch("/:id/status", async (req, res) => {
+// =====================================================
+// ✅ 后台：更新订单状态（支持 delivered/delivering 等）
+// PATCH /api/admin/orders/:id/status
+// body: { status: "delivered" | "done" | ... }
+// =====================================================
+router.patch("/:id/status", requireAdmin, async (req, res) => {
   try {
-    const orderId = String(req.params.id);
-    const { status } = req.body || {};
-
-    const VALID_STATUSES = ["pending", "paid", "packing", "shipping", "done", "cancel"];
-    if (!VALID_STATUSES.includes(status)) {
-      return res.status(400).json({ success: false, message: "非法订单状态：" + status });
-    }
+    const orderId = String(req.params.id || "").trim();
     if (!isValidObjectId(orderId)) {
       return res.status(400).json({ success: false, message: "订单ID格式不正确" });
     }
 
-    const order = await Order.findById(orderId);
-    if (!order) {
+    const status = String(req.body?.status || "").trim().toLowerCase();
+
+    const VALID_STATUSES = [
+      "pending",
+      "paid",
+      "packing",
+      "shipping",
+      "delivering",
+      "delivered",
+      "done",
+      "completed",
+      "cancel",
+      "cancelled",
+    ];
+
+    if (!VALID_STATUSES.includes(status)) {
+      return res.status(400).json({ success: false, message: "非法订单状态：" + status });
+    }
+
+    const patch = { status };
+
+    // ✅ 送达类状态：写入 deliveredAt（避免前端右上角显示乱）
+    if (["delivered", "done", "completed"].includes(status)) {
+      patch.deliveredAt = new Date();
+      patch.deliveryStatus = "delivered";
+    } else if (status === "delivering") {
+      patch.deliveryStatus = "delivering";
+    }
+
+    const updated = await Order.findByIdAndUpdate(orderId, patch, { new: true }).lean();
+    if (!updated) {
       return res.status(404).json({ success: false, message: "订单不存在：" + orderId });
     }
 
-    order.status = status;
-    await order.save();
-
-    res.json({
+    return res.json({
       success: true,
       message: "订单状态更新成功（DB版）",
-      order: normalizeOrder(order.toObject()),
+      order: normalizeOrder(updated),
     });
   } catch (err) {
     console.error("PATCH /api/admin/orders/:id/status DB 出错:", err);
-    res.status(500).json({ success: false, message: err.message || "服务器错误" });
+    return res.status(500).json({ success: false, message: err.message || "服务器错误" });
   }
 });
-
 router.get("/drivers", async (req, res) => {
   try {
     const User = (await import("../models/user.js")).default;
