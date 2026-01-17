@@ -3,7 +3,10 @@ import express from "express";
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 import User from "../models/user.js";
+import Address from "../models/address.js"; // ✅ 新增：用于读取用户默认地址
+
 console.log("✅ admin_users_mongo.js 已加载");
+
 const router = express.Router();
 router.use(express.json()); // ✅ 关键：支持 PATCH/POST JSON body
 
@@ -30,7 +33,14 @@ function normalizeUser(u) {
     phone: u.phone || "",
     role: u.role || "customer",
     status: u.status || "active", // 如果你没有这个字段也没关系
-    isActive: u.isActive !== undefined ? !!u.isActive : (u.status ? u.status !== "disabled" : true), // 兼容
+    isActive:
+      u.isActive !== undefined
+        ? !!u.isActive
+        : u.status
+          ? u.status !== "disabled"
+          : true, // 兼容
+    // ✅ 新增：账户余额（按你项目字段优先读取 walletBalance，其次 balance；都没有就 0）
+    walletBalance: Number(u.walletBalance ?? u.balance ?? 0),
     createdAt: u.createdAt,
   };
 }
@@ -64,9 +74,33 @@ router.get("/", async (req, res) => {
       .sort({ createdAt: -1 })
       .skip((page - 1) * pageSize)
       .limit(pageSize)
-      .select("_id name phone role createdAt status isActive");
+      // ✅ 新增 walletBalance / balance（哪个存在就会返回哪个；不存在也不会报错）
+      .select("_id name phone role createdAt status isActive walletBalance balance");
 
     const users = docs.map(normalizeUser);
+
+    // ✅ 新增：批量查询默认地址并合并到 users.addressText
+    // 说明：Address 模型字段假设为 { userId, isDefault, street, city, state, zip }
+    // 如果你字段不同（比如 line1/line2），告诉我我再给你对齐版。
+    if (users.length) {
+      const ids = users.map((u) => new mongoose.Types.ObjectId(String(u._id)));
+      const addrDocs = await Address.find({ userId: { $in: ids }, isDefault: true })
+        .select("userId street city state zip")
+        .lean();
+
+      const addrMap = {};
+      for (const a of addrDocs) {
+        addrMap[String(a.userId)] = a;
+      }
+
+      for (const u of users) {
+        const a = addrMap[String(u._id)];
+        u.addressText = a
+          ? `${a.street || ""} ${a.city || ""} ${a.state || ""} ${a.zip || ""}`.trim()
+          : "";
+      }
+    }
+
     const totalPages = Math.max(Math.ceil(total / pageSize) || 1, 1);
 
     return res.json({
@@ -93,6 +127,7 @@ router.get("/", async (req, res) => {
     });
   }
 });
+
 // ✅ 新增：GET /api/admin/users/:id  (获取单个用户)
 router.get("/:id", async (req, res) => {
   try {
@@ -101,15 +136,29 @@ router.get("/:id", async (req, res) => {
       return res.status(400).json({ success: false, message: "用户ID不合法" });
     }
 
-    const doc = await User.findById(id).select("_id name phone role createdAt status isActive");
+    const doc = await User.findById(id).select(
+      "_id name phone role createdAt status isActive walletBalance balance"
+    );
     if (!doc) return res.status(404).json({ success: false, message: "用户不存在" });
 
-    return res.json({ success: true, user: normalizeUser(doc) });
+    const user = normalizeUser(doc);
+
+    // ✅ 新增：取默认地址
+    const addr = await Address.findOne({ userId: doc._id, isDefault: true })
+      .select("street city state zip")
+      .lean();
+
+    user.addressText = addr
+      ? `${addr.street || ""} ${addr.city || ""} ${addr.state || ""} ${addr.zip || ""}`.trim()
+      : "";
+
+    return res.json({ success: true, user });
   } catch (err) {
     console.error("❌ GET /api/admin/users/:id failed:", err);
     return res.status(500).json({ success: false, message: err.message || "获取失败" });
   }
 });
+
 // ✅✅ 新增：PATCH /api/admin/users/:id  (编辑用户：姓名/手机号/角色/状态)
 router.patch("/:id", async (req, res) => {
   try {
@@ -157,7 +206,7 @@ router.patch("/:id", async (req, res) => {
     }
 
     const doc = await User.findByIdAndUpdate(id, { $set: update }, { new: true }).select(
-      "_id name phone role createdAt status isActive"
+      "_id name phone role createdAt status isActive walletBalance balance"
     );
 
     if (!doc) return res.status(404).json({ success: false, message: "用户不存在" });
@@ -181,12 +230,12 @@ router.patch("/:id/role", async (req, res) => {
     }
 
     const doc = await User.findByIdAndUpdate(id, { $set: { role } }, { new: true }).select(
-      "_id name phone role createdAt status isActive"
+      "_id name phone role createdAt status isActive walletBalance balance"
     );
 
     if (!doc) return res.status(404).json({ success: false, message: "用户不存在" });
 
-    return res.json({ success: true, user: normalizeUser(doc) });
+    return res.status(400).json({ success: true, user: normalizeUser(doc) });
   } catch (err) {
     console.error("❌ PATCH /api/admin/users/:id/role failed:", err);
     return res.status(500).json({ success: false, message: err.message || "更新失败" });
@@ -229,7 +278,9 @@ router.post("/:id/reset-password", async (req, res) => {
 
     const hash = await bcrypt.hash(pwd, 10);
 
-    const doc = await User.findByIdAndUpdate(id, { $set: { password: hash } }, { new: true }).select("_id");
+    const doc = await User.findByIdAndUpdate(id, { $set: { password: hash } }, { new: true }).select(
+      "_id"
+    );
     if (!doc) return res.status(404).json({ success: false, message: "用户不存在" });
 
     return res.json({
@@ -242,6 +293,7 @@ router.post("/:id/reset-password", async (req, res) => {
     return res.status(500).json({ success: false, message: err.message || "重置密码失败" });
   }
 });
+
 // ✅✅ 新增：POST /api/admin/users  (创建用户)
 router.post("/", async (req, res) => {
   try {
@@ -308,4 +360,34 @@ router.post("/", async (req, res) => {
     return res.status(500).json({ success: false, message: err.message || "创建失败" });
   }
 });
+
+// ✅✅ 新增：DELETE /api/admin/users/:id  (删除用户)
+router.delete("/:id", async (req, res) => {
+  try {
+    const id = String(req.params.id || "");
+    if (!isValidObjectId(id)) {
+      return res.status(400).json({ success: false, message: "用户ID不合法" });
+    }
+
+    const user = await User.findById(id).select("_id role");
+    if (!user) return res.status(404).json({ success: false, message: "用户不存在" });
+
+    // ✅ 安全保护：管理员不允许删除
+    if (user.role === "admin") {
+      return res.status(400).json({ success: false, message: "不能删除管理员" });
+    }
+
+    // ✅ 删除关联地址（如果你希望保留历史，可注释掉）
+    await Address.deleteMany({ userId: user._id });
+
+    // ✅ 删除用户
+    await User.deleteOne({ _id: user._id });
+
+    return res.json({ success: true, message: "用户已删除" });
+  } catch (err) {
+    console.error("❌ DELETE /api/admin/users/:id failed:", err);
+    return res.status(500).json({ success: false, message: err.message || "删除失败" });
+  }
+});
+
 export default router;

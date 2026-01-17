@@ -54,6 +54,10 @@ function renderTable(users) {
     // ✅ 兼容后端可能返回 _id / id
     const id = String(u.id || u._id || "");
 
+    // ✅ 新增：余额/地址字段兼容
+    const wallet = Number(u.walletBalance ?? u.balance ?? u.wallet ?? 0);
+    const addrText = String(u.addressText || u.address || "").trim();
+
     tr.innerHTML = `
       <td>${u.name || "-"}</td>
       <td>${u.phone || "-"}</td>
@@ -61,11 +65,24 @@ function renderTable(users) {
       <td>${mapStatus(u.status)}</td>
       <td>${u.totalOrders ?? 0}</td>
       <td>$${Number(u.totalSpent ?? 0).toFixed(2)}</td>
+
+      <!-- ✅ 新增：账户余额 -->
+      <td>$${Number(wallet).toFixed(2)}</td>
+
+      <!-- ✅ 新增：地址（长地址省略，hover 可看全） -->
+      <td style="max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"
+          title="${addrText.replace(/"/g, "&quot;")}">
+        ${addrText ? addrText : "-"}
+      </td>
+
       <td>${u.createdAt ? formatDate(u.createdAt) : "-"}</td>
       <td>
         <!-- ✅ id 必须加引号，避免 ObjectId 字符串导致 JS 语法错误 -->
         <button class="link-btn" onclick="openEditModal('${id}')">编辑</button>
         <button class="link-btn" onclick="resetPassword('${id}')">重置密码</button>
+
+        <!-- ✅ 新增：删除用户 -->
+        <button class="link-btn danger" onclick="deleteUser('${id}')">删除</button>
       </td>
     `;
 
@@ -97,6 +114,7 @@ function renderPagination() {
   container.appendChild(info);
   container.appendChild(next);
 }
+
 // 角色显示（加固：大小写、空值）
 function mapRole(role) {
   const r = String(role || "").toLowerCase();
@@ -133,8 +151,8 @@ function formatDate(str) {
   if (Number.isNaN(d.getTime())) return "-";
   return d.toLocaleString();
 }
-// ===== 编辑弹窗 =====
 
+// ===== 编辑弹窗 =====
 async function openEditModal(id) {
   try {
     const res = await fetch(`/api/admin/users/${encodeURIComponent(id)}`);
@@ -201,10 +219,9 @@ async function resetPassword(id) {
   if (!confirm("确认要重置该用户密码吗？")) return;
 
   try {
-    const res = await fetch(
-      `/api/admin/users/${encodeURIComponent(id)}/reset-password`,
-      { method: "POST" }
-    );
+    const res = await fetch(`/api/admin/users/${encodeURIComponent(id)}/reset-password`, {
+      method: "POST",
+    });
     const data = await res.json();
     if (!data.success) {
       alert(data.message || "重置失败");
@@ -222,9 +239,35 @@ function closeEditModal() {
   editingUserId = null;
 }
 
+// ✅✅ 新增：删除用户
+async function deleteUser(id) {
+  if (!id) return alert("缺少用户ID");
+  if (!confirm("⚠️ 确认删除该用户？此操作不可恢复")) return;
+
+  try {
+    const res = await fetch(`/api/admin/users/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.success) {
+      alert(data.message || "删除失败");
+      return;
+    }
+
+    alert("删除成功");
+    fetchUsers(currentPage);
+  } catch (err) {
+    console.error("deleteUser error:", err);
+    alert("请求失败");
+  }
+}
+
 // 挂到 window
 window.openEditModal = openEditModal;
 window.resetPassword = resetPassword;
+window.deleteUser = deleteUser;
 
 // 事件绑定
 window.addEventListener("DOMContentLoaded", () => {
@@ -244,6 +287,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
   fetchUsers(1);
 });
+
 // ===== 创建用户弹窗 =====
 function openCreateModal() {
   document.getElementById("createName").value = "";
