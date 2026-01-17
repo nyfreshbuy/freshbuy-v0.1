@@ -3,7 +3,7 @@ import express from "express";
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 import User from "../models/user.js";
-import Address from "../models/address.js"; // ✅ 新增：用于读取用户默认地址
+import Address from "../models/Address.js"; // ✅ 新增：用于读取用户默认地址
 
 console.log("✅ admin_users_mongo.js 已加载");
 
