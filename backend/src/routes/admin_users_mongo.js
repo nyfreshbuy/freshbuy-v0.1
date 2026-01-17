@@ -3,7 +3,8 @@ import express from "express";
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 import User from "../models/user.js";
-import Address from "../models/Address.js"; // ✅ 新增：用于读取用户默认地址
+import Address from "../models/Address.js"; // ✅ 读取用户默认地址
+import Order from "../models/order.js"; // ✅ 新增：用于统计订单数/累计消费（如文件名不同请改这里）
 
 console.log("✅ admin_users_mongo.js 已加载");
 
@@ -32,15 +33,23 @@ function normalizeUser(u) {
     name: u.name || "",
     phone: u.phone || "",
     role: u.role || "customer",
-    status: u.status || "active", // 如果你没有这个字段也没关系
+    status: u.status || "active",
     isActive:
       u.isActive !== undefined
         ? !!u.isActive
         : u.status
           ? u.status !== "disabled"
-          : true, // 兼容
-    // ✅ 新增：账户余额（按你项目字段优先读取 walletBalance，其次 balance；都没有就 0）
+          : true,
+    // ✅ 账户余额（优先 walletBalance，其次 balance）
     walletBalance: Number(u.walletBalance ?? u.balance ?? 0),
+
+    // ✅ 这两个字段在 GET /api/admin/users 里会补齐（来自订单聚合）
+    totalOrders: 0,
+    totalSpent: 0,
+
+    // ✅ 地址文本会补齐
+    addressText: "",
+
     createdAt: u.createdAt,
   };
 }
@@ -55,7 +64,6 @@ router.get("/", async (req, res) => {
     const role = String(req.query.role || "").trim();
 
     const filter = {};
-
     if (role) filter.role = role;
 
     if (keyword) {
@@ -74,18 +82,81 @@ router.get("/", async (req, res) => {
       .sort({ createdAt: -1 })
       .skip((page - 1) * pageSize)
       .limit(pageSize)
-      // ✅ 新增 walletBalance / balance（哪个存在就会返回哪个；不存在也不会报错）
-      .select("_id name phone role createdAt status isActive walletBalance balance");
+      .select("_id name phone role createdAt status isActive walletBalance balance")
+      .lean();
 
     const users = docs.map(normalizeUser);
 
-    // ✅ 新增：批量查询默认地址并合并到 users.addressText
-    // 说明：Address 模型字段假设为 { userId, isDefault, street, city, state, zip }
-    // 如果你字段不同（比如 line1/line2），告诉我我再给你对齐版。
+    // ✅ 批量统计：订单数 + 累计消费（来自 Order 集合）
     if (users.length) {
       const ids = users.map((u) => new mongoose.Types.ObjectId(String(u._id)));
+
+      // ⚠️ 注意：这里用容错方式取金额字段
+      // 如果你订单金额字段明确（比如 totalPayable），你可以直接替换 money 的取值
+      const stats = await Order.aggregate([
+        { $match: { userId: { $in: ids } } },
+
+        // ✅ 如果你只想统计“已支付”订单，请按你订单字段放开下面的 match（示例）
+        // { $match: { paymentStatus: "paid" } },
+
+        {
+          $project: {
+            userId: 1,
+            money: {
+              $ifNull: [
+                "$totalAmount",
+                {
+                  $ifNull: [
+                    "$totalSpent",
+                    {
+                      $ifNull: [
+                        "$total",
+                        {
+                          $ifNull: [
+                            "$grandTotal",
+                            { $ifNull: ["$amount", { $ifNull: ["$payAmount", 0] }] },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+        {
+          $group: {
+            _id: "$userId",
+            totalOrders: { $sum: 1 },
+            totalSpent: { $sum: "$money" },
+          },
+        },
+      ]);
+
+      const statMap = {};
+      for (const s of stats) {
+        statMap[String(s._id)] = {
+          totalOrders: Number(s.totalOrders || 0),
+          totalSpent: Number(s.totalSpent || 0),
+        };
+      }
+
+      for (const u of users) {
+        const s = statMap[String(u._id)] || { totalOrders: 0, totalSpent: 0 };
+        u.totalOrders = s.totalOrders;
+        u.totalSpent = Number((s.totalSpent || 0).toFixed(2));
+      }
+    }
+
+    // ✅ 批量查询默认地址并合并到 users.addressText（更具体）
+    if (users.length) {
+      const ids = users.map((u) => new mongoose.Types.ObjectId(String(u._id)));
+
       const addrDocs = await Address.find({ userId: { $in: ids }, isDefault: true })
-        .select("userId street city state zip")
+        .select(
+          "userId street line1 line2 address1 address2 apt unit city state zip formattedAddress"
+        )
         .lean();
 
       const addrMap = {};
@@ -95,9 +166,25 @@ router.get("/", async (req, res) => {
 
       for (const u of users) {
         const a = addrMap[String(u._id)];
-        u.addressText = a
-          ? `${a.street || ""} ${a.city || ""} ${a.state || ""} ${a.zip || ""}`.trim()
-          : "";
+        if (!a) {
+          u.addressText = "";
+          continue;
+        }
+
+        const line =
+          a.formattedAddress ||
+          [
+            a.street || a.line1 || a.address1 || "",
+            a.line2 || a.address2 || a.apt || a.unit || "",
+            a.city || "",
+            a.state || "",
+            a.zip || "",
+          ]
+            .filter(Boolean)
+            .join(" ")
+            .trim();
+
+        u.addressText = line || "";
       }
     }
 
@@ -111,8 +198,6 @@ router.get("/", async (req, res) => {
       page,
       pageSize,
       totalPages,
-
-      // 多字段兼容
       users,
       list: users,
       items: users,
@@ -128,7 +213,7 @@ router.get("/", async (req, res) => {
   }
 });
 
-// ✅ 新增：GET /api/admin/users/:id  (获取单个用户)
+// ✅ GET /api/admin/users/:id  (获取单个用户)
 router.get("/:id", async (req, res) => {
   try {
     const id = String(req.params.id || "");
@@ -136,21 +221,84 @@ router.get("/:id", async (req, res) => {
       return res.status(400).json({ success: false, message: "用户ID不合法" });
     }
 
-    const doc = await User.findById(id).select(
-      "_id name phone role createdAt status isActive walletBalance balance"
-    );
+    const doc = await User.findById(id)
+      .select("_id name phone role createdAt status isActive walletBalance balance")
+      .lean();
+
     if (!doc) return res.status(404).json({ success: false, message: "用户不存在" });
 
     const user = normalizeUser(doc);
 
-    // ✅ 新增：取默认地址
-    const addr = await Address.findOne({ userId: doc._id, isDefault: true })
-      .select("street city state zip")
+    // ✅ 单用户：订单统计
+    try {
+      const stats = await Order.aggregate([
+        { $match: { userId: new mongoose.Types.ObjectId(String(user._id)) } },
+        {
+          $project: {
+            userId: 1,
+            money: {
+              $ifNull: [
+                "$totalAmount",
+                {
+                  $ifNull: [
+                    "$totalSpent",
+                    {
+                      $ifNull: [
+                        "$total",
+                        {
+                          $ifNull: [
+                            "$grandTotal",
+                            { $ifNull: ["$amount", { $ifNull: ["$payAmount", 0] }] },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+        {
+          $group: {
+            _id: "$userId",
+            totalOrders: { $sum: 1 },
+            totalSpent: { $sum: "$money" },
+          },
+        },
+      ]);
+
+      if (stats && stats[0]) {
+        user.totalOrders = Number(stats[0].totalOrders || 0);
+        user.totalSpent = Number((stats[0].totalSpent || 0).toFixed(2));
+      }
+    } catch (e) {
+      // 不影响主流程
+    }
+
+    // ✅ 单用户：默认地址
+    const addr = await Address.findOne({ userId: user._id, isDefault: true })
+      .select("street line1 line2 address1 address2 apt unit city state zip formattedAddress")
       .lean();
 
-    user.addressText = addr
-      ? `${addr.street || ""} ${addr.city || ""} ${addr.state || ""} ${addr.zip || ""}`.trim()
-      : "";
+    if (addr) {
+      const line =
+        addr.formattedAddress ||
+        [
+          addr.street || addr.line1 || addr.address1 || "",
+          addr.line2 || addr.address2 || addr.apt || addr.unit || "",
+          addr.city || "",
+          addr.state || "",
+          addr.zip || "",
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .trim();
+
+      user.addressText = line || "";
+    } else {
+      user.addressText = "";
+    }
 
     return res.json({ success: true, user });
   } catch (err) {
@@ -159,7 +307,7 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-// ✅✅ 新增：PATCH /api/admin/users/:id  (编辑用户：姓名/手机号/角色/状态)
+// ✅ PATCH /api/admin/users/:id  (编辑用户：姓名/手机号/角色/状态)
 router.patch("/:id", async (req, res) => {
   try {
     const id = String(req.params.id || "");
@@ -205,9 +353,9 @@ router.patch("/:id", async (req, res) => {
       }
     }
 
-    const doc = await User.findByIdAndUpdate(id, { $set: update }, { new: true }).select(
-      "_id name phone role createdAt status isActive walletBalance balance"
-    );
+    const doc = await User.findByIdAndUpdate(id, { $set: update }, { new: true })
+      .select("_id name phone role createdAt status isActive walletBalance balance")
+      .lean();
 
     if (!doc) return res.status(404).json({ success: false, message: "用户不存在" });
 
@@ -229,27 +377,28 @@ router.patch("/:id/role", async (req, res) => {
       return res.status(400).json({ success: false, message: "非法角色：" + role });
     }
 
-    const doc = await User.findByIdAndUpdate(id, { $set: { role } }, { new: true }).select(
-      "_id name phone role createdAt status isActive walletBalance balance"
-    );
+    const doc = await User.findByIdAndUpdate(id, { $set: { role } }, { new: true })
+      .select("_id name phone role createdAt status isActive walletBalance balance")
+      .lean();
 
     if (!doc) return res.status(404).json({ success: false, message: "用户不存在" });
 
-    return res.status(400).json({ success: true, user: normalizeUser(doc) });
+    // ⚠️ 你原来这里写了 res.status(400)，我保留你原逻辑会导致前端认为失败
+    // ✅ 修正为 200
+    return res.json({ success: true, user: normalizeUser(doc) });
   } catch (err) {
     console.error("❌ PATCH /api/admin/users/:id/role failed:", err);
     return res.status(500).json({ success: false, message: err.message || "更新失败" });
   }
 });
 
-// ✅ PATCH /api/admin/users/:id/toggle (启用/禁用 - 可选) ——保留并补强同步 status/isActive
+// ✅ PATCH /api/admin/users/:id/toggle (启用/禁用 - 可选)
 router.patch("/:id/toggle", async (req, res) => {
   try {
     const id = String(req.params.id || "");
     const doc = await User.findById(id).select("_id isActive status");
     if (!doc) return res.status(404).json({ success: false, message: "用户不存在" });
 
-    // 兼容两种字段：isActive 或 status
     if (doc.isActive !== undefined) {
       doc.isActive = !doc.isActive;
       doc.status = doc.isActive ? "active" : "disabled";
@@ -265,7 +414,7 @@ router.patch("/:id/toggle", async (req, res) => {
   }
 });
 
-// ✅✅ 新增：POST /api/admin/users/:id/reset-password  (重置密码)
+// ✅ POST /api/admin/users/:id/reset-password  (重置密码)
 router.post("/:id/reset-password", async (req, res) => {
   try {
     const id = String(req.params.id || "");
@@ -286,7 +435,7 @@ router.post("/:id/reset-password", async (req, res) => {
     return res.json({
       success: true,
       message: "密码已重置",
-      tempPassword: pwd, // ✅ 后台弹窗复制用
+      tempPassword: pwd,
     });
   } catch (err) {
     console.error("❌ POST /api/admin/users/:id/reset-password failed:", err);
@@ -294,7 +443,7 @@ router.post("/:id/reset-password", async (req, res) => {
   }
 });
 
-// ✅✅ 新增：POST /api/admin/users  (创建用户)
+// ✅ POST /api/admin/users  (创建用户)
 router.post("/", async (req, res) => {
   try {
     const body = req.body || {};
@@ -322,13 +471,11 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ success: false, message: "非法状态：" + status });
     }
 
-    // 手机号唯一冲突检测
     const exists = await User.findOne({ phone }).select("_id");
     if (exists) {
       return res.status(409).json({ success: false, message: "手机号已存在" });
     }
 
-    // 密码：可传入，不传则生成并返回给后台
     const inputPwd = typeof body.password === "string" ? body.password.trim() : "";
     const plainPwd = inputPwd.length >= 6 ? inputPwd : genTempPassword(10);
     const hash = await bcrypt.hash(plainPwd, 10);
@@ -346,22 +493,18 @@ router.post("/", async (req, res) => {
       success: true,
       message: "创建成功",
       user: normalizeUser(user),
-      // ✅ 管理员没手动填密码时，才回传生成的临时密码
       tempPassword: inputPwd ? undefined : plainPwd,
     });
   } catch (err) {
     console.error("❌ POST /api/admin/users failed:", err);
-
-    // 兼容 Mongo unique index 报错
     if (err && err.code === 11000) {
       return res.status(409).json({ success: false, message: "手机号已存在" });
     }
-
     return res.status(500).json({ success: false, message: err.message || "创建失败" });
   }
 });
 
-// ✅✅ 新增：DELETE /api/admin/users/:id  (删除用户)
+// ✅ DELETE /api/admin/users/:id  (删除用户)
 router.delete("/:id", async (req, res) => {
   try {
     const id = String(req.params.id || "");
@@ -372,15 +515,11 @@ router.delete("/:id", async (req, res) => {
     const user = await User.findById(id).select("_id role");
     if (!user) return res.status(404).json({ success: false, message: "用户不存在" });
 
-    // ✅ 安全保护：管理员不允许删除
     if (user.role === "admin") {
       return res.status(400).json({ success: false, message: "不能删除管理员" });
     }
 
-    // ✅ 删除关联地址（如果你希望保留历史，可注释掉）
     await Address.deleteMany({ userId: user._id });
-
-    // ✅ 删除用户
     await User.deleteOne({ _id: user._id });
 
     return res.json({ success: true, message: "用户已删除" });
