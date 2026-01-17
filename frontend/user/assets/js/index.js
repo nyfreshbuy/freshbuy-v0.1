@@ -428,6 +428,74 @@ setTimeout(() => {
 // =========================
 // 2) 商品卡片 + 首页商品（按你现在的 5 个区块）
 // =========================
+// =========================
+// ✅ variants 展开：同一商品 -> 多个“展示商品”（单个/整箱）
+// =========================
+function expandProductsWithVariants(list) {
+  const out = [];
+  const arr = Array.isArray(list) ? list : [];
+
+  for (const p of arr) {
+    const productId = String(p?._id || p?.id || "").trim(); // ✅ Mongo 优先
+    const variants = Array.isArray(p?.variants) ? p.variants : [];
+
+    // 没 variants：当作 single 展示一张
+    if (!variants.length) {
+      const vKey = "single";
+      out.push({
+        ...p,
+        __productId: productId,
+        __variantKey: vKey,
+        __variantLabel: "单个",
+        __displayName: p?.name || "",
+        __displayPrice: null, // 走你原 price 逻辑
+        __cartKey: productId ? `${productId}::${vKey}` : String(p?.sku || p?.id || ""),
+      });
+      continue;
+    }
+
+    // 有 variants：每个 enabled 的 variant 展示一张
+    const enabledVars = variants.filter((v) => v && v.enabled !== false);
+    if (!enabledVars.length) {
+      const vKey = "single";
+      out.push({
+        ...p,
+        __productId: productId,
+        __variantKey: vKey,
+        __variantLabel: "单个",
+        __displayName: p?.name || "",
+        __displayPrice: null,
+        __cartKey: productId ? `${productId}::${vKey}` : String(p?.sku || p?.id || ""),
+      });
+      continue;
+    }
+
+    for (const v of enabledVars) {
+      const vKey = String(v.key || "single").trim() || "single";
+      const unitCount = Math.max(1, Math.floor(Number(v.unitCount || 1)));
+
+      // label：优先后端 label，否则自动生成
+      const vLabel =
+        String(v.label || "").trim() ||
+        (unitCount > 1 ? `整箱(${unitCount}个)` : "单个");
+
+      // price：variant.price 有就用；否则 null 继续走原逻辑
+      const vPrice = v.price != null && Number.isFinite(Number(v.price)) ? Number(v.price) : null;
+
+      out.push({
+        ...p,
+        __productId: productId,
+        __variantKey: vKey,
+        __variantLabel: vLabel,
+        __displayName: `${p?.name || ""} - ${vLabel}`,
+        __displayPrice: vPrice,
+        __cartKey: productId ? `${productId}::${vKey}` : String(p?.sku || p?.id || ""),
+      });
+    }
+  }
+
+  return out;
+}
 const cartConfig = {
   cartIconId: "cartIcon",
   cartBackdropId: "cartBackdrop",
@@ -734,16 +802,35 @@ function scheduleBadgeSync() {
     trySyncBadgesFromCart();
   }, 50);
 }
-
 function createProductCard(p, extraBadgeText) {
   const article = document.createElement("article");
   article.className = "product-card";
 
-  // ✅ 统一主键：优先 _id（MongoDB），其次 id / sku
-  const pid = String(p._id || p.id || p.sku || "").trim();
+  // ✅ 展示层：同一个商品拆成单个/整箱两张卡
+  const productId = String(p.__productId || p._id || p.id || "").trim();
+  const variantKey = String(p.__variantKey || "single").trim() || "single";
+
+  // ✅ cartKey：购物车里区分“单个/整箱”
+  const cartKey = String(
+    p.__cartKey || (productId ? `${productId}::${variantKey}` : p.sku || p.id || "")
+  ).trim();
+
+  // ✅ badge / 加购按钮都用 cartKey（这样单个和整箱的数量不会混在一起）
+  const pid = cartKey;
+
+  // ✅ 展示名 & 展示价格（variant.price 优先）
+  const displayName = String(p.__displayName || p.name || "").trim();
+  const displayPriceOverride =
+    p.__displayPrice != null && Number.isFinite(Number(p.__displayPrice))
+      ? Number(p.__displayPrice)
+      : null;
 
   // ✅ 价格：优先显示特价（sale/special/flash），并展示划线原价
-  const basePrice = Number(p.price ?? p.originPrice ?? p.regularPrice ?? 0);
+  const basePrice =
+    displayPriceOverride != null
+      ? displayPriceOverride
+      : Number(p.price ?? p.originPrice ?? p.regularPrice ?? 0);
+
   const salePrice = Number(
     p.salePrice ?? p.specialPrice ?? p.discountPrice ?? p.flashPrice ?? 0
   );
@@ -767,17 +854,17 @@ function createProductCard(p, extraBadgeText) {
     p.image && String(p.image).trim()
       ? String(p.image).trim()
       : `https://picsum.photos/seed/${encodeURIComponent(
-          pid || p.name || "fb"
+          pid || displayName || "fb"
         )}/500/400`;
 
   const tagline = (p.tag || p.category || "").slice(0, 18);
-  const limitQty = p.limitQty || p.limitPerUser || p.maxQty || p.purchaseLimit || 0;
+  const limitQty =
+    p.limitQty || p.limitPerUser || p.maxQty || p.purchaseLimit || 0;
 
-  // ✅✅✅ 在图片容器里插入 .product-qty-badge
   article.innerHTML = `
     <div class="product-image-wrap">
       ${badgeText ? `<span class="special-badge">${badgeText}</span>` : ""}
-      <img src="${imageUrl}" class="product-image" alt="${p.name || ""}" />
+      <img src="${imageUrl}" class="product-image" alt="${displayName}" />
 
       <!-- ✅ 商品图片右下角数量徽章（JS 会控制显示/隐藏） -->
       <div class="product-qty-badge" data-pid="${pid}"></div>
@@ -792,7 +879,7 @@ function createProductCard(p, extraBadgeText) {
       </div>
     </div>
 
-    <div class="product-name">${p.name || ""}</div>
+    <div class="product-name">${displayName}</div>
     <div class="product-desc">${p.desc || ""}</div>
 
     <div class="product-price-row">
@@ -807,9 +894,15 @@ function createProductCard(p, extraBadgeText) {
     </button>
   `;
 
+  // ✅ 点卡片进详情：用 productId（不是 pid/cartKey）
   article.addEventListener("click", () => {
-    if (!pid) return;
-    window.location.href = "product_detail.html?id=" + encodeURIComponent(pid);
+    if (!productId) return;
+    const url =
+      "product_detail.html?id=" +
+      encodeURIComponent(productId) +
+      "&variant=" +
+      encodeURIComponent(variantKey);
+    window.location.href = url;
   });
 
   function doAdd(ev) {
@@ -827,9 +920,14 @@ function createProductCard(p, extraBadgeText) {
       return;
     }
 
+    // ✅✅✅ 关键：加购时把 productId + variantKey 带上（给后端扣共用库存）
     const normalized = {
-      id: pid,
-      name: p.name || "商品",
+      id: pid, // cartKey
+
+      productId: productId,
+      variantKey: variantKey,
+
+      name: displayName || "商品",
       price: finalPrice,
       priceNum: finalPrice,
       image: p.image || imageUrl,
@@ -841,9 +939,11 @@ function createProductCard(p, extraBadgeText) {
 
     cartApi.addItem(normalized, 1);
 
-    // ✅✅✅ 加购后立刻显示徽章 +1（不依赖 cart.js 是否广播）
+    // ✅✅✅ 加购后立刻显示徽章 +1
     try {
-      const badge = article.querySelector(`.product-qty-badge[data-pid="${pid}"]`);
+      const badge = article.querySelector(
+        `.product-qty-badge[data-pid="${pid}"]`
+      );
       const cur = Number((badge?.textContent || "").replace("+", "")) || 0;
       const next = Math.min(cur + 1, 99);
       if (badge) {
@@ -852,14 +952,13 @@ function createProductCard(p, extraBadgeText) {
       }
     } catch {}
 
-    // ✅ 通知全站：购物车已更新（给 trySyncBadgesFromCart / cart.js 用）
+    // ✅ 通知全站：购物车已更新
     try {
       window.dispatchEvent(
         new CustomEvent("freshbuy:cartUpdated", { detail: { pid, delta: 1 } })
       );
     } catch {}
 
-    // ✅✅✅ 关键：避免“立即同步又被隐藏”（等 cart.js/localStorage 写入后再同步）
     setTimeout(() => {
       try {
         scheduleBadgeSync();
@@ -883,7 +982,6 @@ function createProductCard(p, extraBadgeText) {
 
   return article;
 }
-
 // IP 建议 ZIP（不强制）—— ✅ 如果 ZIP 已被“默认地址锁定”，则不要再用 IP 覆盖
 async function tryPrefillZipFromIP() {
   const confirmed = localStorage.getItem("freshbuy_zone_ok") === "1";
@@ -943,11 +1041,16 @@ async function loadHomeProductsFromSimple() {
       return;
     }
 
-    window.allProducts = list;
+    // ✅ 保存原始产品（不展开）
+window.allProductsRaw = list;
 
-    const hotList = list.filter((p) => isHotProduct(p));
-    const nonHotList = list.filter((p) => !isHotProduct(p));
+// ✅ 用展开后的列表用于渲染（会出现单个/整箱两张卡）
+const viewList = expandProductsWithVariants(list);
+window.allProducts = viewList;
 
+// ✅ 后面所有筛选都用 viewList
+const hotList = viewList.filter((p) => isHotProduct(p));
+const nonHotList = viewList.filter((p) => !isHotProduct(p));
     let familyList = nonHotList.filter((p) => isFamilyProduct(p));
     let newList = nonHotList.filter((p) => isNewProduct(p));
     if (newList.length > 30) newList = newList.slice(0, 30);
