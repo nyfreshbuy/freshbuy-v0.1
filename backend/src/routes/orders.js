@@ -4,12 +4,13 @@ import mongoose from "mongoose";
 import Order from "../models/order.js";
 import User from "../models/user.js";
 import Zone from "../models/Zone.js";
+import Product from "../models/product.js"; // ✅ NEW：为了 variants + 共用库存扣减
 import { requireLogin } from "../middlewares/auth.js";
 
 const router = express.Router();
 router.use(express.json());
 
-console.log("🚀 orders.js (MongoDB版, MODEL-ALIGNED) 已加载");
+console.log("🚀 orders.js (MongoDB版, MODEL-ALIGNED + STOCK_RESERVE) 已加载");
 
 // =========================
 // ping
@@ -102,8 +103,24 @@ function isSpecialItem(it) {
   return false;
 }
 
+// ✅ 规格解析：从 product.variants 找 variantKey
+function getVariantFromProduct(productDoc, variantKey) {
+  const key = String(variantKey || "").trim();
+  const list = Array.isArray(productDoc?.variants) ? productDoc.variants : [];
+  const found = list.find((v) => String(v?.key || "").trim() === key && v?.enabled !== false);
+  if (found) {
+    return {
+      key: String(found.key || key || "single"),
+      label: String(found.label || "").trim() || (Number(found.unitCount || 1) > 1 ? `整箱(${found.unitCount}个)` : "单个"),
+      unitCount: Math.max(1, Math.floor(Number(found.unitCount || 1))),
+      price: found.price != null ? Number(found.price) : null,
+    };
+  }
+  // 没配 variants 或没传 variantKey：默认单个
+  return { key: "single", label: "单个", unitCount: 1, price: null };
+}
+
 // ✅ 后端 geocode（需要 GOOGLE_MAPS_SERVER_KEY）
-// Node 18+ 有 fetch；如果你低版本需要自己引入 node-fetch
 async function geocodeIfNeeded(addressText) {
   const key = process.env.GOOGLE_MAPS_SERVER_KEY;
   if (!key) return null;
@@ -179,10 +196,12 @@ async function resolveZoneFromPayload({ zoneId, ship, zip }) {
 
 /**
  * ✅ 构建订单（与 Order Model 对齐）
- * - payment.status 只能是 unpaid/paid/refunded
- * - payment.method 只能是 stripe/wallet/zelle（可不填）
+ * ✅ 支持 variants：items 可传 variantKey（single/box12）
+ *
+ * @param {object} req
+ * @param {mongoose.ClientSession|null} session - 只有在 checkout 里才传，用于扣库存 + 写 stockReserve
  */
-async function buildOrderPayload(req) {
+async function buildOrderPayload(req, session = null) {
   const body = req.body || {};
   const mode = pickMode(body);
 
@@ -210,14 +229,8 @@ async function buildOrderPayload(req) {
 
   const addressText =
     String(
-      ship.address ||
-        ship.fullText ||
-        ship.formattedAddress ||
-        ship.address1 ||
-        ship.addressLine ||
-        ""
-    ).trim() ||
-    [ship.street1, ship.apt, ship.city, ship.state, ship.zip].filter(Boolean).join(", ").trim();
+      ship.address || ship.fullText || ship.formattedAddress || ship.address1 || ship.addressLine || ""
+    ).trim() || [ship.street1, ship.apt, ship.city, ship.state, ship.zip].filter(Boolean).join(", ").trim();
 
   if (!contactName || !contactPhone || !addressText) {
     const e = new Error("收货信息不完整（姓名/电话/地址）");
@@ -269,42 +282,117 @@ async function buildOrderPayload(req) {
   const loginPhone10 = normPhone(loginPhoneRaw);
   const shipPhone10 = normPhone(contactPhone);
 
-  // 整理 items + 计算 subtotal
+  // =========================
+  // ✅ items 整理 +（checkout时）预扣库存 + stockReserve
+  // =========================
   let subtotal = 0;
-  const cleanItems = items.map((it, idx) => {
-    const qty = Number(it.qty || 1);
-    const price = Number(it.priceNum ?? it.price ?? 0);
+  const cleanItems = [];
+  const stockReserve = [];
 
-    if (!it.name || !Number.isFinite(price) || price < 0 || !Number.isFinite(qty) || qty < 1) {
+  for (let idx = 0; idx < items.length; idx++) {
+    const it = items[idx] || {};
+
+    const qtyRaw = Number(it.qty || 1);
+    const qty = Number.isFinite(qtyRaw) ? Math.floor(qtyRaw) : 1;
+    if (!it.name || !Number.isFinite(qty) || qty < 1) {
       const e = new Error(`第 ${idx + 1} 个商品数据不合法`);
       e.status = 400;
       throw e;
     }
 
-    const legacyId = String(it.legacyProductId || it.id || it._id || "").trim();
-
+    // 尝试解析 productId
     let productId;
     const maybeMongoId = String(it.productId || it._id || "").trim();
     if (maybeMongoId && mongoose.Types.ObjectId.isValid(maybeMongoId)) {
       productId = new mongoose.Types.ObjectId(maybeMongoId);
     }
 
+    const legacyId = String(it.legacyProductId || it.id || it._id || "").trim();
+    const variantKey = String(it.variantKey || it.variant || "").trim(); // ✅ 前端可传
+
+    // 默认使用前端价格（兼容旧逻辑）
+    let price = Number(it.priceNum ?? it.price ?? 0);
+    if (!Number.isFinite(price) || price < 0) price = 0;
+
+    let finalName = String(it.name || "");
+    let finalSku = it.sku ? String(it.sku) : "";
+    let finalImage = it.image ? String(it.image) : "";
+    let cost = Number(it.cost || 0) || 0;
+    let hasTax = !!it.hasTax;
+
+    // ✅ 如果有 productId：优先用后端 Product 里的价格/税/图片（防止前端乱传）
+    if (productId) {
+      const q = Product.findById(productId).select("name sku price cost taxable image images stock allowZeroStock variants");
+      const pdoc = session ? await q.session(session) : await q;
+      if (!pdoc) {
+        const e = new Error(`商品不存在（productId=${productId}）`);
+        e.status = 400;
+        throw e;
+      }
+
+      // 解析规格（单个/整箱）
+      const v = getVariantFromProduct(pdoc, variantKey);
+      const unitCount = Math.max(1, Math.floor(Number(v.unitCount || 1)));
+
+      // 用后端价格：variant.price 优先，否则 product.price
+      const backendPrice = v.price != null ? Number(v.price) : Number(pdoc.price || 0);
+      if (Number.isFinite(backendPrice) && backendPrice >= 0) price = round2(backendPrice);
+
+      // 名称/sku 增强（不改 order item schema 也能看出来是整箱）
+      const vLabel = String(v.label || "").trim();
+      finalName = vLabel ? `${pdoc.name} - ${vLabel}` : String(pdoc.name || finalName);
+      const baseSku = String(pdoc.sku || finalSku || legacyId || productId.toString());
+      finalSku = `${baseSku}::${v.key || "single"}`;
+
+      finalImage =
+        String(pdoc.image || "").trim() ||
+        (Array.isArray(pdoc.images) && pdoc.images[0] ? String(pdoc.images[0]) : finalImage);
+
+      cost = Number(pdoc.cost || 0) || cost;
+      hasTax = !!pdoc.taxable;
+
+      // ✅ 只有 checkout（传 session）才预扣库存并写 stockReserve
+      if (session) {
+        const needUnits = qty * unitCount;
+        const allowZero = pdoc.allowZeroStock === true;
+        const curStock = Number(pdoc.stock || 0);
+
+        if (!allowZero && curStock < needUnits) {
+          const e = new Error(`库存不足：${pdoc.name}（需要 ${needUnits}，当前 ${curStock}）`);
+          e.status = 400;
+          throw e;
+        }
+
+        // 扣库存（共用 stock）
+        pdoc.stock = curStock - needUnits;
+        await pdoc.save({ session });
+
+        stockReserve.push({
+          productId: pdoc._id,
+          variantKey: v.key || "single",
+          unitCount,
+          qty,
+          needUnits,
+        });
+      }
+    }
+
     const lineTotal = round2(price * qty);
     subtotal += lineTotal;
 
-    return {
+    cleanItems.push({
       productId,
       legacyProductId: legacyId || "",
-      name: String(it.name || ""),
-      sku: it.sku ? String(it.sku) : "",
+      name: finalName,
+      sku: finalSku,
       price: round2(price),
-      qty: Math.floor(qty),
-      image: it.image ? String(it.image) : "",
+      qty,
+      image: finalImage,
       lineTotal,
-      cost: Number(it.cost || 0) || 0,
-      hasTax: !!it.hasTax,
-    };
-  });
+      cost,
+      hasTax,
+    });
+  }
 
   subtotal = round2(subtotal);
 
@@ -353,11 +441,9 @@ async function buildOrderPayload(req) {
   const tipRaw = tipAmount ?? tip ?? ship.tip ?? 0;
   const tipFee = round2(Math.max(0, safeNumber(tipRaw, 0)));
 
-  // taxableSubtotal
+  // taxableSubtotal（按 hasTax）
   const taxableSubtotal = round2(
-    cleanItems
-      .filter((x) => x.hasTax === true)
-      .reduce((sum, x) => sum + Number(x.lineTotal || 0), 0)
+    cleanItems.filter((x) => x.hasTax === true).reduce((sum, x) => sum + Number(x.lineTotal || 0), 0)
   );
 
   // tax
@@ -365,7 +451,7 @@ async function buildOrderPayload(req) {
 
   const discount = 0;
 
-  // ✅ 平台费：只在需要 Stripe 时（后面 checkout 决定）
+  // ✅ 平台费：只在需要 Stripe 时（checkout 决定）
   const platformFee = 0;
 
   // ✅ 基础总额（不含平台费）
@@ -386,7 +472,6 @@ async function buildOrderPayload(req) {
   // ✅ payment 快照（严格匹配 model）
   const paymentSnap = {
     status: "unpaid",
-    // method 先不填（model enum 不允许 none）
     amountTotal: Number(baseTotalAmount || 0),
     paidTotal: 0,
     stripe: { intentId: "", paid: 0 },
@@ -414,9 +499,7 @@ async function buildOrderPayload(req) {
     deliveryDate: finalDeliveryDate,
 
     fulfillment,
-    dispatch: z
-      ? { zoneId: z, batchKey, batchName: zoneName || "" }
-      : { zoneId: "", batchKey: "", batchName: "" },
+    dispatch: z ? { zoneId: z, batchKey, batchName: zoneName || "" } : { zoneId: "", batchKey: "", batchName: "" },
 
     status: "pending",
     subtotal,
@@ -438,6 +521,9 @@ async function buildOrderPayload(req) {
     address: { fullText, zip, zoneId: z, lat, lng },
 
     items: cleanItems,
+
+    // ✅ NEW：库存预扣快照（只有 checkout 才会有值）
+    stockReserve: Array.isArray(stockReserve) ? stockReserve : [],
   };
 
   return { orderDoc, baseTotalAmount };
@@ -477,10 +563,7 @@ router.get("/my", requireLogin, async (req, res) => {
     if (phoneOr.length) {
       await Order.updateMany(
         {
-          $and: [
-            { $or: [{ userId: { $exists: false } }, { userId: null }] },
-            { $or: phoneOr },
-          ],
+          $and: [{ $or: [{ userId: { $exists: false } }, { userId: null }] }, { $or: phoneOr }],
         },
         { $set: { userId } }
       );
@@ -510,10 +593,8 @@ router.get("/my", requireLogin, async (req, res) => {
         orderNo: o.orderNo,
         status: o.status,
         deliveryType: o.deliveryType,
-
         deliveryMode: o.deliveryMode,
         fulfillment: o.fulfillment,
-
         totalAmount: o.totalAmount,
         subtotal: o.subtotal,
         deliveryFee: o.deliveryFee,
@@ -521,10 +602,8 @@ router.get("/my", requireLogin, async (req, res) => {
         platformFee: o.platformFee,
         tipFee: o.tipFee,
         taxableSubtotal: o.taxableSubtotal,
-
         payment: o.payment,
         deliveryDate: o.deliveryDate,
-
         createdAt: o.createdAt,
         itemsCount: Array.isArray(o.items) ? o.items.length : 0,
       })),
@@ -538,10 +617,11 @@ router.get("/my", requireLogin, async (req, res) => {
 // =====================================================
 // 1) 创建订单（不支付）
 // POST /api/orders
+// ✅ 这里不扣库存（避免 pending 占库存）
 // =====================================================
 router.post("/", requireLogin, async (req, res) => {
   try {
-    const { orderDoc } = await buildOrderPayload(req);
+    const { orderDoc } = await buildOrderPayload(req, null);
     const doc = await Order.create(orderDoc);
 
     return res.json({
@@ -556,9 +636,7 @@ router.post("/", requireLogin, async (req, res) => {
     });
   } catch (err) {
     console.error("POST /api/orders error:", err);
-    return res
-      .status(err?.status || 500)
-      .json({ success: false, message: err?.message || "创建订单失败" });
+    return res.status(err?.status || 500).json({ success: false, message: err?.message || "创建订单失败" });
   }
 });
 
@@ -566,7 +644,7 @@ router.post("/", requireLogin, async (req, res) => {
 // ✅ checkout：钱包优先，剩余走 Stripe（平台费只在需要 Stripe 时加）
 // POST /api/orders/checkout
 //
-// 返回：remaining>0 表示需要 Stripe
+// ✅ 在事务里：扣库存（共用 stock） + 写 stockReserve
 // =====================================================
 router.post("/checkout", requireLogin, async (req, res) => {
   const session = await mongoose.startSession();
@@ -574,23 +652,28 @@ router.post("/checkout", requireLogin, async (req, res) => {
     const userId = toObjectIdMaybe(req.user?.id || req.user?._id);
     if (!userId) return res.status(401).json({ success: false, message: "未登录" });
 
-    const { orderDoc, baseTotalAmount } = await buildOrderPayload(req);
-
-    const baseTotal = Number(baseTotalAmount || 0);
-    if (!Number.isFinite(baseTotal) || baseTotal <= 0) {
-      return res.status(400).json({ success: false, message: "订单金额不合法" });
-    }
-
     let created = null;
     let walletUsed = 0;
     let remaining = 0;
     let newBalance = 0;
 
-    let finalTotal = round2(baseTotal);
+    let finalTotal = 0;
     let platformFee = 0;
     let walletDeducted = false;
 
     await session.withTransaction(async () => {
+      // ✅ 先在事务里构建订单 + 预扣库存 + 写 stockReserve
+      const { orderDoc, baseTotalAmount } = await buildOrderPayload(req, session);
+
+      const baseTotal = Number(baseTotalAmount || 0);
+      if (!Number.isFinite(baseTotal) || baseTotal <= 0) {
+        const e = new Error("订单金额不合法");
+        e.status = 400;
+        throw e;
+      }
+
+      finalTotal = round2(baseTotal);
+
       // 1) 钱包余额
       const u0 = await User.findById(userId).select("walletBalance").session(session);
       const balance0 = Number(u0?.walletBalance || 0);
@@ -705,7 +788,7 @@ router.post("/checkout", requireLogin, async (req, res) => {
 
     const fresh = await Order.findById(created._id)
       .select(
-        "payment status totalAmount orderNo deliveryMode fulfillment subtotal deliveryFee discount salesTax platformFee tipFee taxableSubtotal deliveryDate"
+        "payment status totalAmount orderNo deliveryMode fulfillment subtotal deliveryFee discount salesTax platformFee tipFee taxableSubtotal deliveryDate stockReserve"
       )
       .lean();
 
@@ -723,6 +806,7 @@ router.post("/checkout", requireLogin, async (req, res) => {
       deliveryMode: fresh?.deliveryMode || created.deliveryMode,
       fulfillment: fresh?.fulfillment || created.fulfillment,
       deliveryDate: fresh?.deliveryDate || created.deliveryDate,
+      stockReserve: fresh?.stockReserve || [],
     });
   } catch (err) {
     console.error("POST /api/orders/checkout error:", err);
@@ -837,11 +921,7 @@ router.get("/", async (req, res) => {
     const phone10 = normPhone(phone);
 
     const list = await Order.find({
-      $or: [
-        { customerPhone: phone },
-        { customerPhone: phone10 },
-        { customerPhone: { $regex: phone10 + "$" } },
-      ],
+      $or: [{ customerPhone: phone }, { customerPhone: phone10 }, { customerPhone: { $regex: phone10 + "$" } }],
     })
       .sort({ createdAt: -1 })
       .limit(50);
@@ -907,6 +987,7 @@ router.get("/:id([0-9a-fA-F]{24})", async (req, res) => {
         note: doc.note,
         address: doc.address,
         items: doc.items,
+        stockReserve: doc.stockReserve || [], // ✅ NEW
         driverId: doc.driverId,
         leaderId: doc.leaderId,
         deliveryDate: doc.deliveryDate,
@@ -930,18 +1011,7 @@ router.get("/:id([0-9a-fA-F]{24})", async (req, res) => {
 router.patch("/:id/status", async (req, res) => {
   try {
     const status = String(req.body?.status || "").trim().toLowerCase();
-    const allowed = [
-  "pending",
-  "paid",
-  "packing",
-  "shipping",
-  "delivering",
-  "delivered",
-  "done",
-  "completed",
-  "cancel",
-  "cancelled",
-];
+    const allowed = ["pending", "paid", "packing", "shipping", "delivering", "delivered", "done", "completed", "cancel", "cancelled"];
     if (!allowed.includes(status)) {
       return res.status(400).json({ success: false, message: "status 不合法" });
     }
@@ -962,7 +1032,6 @@ router.patch("/:id/status", async (req, res) => {
 // =====================================================
 router.patch("/admin/:id/status", requireLogin, async (req, res) => {
   try {
-    // ✅ 管理员权限
     if (req.user?.role !== "admin") {
       return res.status(403).json({ success: false, message: "需要管理员权限" });
     }
@@ -973,25 +1042,13 @@ router.patch("/admin/:id/status", requireLogin, async (req, res) => {
     }
 
     const status = String(req.body?.status || "").trim().toLowerCase();
-    const allowed = [
-      "pending",
-      "paid",
-      "packing",
-      "shipping",
-      "delivering",
-      "delivered",
-      "done",
-      "completed",
-      "cancel",
-      "cancelled",
-    ];
+    const allowed = ["pending", "paid", "packing", "shipping", "delivering", "delivered", "done", "completed", "cancel", "cancelled"];
     if (!allowed.includes(status)) {
       return res.status(400).json({ success: false, message: "status 不合法" });
     }
 
     const patch = { status };
 
-    // ✅ 如果是送达类状态，顺便写 deliveredAt（避免右上角判断混乱）
     if (["delivered", "done", "completed"].includes(status)) {
       patch.deliveredAt = new Date();
     }
@@ -1008,6 +1065,7 @@ router.patch("/admin/:id/status", requireLogin, async (req, res) => {
     return res.status(500).json({ success: false, message: "更新状态失败" });
   }
 });
+
 // =====================================================
 // 5) 派单
 // PATCH /api/orders/:id/assign
@@ -1019,20 +1077,14 @@ router.patch("/:id/assign", async (req, res) => {
     const patch = {};
     if (driverId !== undefined) patch.driverId = toObjectIdMaybe(driverId);
     if (leaderId !== undefined) patch.leaderId = toObjectIdMaybe(leaderId);
-    if (deliveryDate !== undefined)
-      patch.deliveryDate = deliveryDate ? startOfDay(new Date(deliveryDate)) : null;
+    if (deliveryDate !== undefined) patch.deliveryDate = deliveryDate ? startOfDay(new Date(deliveryDate)) : null;
 
     const doc = await Order.findByIdAndUpdate(req.params.id, patch, { new: true });
     if (!doc) return res.status(404).json({ success: false, message: "订单不存在" });
 
     return res.json({
       success: true,
-      data: {
-        id: doc._id.toString(),
-        driverId: doc.driverId,
-        leaderId: doc.leaderId,
-        deliveryDate: doc.deliveryDate,
-      },
+      data: { id: doc._id.toString(), driverId: doc.driverId, leaderId: doc.leaderId, deliveryDate: doc.deliveryDate },
     });
   } catch (err) {
     console.error("PATCH /api/orders/:id/assign error:", err);
@@ -1046,11 +1098,7 @@ router.patch("/:id/assign", async (req, res) => {
 // =====================================================
 router.patch("/:id/mark-delivered", async (req, res) => {
   try {
-    const doc = await Order.findByIdAndUpdate(
-      req.params.id,
-      { status: "done", deliveredAt: new Date() },
-      { new: true }
-    );
+    const doc = await Order.findByIdAndUpdate(req.params.id, { status: "done", deliveredAt: new Date() }, { new: true });
     if (!doc) return res.status(404).json({ success: false, message: "订单不存在" });
 
     return res.json({

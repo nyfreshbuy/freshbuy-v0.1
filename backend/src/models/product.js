@@ -1,72 +1,265 @@
-// backend/src/models/product.js
+// backend/src/routes/orders.js
+import express from "express";
 import mongoose from "mongoose";
-const productSchema = new mongoose.Schema(
-  {
-    // 兼容旧系统的自定义 id（你 admin_products.js 会生成 p_时间戳）
-    id: { type: String, index: true },
+import Order from "../models/order.js";
+import Product from "../models/product.js";
+import { requireLogin } from "../middlewares/auth.js";
 
-    // 基础信息
-    name: { type: String, required: true, trim: true },
-    desc: { type: String, trim: true },
+const router = express.Router();
+router.use(express.json());
 
-    // 价格相关
-    price: { type: Number, required: true },      // 当前售卖价（后端会重算）
-    originPrice: { type: Number, default: 0 },    // 原价
-    cost: { type: Number, default: 0 },           // 成本
-    taxable: { type: Boolean, default: false },   // ✅ 是否收 NY 销售税
-    // 分类（✅ 你现在保存不了的核心）
-    topCategoryKey: { type: String, trim: true, default: "" }, // 导航大类 key：fresh/meat/...
-    category: { type: String, trim: true, default: "" },       // 展示大类：生鲜果蔬
-    subCategory: { type: String, trim: true, default: "" },    // 子类：叶菜类
+console.log("🧾 orders.js loaded (variants stock shared)");
 
-    // 标识/标签
-    tag: { type: String, trim: true, default: "" },
-    type: { type: String, trim: true, default: "normal" }, // hot/normal...
-    labels: [{ type: String, trim: true }],
-    images: [{ type: String, trim: true }],
-    image: { type: String, trim: true, default: "" },
+/**
+ * 统一返回错误
+ */
+function bad(res, message, code = 400, extra = {}) {
+  return res.status(code).json({ success: false, message, ...extra });
+}
 
-    // 库存
-    stock: { type: Number, default: 9999 },
-    minStock: { type: Number },
-    allowZeroStock: { type: Boolean, default: true },
+/**
+ * 订单状态建议：
+ * - pending: 已创建（库存已预扣），待支付
+ * - paid: 已支付
+ * - cancelled: 已取消（库存已回滚）
+ */
+function normalizeQty(q) {
+  const n = Number(q);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.floor(n));
+}
 
-    // 销量
-    soldCount: { type: Number, default: 0 },
+/**
+ * 从 product.variants 找 variant
+ * - 找不到：默认单个 unitCount=1
+ */
+function getVariant(product, variantKey) {
+  const key = String(variantKey || "").trim();
+  const list = Array.isArray(product.variants) ? product.variants : [];
+  const v = list.find((x) => String(x.key || "").trim() === key);
+  if (v && v.enabled !== false) return v;
+  // 兼容：没传 variantKey 或没配置 variants 时
+  return { key: "single", label: "单个", unitCount: 1, price: null };
+}
 
-    // 上下架
-    isActive: { type: Boolean, default: true },
-    status: { type: String, trim: true, default: "on" }, // on/off
-    activeFrom: { type: Date },
-    activeTo: { type: Date },
+/**
+ * 预扣库存（创建订单时）
+ * items: [{productId, variantKey, quantity}]
+ */
+async function reserveStock(items) {
+  // 使用 session 事务（MongoDB replica set/Atlas 支持）
+  const session = await mongoose.startSession();
+  session.startTransaction();
 
-    // 特价/活动（你后台表单在用）
-    specialEnabled: { type: Boolean, default: false },
-    specialPrice: { type: Number, default: null },
-    specialFrom: { type: Date },
-    specialTo: { type: Date },
+  try {
+    const reserved = []; // 记录扣了哪些库存用于失败回滚/写入订单
+    for (const it of items) {
+      const productId = String(it.productId || "").trim();
+      const variantKey = String(it.variantKey || "").trim();
+      const quantity = normalizeQty(it.quantity);
 
-    // 你代码里用到的其他开关（先加上，避免丢字段）
-    isFlashDeal: { type: Boolean, default: false },
-    isSpecial: { type: Boolean, default: false },
+      if (!productId) throw new Error("商品缺少 productId");
+      if (quantity <= 0) throw new Error("商品数量不合法");
 
-    isFamilyMustHave: { type: Boolean, default: false },
-    isBestSeller: { type: Boolean, default: false },
-    isNewArrival: { type: Boolean, default: false },
+      const product = await Product.findById(productId).session(session);
+      if (!product) throw new Error("商品不存在: " + productId);
 
-    // 库存低自动取消特价
-    autoCancelSpecialOnLowStock: { type: Boolean, default: false },
-    autoCancelSpecialThreshold: { type: Number, default: 0 },
+      const variant = getVariant(product, variantKey);
+      const unitCount = Math.max(1, normalizeQty(variant.unitCount || 1));
+      const needUnits = quantity * unitCount;
 
-    // 内部字段（你前端表单在传）
-    sku: { type: String, trim: true, default: "" },
-    internalCompanyId: { type: String, trim: true, default: "" },
-    supplierCompanyId: { type: String, trim: true, default: "" },
+      // 不允许 0 库存还下单：你已有 allowZeroStock 开关
+      const allowZero = product.allowZeroStock === true;
+      if (!allowZero && Number(product.stock || 0) < needUnits) {
+        throw new Error(`库存不足: ${product.name}`);
+      }
 
-    // 排序
-    sortOrder: { type: Number, default: 99999 },
-  },
-  { timestamps: true }
-);
+      // ✅ 扣库存（预扣）
+      product.stock = Number(product.stock || 0) - needUnits;
+      await product.save({ session });
 
-export default mongoose.models.Product || mongoose.model("Product", productSchema);
+      reserved.push({
+        productId: product._id,
+        variantKey: variant.key || variantKey || "single",
+        unitCount,
+        quantity,
+        needUnits,
+        price: variant.price != null ? Number(variant.price) : Number(product.price || 0),
+        name: product.name,
+        image: product.image || "",
+      });
+    }
+
+    await session.commitTransaction();
+    session.endSession();
+    return reserved;
+  } catch (e) {
+    await session.abortTransaction();
+    session.endSession();
+    throw e;
+  }
+}
+
+/**
+ * 回滚库存（取消/支付失败）
+ */
+async function rollbackStock(items) {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    for (const it of items) {
+      const product = await Product.findById(it.productId).session(session);
+      if (!product) continue;
+      const addBack = Number(it.needUnits || (normalizeQty(it.quantity) * normalizeQty(it.unitCount || 1)));
+      product.stock = Number(product.stock || 0) + addBack;
+      await product.save({ session });
+    }
+    await session.commitTransaction();
+    session.endSession();
+  } catch (e) {
+    await session.abortTransaction();
+    session.endSession();
+    throw e;
+  }
+}
+
+// =========================
+// ping
+// =========================
+router.get("/ping", (req, res) => res.json({ ok: true, name: "orders" }));
+
+// =========================
+// 创建订单（预扣库存）
+// POST /api/orders
+// body: { items: [{productId, variantKey, quantity}], address, note, payMethod }
+// =========================
+router.post("/", requireLogin, async (req, res) => {
+  try {
+    const userId = req.user?._id;
+    if (!userId) return bad(res, "未登录", 401);
+
+    const items = Array.isArray(req.body.items) ? req.body.items : [];
+    if (!items.length) return bad(res, "items 不能为空");
+
+    // 1) 预扣库存，并把“规格换算后的明细”拿到
+    const reservedItems = await reserveStock(items);
+
+    // 2) 计算金额（这里给一个基础版；你可以接入优惠券/税/运费）
+    const subtotal = reservedItems.reduce((s, it) => s + Number(it.price || 0) * Number(it.quantity || 0), 0);
+    const total = Number(subtotal.toFixed(2));
+
+    // 3) 创建订单
+    const order = await Order.create({
+      userId,
+      status: "pending", // 待支付（库存已预扣）
+      payStatus: "pending",
+      payMethod: String(req.body.payMethod || "unknown"),
+      items: reservedItems.map((it) => ({
+        productId: it.productId,
+        variantKey: it.variantKey,
+        unitCount: it.unitCount,
+        quantity: it.quantity,
+        price: it.price,
+        name: it.name,
+        image: it.image,
+      })),
+      stockReserve: reservedItems.map((it) => ({
+        productId: it.productId,
+        variantKey: it.variantKey,
+        unitCount: it.unitCount,
+        quantity: it.quantity,
+        needUnits: it.needUnits,
+      })),
+      address: req.body.address || null,
+      note: String(req.body.note || ""),
+      subtotal,
+      total,
+    });
+
+    return res.json({ success: true, order });
+  } catch (e) {
+    return bad(res, e.message || "创建订单失败");
+  }
+});
+
+// =========================
+// 标记已支付（你可以在 Stripe webhook / 钱包扣款成功后调用）
+// POST /api/orders/:id/markPaid
+// =========================
+router.post("/:id/markPaid", requireLogin, async (req, res) => {
+  try {
+    const userId = req.user?._id;
+    const id = req.params.id;
+
+    const order = await Order.findById(id);
+    if (!order) return bad(res, "订单不存在", 404);
+    if (String(order.userId) !== String(userId) && req.user.role !== "admin") {
+      return bad(res, "无权限", 403);
+    }
+
+    if (order.status === "paid" || order.payStatus === "paid") {
+      return res.json({ success: true, order });
+    }
+
+    order.status = "paid";
+    order.payStatus = "paid";
+    order.paidAt = new Date();
+    await order.save();
+
+    return res.json({ success: true, order });
+  } catch (e) {
+    return bad(res, e.message || "更新支付状态失败");
+  }
+});
+
+// =========================
+// 取消订单（回滚库存）
+// POST /api/orders/:id/cancel
+// =========================
+router.post("/:id/cancel", requireLogin, async (req, res) => {
+  try {
+    const userId = req.user?._id;
+    const id = req.params.id;
+
+    const order = await Order.findById(id);
+    if (!order) return bad(res, "订单不存在", 404);
+
+    if (String(order.userId) !== String(userId) && req.user.role !== "admin") {
+      return bad(res, "无权限", 403);
+    }
+
+    if (order.status === "cancelled") return res.json({ success: true, order });
+    if (order.status === "paid" || order.payStatus === "paid") {
+      return bad(res, "已支付订单不能直接取消（需走退款流程）", 400);
+    }
+
+    // 回滚库存（用 stockReserve 最准）
+    const reserve = Array.isArray(order.stockReserve) ? order.stockReserve : [];
+    await rollbackStock(reserve);
+
+    order.status = "cancelled";
+    order.payStatus = "cancelled";
+    order.cancelledAt = new Date();
+    await order.save();
+
+    return res.json({ success: true, order });
+  } catch (e) {
+    return bad(res, e.message || "取消订单失败");
+  }
+});
+
+// =========================
+// 获取我的订单
+// GET /api/orders/my
+// =========================
+router.get("/my", requireLogin, async (req, res) => {
+  try {
+    const userId = req.user?._id;
+    const list = await Order.find({ userId }).sort({ createdAt: -1 }).limit(100);
+    return res.json({ success: true, list });
+  } catch (e) {
+    return bad(res, e.message || "获取订单失败");
+  }
+});
+
+export default router;

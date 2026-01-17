@@ -57,6 +57,26 @@ const orderItemSchema = new mongoose.Schema(
   { _id: false }
 );
 
+// ✅ 新增：预扣库存明细（取消/失败时回滚用）
+const stockReserveItemSchema = new mongoose.Schema(
+  {
+    productId: { type: mongoose.Schema.Types.ObjectId, ref: "Product", index: true },
+
+    // ✅ 规格标识：single / box12 ...
+    variantKey: { type: String, default: "single", index: true },
+
+    // ✅ 一份包含多少基础单位（单个=1，整箱=12）
+    unitCount: { type: Number, default: 1 },
+
+    // ✅ 订单里买了几份（几箱/几个）
+    qty: { type: Number, default: 1 },
+
+    // ✅ 实际扣库存基础单位数量：qty * unitCount
+    needUnits: { type: Number, default: 1 },
+  },
+  { _id: false }
+);
+
 // =========================
 // 主 Schema
 // =========================
@@ -220,6 +240,9 @@ const orderSchema = new mongoose.Schema(
 
     items: { type: [orderItemSchema], default: [] },
 
+    // ✅ 新增字段：库存预扣快照（用于取消/失败回滚库存）
+    stockReserve: { type: [stockReserveItemSchema], default: [] },
+
     driverId: { type: mongoose.Schema.Types.ObjectId, ref: "User", index: true },
     assignedAt: { type: Date, index: true },
     leaderId: { type: mongoose.Schema.Types.ObjectId, ref: "User", index: true },
@@ -255,6 +278,10 @@ orderSchema.index({ "payment.stripe.intentId": 1 });
 orderSchema.index({ "payment.stripePaymentIntentId": 1 });
 orderSchema.index({ "payment.idempotencyKey": 1 });
 orderSchema.index({ "payment.intentKey": 1 });
+
+// ✅ 新增：stockReserve 里按 productId/variantKey 也能查
+orderSchema.index({ "stockReserve.productId": 1 });
+orderSchema.index({ "stockReserve.variantKey": 1 });
 
 // =========================
 // pre-validate：金额 / 批次 / 派单统一
