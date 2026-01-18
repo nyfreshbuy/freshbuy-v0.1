@@ -473,11 +473,31 @@ function shortId(id) {
   return s.slice(0, 6) + "…" + s.slice(-4);
 }
 
-// ⚠️ 临时映射（不改后端也能显示中文）
-const ZONE_NAME_MAP = {
-  // 把你截图里的 ID 填在这里
-  // "694c97187dfd9edaedfc6ffe": "新鲜草原地区",
-};
+// ✅ zoneId -> zoneName（从 /api/admin/zones 拉取）
+let ZONE_NAME_MAP = {}; // { [zoneId]: zoneName }
+
+// ✅ 拉取区域列表，填充 ZONE_NAME_MAP
+async function loadZoneNameMap() {
+  try {
+    const res = await adminFetch("/api/admin/zones");
+    const data = await res.json();
+
+    const zones = Array.isArray(data) ? data : (data?.zones || []);
+    const map = {};
+
+    (zones || []).forEach((z) => {
+      const id = String(z._id || z.id || z.zoneId || "").trim();
+      const name = String(z.name || z.zoneName || z.title || "").trim();
+      if (id && name) map[id] = name;
+    });
+
+    ZONE_NAME_MAP = map;
+    console.log("✅ ZONE_NAME_MAP loaded:", ZONE_NAME_MAP);
+  } catch (e) {
+    console.warn("⚠️ loadZoneNameMap failed, will fallback to order.zoneName:", e);
+    ZONE_NAME_MAP = {};
+  }
+}
       // ✅ 动态刷新区域下拉（基于当前页订单真实 zoneId）
       function refreshAreaGroupZoneSelect(selectEl, orders, keepSelectedValue) {
   if (!selectEl) return;
@@ -493,8 +513,7 @@ const ZONE_NAME_MAP = {
     if (!zoneId) return;
 
     const nameFromOrder = getZoneNameFromOrder(o);
-    const displayName = nameFromOrder || ZONE_NAME_MAP[zoneId] || "";
-
+    const displayName = nameFromOrder || ZONE_NAME_MAP[String(zoneId).trim()] || "";
     const cur = zones.get(zoneId) || { count: 0, name: "" };
     cur.count += 1;
     if (!cur.name && displayName) cur.name = displayName;
@@ -1271,6 +1290,8 @@ function bindOrderTableActions() {
 
       window.addEventListener("DOMContentLoaded", () => {
         bindOrderTableActions();
+        // ✅ 先把 zoneId->zoneName 拉下来，这样下拉框就能显示中文
+  await loadZoneNameMap();
         loadOrders(1);     
         document.getElementById("btnSearch").addEventListener("click", () => loadOrders(1));
         document.getElementById("btnRefresh").addEventListener("click", () => loadOrders(currentPage));
