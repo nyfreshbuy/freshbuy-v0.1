@@ -1180,18 +1180,37 @@ const nonHotList = viewList.filter((p) => !isHotProduct(p));
 // =========================
 // 3) 登录 / 注册弹窗 + 顶部头像（✅ Mongo 真实接口版）
 // =========================
-const AUTH_TOKEN_KEY = "freshbuy_token";
+// ✅ 统一 token 读取/写入（兼容 auth_client.js 的 "token" + 你这份 index.js 的 "freshbuy_token"）
+const AUTH_TOKEN_KEYS = ["token", "freshbuy_token", "jwt", "auth_token", "access_token"];
 
 function getToken() {
-  return localStorage.getItem(AUTH_TOKEN_KEY) || "";
-}
-function setToken(token) {
-  if (token) localStorage.setItem(AUTH_TOKEN_KEY, token);
-}
-function clearToken() {
-  localStorage.removeItem(AUTH_TOKEN_KEY);
+  for (const k of AUTH_TOKEN_KEYS) {
+    const v = localStorage.getItem(k);
+    if (v && String(v).trim()) return String(v).trim();
+  }
+  return "";
 }
 
+function setToken(token) {
+  const t = String(token || "").trim();
+  if (!t) return;
+  // ✅ 统一写到 "token"（让 auth_client.js 和全站一致）
+  localStorage.setItem("token", t);
+  // ✅ 顺便把旧 key 也同步（避免历史代码只读 freshbuy_token）
+  localStorage.setItem("freshbuy_token", t);
+}
+
+function clearToken() {
+  // ✅ 退出时必须把所有 token key 都清掉
+  for (const k of AUTH_TOKEN_KEYS) localStorage.removeItem(k);
+
+  // ✅ 同时清理你项目里会导致“游客也显示登录信息”的缓存
+  localStorage.removeItem("freshbuy_is_logged_in");
+  localStorage.removeItem("freshbuy_login_phone");
+  localStorage.removeItem("freshbuy_login_nickname");
+  localStorage.removeItem("freshbuy_default_address");
+  localStorage.removeItem("freshbuy_wallet_balance");
+}
 async function apiFetch(url, options = {}) {
   const headers = Object.assign({}, options.headers || {});
   const token = getToken();

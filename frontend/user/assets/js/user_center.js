@@ -297,7 +297,16 @@
     alert("已退出登录");
     window.location.replace("/user/index.html?v=" + Date.now());
   });
-
+  // 例如：frontend/user/assets/js/index.js 或 user_center.js
+document.addEventListener("DOMContentLoaded", () => {
+  const btn = document.getElementById("btnLogout");
+  if (btn) {
+    btn.addEventListener("click", () => {
+      Auth.clear();               // ✅ 清 token + 地址 + 钱包
+      location.href = "/index.html"; // ✅ 跳回首页
+    });
+  }
+});
   // =========================
   // 菜单切换（你现在HTML用 active class）
   // =========================
