@@ -121,7 +121,10 @@ productSchema.index({ "variants.key": 1 });
 // ✅（可选但强烈建议）保存前规范化：
 // - specialEnabled=false 时清空特价字段
 // - specialQty<1 自动修正为 1
-productSchema.pre("save", function (next) {
+// ✅（强烈建议）保存前规范化：
+// - specialEnabled=false 时清空特价字段
+// - specialQty<1 自动修正为 1
+productSchema.pre("save", async function () {
   try {
     if (!this.specialEnabled) {
       this.specialPrice = null;
@@ -139,8 +142,9 @@ productSchema.pre("save", function (next) {
         if (Number.isFinite(t) && t > 0) this.specialPrice = t;
       }
     }
-  } catch {}
-  next();
+  } catch (e) {
+    // 这里不要 throw，避免影响保存；只打印日志方便排查
+    console.error("productSchema.pre(save) normalize error:", e);
+  }
 });
-
 export default mongoose.models.Product || mongoose.model("Product", productSchema);
