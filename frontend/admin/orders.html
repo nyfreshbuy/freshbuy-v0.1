@@ -763,10 +763,11 @@ const ZONE_NAME_MAP = {
               <td>${renderStatusTag(o.status)}</td>
               <td>${formatDate(o.createdAt)}</td>
               <td>
-                <button class="admin-btn admin-btn-ghost" onclick="viewOrderDetail('${o._id || o.id || oid}')">详情</button>
-                <button class="admin-btn admin-btn-ghost" onclick="printOrder('${o._id || o.id || oid}')">打印</button>
-                <button class="admin-btn admin-btn-ghost" onclick="markOrderCompleted('${o._id || o.id}')">标记完成</button>
-              </td>
+  <button class="admin-btn admin-btn-ghost" data-action="detail" data-id="${o._id || o.id || oid}">详情</button>
+  <button class="admin-btn admin-btn-ghost" data-action="print"  data-id="${o._id || o.id || oid}">打印</button>
+  <button class="admin-btn admin-btn-ghost" data-action="done"   data-id="${o._id || o.id || ""}">标记完成</button>
+</td>
+
             `;
             tbody.appendChild(tr);
           });
@@ -780,7 +781,31 @@ const ZONE_NAME_MAP = {
         document.getElementById("gmvSummary").innerHTML =
           `当前筛选 GMV：<span class="stat-highlight">$${gmv.toFixed(2)}</span>`;
       }
-      
+      // ✅ 订单表格操作：事件代理（修复 CSP 禁止 inline onclick 导致“点了没反应”）
+function bindOrderTableActions() {
+  // 防重复绑定（绑在 document 上）
+  if (window.__ordersActionBound) return;
+  window.__ordersActionBound = true;
+
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest("#ordersTableBody button[data-action]");
+    if (!btn) return;
+
+    const action = btn.dataset.action;
+    const id = btn.dataset.id;
+
+    if (!id) {
+      alert("按钮缺少 data-id，无法操作");
+      return;
+    }
+
+    if (action === "detail") return viewOrderDetail(id);
+    if (action === "print") return printOrder(id);
+    if (action === "done") return markOrderCompleted(id);
+  });
+
+  console.log("✅ bindOrderTableActions: bound on document");
+}
       // ✅ 拉取订单列表
       async function loadOrders(page = 1) {
         currentPage = page;
@@ -1245,8 +1270,8 @@ const ZONE_NAME_MAP = {
       }
 
       window.addEventListener("DOMContentLoaded", () => {
-        loadOrders(1);
-
+        bindOrderTableActions();
+        loadOrders(1);     
         document.getElementById("btnSearch").addEventListener("click", () => loadOrders(1));
         document.getElementById("btnRefresh").addEventListener("click", () => loadOrders(currentPage));
         document.getElementById("btnPrevPage").addEventListener("click", () => {
