@@ -1355,7 +1355,63 @@ function applyLoggedOutUI() {
   if (registerBtn) registerBtn.style.display = "";
   if (userProfile) userProfile.style.display = "none";
 }
+// ================================
+// ✅ 强制退出：不管你之前用哪个 key，都能退出
+// ================================
+function hardLogout() {
+  // 1) 清 token（两套系统都清）
+  const tokenKeys = ["token", "freshbuy_token", "jwt", "auth_token", "access_token"];
+  tokenKeys.forEach((k) => localStorage.removeItem(k));
 
+  // 2) 清登录态/用户缓存
+  const miscKeys = [
+    "freshbuy_is_logged_in",
+    "freshbuy_login_phone",
+    "freshbuy_login_nickname",
+    "freshbuy_default_address",
+    "freshbuy_wallet_balance",
+    "user",
+    "freshbuy_user",
+  ];
+  miscKeys.forEach((k) => localStorage.removeItem(k));
+
+  try { sessionStorage.clear(); } catch {}
+
+  // 3) 立刻切 UI
+  applyLoggedOutUI();
+  unlockZipInputForGuest();
+
+  // 4) 提示 + 回首页（防止其它初始化又把 UI 改回去）
+  alert("已退出登录");
+  location.href = "/user/index.html";
+}
+
+// ✅ 事件委托：只要你点的元素里出现这些文字/属性，就当成退出
+document.addEventListener("click", (e) => {
+  const el = e.target.closest("button,a,div,span");
+  if (!el) return;
+
+  const text = (el.textContent || "").trim();
+  const id = (el.id || "").toLowerCase();
+  const cls = (el.className || "").toString().toLowerCase();
+
+  // 你不用知道按钮 id 是啥，这里兜底匹配
+  const hit =
+    text === "退出" ||
+    text === "退出登录" ||
+    text === "登出" ||
+    id.includes("logout") ||
+    id.includes("signout") ||
+    cls.includes("logout") ||
+    cls.includes("signout") ||
+    el.getAttribute("data-action") === "logout";
+
+  if (hit) {
+    e.preventDefault();
+    e.stopPropagation();
+    hardLogout();
+  }
+});
 async function initAuthUIFromStorage() {
   const me = await apiMe();
   if (me && me.phone) applyLoggedInUI(me.phone);
