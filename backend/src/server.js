@@ -120,7 +120,10 @@ app.use("/api/admin/orders", adminOrdersRouter);
 // ✅✅✅ 先挂最具体的（避免被 /api/driver 吃掉）
 // （只挂一次！driver_orders.js 只负责 /api/driver/orders/...）
 app.use("/api/driver/orders", driverOrdersRouter);
-
+app.use("/api/admin/products", adminProductsRouter); // ✅ 放这里（关键）
+app.use("/api/admin/users", adminUsersMongoRouter);  // ✅ 建议也放这里（同理）
+app.use("/api/admin/zones", adminZonesRouter);
+console.log("✅ admin_zones 已挂载到 /api/admin/zones");
 // 你原来挂的 picklist（保持）
 app.use("/api/admin", adminPicklist);
 
@@ -175,8 +178,7 @@ app.use("/api/driver", driverRouter);
 
 // ---- 后台 ----
 app.use("/api/admin/dashboard", adminDashboardrouter);
-app.use("/api/admin/zones", adminZonesRouter);
-console.log("✅ admin_zones 已挂载到 /api/admin/zones");
+
 
 app.use("/api/admin/auth", adminAuthRouter);
 console.log("✅ admin_auth 已挂载到 /api/admin/auth");
@@ -202,15 +204,8 @@ app.get("/api/admin/orders/__mounted", (req, res) => {
 app.patch("/api/admin/orders/__ping-status", (req, res) => {
   res.json({ ok: true, hit: "/api/admin/orders/__ping-status" });
 });
-
-// 后台商品管理
-app.use("/api/admin/products", adminProductsRouter);
-
 // 司机管理
 app.use("/api/admin", adminDriversRouter);
-
-// ✅ 用户管理：MongoDB
-app.use("/api/admin/users", adminUsersMongoRouter);
 
 // 后台结算
 app.use("/api/admin/settlements", adminSettlementsRouter);
