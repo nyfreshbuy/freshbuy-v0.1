@@ -12,9 +12,16 @@
 // ✅ 9) 修复：点击 次日配送/好友拼单 时，右侧信息不再被 ZIP 匹配强制改回“区域团”
 // ✅ 10) 修复：右侧只渲染到 #deliveryInfoBody，不覆盖右侧 ZIP box
 // ✅ 11) 区域团：按 zone.name 区分“白石镇/大学点 vs 新鲜草原”的配送时间文案 + 真实截单倒计时
-// ✅ 12) ✅ 商品图片右下角数量徽章：插入 DOM + 加购后立刻显示 + 同步 cart 更新（强兼容）
-// ✅ 13) FIX: 避免 FreshCart 直接引用导致 ReferenceError（统一用 window.FreshCart）
+// ✅ 12) 商品图片右下角数量徽章：插入 DOM + 加购后立刻显示 + 同步 cart 更新（强兜底）
+// ✅ 13) 库存规则（前台体验 + 强兜底）：
+//     - 单个：max=stock
+//     - 整箱：max=floor(stock/unitCount)
+//     - 徽章 = min(购物车数量, 卡片可买上限)
+// ✅ 14) 自动刷新库存：轮询 /api/products-simple → 更新卡片状态/按钮/文案/徽章
+// ✅ 15) 整箱显示「仅剩 X 箱」
+// ✅ 16) 去掉数量输入框：只保留 +/-（防止用户乱输）
 // =======================================================
+
 console.log("✅ index.js UPDATED AT:", new Date().toISOString());
 console.log("Freshbuy index main script loaded (db-zones version)");
 
@@ -51,6 +58,7 @@ const SECTION_LIMITS = {
     default: 6,
   },
 };
+
 function money(n) {
   const v = Number(n || 0);
   return v % 1 === 0 ? String(v.toFixed(0)) : String(v.toFixed(2));
@@ -60,31 +68,32 @@ function getSpecialText(p) {
   if (!p || !p.specialEnabled) return "";
   const qty = Math.max(1, Math.floor(Number(p.specialQty || 1)));
   const total = p.specialTotalPrice == null ? null : Number(p.specialTotalPrice);
-  // ✅ 2 for X
   if (qty > 1 && Number.isFinite(total) && total > 0) {
     return `${qty} for $${money(total)}`;
   }
-  // ✅ 单件特价
   const sp = p.specialPrice == null ? null : Number(p.specialPrice);
   if (Number.isFinite(sp) && sp > 0) return `特价 $${money(sp)}`;
   return "";
 }
 
 function buildVariantPriceLines(p) {
-  const vs = Array.isArray(p?.variants) ? p.variants.filter(v => v && v.enabled !== false) : [];
+  const vs = Array.isArray(p?.variants) ? p.variants.filter((v) => v && v.enabled !== false) : [];
   if (!vs.length) return "";
-  // 只显示 unitCount>1 的（整箱）
-  const boxes = vs.filter(v => Number(v.unitCount || 1) > 1).sort((a,b)=>(a.sortOrder||0)-(b.sortOrder||0));
+  const boxes = vs
+    .filter((v) => Number(v.unitCount || 1) > 1)
+    .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
   if (!boxes.length) return "";
-  const lines = boxes.map(v => {
-    const boxPrice = (v.price != null && Number(v.price) > 0)
-      ? Number(v.price)
-      : Number(p.price || p.originPrice || 0) * Number(v.unitCount || 1);
+  const lines = boxes.map((v) => {
+    const boxPrice =
+      v.price != null && Number(v.price) > 0
+        ? Number(v.price)
+        : Number(p.price || p.originPrice || 0) * Number(v.unitCount || 1);
     const label = v.label || `整箱(${Number(v.unitCount || 1)}个)`;
     return `<div class="variant-line">📦 ${label}：$${money(boxPrice)}</div>`;
   });
   return `<div class="variant-box">${lines.join("")}</div>`;
 }
+
 function isMobileView() {
   return window.matchMedia("(max-width: 768px)").matches;
 }
@@ -121,10 +130,7 @@ function renderCategoryPills(list) {
 
 // 顶部“查看全部” & 左侧快捷入口滚动
 function scrollToSection(selectorOrId) {
-  const sel =
-    selectorOrId.startsWith("#") || selectorOrId.startsWith(".")
-      ? selectorOrId
-      : "#" + selectorOrId;
+  const sel = selectorOrId.startsWith("#") || selectorOrId.startsWith(".") ? selectorOrId : "#" + selectorOrId;
   const el = document.querySelector(sel);
   if (!el) return;
   const rect = el.getBoundingClientRect();
@@ -154,16 +160,15 @@ const deliveryInfoBody = document.getElementById("deliveryInfoBody");
 const MODE_USER_SELECTED_KEY = "freshbuy_user_selected_mode";
 
 // ✅ 区域团时间文案：按 zone.name 区分
-// weekday: 0=周日 ... 6=周六
 const ZONE_SCHEDULE = {
   "白石镇/大学点地区": {
     eta: "本周六 18:00 - 22:00",
-    cutoff: { weekday: 5, hour: 23, minute: 59, second: 59 }, // 周六 23:59:59 ✅
+    cutoff: { weekday: 5, hour: 23, minute: 59, second: 59 },
     cutoffText: "周五 23:59:59",
   },
   "新鲜草原地区": {
     eta: "本周五 18:00 - 22:00",
-    cutoff: { weekday: 4, hour: 23, minute: 59, second: 59 }, // 周五 23:59:59 ✅
+    cutoff: { weekday: 4, hour: 23, minute: 59, second: 59 },
     cutoffText: "周四 23:59:59",
   },
 };
@@ -201,9 +206,7 @@ let countdownTimer = null;
 let friendEndTime = null;
 let friendCountdownTimer = null;
 
-// =========================
 // ✅ 区域团：真实截单倒计时（按 zone 的 cutoff 计算）
-// =========================
 function getNextCutoffDate(cutoff) {
   const now = new Date();
   const target = new Date(now);
@@ -214,14 +217,8 @@ function getNextCutoffDate(cutoff) {
   let addDays = (targetWeekday - nowWeekday + 7) % 7;
   target.setDate(now.getDate() + addDays);
 
-  target.setHours(
-    cutoff?.hour ?? 23,
-    cutoff?.minute ?? 59,
-    cutoff?.second ?? 59,
-    0
-  );
+  target.setHours(cutoff?.hour ?? 23, cutoff?.minute ?? 59, cutoff?.second ?? 59, 0);
 
-  // 今天就是截单日但已过点 → 推到下周
   if (addDays === 0 && target.getTime() <= now.getTime()) {
     target.setDate(target.getDate() + 7);
   }
@@ -231,7 +228,6 @@ function getNextCutoffDate(cutoff) {
 
 function startAreaGroupCountdownTo(endDate) {
   if (countdownTimer) clearInterval(countdownTimer);
-
   groupEndTime = endDate instanceof Date ? endDate : null;
   countdownTimer = setInterval(updateAreaCountdown, 1000);
   updateAreaCountdown();
@@ -260,9 +256,7 @@ function updateAreaCountdown() {
   }
 }
 
-// =========================
 // 好友拼单倒计时到今晚 24:00
-// =========================
 function startFriendCountdownToMidnight() {
   if (friendCountdownTimer) clearInterval(friendCountdownTimer);
   const now = new Date();
@@ -286,15 +280,13 @@ function updateFriendCountdown() {
   const el2 = document.getElementById("friendModalCountdown");
   if (el1) el1.textContent = text;
   if (el2) el2.textContent = text;
-  if (friendEndTime - now <= 0 && friendCountdownTimer)
-    clearInterval(friendCountdownTimer);
+  if (friendEndTime - now <= 0 && friendCountdownTimer) clearInterval(friendCountdownTimer);
 }
 
 // ✅ 统一：只写 #deliveryInfoBody，不覆盖右侧 ZIP box
 function renderDeliveryInfo(mode) {
   if (!deliveryHint || !deliveryInfoBody) return;
 
-  // ✅ 用 ZIP 匹配到的区域名（优先）
   const z = getSavedZoneBrief();
   const zoneName = z?.name || deliveryStats["area-group"].areaName || "区域团";
   const schedule = getZoneSchedule(zoneName);
@@ -341,12 +333,8 @@ function renderDeliveryInfo(mode) {
       <div class="delivery-info-title">好友拼单配送</div>
       <ul class="delivery-info-list">
         <li>当前拼单人数：<span class="delivery-highlight">${st.joinedUsers}</span> 人</li>
-        <li>预计人均运费：<span class="delivery-highlight">$${Number(
-          st.avgFee || 0
-        ).toFixed(2)}</span></li>
-        <li>建议起送金额：<span class="delivery-highlight">$${Number(
-          st.minAmount || 0
-        ).toFixed(2)}</span></li>
+        <li>预计人均运费：<span class="delivery-highlight">$${Number(st.avgFee || 0).toFixed(2)}</span></li>
+        <li>建议起送金额：<span class="delivery-highlight">$${Number(st.minAmount || 0).toFixed(2)}</span></li>
         <li>有效期倒计时：<span class="delivery-countdown" id="friendCountdown">--:--:--</span></li>
       </ul>
     `;
@@ -369,19 +357,14 @@ document.addEventListener("click", (e) => {
   const pill = e.target.closest(".delivery-pill");
   if (!pill) return;
 
-  document
-    .querySelectorAll(".delivery-pill")
-    .forEach((btn) => btn.classList.remove("active"));
+  document.querySelectorAll(".delivery-pill").forEach((btn) => btn.classList.remove("active"));
   pill.classList.add("active");
 
   const mode = pill.dataset.mode;
 
-  // ✅ 标记：用户手动选过模式（ZIP 匹配不再强制切回区域团）
   localStorage.setItem(MODE_USER_SELECTED_KEY, "1");
-
   renderDeliveryInfo(mode);
 
-  // ✅ 记住用户选择，并通知 cart.js
   try {
     function toCartModeKey(m) {
       if (m === "area-group") return "groupDay";
@@ -391,9 +374,7 @@ document.addEventListener("click", (e) => {
     }
     const mapped = toCartModeKey(mode || "");
     localStorage.setItem("freshbuy_pref_mode", mapped);
-    window.dispatchEvent(
-      new CustomEvent("freshbuy:deliveryModeChanged", { detail: { mode: mapped } })
-    );
+    window.dispatchEvent(new CustomEvent("freshbuy:deliveryModeChanged", { detail: { mode: mapped } }));
   } catch {}
 
   if (mode === "friend-group") openShareModal();
@@ -407,8 +388,7 @@ const shareCloseBtn = document.getElementById("shareCloseBtn");
 
 function openShareModal() {
   if (!shareBackdrop || !shareInput) return;
-  const url =
-    window.location.origin + "/user/index.html?mode=friend-group&ts=" + Date.now();
+  const url = window.location.origin + "/user/index.html?mode=friend-group&ts=" + Date.now();
   shareInput.value = url;
   shareBackdrop.classList.add("active");
   startFriendCountdownToMidnight();
@@ -461,21 +441,16 @@ setTimeout(() => {
 // =========================
 // 2) 商品卡片 + 首页商品（按你现在的 5 个区块）
 // =========================
-// =========================
+
 // ✅ variants 展开：同一商品 -> 多个“展示商品”（单个/整箱）
-// =========================
-// =========================
-// ✅ variants 展开：同一商品 -> 多个“展示商品”（单个/整箱）
-// =========================
 function expandProductsWithVariants(list) {
   const out = [];
   const arr = Array.isArray(list) ? list : [];
 
   for (const p of arr) {
-    const productId = String(p?._id || p?.id || "").trim(); // ✅ Mongo 优先
+    const productId = String(p?._id || p?.id || "").trim();
     const variants = Array.isArray(p?.variants) ? p.variants : [];
 
-    // 没 variants：当作 single 展示一张
     if (!variants.length) {
       const vKey = "single";
       out.push({
@@ -483,15 +458,14 @@ function expandProductsWithVariants(list) {
         __productId: productId,
         __variantKey: vKey,
         __variantLabel: "单个",
-        __unitCount: 1, // ✅ 必须带
+        __unitCount: 1,
         __displayName: p?.name || "",
-        __displayPrice: null, // 走你原 price 逻辑
+        __displayPrice: null,
         __cartKey: productId ? `${productId}::${vKey}` : String(p?.sku || p?.id || ""),
       });
       continue;
     }
 
-    // 有 variants：每个 enabled 的 variant 展示一张
     const enabledVars = variants.filter((v) => v && v.enabled !== false);
     if (!enabledVars.length) {
       const vKey = "single";
@@ -500,7 +474,7 @@ function expandProductsWithVariants(list) {
         __productId: productId,
         __variantKey: vKey,
         __variantLabel: "单个",
-        __unitCount: 1, // ✅ 这里你原来缺了
+        __unitCount: 1,
         __displayName: p?.name || "",
         __displayPrice: null,
         __cartKey: productId ? `${productId}::${vKey}` : String(p?.sku || p?.id || ""),
@@ -512,21 +486,16 @@ function expandProductsWithVariants(list) {
       const vKey = String(v.key || "single").trim() || "single";
       const unitCount = Math.max(1, Math.floor(Number(v.unitCount || 1)));
 
-      // label：优先后端 label，否则自动生成
-      const vLabel =
-        String(v.label || "").trim() ||
-        (unitCount > 1 ? `整箱(${unitCount}个)` : "单个");
+      const vLabel = String(v.label || "").trim() || (unitCount > 1 ? `整箱(${unitCount}个)` : "单个");
 
-      // price：variant.price 有就用；否则 null 继续走原逻辑
-      const vPrice =
-        v.price != null && Number.isFinite(Number(v.price)) ? Number(v.price) : null;
+      const vPrice = v.price != null && Number.isFinite(Number(v.price)) ? Number(v.price) : null;
 
       out.push({
         ...p,
         __productId: productId,
         __variantKey: vKey,
         __variantLabel: vLabel,
-        __unitCount: unitCount, // ✅ 必须带：用于整箱 maxQty=stock/unitCount
+        __unitCount: unitCount,
         __displayName: `${p?.name || ""} - ${vLabel}`,
         __displayPrice: vPrice,
         __cartKey: productId ? `${productId}::${vKey}` : String(p?.sku || p?.id || ""),
@@ -536,6 +505,7 @@ function expandProductsWithVariants(list) {
 
   return out;
 }
+
 const cartConfig = {
   cartIconId: "cartIcon",
   cartBackdropId: "cartBackdrop",
@@ -561,20 +531,11 @@ function hasKeyword(p, keyword) {
   const kw = String(keyword).toLowerCase();
   const norm = (v) => (v ? String(v).toLowerCase() : "");
 
-  const fields = [
-    p.tag,
-    p.type,
-    p.category,
-    p.subCategory,
-    p.mainCategory,
-    p.subcategory,
-    p.section,
-  ];
+  const fields = [p.tag, p.type, p.category, p.subCategory, p.mainCategory, p.subcategory, p.section];
   if (fields.some((f) => norm(f).includes(kw))) return true;
 
   if (Array.isArray(p.tags) && p.tags.some((t) => norm(t).includes(kw))) return true;
-  if (Array.isArray(p.labels) && p.labels.some((t) => norm(t).includes(kw)))
-    return true;
+  if (Array.isArray(p.labels) && p.labels.some((t) => norm(t).includes(kw))) return true;
 
   return false;
 }
@@ -592,18 +553,11 @@ function isHotProduct(p) {
 }
 
 function isSpecialDeal(p) {
-  if (
-    isTrueFlag(p.isSpecial) ||
-    isTrueFlag(p.isDailySpecial) ||
-    isTrueFlag(p.onSale) ||
-    isTrueFlag(p.isSale)
-  )
+  if (isTrueFlag(p.isSpecial) || isTrueFlag(p.isDailySpecial) || isTrueFlag(p.onSale) || isTrueFlag(p.isSale))
     return true;
 
   const basePrice = Number(p.price ?? p.regularPrice ?? p.originPrice ?? 0);
-  const salePrice = Number(
-    p.salePrice ?? p.specialPrice ?? p.discountPrice ?? p.flashPrice ?? 0
-  );
+  const salePrice = Number(p.salePrice ?? p.specialPrice ?? p.discountPrice ?? p.flashPrice ?? 0);
 
   if (basePrice > 0 && salePrice > 0 && salePrice < basePrice) return true;
 
@@ -633,10 +587,7 @@ function isBestSellerProduct(p) {
 
 function isNewProduct(p) {
   const flag =
-    isTrueFlag(p.isNew) ||
-    isTrueFlag(p.isNewArrival) ||
-    hasKeyword(p, "新品") ||
-    hasKeyword(p, "新上架");
+    isTrueFlag(p.isNew) || isTrueFlag(p.isNewArrival) || hasKeyword(p, "新品") || hasKeyword(p, "新上架");
 
   if (!flag) return false;
 
@@ -649,16 +600,24 @@ function isNewProduct(p) {
 }
 
 // ================================
-// ✅✅✅ 商品图片右下角数量徽章工具函数
+// ✅✅✅ 商品图片右下角数量徽章工具函数（强兜底）
+// 徽章 = min(购物车数量, 卡片可买上限card.__maxQty)
 // ================================
-function setProductBadge(pid, qty) {
+function setProductBadge(pid, cartQty) {
   const els = document.querySelectorAll(`.product-qty-badge[data-pid="${pid}"]`);
   if (!els || !els.length) return;
 
-  const n = Number(qty || 0);
+  const raw = Math.max(0, Math.floor(Number(cartQty || 0) || 0));
+
   els.forEach((el) => {
-    if (n > 0) {
-      el.textContent = n >= 99 ? "99+" : String(n);
+    const card = el.closest(".product-card");
+    const cap0 = Number(card?.__maxQty);
+    const cap = Number.isFinite(cap0) ? Math.max(0, Math.floor(cap0)) : Infinity;
+
+    const showQty = Math.min(raw, cap);
+
+    if (showQty > 0) {
+      el.textContent = showQty >= 99 ? "99+" : String(showQty);
       el.style.display = "flex";
     } else {
       el.textContent = "";
@@ -669,7 +628,6 @@ function setProductBadge(pid, qty) {
 
 // ✅ 更强：从 FreshCart / Cart / localStorage 自动找“像购物车”的数据
 function getCartSnapshot() {
-  // 1) FreshCart（尽量多尝试常见方法/字段）
   try {
     const fc = window.FreshCart;
     if (fc) {
@@ -682,7 +640,6 @@ function getCartSnapshot() {
     }
   } catch {}
 
-  // 2) Cart（老版本）
   try {
     const c = window.Cart;
     if (c) {
@@ -695,24 +652,18 @@ function getCartSnapshot() {
     }
   } catch {}
 
-  // 3) localStorage（强力兜底：自动扫描所有 key，只要像 cart 就尝试解析）
   try {
     const candidates = [];
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
       if (!k) continue;
-      const lk = k.toLowerCase();
-      if (lk.includes("cart")) candidates.push(k);
+      if (k.toLowerCase().includes("cart")) candidates.push(k);
     }
 
-    // 优先 freshbuy 的，再扫其它
     candidates.sort((a, b) => {
       const A = a.toLowerCase();
       const B = b.toLowerCase();
-      const score = (s) =>
-        (s.includes("freshbuy") ? 10 : 0) +
-        (s.includes("fb") ? 3 : 0) +
-        (s.includes("cart") ? 1 : 0);
+      const score = (s) => (s.includes("freshbuy") ? 10 : 0) + (s.includes("fb") ? 3 : 0) + (s.includes("cart") ? 1 : 0);
       return score(B) - score(A);
     });
 
@@ -735,16 +686,14 @@ function getCartSnapshot() {
   return null;
 }
 
-// ✅ 更强：把各种“购物车结构”统一成 { pid: qty }
+// ✅ 把各种“购物车结构”统一成 { [pid/cartKey]: qty }
 function normalizeCartToQtyMap(cart) {
   const map = {};
   if (!cart) return map;
 
-  // 递归找 items（支持嵌套：cart.items / data.items / state.cart.items 等）
   function findItems(obj, depth = 0) {
     if (!obj || typeof obj !== "object" || depth > 6) return null;
     if (Array.isArray(obj)) {
-      // 有些直接就是 items 数组
       if (obj.length && typeof obj[0] === "object") return obj;
       return null;
     }
@@ -764,55 +713,35 @@ function normalizeCartToQtyMap(cart) {
 
   const items = findItems(cart);
 
-  // 情况 1：items 数组
   if (Array.isArray(items)) {
     items.forEach((it) => {
-      const id =
-        String(
-          it.id ||
-            it.pid ||
-            it.productId ||
-            it.product_id ||
-            it.sku ||
-            it._id ||
-            it.product?._id ||
-            it.product?.id ||
-            it.product?.sku ||
-            ""
-        ).trim();
+      const id = String(
+        it.id ||
+          it.pid ||
+          it.productId ||
+          it.product_id ||
+          it.sku ||
+          it._id ||
+          it.product?._id ||
+          it.product?.id ||
+          it.product?.sku ||
+          ""
+      ).trim();
 
-      const qty = Number(
-        it.qty ??
-          it.quantity ??
-          it.count ??
-          it.num ??
-          it.amount ??
-          it.n ??
-          it.q ??
-          0
-      );
+      const qty = Number(it.qty ?? it.quantity ?? it.count ?? it.num ?? it.amount ?? it.n ?? it.q ?? 0);
 
       if (id) map[id] = (map[id] || 0) + (Number.isFinite(qty) ? qty : 0);
     });
     return map;
   }
 
-  // 情况 2：对象形式：{ [pid]: qty } 或 { [pid]: {qty} }
   if (typeof cart === "object") {
     for (const k of Object.keys(cart)) {
       const v = cart[k];
       if (!k) continue;
 
       const lk = String(k).toLowerCase();
-      if (
-        lk === "total" ||
-        lk === "meta" ||
-        lk === "items" ||
-        lk === "cart" ||
-        lk === "state" ||
-        lk === "data"
-      )
-        continue;
+      if (lk === "total" || lk === "meta" || lk === "items" || lk === "cart" || lk === "state" || lk === "data") continue;
 
       const id = String(k).trim();
       const qty = Number(v?.qty ?? v?.quantity ?? v?.count ?? v ?? 0);
@@ -833,7 +762,7 @@ function trySyncBadgesFromCart() {
   });
 }
 
-// ✅ 可选：轻量节流，避免频繁同步抖动
+// ✅ 轻量节流，避免频繁同步抖动
 let __badgeSyncTimer = null;
 function scheduleBadgeSync() {
   if (__badgeSyncTimer) return;
@@ -842,6 +771,8 @@ function scheduleBadgeSync() {
     trySyncBadgesFromCart();
   }, 50);
 }
+
+/* ====== 下一段从 createProductCard() 开始 ====== */
 function createProductCard(p, extraBadgeText) {
   const article = document.createElement("article");
   article.className = "product-card";
@@ -850,12 +781,20 @@ function createProductCard(p, extraBadgeText) {
   const productId = String(p.__productId || p._id || p.id || "").trim();
   const variantKey = String(p.__variantKey || "single").trim() || "single";
 
+  // ✅ 让后续“自动刷新库存/限制加购/徽章兜底”能定位到这张卡
+  article.dataset.productId = productId;
+  article.dataset.variantKey = variantKey;
+
+  // ✅ unitCount：来自 expandProductsWithVariants（整箱>1；单个=1）
+  const unitCount = Math.max(1, Math.floor(Number(p.__unitCount || 1) || 1));
+  article.dataset.unitCount = String(unitCount);
+
   // ✅ cartKey：购物车里区分“单个/整箱”
   const cartKey = String(
     p.__cartKey || (productId ? `${productId}::${variantKey}` : p.sku || p.id || "")
   ).trim();
 
-  // ✅ badge / 加购按钮都用 cartKey（这样单个和整箱的数量不会混在一起）
+  // ✅ badge / 加购按钮都用 cartKey（这样单个和整箱数量不会混在一起）
   const pid = cartKey;
 
   // ✅ 展示名 & 展示价格（variant.price 优先）
@@ -869,10 +808,9 @@ function createProductCard(p, extraBadgeText) {
   const originUnit =
     Number(p.originPrice ?? p.originalPrice ?? p.regularPrice ?? p.price ?? 0) || 0;
 
-  // 规格卡（整箱）如果有 override 价格，就用 override 当“单次购买价”
+  // 整箱卡如果有 override 价格，就用 override 当“单次购买价”
   const basePrice = displayPriceOverride != null ? displayPriceOverride : originUnit;
 
-  // 后端新字段
   const specialEnabled = !!p.specialEnabled;
   const specialQty = Math.max(1, Math.floor(Number(p.specialQty || 1) || 1));
   const specialTotal =
@@ -882,20 +820,15 @@ function createProductCard(p, extraBadgeText) {
       ? Number(p.specialPrice)
       : 0;
 
-  // 只对“单个卡”显示 N for $X（避免整箱也显示 2 for）
   const isSingleVariant = String(variantKey || "single") === "single";
 
-  // 最终：展示用（大字、小字）
   let priceMainText = `$${Number(basePrice || 0).toFixed(2)}`;
   let priceSubText = "";
 
-  // ✅ A) 2 for $X：展示大字是 “2 for $4.98”，小字显示单个原价
   if (isSingleVariant && specialEnabled && specialQty > 1 && specialTotal > 0) {
     priceMainText = `${specialQty} for $${specialTotal.toFixed(2)}`;
     if (originUnit > 0) priceSubText = `单个原价 $${originUnit.toFixed(2)}`;
-  }
-  // ✅ B) 单件特价：展示大字是特价，小字显示原价
-  else if (
+  } else if (
     isSingleVariant &&
     specialEnabled &&
     specialQty === 1 &&
@@ -904,9 +837,7 @@ function createProductCard(p, extraBadgeText) {
   ) {
     priceMainText = `$${specialTotal.toFixed(2)}`;
     priceSubText = `原价 $${originUnit.toFixed(2)}`;
-  }
-  // ✅ C) 非单个卡（整箱）：就显示 basePrice；小字可提示单个原价
-  else {
+  } else {
     if (!isSingleVariant && originUnit > 0) priceSubText = `单个原价 $${originUnit.toFixed(2)}`;
   }
 
@@ -920,18 +851,30 @@ function createProductCard(p, extraBadgeText) {
   const tagline = (p.tag || p.category || "").slice(0, 18);
   const limitQty = p.limitQty || p.limitPerUser || p.maxQty || p.purchaseLimit || 0;
 
-  // =========================
-  // ✅✅✅ 库存限购（前台仅辅助体验）
-  // 单个：max = stock
-  // 整箱：max = floor(stock / unitCount)
-  // =========================
-  const stock = Math.max(0, Math.floor(Number(p.stock ?? 0)));
-  const unitCount = Math.max(1, Math.floor(Number(p.__unitCount || 1)));
-  const maxQtyByStock = unitCount > 1 ? Math.floor(stock / unitCount) : stock;
+  // ==========================================================
+  // ✅✅✅ 唯一库存计算（全文件唯一口径）
+  // stockUnits 单位=单个
+  // 单个：maxQty=stockUnits
+  // 整箱：maxQty=floor(stockUnits/unitCount)
+  // ==========================================================
+  const stockUnits = Math.max(0, Math.floor(Number(p.stock ?? p.inventory ?? 0) || 0));
+  let maxQty = variantKey === "single" ? stockUnits : Math.floor(stockUnits / unitCount);
 
-  // 如果你还要叠加“每人限购”，这里取更小的那个（可选）
-  const maxQty = limitQty > 0 ? Math.max(0, Math.min(maxQtyByStock, Math.floor(Number(limitQty)))) : maxQtyByStock;
+  // 叠加“每人限购”（如果有）
+  if (Number(limitQty) > 0) {
+    const lim = Math.max(0, Math.floor(Number(limitQty)));
+    maxQty = Math.max(0, Math.min(maxQty, lim));
+  }
 
+  // ✅ 挂到 card 上（徽章兜底 & 自动刷新使用）
+  article.__stockUnits = stockUnits;
+  article.__maxQty = maxQty;
+
+  // ✅ 纯显示：整箱显示“仅剩 X 箱”
+  const maxText =
+    unitCount > 1 ? `仅剩 ${Math.max(0, maxQty)} 箱` : `仅剩 ${Math.max(0, maxQty)}`;
+
+  // ✅ clamp：把用户选择数量限制在 [1, maxQty]
   function clampQty(q) {
     let n = Math.floor(Number(q || 1));
     if (!Number.isFinite(n) || n < 1) n = 1;
@@ -939,6 +882,9 @@ function createProductCard(p, extraBadgeText) {
     if (n > maxQty) n = maxQty;
     return n;
   }
+
+  // ✅ 当前选择数量（没有输入框，内部变量）
+  let selectedQty = 1;
 
   article.innerHTML = `
   <div class="product-image-wrap">
@@ -950,8 +896,8 @@ function createProductCard(p, extraBadgeText) {
     <div class="product-overlay">
       <div class="overlay-btn-row">
         <button type="button" class="overlay-btn fav">⭐ 收藏</button>
-        <button type="button" class="overlay-btn add" data-add-pid="${pid}" ${maxQty<=0 ? "disabled" : ""}>
-          ${maxQty<=0 ? "已售罄" : `加入购物车${limitQty > 0 ? `（限购${limitQty}）` : ""}`}
+        <button type="button" class="overlay-btn add" data-add-pid="${pid}" ${maxQty <= 0 ? "disabled" : ""}>
+          ${maxQty <= 0 ? "已售罄" : `加入购物车${limitQty > 0 ? `（限购${limitQty}）` : ""}`}
         </button>
       </div>
     </div>
@@ -973,30 +919,34 @@ function createProductCard(p, extraBadgeText) {
 
   <div class="product-tagline">${tagline}</div>
 
-  <!-- ✅✅✅ 数量步进器（前台辅助体验） -->
+  <!-- ✅✅✅ 数量步进器：无输入框，只保留 +/- 和数字显示 -->
   <div class="qty-row" style="display:flex;align-items:center;gap:8px;margin-top:10px;">
     <button type="button" class="qty-btn" data-qty-minus style="width:34px;height:34px;border-radius:10px;">-</button>
 
-    <input
-      type="number"
-      inputmode="numeric"
-      min="1"
-      step="1"
-      class="qty-input"
-      data-qty-input
-      value="1"
-      style="width:64px;height:34px;border-radius:10px;text-align:center;"
-    />
+    <div
+      data-qty-display
+      style="
+        width:64px;
+        height:34px;
+        border-radius:10px;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        border:2px solid #111;
+        font-weight:800;
+        background:#fff;
+      "
+    >1</div>
 
     <button type="button" class="qty-btn" data-qty-plus style="width:34px;height:34px;border-radius:10px;">+</button>
 
     <span data-qty-hint style="font-size:12px;opacity:.7;margin-left:auto;">
-      ${maxQty <= 0 ? "已售罄" : `最多 ${maxQty}`}
+      ${maxQty <= 0 ? "已售罄" : maxText}
     </span>
   </div>
 
-  <button type="button" class="product-add-fixed" data-add-pid="${pid}" ${maxQty<=0 ? "disabled" : ""}>
-    ${maxQty<=0 ? "已售罄" : "加入购物车"}
+  <button type="button" class="product-add-fixed" data-add-pid="${pid}" ${maxQty <= 0 ? "disabled" : ""}>
+    ${maxQty <= 0 ? "已售罄" : "加入购物车"}
   </button>
 `;
 
@@ -1011,40 +961,43 @@ function createProductCard(p, extraBadgeText) {
     window.location.href = url;
   });
 
-  // ✅ 数量控件绑定
-  const qtyInput = article.querySelector("[data-qty-input]");
+  // ✅ 数量控件绑定（无输入框）
+  const qtyDisplay = article.querySelector("[data-qty-display]");
   const btnMinus = article.querySelector("[data-qty-minus]");
   const btnPlus = article.querySelector("[data-qty-plus]");
   const qtyHint = article.querySelector("[data-qty-hint]");
 
   function syncQtyUI() {
-    const q = clampQty(qtyInput?.value || 1);
-    if (qtyInput) qtyInput.value = String(q);
+    selectedQty = clampQty(selectedQty);
 
-    if (btnMinus) btnMinus.disabled = q <= 1 || maxQty <= 0;
-    if (btnPlus) btnPlus.disabled = maxQty <= 0 || q >= maxQty;
+    if (qtyDisplay) qtyDisplay.textContent = String(selectedQty);
 
-    if (qtyHint) qtyHint.textContent = maxQty <= 0 ? "已售罄" : `最多 ${maxQty}`;
+    if (btnMinus) btnMinus.disabled = selectedQty <= 1 || maxQty <= 0;
+    if (btnPlus) btnPlus.disabled = maxQty <= 0 || selectedQty >= maxQty;
+
+    const newMaxText =
+      unitCount > 1 ? `仅剩 ${Math.max(0, maxQty)} 箱` : `仅剩 ${Math.max(0, maxQty)}`;
+    if (qtyHint) qtyHint.textContent = maxQty <= 0 ? "已售罄" : newMaxText;
+
+    // ✅ 同步按钮禁用状态（库存变化时也能更新）
+    const overlayAdd = article.querySelector('.overlay-btn.add[data-add-pid]');
+    const fixedAdd = article.querySelector('.product-add-fixed[data-add-pid]');
+    if (overlayAdd) overlayAdd.disabled = maxQty <= 0;
+    if (fixedAdd) fixedAdd.disabled = maxQty <= 0;
   }
 
-  if (qtyInput) {
-    qtyInput.addEventListener("click", (ev) => ev.stopPropagation());
-    qtyInput.addEventListener("input", () => syncQtyUI());
-    qtyInput.addEventListener("blur", () => syncQtyUI());
-  }
   if (btnMinus) {
     btnMinus.addEventListener("click", (ev) => {
       ev.stopPropagation();
-      if (!qtyInput) return;
-      qtyInput.value = String(Number(qtyInput.value || 1) - 1);
+      selectedQty -= 1;
       syncQtyUI();
     });
   }
+
   if (btnPlus) {
     btnPlus.addEventListener("click", (ev) => {
       ev.stopPropagation();
-      if (!qtyInput) return;
-      qtyInput.value = String(Number(qtyInput.value || 1) + 1);
+      selectedQty += 1;
       syncQtyUI();
     });
   }
@@ -1065,32 +1018,24 @@ function createProductCard(p, extraBadgeText) {
       return;
     }
 
-    const wantQty = clampQty(qtyInput?.value || 1);
+    // ✅ 无输入框：直接用 selectedQty
+    const wantQty = clampQty(selectedQty);
     if (wantQty <= 0) {
       alert("该商品已售罄");
       return;
     }
 
-    // ✅【新增】计算加购单价（必须在对象外）
+    // ✅ 加购单价：默认 basePrice；单个规格优先用单个原价（你的旧逻辑保持）
     let cartUnitPrice = basePrice;
+    if (isSingleVariant && originUnit > 0) cartUnitPrice = originUnit;
 
-    // 单个规格：强制使用单个原价
-    if (isSingleVariant && originUnit > 0) {
-      cartUnitPrice = originUnit;
-    }
-
-    // ✅✅✅ 关键：加购时把 productId + variantKey 带上（给后端扣共用库存）
     const normalized = {
       id: pid, // cartKey（productId::variantKey）
-
       productId: productId,
       variantKey: variantKey,
-
       name: displayName || "商品",
-
       price: cartUnitPrice,
       priceNum: cartUnitPrice,
-
       image: p.image || imageUrl,
       tag: p.tag || "",
       type: p.type || "",
@@ -1100,22 +1045,22 @@ function createProductCard(p, extraBadgeText) {
 
     cartApi.addItem(normalized, wantQty);
 
-    // ✅✅✅ 加购后立刻显示徽章 +wantQty
+    // ✅✅✅ 加购后立刻显示徽章：但永不超过 card.__maxQty（强兜底）
     try {
       const badge = article.querySelector(`.product-qty-badge[data-pid="${pid}"]`);
       const cur = Number((badge?.textContent || "").replace("+", "")) || 0;
-      const next = Math.min(cur + wantQty, 99);
+      const cap0 = Number(article.__maxQty);
+      const cap = Number.isFinite(cap0) ? Math.max(0, Math.floor(cap0)) : 999999;
+      const next = Math.min(cur + wantQty, cap);
       if (badge) {
         badge.textContent = next >= 99 ? "99+" : String(next);
-        badge.style.display = "flex";
+        badge.style.display = next > 0 ? "flex" : "none";
       }
     } catch {}
 
     // ✅ 通知全站：购物车已更新（delta=wantQty）
     try {
-      window.dispatchEvent(
-        new CustomEvent("freshbuy:cartUpdated", { detail: { pid, delta: wantQty } })
-      );
+      window.dispatchEvent(new CustomEvent("freshbuy:cartUpdated", { detail: { pid, delta: wantQty } }));
     } catch {}
 
     setTimeout(() => {
@@ -1139,8 +1084,36 @@ function createProductCard(p, extraBadgeText) {
     });
   }
 
+  // ✅ 提供一个公开的“库存刷新入口”，给 refreshStockAndCards 调用
+  // 这样库存变化时：maxQty、提示文案、按钮、+/- 都能立刻更新
+  article.__refreshStockUI = function refreshStockUI(newStockUnits) {
+    const su = Math.max(0, Math.floor(Number(newStockUnits || 0) || 0));
+    article.__stockUnits = su;
+
+    // ✅ 重新计算 maxQty（仍然是唯一口径）
+    let newMax = variantKey === "single" ? su : Math.floor(su / unitCount);
+    if (Number(limitQty) > 0) {
+      const lim = Math.max(0, Math.floor(Number(limitQty)));
+      newMax = Math.max(0, Math.min(newMax, lim));
+    }
+
+    maxQty = newMax;
+    article.__maxQty = newMax;
+
+    // 选中数量可能超了，要 clamp
+    selectedQty = clampQty(selectedQty);
+    syncQtyUI();
+
+    // 强制同步徽章（兜底：如果购物车里原数量>新库存，会被 setProductBadge 压回去）
+    try {
+      scheduleBadgeSync();
+    } catch {}
+  };
+
   return article;
 }
+
+/* ====== 下一段从：库存刷新 refreshStockAndCards + loadHomeProductsFromSimple 开始 ====== */
 // IP 建议 ZIP（不强制）—— ✅ 如果 ZIP 已被“默认地址锁定”，则不要再用 IP 覆盖
 async function tryPrefillZipFromIP() {
   const confirmed = localStorage.getItem("freshbuy_zone_ok") === "1";
@@ -1167,6 +1140,9 @@ document.addEventListener("DOMContentLoaded", () => {
   tryPrefillZipFromIP();
 });
 
+// =========================
+// 首页加载商品（/api/products-simple）
+// =========================
 async function loadHomeProductsFromSimple() {
   try {
     const res = await fetch("/api/products-simple", { cache: "no-store" });
@@ -1184,32 +1160,26 @@ async function loadHomeProductsFromSimple() {
 
     console.log("首页从 /api/products-simple 拿到商品：", list);
     console.log("DEBUG first item fields:", list?.[0]);
+
     if (!list.length) {
-      [
-        "productGridHot",
-        "productGridDaily",
-        "productGridNew",
-        "productGridBest",
-        "productGridNormal",
-      ].forEach((id) => {
+      ["productGridHot", "productGridDaily", "productGridNew", "productGridBest", "productGridNormal"].forEach((id) => {
         const grid = document.getElementById(id);
-        if (grid)
-          grid.innerHTML =
-            '<div style="padding:12px;font-size:13px;color:#6b7280;">暂时没有商品</div>';
+        if (grid) grid.innerHTML = '<div style="padding:12px;font-size:13px;color:#6b7280;">暂时没有商品</div>';
       });
       return;
     }
 
     // ✅ 保存原始产品（不展开）
-window.allProductsRaw = list;
+    window.allProductsRaw = list;
 
-// ✅ 用展开后的列表用于渲染（会出现单个/整箱两张卡）
-const viewList = expandProductsWithVariants(list);
-window.allProducts = viewList;
+    // ✅ 用展开后的列表用于渲染（会出现单个/整箱两张卡）
+    const viewList = expandProductsWithVariants(list);
+    window.allProducts = viewList;
 
-// ✅ 后面所有筛选都用 viewList
-const hotList = viewList.filter((p) => isHotProduct(p));
-const nonHotList = viewList.filter((p) => !isHotProduct(p));
+    // ✅ 后面所有筛选都用 viewList
+    const hotList = viewList.filter((p) => isHotProduct(p));
+    const nonHotList = viewList.filter((p) => !isHotProduct(p));
+
     let familyList = nonHotList.filter((p) => isFamilyProduct(p));
     let newList = nonHotList.filter((p) => isNewProduct(p));
     if (newList.length > 30) newList = newList.slice(0, 30);
@@ -1230,8 +1200,7 @@ const nonHotList = viewList.filter((p) => !isHotProduct(p));
       grid.innerHTML = "";
 
       if (!items.length) {
-        grid.innerHTML =
-          '<div style="padding:12px;font-size:13px;color:#6b7280;">暂时没有商品</div>';
+        grid.innerHTML = '<div style="padding:12px;font-size:13px;color:#6b7280;">暂时没有商品</div>';
         return;
       }
 
@@ -1273,10 +1242,77 @@ const nonHotList = viewList.filter((p) => !isHotProduct(p));
   }
 }
 
-// =========================
+// =====================================================
+// ✅ 自动刷新库存：每隔一段时间拉 /api/products-simple
+// 只更新：每张商品卡的 stock/maxQty + UI（仅剩X箱/禁用/+-）+ 徽章兜底
+// =====================================================
+const STOCK_REFRESH_MS = 15000; // 15秒，你可改 10s/20s
+
+async function refreshStockAndCards() {
+  try {
+    const res = await fetch("/api/products-simple", { cache: "no-store" });
+    const data = await res.json().catch(() => ({}));
+
+    const list = Array.isArray(data)
+      ? data
+      : Array.isArray(data.items)
+      ? data.items
+      : Array.isArray(data.list)
+      ? data.list
+      : Array.isArray(data.products)
+      ? data.products
+      : [];
+
+    if (!list.length) return;
+
+    // productId -> 最新库存（单位=单个）
+    const stockMap = {};
+    list.forEach((p) => {
+      const id = String(p?._id || p?.id || "").trim();
+      if (!id) return;
+      stockMap[id] = Math.max(0, Math.floor(Number(p.stock ?? p.inventory ?? 0) || 0));
+    });
+
+    // 遍历页面已有卡片，更新库存并触发卡片 UI 重算
+    document.querySelectorAll(".product-card[data-product-id]").forEach((card) => {
+      const pid = String(card.dataset.productId || "").trim();
+      if (!pid) return;
+
+      const stockUnits = stockMap[pid];
+      if (!Number.isFinite(stockUnits)) return;
+
+      // ✅ 调用 createProductCard 里挂的刷新函数（包含 maxQty 重新计算、仅剩X箱、按钮/+-禁用）
+      if (typeof card.__refreshStockUI === "function") {
+        card.__refreshStockUI(stockUnits);
+      } else {
+        // 极端兜底：至少写回 __stockUnits/__maxQty（不建议走到这里）
+        const vKey = String(card.dataset.variantKey || "single").trim() || "single";
+        const unitCount = Math.max(1, Math.floor(Number(card.dataset.unitCount || 1) || 1));
+        const maxQty = vKey === "single" ? stockUnits : Math.floor(stockUnits / unitCount);
+        card.__stockUnits = stockUnits;
+        card.__maxQty = maxQty;
+      }
+    });
+
+    // ✅ 强制同步徽章（兜底：徽章= min(购物车数量, card.__maxQty)）
+    try {
+      scheduleBadgeSync();
+    } catch {}
+  } catch (e) {
+    console.warn("refreshStockAndCards failed:", e);
+  }
+}
+
+// 页面加载后开启轮询
+window.addEventListener("DOMContentLoaded", () => {
+  setInterval(refreshStockAndCards, STOCK_REFRESH_MS);
+});
+
+/* ====== 下一段从：登录/注册/鉴权（AUTH_TOKEN_KEYS...）开始 ====== */
 // =========================
 // 3) 登录 / 注册弹窗 + 顶部头像（✅ Mongo 真实接口版）
 // =========================
+
 // ✅ 统一 token 读取/写入（兼容 auth_client.js 的 "token" + 你这份 index.js 的 "freshbuy_token"）
 const AUTH_TOKEN_KEYS = ["token", "freshbuy_token", "jwt", "auth_token", "access_token"];
 
@@ -1308,6 +1344,7 @@ function clearToken() {
   localStorage.removeItem("freshbuy_default_address");
   localStorage.removeItem("freshbuy_wallet_balance");
 }
+
 async function apiFetch(url, options = {}) {
   const headers = Object.assign({}, options.headers || {});
   const token = getToken();
@@ -1321,7 +1358,8 @@ async function apiFetch(url, options = {}) {
     data = null;
   }
 
-  if (res.status === 401 || (data && data.success === false && data.msg === "未登录")) {
+  // 401 或后端明确提示未登录 → 清 token
+  if (res.status === 401 || (data && data.success === false && (data.msg === "未登录" || data.message === "未登录"))) {
     clearToken();
   }
 
@@ -1394,6 +1432,9 @@ async function apiGetDefaultAddress() {
   }
 }
 
+// =========================
+// DOM refs（登录/注册弹窗）
+// =========================
 const authBackdrop = document.getElementById("authBackdrop");
 const authCloseBtn = document.getElementById("authCloseBtn");
 const loginBtn = document.getElementById("loginBtn");
@@ -1425,17 +1466,6 @@ const userProfile = document.getElementById("userProfile");
 const userNameLabel = document.getElementById("userNameLabel");
 const userAvatar = document.getElementById("userAvatar");
 
-// ✅ 忘记密码面板控件（你 forgotPanel 里要有这些 id）
-const forgotPwdLink = document.getElementById("forgotPwdLink");
-const fpPhone = document.getElementById("fpPhone");
-const fpCode = document.getElementById("fpCode");
-const fpNewPwd = document.getElementById("fpNewPwd");
-const fpNewPwd2 = document.getElementById("fpNewPwd2");
-const fpSendCodeBtn = document.getElementById("fpSendCodeBtn");
-const fpResetBtn = document.getElementById("fpResetBtn");
-const fpMsg = document.getElementById("fpMsg");
-const backToLoginBtn = document.getElementById("backToLoginBtn");
-
 function applyLoggedInUI(phone) {
   if (!phone) return;
   if (loginBtn) loginBtn.style.display = "none";
@@ -1452,6 +1482,7 @@ function applyLoggedOutUI() {
   if (registerBtn) registerBtn.style.display = "";
   if (userProfile) userProfile.style.display = "none";
 }
+
 // ================================
 // ✅ 强制退出：不管你之前用哪个 key，都能退出
 // ================================
@@ -1472,7 +1503,9 @@ function hardLogout() {
   ];
   miscKeys.forEach((k) => localStorage.removeItem(k));
 
-  try { sessionStorage.clear(); } catch {}
+  try {
+    sessionStorage.clear();
+  } catch {}
 
   // 3) 立刻切 UI
   applyLoggedOutUI();
@@ -1492,7 +1525,6 @@ document.addEventListener("click", (e) => {
   const id = (el.id || "").toLowerCase();
   const cls = (el.className || "").toString().toLowerCase();
 
-  // 你不用知道按钮 id 是啥，这里兜底匹配
   const hit =
     text === "退出" ||
     text === "退出登录" ||
@@ -1509,6 +1541,7 @@ document.addEventListener("click", (e) => {
     hardLogout();
   }
 });
+
 async function initAuthUIFromStorage() {
   const me = await apiMe();
   if (me && me.phone) applyLoggedInUI(me.phone);
@@ -1516,6 +1549,7 @@ async function initAuthUIFromStorage() {
   return me || null;
 }
 
+/* ====== 下一段从：openAuthModal / switchAuthMode / 登录注册按钮绑定 / 忘记密码开始 ====== */
 function openAuthModal(mode = "login") {
   if (!authBackdrop) return;
   authBackdrop.classList.add("active");
@@ -1664,6 +1698,16 @@ if (registerSubmitBtn) {
 // ✅ 忘记密码：弹窗内切换面板（不跳新页）
 // 依赖：已有 apiSendSmsCode() + 新接口 POST /api/auth/reset-password
 // =========================
+const forgotPwdLink = document.getElementById("forgotPwdLink");
+const fpPhone = document.getElementById("fpPhone");
+const fpCode = document.getElementById("fpCode");
+const fpNewPwd = document.getElementById("fpNewPwd");
+const fpNewPwd2 = document.getElementById("fpNewPwd2");
+const fpSendCodeBtn = document.getElementById("fpSendCodeBtn");
+const fpResetBtn = document.getElementById("fpResetBtn");
+const fpMsg = document.getElementById("fpMsg");
+const backToLoginBtn = document.getElementById("backToLoginBtn");
+
 function setFpMsg(text, ok = false) {
   if (!fpMsg) return;
   fpMsg.textContent = text || "";
@@ -1737,7 +1781,7 @@ if (backToLoginBtn) {
   });
 }
 
-// 3) 发送验证码（复用你现有 /api/sms/send-code）
+// 3) 发送验证码（复用 /api/sms/send-code）
 if (fpSendCodeBtn) {
   fpSendCodeBtn.addEventListener("click", async () => {
     const phone = (fpPhone?.value || "").trim();
@@ -1757,7 +1801,7 @@ if (fpSendCodeBtn) {
   });
 }
 
-// 4) 重置密码（调用后端新接口 /api/auth/reset-password）
+// 4) 重置密码（调用后端 /api/auth/reset-password）
 if (fpResetBtn) {
   fpResetBtn.addEventListener("click", async () => {
     const phone = (fpPhone?.value || "").trim();
@@ -1776,7 +1820,6 @@ if (fpResetBtn) {
 
     try {
       await postJson("/api/auth/reset-password", { phone, code, newPassword });
-
       setFpMsg("✅ 密码已重置成功！请用新密码登录。", true);
 
       // 切回登录并自动填手机号
@@ -1802,80 +1845,8 @@ if (fpCode) {
     fpCode.value = String(fpCode.value || "").replace(/[^\d]/g, "").slice(0, 8);
   });
 }
-if (regSendCodeBtn) {
-  regSendCodeBtn.addEventListener("click", async () => {
-    const phone = (regPhone && regPhone.value.trim()) || "";
-    if (!phone) return alert("请先输入手机号");
 
-    try {
-      await apiSendSmsCode(phone);
-      alert("验证码已发送");
-    } catch (e) {
-      alert(e.message || "发送失败");
-    }
-  });
-}
-
-if (loginSubmitBtn) {
-  loginSubmitBtn.addEventListener("click", async () => {
-    const phone = (loginPhone && loginPhone.value.trim()) || "";
-    const pwd = (loginPassword && loginPassword.value) || "";
-    if (!phone || !pwd) return alert("请填写手机号和密码");
-
-    try {
-      await apiLogin(phone, pwd);
-
-      if (loginRemember && loginRemember.checked) {
-        localStorage.setItem("freshbuy_login_phone", phone);
-      } else {
-        localStorage.removeItem("freshbuy_login_phone");
-      }
-
-      applyLoggedInUI(phone);
-      await applyZipFromDefaultAddressIfLoggedIn();
-
-      alert("登录成功");
-      closeAuthModal();
-    } catch (err) {
-      alert(err.message || "登录失败");
-    }
-  });
-}
-
-function isStrongPassword(pwd) {
-  // 至少8位，且必须包含字母+数字
-  return /^(?=.*[A-Za-z])(?=.*\d).{8,}$/.test(String(pwd || ""));
-}
-
-if (registerSubmitBtn) {
-  registerSubmitBtn.addEventListener("click", async () => {
-    const phone = (regPhone && regPhone.value.trim()) || "";
-    const pwd = (regPassword && regPassword.value) || "";
-    const code = (regCode && regCode.value.trim()) || "";
-
-    if (!phone) return alert("请填写手机号");
-    if (!code) return alert("请填写验证码");
-    if (!pwd) return alert("请填写密码");
-    if (!isStrongPassword(pwd)) return alert("密码至少8位，且必须包含字母和数字");
-
-    const name = "用户" + String(phone).slice(-4);
-
-    try {
-      await apiVerifyRegister({ phone, code, password: pwd, name });
-
-      localStorage.setItem("freshbuy_login_phone", phone);
-      applyLoggedInUI(phone);
-
-      await applyZipFromDefaultAddressIfLoggedIn();
-
-      alert("注册成功，已自动登录");
-      closeAuthModal();
-    } catch (err) {
-      alert(err.message || "注册失败");
-    }
-  });
-}
-
+/* ====== 下一段从：ZIP 锁定/解锁（hardLockInput/lockZipInputToDefaultAddress/unlockZipInputForGuest/...）开始 ====== */
 // ===============================
 // ✅ ZIP 锁定/解锁（左右同步）仅锁 ZIP 输入框，不影响其它按钮
 // ===============================
@@ -2021,12 +1992,14 @@ function saveZip(zip) {
 function saveZone(zoneObj) {
   localStorage.setItem(FRESHBUY_ZONE_KEY, JSON.stringify(zoneObj || {}));
 }
+
 function toUiModeKey(cartMode) {
   if (cartMode === "groupDay") return "area-group";
   if (cartMode === "normal") return "next-day";
   if (cartMode === "friendGroup") return "friend-group";
   return "area-group";
 }
+
 function getSavedZoneBrief() {
   try {
     return JSON.parse(localStorage.getItem("freshbuy_zone") || "{}");
@@ -2048,8 +2021,7 @@ function applyZoneToUI(zip, payload) {
   const reason = payload?.reason || payload?.message || "该邮编暂不支持配送";
 
   if (zipStatus) {
-    const locked =
-      document.getElementById("zipInput")?.dataset?.lockedByDefaultAddress === "1";
+    const locked = document.getElementById("zipInput")?.dataset?.lockedByDefaultAddress === "1";
     zipStatus.className = deliverable ? "zip-status ok" : "zip-status bad";
     zipStatus.textContent = zip
       ? deliverable
@@ -2075,33 +2047,28 @@ function applyZoneToUI(zip, payload) {
   saveZone(briefZone);
   localStorage.setItem("freshbuy_zone_ok", "1");
 
+  // ✅ 用户是否手动选过配送模式：选过就不强制切回区域团
   const userSelected = localStorage.getItem(MODE_USER_SELECTED_KEY) === "1";
+
   if (!userSelected) {
     try {
       localStorage.setItem("freshbuy_pref_mode", "groupDay");
-      window.dispatchEvent(
-        new CustomEvent("freshbuy:deliveryModeChanged", { detail: { mode: "groupDay" } })
-      );
+      window.dispatchEvent(new CustomEvent("freshbuy:deliveryModeChanged", { detail: { mode: "groupDay" } }));
     } catch {}
 
     const areaBtn = document.querySelector('.delivery-pill[data-mode="area-group"]');
     if (areaBtn) {
-      document
-        .querySelectorAll(".delivery-pill")
-        .forEach((b) => b.classList.remove("active"));
+      document.querySelectorAll(".delivery-pill").forEach((b) => b.classList.remove("active"));
       areaBtn.classList.add("active");
     }
     renderDeliveryInfo("area-group");
   } else {
     const active = document.querySelector(".delivery-pill.active");
-    const currentMode =
-      active?.dataset?.mode || toUiModeKey(localStorage.getItem("freshbuy_pref_mode"));
+    const currentMode = active?.dataset?.mode || toUiModeKey(localStorage.getItem("freshbuy_pref_mode"));
     renderDeliveryInfo(currentMode || "area-group");
   }
 
-  window.dispatchEvent(
-    new CustomEvent("freshbuy:zoneChanged", { detail: { zip, zone: briefZone } })
-  );
+  window.dispatchEvent(new CustomEvent("freshbuy:zoneChanged", { detail: { zip, zone: briefZone } }));
 }
 
 async function tryDetectZipFromIP() {
@@ -2120,10 +2087,9 @@ async function resolveZoneByZipFromDB(zip) {
     return { ok: false, deliverable: false, zip: z, reason: "invalid zip" };
 
   try {
-    const r = await fetch(
-      `/api/public/zones/by-zip?zip=${encodeURIComponent(z)}&ts=${Date.now()}`,
-      { cache: "no-store" }
-    );
+    const r = await fetch(`/api/public/zones/by-zip?zip=${encodeURIComponent(z)}&ts=${Date.now()}`, {
+      cache: "no-store",
+    });
     const j = await r.json().catch(() => ({}));
     console.log("[by-zip resp]", j);
 
@@ -2191,12 +2157,7 @@ async function initZipAutoZone() {
     if (isValidZip(lockedZip)) {
       await applyZip(lockedZip, { silent: true, force: true });
     } else {
-      applyZoneToUI("", {
-        ok: true,
-        deliverable: false,
-        zip: "",
-        reason: "默认地址 ZIP 无效",
-      });
+      applyZoneToUI("", { ok: true, deliverable: false, zip: "", reason: "默认地址 ZIP 无效" });
     }
     return;
   }
@@ -2235,8 +2196,9 @@ async function initZipAutoZone() {
   }
 }
 
+/* ====== 下一段从：页面最终初始化（DOMContentLoaded 主入口）开始 ====== */
 // =========================
-// 4) 页面完成后初始化
+// 4) 页面完成后初始化（主入口）
 // =========================
 window.addEventListener("DOMContentLoaded", async () => {
   loadCategories();
@@ -2252,6 +2214,7 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   await initZipAutoZone();
 
+  // ✅ 恢复用户选择的配送偏好
   const pref = localStorage.getItem("freshbuy_pref_mode");
   if (pref) {
     const uiMode = toUiModeKey(pref);
@@ -2322,9 +2285,7 @@ function doSearch(keyword) {
     gridAll.innerHTML = `<div style="padding:12px;font-size:13px;color:#6b7280;">没有找到「${keyword}」相关商品</div>`;
   } else {
     const limit = getLimit("Normal");
-    matched
-      .slice(0, limit)
-      .forEach((p) => gridAll.appendChild(createProductCard(p, "")));
+    matched.slice(0, limit).forEach((p) => gridAll.appendChild(createProductCard(p, "")));
   }
 
   try {
@@ -2332,8 +2293,7 @@ function doSearch(keyword) {
   } catch {}
 
   try {
-    const sec =
-      document.getElementById("sectionAll") || document.getElementById("productGridNormal");
+    const sec = document.getElementById("sectionAll") || document.getElementById("productGridNormal");
     if (sec) sec.scrollIntoView({ behavior: "smooth", block: "start" });
   } catch {}
 }
@@ -2364,6 +2324,7 @@ function bindGlobalSearch() {
   });
 }
 
+/* ====== 下一段从：密码眼睛切换 + 右上角用户中心点击 + 徽章同步（freshbuy:cartUpdated/storage）开始 ====== */
 // ===== 密码显示/隐藏（登录 & 注册）=====
 (function bindPasswordEyeToggle() {
   document.addEventListener("click", (e) => {
@@ -2437,6 +2398,7 @@ window.addEventListener("storage", (e) => {
     scheduleBadgeSync();
   }
 });
+
 // ✅ iOS: focus input can cause horizontal scroll drift
 window.addEventListener("focusin", (e) => {
   const t = e.target;
@@ -2445,4 +2407,316 @@ window.addEventListener("focusin", (e) => {
     document.body.scrollLeft = 0;
     window.scrollTo(0, window.scrollY);
   }
+});
+
+/* ====== 下一段（第9段）将包含：你页面里“去掉输入框/只能点+/-”相关的最终收尾逻辑，以及库存刷新后的卡片UI同步函数（如果你放在文件末尾） ====== */
+// =====================================================
+// ✅✅✅ 第9段：去掉数量输入框（只允许 +/-）+ 库存刷新时同步卡片UI
+// =====================================================
+
+// ✅ 统一：计算某张卡片的 maxQty（单个=stock；整箱=floor(stock/unitCount)）
+function calcMaxQtyForCard(card) {
+  if (!card) return 0;
+  const vKey = String(card.dataset.variantKey || "single").trim() || "single";
+  const unitCount = Math.max(1, Math.floor(Number(card.dataset.unitCount || 1) || 1));
+  const stockUnits = Math.max(0, Math.floor(Number(card.__stockUnits ?? card.dataset.stockUnits ?? 0) || 0));
+
+  const maxQty = vKey === "single" ? stockUnits : Math.floor(stockUnits / unitCount);
+  return Math.max(0, Math.floor(maxQty));
+}
+
+// ✅ 把输入框隐藏，换成一个“数字显示”（只读）
+function ensureQtyDisplayOnly(card) {
+  if (!card) return;
+
+  const qtyInput = card.querySelector('[data-qty-input]');
+  const already = card.querySelector('[data-qty-display]');
+
+  // 如果已经有 display，就不重复做
+  if (already) {
+    // 仍然隐藏 input（以防旧DOM有）
+    if (qtyInput) qtyInput.style.display = "none";
+    return;
+  }
+
+  if (qtyInput) {
+    // 1) 隐藏输入框（客户不能手输）
+    qtyInput.style.display = "none";
+    qtyInput.setAttribute("readonly", "readonly");
+    qtyInput.setAttribute("disabled", "disabled");
+    qtyInput.style.pointerEvents = "none";
+
+    // 2) 插入一个 span 显示数字
+    const span = document.createElement("span");
+    span.setAttribute("data-qty-display", "1");
+    span.style.width = "64px";
+    span.style.height = "34px";
+    span.style.display = "inline-flex";
+    span.style.alignItems = "center";
+    span.style.justifyContent = "center";
+    span.style.borderRadius = "10px";
+    span.style.textAlign = "center";
+    span.style.userSelect = "none";
+    span.style.fontWeight = "800";
+    span.style.background = "#f3f4f6";
+
+    // 默认同步一次
+    span.textContent = String(Math.max(1, Math.floor(Number(qtyInput.value || 1) || 1)));
+
+    // 插在 input 原位置
+    qtyInput.insertAdjacentElement("afterend", span);
+  } else {
+    // 如果你未来把 input 完全从HTML删了，这里也兼容：
+    // 没有 input 就找一个空位（qty-row里）
+    const row = card.querySelector(".qty-row");
+    if (!row) return;
+    const span = document.createElement("span");
+    span.setAttribute("data-qty-display", "1");
+    span.style.width = "64px";
+    span.style.height = "34px";
+    span.style.display = "inline-flex";
+    span.style.alignItems = "center";
+    span.style.justifyContent = "center";
+    span.style.borderRadius = "10px";
+    span.style.textAlign = "center";
+    span.style.userSelect = "none";
+    span.style.fontWeight = "800";
+    span.style.background = "#f3f4f6";
+    span.textContent = "1";
+
+    // 放到 minus 和 plus 之间
+    const minus = row.querySelector("[data-qty-minus]");
+    if (minus) minus.insertAdjacentElement("afterend", span);
+    else row.insertAdjacentElement("afterbegin", span);
+  }
+}
+
+// ✅ 获取“当前想加购数量”（从 display 或 input）
+function getWantedQtyFromCard(card) {
+  const disp = card.querySelector("[data-qty-display]");
+  if (disp) return Math.max(1, Math.floor(Number(disp.textContent || 1) || 1));
+
+  const input = card.querySelector("[data-qty-input]");
+  if (input) return Math.max(1, Math.floor(Number(input.value || 1) || 1));
+
+  return 1;
+}
+
+// ✅ 写回“当前想加购数量”
+function setWantedQtyToCard(card, n) {
+  const v = Math.max(0, Math.floor(Number(n || 0) || 0));
+
+  const disp = card.querySelector("[data-qty-display]");
+  if (disp) disp.textContent = String(v);
+
+  const input = card.querySelector("[data-qty-input]");
+  if (input) input.value = String(v);
+}
+
+// ✅ 同步某张卡片：maxQty、按钮禁用、提示文案（含“仅剩 1 箱”）
+function syncOneCardStockUI(card) {
+  if (!card) return;
+
+  // 1) 确保输入框被隐藏，只显示数字
+  ensureQtyDisplayOnly(card);
+
+  // 2) 计算 maxQty（用最新 stock）
+  const maxQty = calcMaxQtyForCard(card);
+  card.__maxQty = maxQty;
+
+  // 3) 当前想加购数量 clamp 到 [1, maxQty]
+  let want = getWantedQtyFromCard(card);
+  if (maxQty <= 0) want = 0;
+  else if (want < 1) want = 1;
+  else if (want > maxQty) want = maxQty;
+  setWantedQtyToCard(card, want);
+
+  // 4) 按钮禁用规则（+/-）
+  const minus = card.querySelector("[data-qty-minus]");
+  const plus = card.querySelector("[data-qty-plus]");
+  if (minus) minus.disabled = maxQty <= 0 || want <= 1;
+  if (plus) plus.disabled = maxQty <= 0 || want >= maxQty;
+
+  // 5) 加购按钮禁用（overlay + 固定底部按钮）
+  const adds = card.querySelectorAll('[data-add-pid]');
+  adds.forEach((btn) => {
+    if (!btn || btn.tagName !== "BUTTON") return;
+    btn.disabled = maxQty <= 0;
+    if (maxQty <= 0) btn.textContent = "已售罄";
+  });
+
+  // 6) 文案：单个“仅剩 X”；整箱“仅剩 1 箱/仅剩 X 箱”
+  const hint = card.querySelector("[data-qty-hint]");
+  if (hint) {
+    const vKey = String(card.dataset.variantKey || "single").trim() || "single";
+    if (maxQty <= 0) {
+      hint.textContent = "已售罄";
+    } else if (vKey !== "single") {
+      hint.textContent = maxQty === 1 ? "仅剩 1 箱" : `仅剩 ${maxQty} 箱`;
+    } else {
+      hint.textContent = `仅剩 ${maxQty}`;
+    }
+  }
+}
+
+// ✅ 同步页面上所有卡片（库存变化/购物车变化都可以调用）
+function syncAllCardsStockUI() {
+  document.querySelectorAll(".product-card[data-product-id]").forEach((card) => {
+    syncOneCardStockUI(card);
+  });
+
+  // ✅ 徽章兜底：再同步一次（保证 badge<=maxQty）
+  try {
+    scheduleBadgeSync();
+  } catch {}
+}
+
+// ✅ 绑定 +/- 事件：只允许点击改变（不允许手输）
+function bindQtyButtonsOnlyOnce() {
+  document.querySelectorAll(".product-card[data-product-id]").forEach((card) => {
+    if (card.dataset.qtyBound === "1") return;
+    card.dataset.qtyBound = "1";
+
+    const minus = card.querySelector("[data-qty-minus]");
+    const plus = card.querySelector("[data-qty-plus]");
+
+    if (minus) {
+      minus.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const maxQty = calcMaxQtyForCard(card);
+        let want = getWantedQtyFromCard(card);
+        want = Math.max(1, want - 1);
+        if (maxQty > 0) want = Math.min(want, maxQty);
+        setWantedQtyToCard(card, want);
+        syncOneCardStockUI(card);
+      });
+    }
+
+    if (plus) {
+      plus.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const maxQty = calcMaxQtyForCard(card);
+        let want = getWantedQtyFromCard(card);
+        want = want + 1;
+        if (maxQty > 0) want = Math.min(want, maxQty);
+        else want = 0;
+        setWantedQtyToCard(card, want);
+        syncOneCardStockUI(card);
+      });
+    }
+
+    // ✅ 如果旧版还存在 input，这里阻止交互（防止手机弹数字键盘）
+    const input = card.querySelector("[data-qty-input]");
+    if (input) {
+      input.addEventListener("click", (e) => e.stopPropagation());
+      input.addEventListener("focus", (e) => {
+        e.preventDefault();
+        input.blur();
+      });
+      input.addEventListener("keydown", (e) => {
+        e.preventDefault();
+      });
+    }
+  });
+}
+
+// ✅ 页面初次渲染完、以及每次搜索/刷新库存后，都要重新绑定 & 同步
+window.addEventListener("DOMContentLoaded", () => {
+  // 初次：绑定+同步
+  setTimeout(() => {
+    bindQtyButtonsOnlyOnce();
+    syncAllCardsStockUI();
+  }, 0);
+});
+
+// ✅ 当你刷新库存（refreshStockAndCards）后，调用一次同步
+// （你第6段里有 setInterval(refreshStockAndCards, ...)，这里监听一个事件更稳）
+window.addEventListener("freshbuy:stockRefreshed", () => {
+  bindQtyButtonsOnlyOnce();
+  syncAllCardsStockUI();
+});
+
+// ✅ 当购物车更新（徽章变化）时，也顺便同步卡片状态（比如 maxQty 变更后 clamp）
+window.addEventListener("freshbuy:cartUpdated", () => {
+  syncAllCardsStockUI();
+});
+
+// ✅ ✅ ✅ 如果你不想改 refreshStockAndCards 的函数体：这里加一个“兜底定时同步”
+//    （避免某些情况下卡片没更新到 maxQty）
+setInterval(() => {
+  try {
+    bindQtyButtonsOnlyOnce();
+    syncAllCardsStockUI();
+  } catch {}
+}, 6000);
+// =====================================================
+// ✅ 自动刷新库存：每隔一段时间拉 /api/products-simple
+// 只更新：每张商品卡的 stock/maxQty + UI（仅剩/售罄/禁用）+ 徽章兜底
+// =====================================================
+async function refreshStockAndCards() {
+  try {
+    const res = await fetch("/api/products-simple", { cache: "no-store" });
+    const data = await res.json().catch(() => ({}));
+
+    const list = Array.isArray(data)
+      ? data
+      : Array.isArray(data.items)
+      ? data.items
+      : Array.isArray(data.list)
+      ? data.list
+      : Array.isArray(data.products)
+      ? data.products
+      : [];
+
+    if (!list.length) return;
+
+    // productId -> 最新库存（单位=单个）
+    const stockMap = {};
+    const variantsMap = {}; // productId -> variants（可选备用）
+    list.forEach((p) => {
+      const id = String(p?._id || p?.id || "").trim();
+      if (!id) return;
+      stockMap[id] = Math.max(0, Math.floor(Number(p.stock ?? p.inventory ?? 0) || 0));
+      variantsMap[id] = Array.isArray(p?.variants) ? p.variants : [];
+    });
+
+    // 遍历页面已有卡片，更新 __stockUnits/__maxQty
+    document.querySelectorAll(".product-card[data-product-id]").forEach((card) => {
+      const pid = String(card.dataset.productId || "").trim();
+      const vKey = String(card.dataset.variantKey || "single").trim() || "single";
+      const unitCount = Math.max(1, Math.floor(Number(card.dataset.unitCount || 1) || 1));
+
+      if (!pid) return;
+
+      const stockUnits = Number(stockMap[pid]);
+      if (!Number.isFinite(stockUnits)) return;
+
+      // ✅ 单个/整箱 maxQty
+      const maxQty = vKey === "single" ? stockUnits : Math.floor(stockUnits / unitCount);
+
+      card.__stockUnits = stockUnits;
+      card.__maxQty = Math.max(0, Math.floor(maxQty));
+
+      // 也写到 dataset，给其它逻辑兜底使用（可选）
+      card.dataset.stockUnits = String(stockUnits);
+      card.dataset.maxQty = String(Math.max(0, Math.floor(maxQty)));
+    });
+
+    // ✅ 立刻派发：库存已刷新（让第9段马上同步卡片UI）
+    try {
+      window.dispatchEvent(new CustomEvent("freshbuy:stockRefreshed"));
+    } catch {}
+
+    // ✅ 徽章兜底同步（保证 badge <= maxQty）
+    try {
+      scheduleBadgeSync();
+    } catch {}
+  } catch (e) {
+    console.warn("refreshStockAndCards failed:", e);
+  }
+}
+
+// 页面加载后开启轮询
+window.addEventListener("DOMContentLoaded", () => {
+  setInterval(refreshStockAndCards, STOCK_REFRESH_MS);
 });
