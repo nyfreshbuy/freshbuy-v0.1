@@ -323,10 +323,27 @@ function renderSpecialCell(p) {
 
   if (!total || !Number.isFinite(total) || total <= 0) return "—";
 
-  if (qty > 1) return `${qty} for $${money(total)}`;
+  if (qty > 1) return `${qty} for $${money(total)}（单个）`;
   return `$${money(total)}`;
 }
+// ✅ 在商品列表里显示整箱价格
+function renderVariantPrices(p) {
+  if (!Array.isArray(p.variants)) return "";
 
+  const boxVariants = p.variants.filter(
+    (v) => v.unitCount > 1 && v.price != null
+  );
+
+  if (!boxVariants.length) return "";
+
+  return `
+    <div style="font-size:11px;color:#9ca3af;margin-top:2px;">
+      ${boxVariants
+        .map((v) => `${v.label}：$${money(v.price)}`)
+        .join("<br/>")}
+    </div>
+  `;
+}
 // ===========================================================
 // ✅ Variants 编辑器：渲染 / 添加 / 删除 / 读取
 // ===========================================================
@@ -480,7 +497,10 @@ async function loadProducts() {
           ${renderFlags(p)}
         </td>
         <td>${renderSpecialCell(p)}</td>
-        <td>$${money(p.originPrice || 0)}</td>
+        <td>
+  $${money(p.originPrice || 0)}
+  ${renderVariantPrices(p)}
+</td>
         <td>${p.stock || 0}</td>
         <td>${renderStatus(p)}</td>
         <td>
