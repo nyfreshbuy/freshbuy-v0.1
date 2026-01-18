@@ -291,21 +291,32 @@
     window.location.href = "/user/index.html";
   });
 
-  document.getElementById("logoutBtn")?.addEventListener("click", () => {
-    if (!confirm("确定要退出登录吗？")) return;
-    AUTH.clear();
-    alert("已退出登录");
-    window.location.replace("/user/index.html?v=" + Date.now());
-  });
-  // 例如：frontend/user/assets/js/index.js 或 user_center.js
-document.addEventListener("DOMContentLoaded", () => {
-  const btn = document.getElementById("btnLogout");
-  if (btn) {
-    btn.addEventListener("click", () => {
-      Auth.clear();               // ✅ 清 token + 地址 + 钱包
-      location.href = "/index.html"; // ✅ 跳回首页
-    });
-  }
+ document.getElementById("logoutBtn")?.addEventListener("click", () => {
+  if (!confirm("确定要退出登录吗？")) return;
+
+  // ✅ 1) 清所有可能的 token key（你项目里实际用到的）
+  ["freshbuy_token", "token", "auth_token", "jwt", "access_token"].forEach((k) =>
+    localStorage.removeItem(k)
+  );
+
+  // ✅ 2) 清掉会让游客看起来像已登录的缓存
+  [
+    "freshbuy_is_logged_in",
+    "freshbuy_login_phone",
+    "freshbuy_login_nickname",
+    "freshbuy_default_address",
+    "freshbuy_wallet_balance",
+    "freshbuy_zone",
+    "freshbuy_zone_ok",
+    "freshbuy_pref_mode",
+    "user",
+    "freshbuy_user",
+  ].forEach((k) => localStorage.removeItem(k));
+
+  try { sessionStorage.clear(); } catch {}
+
+  alert("已退出登录");
+  window.location.replace("/user/index.html?v=" + Date.now());
 });
   // =========================
   // 菜单切换（你现在HTML用 active class）
