@@ -57,7 +57,7 @@ import usersRouter from "./routes/users.js";
 import paymentsRouter from "./routes/payments.js";
 import zonesCheckRouter from "./routes/zones_check.js";
 import adminDispatchRouter from "./routes/admin_dispatch.js";
-import adminPicklist from "./routes/admin_picklist.js";
+import adminPicklistRouter from "./routes/admin_picklist.js";
 import authVerifyRegisterRouter from "./routes/auth_verify_register.js";
 import authVerifyResetPasswordRouter from "./routes/auth_verify_reset_password.js";
 import driverDispatchRoutes from "./routes/driver_dispatch.js";
@@ -142,8 +142,7 @@ app.use("/api/admin/users", adminUsersMongoRouter);  // ✅ 建议也放这里�
 app.use("/api/admin/zones", adminZonesRouter);
 console.log("✅ admin_zones 已挂载到 /api/admin/zones");
 // 你原来挂的 picklist（保持）
-app.use("/api/admin", adminPicklist);
-
+app.use("/api/admin/picklist", adminPicklistRouter);
 // 司机派单/路线（保持在 /api/driver 下）
 // ⚠️ 注意：这里不要再挂 driverOrdersRouter 到 /api/driver
 app.use("/api/driver", driverDispatchRoutes);

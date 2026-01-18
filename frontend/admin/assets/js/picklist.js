@@ -1,6 +1,13 @@
 // 配货汇总：多筛选（scope/zone/配送方式多选/时间范围）+ SKU 显示 + 打印
 let currentPicklist = [];
 
+// ✅ 防抖（避免频繁请求导致后端 502/超时）
+let _picklistTimer = null;
+function loadPicklistDebounced() {
+  clearTimeout(_picklistTimer);
+  _picklistTimer = setTimeout(loadPicklist, 250);
+}
+
 /* =========================
  * 小工具
  * ========================= */
@@ -156,7 +163,6 @@ function buildPicklistParams() {
   const scope = $id("picklistScope", "scopeSelect")?.value || "zone_group_only";
   const zone = $id("picklistZone", "zoneSelect")?.value || "all";
 
-  // ✅ 永远保证 deliverTypes 是数组
   let deliverTypes = [];
   try {
     deliverTypes = getCheckedDeliverTypes();
@@ -399,7 +405,9 @@ function initDefaultTimeRange() {
 window.addEventListener("DOMContentLoaded", async () => {
   await loadZonesIntoSelect();
   initDefaultTimeRange();
-  loadPicklist();
+
+  // ✅ 首次加载也走防抖，避免与其他事件叠加形成“请求风暴”
+  loadPicklistDebounced();
 
   const btnRefresh = $id("btnRefreshPicklist", "btnRefresh");
   const btnPrint = $id("btnPrintPicklist", "btnPrint", "btnPrintPicklist");
@@ -408,16 +416,18 @@ window.addEventListener("DOMContentLoaded", async () => {
   const zoneSelect = $id("picklistZone", "zoneSelect");
   const scopeSelect = $id("picklistScope", "scopeSelect");
 
-  if (btnApply) btnApply.addEventListener("click", loadPicklist);
-  if (btnRefresh) btnRefresh.addEventListener("click", loadPicklist);
+  // ✅ 全部换成防抖版本
+  if (btnApply) btnApply.addEventListener("click", loadPicklistDebounced);
+  if (btnRefresh) btnRefresh.addEventListener("click", loadPicklistDebounced);
+
   if (btnPrint) btnPrint.addEventListener("click", printPicklist);
 
-  if (zoneSelect) zoneSelect.addEventListener("change", loadPicklist);
-  if (scopeSelect) scopeSelect.addEventListener("change", loadPicklist);
+  if (zoneSelect) zoneSelect.addEventListener("change", loadPicklistDebounced);
+  if (scopeSelect) scopeSelect.addEventListener("change", loadPicklistDebounced);
 
   // 配送方式 checkbox：变化就重新加载（页面没有也不报错）
   const deliverTypeEls = document.querySelectorAll('input[name="deliverTypes"]');
   if (deliverTypeEls && deliverTypeEls.length) {
-    deliverTypeEls.forEach((el) => el.addEventListener("change", loadPicklist));
+    deliverTypeEls.forEach((el) => el.addEventListener("change", loadPicklistDebounced));
   }
 });
