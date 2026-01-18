@@ -68,35 +68,57 @@ async function findProductByAnyId(idParam) {
 
   return null;
 }
-
 // 库存保护逻辑：库存 ≤ 阈值时自动关掉特价并恢复原价
+// ✅ 同时支持：
+// - 单件特价：specialPrice
+// - N for 总价：specialQty + specialTotalPrice（例如 2 for 0.88）
 function applyAutoCancelSpecial(p) {
   if (!p) return;
 
   const threshold = Number(p.autoCancelSpecialThreshold) || 0;
   const useGuard = !!p.autoCancelSpecialOnLowStock;
 
+  // 低库存自动取消特价
   if (useGuard && threshold > 0 && typeof p.stock === "number" && p.stock <= threshold) {
-    // 关闭特价
     p.specialEnabled = false;
     p.specialPrice = null;
+    // ✅ 不强制清空 specialQty/specialTotalPrice（保留设置，方便你之后再启用）
   }
 
-  // 根据特价状态重新计算 price
   const origin = Number(p.originPrice) || 0;
   const now = new Date();
 
-  let useSpecial = false;
-  if (p.specialEnabled && p.specialPrice && Number(p.specialPrice) > 0) {
-    let okTime = true;
-    if (p.specialFrom) okTime = okTime && new Date(p.specialFrom) <= now;
-    if (p.specialTo) okTime = okTime && new Date(p.specialTo) >= now;
-    useSpecial = okTime;
+  // 时间窗判断
+  let okTime = true;
+  if (p.specialFrom) okTime = okTime && new Date(p.specialFrom) <= now;
+  if (p.specialTo) okTime = okTime && new Date(p.specialTo) >= now;
+
+  // ✅ 判断是否启用特价（允许两种模式）
+  const qty = Math.max(1, Math.floor(Number(p.specialQty || 1)));
+  const total = p.specialTotalPrice == null ? null : Number(p.specialTotalPrice);
+  const unitSpecial = p.specialPrice == null ? null : Number(p.specialPrice);
+
+  const hasNForTotal = qty > 1 && Number.isFinite(total) && total > 0;
+  const hasUnitSpecial = Number.isFinite(unitSpecial) && unitSpecial > 0;
+
+  const useSpecial = !!p.specialEnabled && okTime && (hasNForTotal || hasUnitSpecial);
+
+  // ✅ 计算“当前售卖价 price”
+  // 规则：
+  // - 如果是 N for total：把单件展示价 = total / qty（保留两位小数）
+  // - 否则用单件特价 specialPrice
+  if (useSpecial) {
+    if (hasNForTotal) {
+      const unit = Number((total / qty).toFixed(2));
+      p.price = unit > 0 ? unit : origin;
+      // ✅ 不要强行把 specialPrice 覆盖成 unit（否则你会丢掉 2for 的语义）
+    } else {
+      p.price = Number(unitSpecial) || origin;
+    }
+  } else {
+    p.price = origin;
   }
-
-  p.price = useSpecial ? (Number(p.specialPrice) || origin) : origin;
 }
-
 // 自动标签（DB版）：按列表计算并尽量落库保持一致
 async function recomputeAutoTagsForList(list) {
   const now = Date.now();
@@ -239,6 +261,12 @@ router.post("/", async (req, res) => {
       autoCancelSpecialThreshold: Number(body.autoCancelSpecialThreshold) || 0,
       minStock: body.minStock !== undefined ? Number(body.minStock) : undefined,
       allowZeroStock: body.allowZeroStock !== undefined ? !!body.allowZeroStock : undefined,
+      specialQty: body.specialQty !== undefined ? Number(body.specialQty) : 1,
+specialTotalPrice:
+  body.specialTotalPrice !== undefined && body.specialTotalPrice !== null
+    ? Number(body.specialTotalPrice)
+    : null,
+variants: Array.isArray(body.variants) ? body.variants : [],
 
       // 数组
       labels: Array.isArray(body.labels) ? body.labels : [],
@@ -302,8 +330,12 @@ router.patch("/:id", async (req, res) => {
       "activeTo",
       "specialEnabled",
       "specialPrice",
+      "specialQty",          // ✅ 新增
+      "specialTotalPrice",   // ✅ 新增
       "specialFrom",
       "specialTo",
+      "variants",            // ✅ 新增（也可以放到 variants 那一段更靠前）
+
       // 库存保护
       "autoCancelSpecialOnLowStock",
       "autoCancelSpecialThreshold",
@@ -331,6 +363,12 @@ if (body.subCategory === undefined && body.subCategoryKey !== undefined) body.su
         else p.images = [];
         return;
       }
+      // ✅ variants：必须是数组
+if (key === "variants") {
+  if (Array.isArray(body.variants)) p.variants = body.variants;
+  else p.variants = [];
+  return;
+}
 
       if (key === "labels") {
         if (Array.isArray(body.labels)) p.labels = body.labels;
@@ -341,16 +379,18 @@ if (body.subCategory === undefined && body.subCategoryKey !== undefined) body.su
 
       if (
         [
-          "originPrice",
-          "price",
-          "stock",
-          "minStock",
-          "sortOrder",
-          "autoCancelSpecialThreshold",
-          "specialPrice",
-          "cost",
-          "soldCount",
-        ].includes(key)
+  "originPrice",
+  "price",
+  "stock",
+  "minStock",
+  "sortOrder",
+  "autoCancelSpecialThreshold",
+  "specialPrice",
+  "specialQty",          // ✅ 新增
+  "specialTotalPrice",   // ✅ 新增
+  "cost",
+  "soldCount",
+].includes(key)
       ) {
         p[key] = body[key] === null ? null : Number(body[key]);
         return;
