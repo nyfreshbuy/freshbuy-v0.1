@@ -358,32 +358,43 @@ async function buildOrderPayload(req, session = null) {
       cost = Number(pdoc.cost || 0) || cost;
       hasTax = !!pdoc.taxable;
 
-      // ✅ 只有 checkout（传 session）才预扣库存并写 stockReserve
-      if (session) {
-        const needUnits = qty * unitCount;
-        const allowZero = pdoc.allowZeroStock === true;
-        const curStock = Number(pdoc.stock || 0);
+      const needUnits = qty * unitCount;
+const allowZero = pdoc.allowZeroStock === true;
+const curStock = Number(pdoc.stock || 0);
 
-        if (!allowZero && curStock < needUnits) {
-          const e = new Error(`库存不足：${pdoc.name}（需要 ${needUnits}，当前 ${curStock}）`);
-          e.status = 400;
-          throw e;
-        }
+// ✅ 关键：不管是不是 checkout，都禁止“下单数量 > 库存”
+if (!allowZero && curStock < needUnits) {
+  const e = new Error(`库存不足：${pdoc.name}（需要 ${needUnits}，当前 ${curStock}）`);
+  e.status = 400;
+  throw e;
+}
 
-        // 扣库存（共用 stock）
-        pdoc.stock = curStock - needUnits;
-        await pdoc.save({ session });
+// ✅ 只有 checkout（传 session）才真正扣库存 + 写 stockReserve
+if (session) {
+  // ✅ 改为原子扣减：避免并发超卖
+  const upd = await Product.updateOne(
+    allowZero
+      ? { _id: pdoc._id }
+      : { _id: pdoc._id, stock: { $gte: needUnits } },
+    { $inc: { stock: -needUnits } },
+    { session }
+  );
 
-        stockReserve.push({
-          productId: pdoc._id,
-          variantKey: v.key || "single",
-          unitCount,
-          qty,
-          needUnits,
-        });
-      }
+  if (upd.modifiedCount !== 1) {
+    const e = new Error(`库存不足：${pdoc.name}（需要 ${needUnits}）`);
+    e.status = 400;
+    throw e;
+  }
+
+  stockReserve.push({
+    productId: pdoc._id,
+    variantKey: v.key || "single",
+    unitCount,
+    qty,
+    needUnits,
+  });
+}
     }
-
     const lineTotal = round2(price * qty);
     subtotal += lineTotal;
 

@@ -464,6 +464,9 @@ setTimeout(() => {
 // =========================
 // ✅ variants 展开：同一商品 -> 多个“展示商品”（单个/整箱）
 // =========================
+// =========================
+// ✅ variants 展开：同一商品 -> 多个“展示商品”（单个/整箱）
+// =========================
 function expandProductsWithVariants(list) {
   const out = [];
   const arr = Array.isArray(list) ? list : [];
@@ -480,6 +483,7 @@ function expandProductsWithVariants(list) {
         __productId: productId,
         __variantKey: vKey,
         __variantLabel: "单个",
+        __unitCount: 1, // ✅ 必须带
         __displayName: p?.name || "",
         __displayPrice: null, // 走你原 price 逻辑
         __cartKey: productId ? `${productId}::${vKey}` : String(p?.sku || p?.id || ""),
@@ -496,6 +500,7 @@ function expandProductsWithVariants(list) {
         __productId: productId,
         __variantKey: vKey,
         __variantLabel: "单个",
+        __unitCount: 1, // ✅ 这里你原来缺了
         __displayName: p?.name || "",
         __displayPrice: null,
         __cartKey: productId ? `${productId}::${vKey}` : String(p?.sku || p?.id || ""),
@@ -513,13 +518,15 @@ function expandProductsWithVariants(list) {
         (unitCount > 1 ? `整箱(${unitCount}个)` : "单个");
 
       // price：variant.price 有就用；否则 null 继续走原逻辑
-      const vPrice = v.price != null && Number.isFinite(Number(v.price)) ? Number(v.price) : null;
+      const vPrice =
+        v.price != null && Number.isFinite(Number(v.price)) ? Number(v.price) : null;
 
       out.push({
         ...p,
         __productId: productId,
         __variantKey: vKey,
         __variantLabel: vLabel,
+        __unitCount: unitCount, // ✅ 必须带：用于整箱 maxQty=stock/unitCount
         __displayName: `${p?.name || ""} - ${vLabel}`,
         __displayPrice: vPrice,
         __cartKey: productId ? `${productId}::${vKey}` : String(p?.sku || p?.id || ""),
@@ -857,61 +864,81 @@ function createProductCard(p, extraBadgeText) {
     p.__displayPrice != null && Number.isFinite(Number(p.__displayPrice))
       ? Number(p.__displayPrice)
       : null;
+
   // ✅✅✅ 新价格逻辑：支持 specialEnabled + specialQty + specialTotalPrice
-// 规则：
-// - 单个买：按 originPrice（不因为 2 for 4.98 就变成特价）
-// - 展示：如果 specialQty>1，则大字显示 “N for $X”，小字显示 “单个原价 $Y”
-// - 如果 specialQty===1（单件特价），才可把单价当特价显示
+  const originUnit =
+    Number(p.originPrice ?? p.originalPrice ?? p.regularPrice ?? p.price ?? 0) || 0;
 
-const originUnit =
-  Number(p.originPrice ?? p.originalPrice ?? p.regularPrice ?? p.price ?? 0) || 0;
+  // 规格卡（整箱）如果有 override 价格，就用 override 当“单次购买价”
+  const basePrice = displayPriceOverride != null ? displayPriceOverride : originUnit;
 
-// 规格卡（整箱）如果有 override 价格，就用 override 当“单次购买价”
-const basePrice =
-  displayPriceOverride != null ? displayPriceOverride : originUnit;
+  // 后端新字段
+  const specialEnabled = !!p.specialEnabled;
+  const specialQty = Math.max(1, Math.floor(Number(p.specialQty || 1) || 1));
+  const specialTotal =
+    p.specialTotalPrice != null && p.specialTotalPrice !== ""
+      ? Number(p.specialTotalPrice)
+      : p.specialPrice != null && p.specialPrice !== ""
+      ? Number(p.specialPrice)
+      : 0;
 
-// 后端新字段
-const specialEnabled = !!p.specialEnabled;
-const specialQty = Math.max(1, Math.floor(Number(p.specialQty || 1) || 1));
-const specialTotal =
-  p.specialTotalPrice != null && p.specialTotalPrice !== ""
-    ? Number(p.specialTotalPrice)
-    : (p.specialPrice != null && p.specialPrice !== "" ? Number(p.specialPrice) : 0);
+  // 只对“单个卡”显示 N for $X（避免整箱也显示 2 for）
+  const isSingleVariant = String(variantKey || "single") === "single";
 
-// 只对“单个卡”显示 N for $X（避免整箱也显示 2 for）
-const isSingleVariant = (String(variantKey || "single") === "single");
+  // 最终：展示用（大字、小字）
+  let priceMainText = `$${Number(basePrice || 0).toFixed(2)}`;
+  let priceSubText = "";
 
-// 最终：展示用（大字、小字）
-let priceMainText = `$${Number(basePrice || 0).toFixed(2)}`;
-let priceSubText = "";
+  // ✅ A) 2 for $X：展示大字是 “2 for $4.98”，小字显示单个原价
+  if (isSingleVariant && specialEnabled && specialQty > 1 && specialTotal > 0) {
+    priceMainText = `${specialQty} for $${specialTotal.toFixed(2)}`;
+    if (originUnit > 0) priceSubText = `单个原价 $${originUnit.toFixed(2)}`;
+  }
+  // ✅ B) 单件特价：展示大字是特价，小字显示原价
+  else if (
+    isSingleVariant &&
+    specialEnabled &&
+    specialQty === 1 &&
+    specialTotal > 0 &&
+    originUnit > specialTotal
+  ) {
+    priceMainText = `$${specialTotal.toFixed(2)}`;
+    priceSubText = `原价 $${originUnit.toFixed(2)}`;
+  }
+  // ✅ C) 非单个卡（整箱）：就显示 basePrice；小字可提示单个原价
+  else {
+    if (!isSingleVariant && originUnit > 0) priceSubText = `单个原价 $${originUnit.toFixed(2)}`;
+  }
 
-// ✅ A) 2 for $X：展示大字是 “2 for $4.98”，小字显示单个原价
-if (isSingleVariant && specialEnabled && specialQty > 1 && specialTotal > 0) {
-  priceMainText = `${specialQty} for $${specialTotal.toFixed(2)}`;
-  if (originUnit > 0) priceSubText = `单个原价 $${originUnit.toFixed(2)}`;
-}
-// ✅ B) 单件特价：展示大字是特价，小字显示原价
-else if (isSingleVariant && specialEnabled && specialQty === 1 && specialTotal > 0 && originUnit > specialTotal) {
-  priceMainText = `$${specialTotal.toFixed(2)}`;
-  priceSubText = `原价 $${originUnit.toFixed(2)}`;
-}
-// ✅ C) 非单个卡（整箱）：就显示 basePrice；小字可提示单个原价
-else {
-  if (!isSingleVariant && originUnit > 0) priceSubText = `单个原价 $${originUnit.toFixed(2)}`;
-}
-  const badgeText =
-    extraBadgeText || ((p.tag || "").includes("爆品") ? "爆品" : "");
+  const badgeText = extraBadgeText || ((p.tag || "").includes("爆品") ? "爆品" : "");
 
   const imageUrl =
     p.image && String(p.image).trim()
       ? String(p.image).trim()
-      : `https://picsum.photos/seed/${encodeURIComponent(
-          pid || displayName || "fb"
-        )}/500/400`;
+      : `https://picsum.photos/seed/${encodeURIComponent(pid || displayName || "fb")}/500/400`;
 
   const tagline = (p.tag || p.category || "").slice(0, 18);
-  const limitQty =
-    p.limitQty || p.limitPerUser || p.maxQty || p.purchaseLimit || 0;
+  const limitQty = p.limitQty || p.limitPerUser || p.maxQty || p.purchaseLimit || 0;
+
+  // =========================
+  // ✅✅✅ 库存限购（前台仅辅助体验）
+  // 单个：max = stock
+  // 整箱：max = floor(stock / unitCount)
+  // =========================
+  const stock = Math.max(0, Math.floor(Number(p.stock ?? 0)));
+  const unitCount = Math.max(1, Math.floor(Number(p.__unitCount || 1)));
+  const maxQtyByStock = unitCount > 1 ? Math.floor(stock / unitCount) : stock;
+
+  // 如果你还要叠加“每人限购”，这里取更小的那个（可选）
+  const maxQty = limitQty > 0 ? Math.max(0, Math.min(maxQtyByStock, Math.floor(Number(limitQty)))) : maxQtyByStock;
+
+  function clampQty(q) {
+    let n = Math.floor(Number(q || 1));
+    if (!Number.isFinite(n) || n < 1) n = 1;
+    if (maxQty <= 0) return 0;
+    if (n > maxQty) n = maxQty;
+    return n;
+  }
 
   article.innerHTML = `
   <div class="product-image-wrap">
@@ -923,12 +950,13 @@ else {
     <div class="product-overlay">
       <div class="overlay-btn-row">
         <button type="button" class="overlay-btn fav">⭐ 收藏</button>
-        <button type="button" class="overlay-btn add" data-add-pid="${pid}">
-          加入购物车${limitQty > 0 ? `（限购${limitQty}）` : ""}
+        <button type="button" class="overlay-btn add" data-add-pid="${pid}" ${maxQty<=0 ? "disabled" : ""}>
+          ${maxQty<=0 ? "已售罄" : `加入购物车${limitQty > 0 ? `（限购${limitQty}）` : ""}`}
         </button>
       </div>
     </div>
   </div>
+
   <div class="product-name">${displayName}</div>
   <div class="product-desc">${p.desc || ""}</div>
 
@@ -945,10 +973,33 @@ else {
 
   <div class="product-tagline">${tagline}</div>
 
-  <button type="button" class="product-add-fixed" data-add-pid="${pid}">
-    加入购物车
+  <!-- ✅✅✅ 数量步进器（前台辅助体验） -->
+  <div class="qty-row" style="display:flex;align-items:center;gap:8px;margin-top:10px;">
+    <button type="button" class="qty-btn" data-qty-minus style="width:34px;height:34px;border-radius:10px;">-</button>
+
+    <input
+      type="number"
+      inputmode="numeric"
+      min="1"
+      step="1"
+      class="qty-input"
+      data-qty-input
+      value="1"
+      style="width:64px;height:34px;border-radius:10px;text-align:center;"
+    />
+
+    <button type="button" class="qty-btn" data-qty-plus style="width:34px;height:34px;border-radius:10px;">+</button>
+
+    <span data-qty-hint style="font-size:12px;opacity:.7;margin-left:auto;">
+      ${maxQty <= 0 ? "已售罄" : `最多 ${maxQty}`}
+    </span>
+  </div>
+
+  <button type="button" class="product-add-fixed" data-add-pid="${pid}" ${maxQty<=0 ? "disabled" : ""}>
+    ${maxQty<=0 ? "已售罄" : "加入购物车"}
   </button>
 `;
+
   // ✅ 点卡片进详情：用 productId（不是 pid/cartKey）
   article.addEventListener("click", () => {
     if (!productId) return;
@@ -960,13 +1011,52 @@ else {
     window.location.href = url;
   });
 
+  // ✅ 数量控件绑定
+  const qtyInput = article.querySelector("[data-qty-input]");
+  const btnMinus = article.querySelector("[data-qty-minus]");
+  const btnPlus = article.querySelector("[data-qty-plus]");
+  const qtyHint = article.querySelector("[data-qty-hint]");
+
+  function syncQtyUI() {
+    const q = clampQty(qtyInput?.value || 1);
+    if (qtyInput) qtyInput.value = String(q);
+
+    if (btnMinus) btnMinus.disabled = q <= 1 || maxQty <= 0;
+    if (btnPlus) btnPlus.disabled = maxQty <= 0 || q >= maxQty;
+
+    if (qtyHint) qtyHint.textContent = maxQty <= 0 ? "已售罄" : `最多 ${maxQty}`;
+  }
+
+  if (qtyInput) {
+    qtyInput.addEventListener("click", (ev) => ev.stopPropagation());
+    qtyInput.addEventListener("input", () => syncQtyUI());
+    qtyInput.addEventListener("blur", () => syncQtyUI());
+  }
+  if (btnMinus) {
+    btnMinus.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      if (!qtyInput) return;
+      qtyInput.value = String(Number(qtyInput.value || 1) - 1);
+      syncQtyUI();
+    });
+  }
+  if (btnPlus) {
+    btnPlus.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      if (!qtyInput) return;
+      qtyInput.value = String(Number(qtyInput.value || 1) + 1);
+      syncQtyUI();
+    });
+  }
+
+  // 初始同步一次（处理 max=0 / clamp）
+  syncQtyUI();
+
   function doAdd(ev) {
     ev.stopPropagation();
 
     const cartApi =
-      (window.FreshCart &&
-        typeof window.FreshCart.addItem === "function" &&
-        window.FreshCart) ||
+      (window.FreshCart && typeof window.FreshCart.addItem === "function" && window.FreshCart) ||
       (window.Cart && typeof window.Cart.addItem === "function" && window.Cart) ||
       null;
 
@@ -974,50 +1064,57 @@ else {
       alert("购物车模块暂未启用（请确认 cart.js 已加载）");
       return;
     }
-    // ✅【新增】计算加购单价（必须在对象外）
-let cartUnitPrice = basePrice;
 
-// 单个规格：强制使用单个原价
-if (isSingleVariant && originUnit > 0) {
-  cartUnitPrice = originUnit;
-}
+    const wantQty = clampQty(qtyInput?.value || 1);
+    if (wantQty <= 0) {
+      alert("该商品已售罄");
+      return;
+    }
+
+    // ✅【新增】计算加购单价（必须在对象外）
+    let cartUnitPrice = basePrice;
+
+    // 单个规格：强制使用单个原价
+    if (isSingleVariant && originUnit > 0) {
+      cartUnitPrice = originUnit;
+    }
+
     // ✅✅✅ 关键：加购时把 productId + variantKey 带上（给后端扣共用库存）
     const normalized = {
-  id: pid, // cartKey（productId::variantKey）
+      id: pid, // cartKey（productId::variantKey）
 
-  productId: productId,
-  variantKey: variantKey,
+      productId: productId,
+      variantKey: variantKey,
 
-  name: displayName || "商品",
+      name: displayName || "商品",
 
-  price: cartUnitPrice,
-  priceNum: cartUnitPrice,
+      price: cartUnitPrice,
+      priceNum: cartUnitPrice,
 
-  image: p.image || imageUrl,
-  tag: p.tag || "",
-  type: p.type || "",
-  isSpecial: isHotProduct(p),
-  isDeal: isHotProduct(p),
-};
-    cartApi.addItem(normalized, 1);
+      image: p.image || imageUrl,
+      tag: p.tag || "",
+      type: p.type || "",
+      isSpecial: isHotProduct(p),
+      isDeal: isHotProduct(p),
+    };
 
-    // ✅✅✅ 加购后立刻显示徽章 +1
+    cartApi.addItem(normalized, wantQty);
+
+    // ✅✅✅ 加购后立刻显示徽章 +wantQty
     try {
-      const badge = article.querySelector(
-        `.product-qty-badge[data-pid="${pid}"]`
-      );
+      const badge = article.querySelector(`.product-qty-badge[data-pid="${pid}"]`);
       const cur = Number((badge?.textContent || "").replace("+", "")) || 0;
-      const next = Math.min(cur + 1, 99);
+      const next = Math.min(cur + wantQty, 99);
       if (badge) {
         badge.textContent = next >= 99 ? "99+" : String(next);
         badge.style.display = "flex";
       }
     } catch {}
 
-    // ✅ 通知全站：购物车已更新
+    // ✅ 通知全站：购物车已更新（delta=wantQty）
     try {
       window.dispatchEvent(
-        new CustomEvent("freshbuy:cartUpdated", { detail: { pid, delta: 1 } })
+        new CustomEvent("freshbuy:cartUpdated", { detail: { pid, delta: wantQty } })
       );
     } catch {}
 
