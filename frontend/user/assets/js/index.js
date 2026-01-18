@@ -966,7 +966,28 @@ function createProductCard(p, extraBadgeText) {
   const btnMinus = article.querySelector("[data-qty-minus]");
   const btnPlus = article.querySelector("[data-qty-plus]");
   const qtyHint = article.querySelector("[data-qty-hint]");
+  function getCurrentQty() {
+  const n = Math.floor(Number(qtyInput?.value || 0) || 0);
+  return Number.isFinite(n) ? n : 0;
+}
 
+// ✅✅✅ 核心：黑框=绿圈=购物车数量
+function setQtyEverywhere(qty) {
+  const q = clampQty(qty);
+
+  // 1) 黑框
+  if (qtyInput) qtyInput.value = String(q);
+
+  // 2) 绿圈徽章（你的函数已经有 cap）
+  setProductBadge(pid, q);
+
+  // 3) 通知购物车（让 cart.js 去同步）
+  try {
+    window.dispatchEvent(
+      new CustomEvent("freshbuy:cartQtySet", { detail: { pid, qty: q } })
+    );
+  } catch {}
+}
   function syncQtyUI() {
     selectedQty = clampQty(selectedQty);
 
@@ -987,24 +1008,32 @@ function createProductCard(p, extraBadgeText) {
   }
 
   if (btnMinus) {
-    btnMinus.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      selectedQty -= 1;
-      syncQtyUI();
-    });
-  }
+  btnMinus.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    setQtyEverywhere(getCurrentQty() - 1);
+    syncQtyUI();
+  });
+}
 
-  if (btnPlus) {
-    btnPlus.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      selectedQty += 1;
-      syncQtyUI();
-    });
-  }
-
+if (btnPlus) {
+  btnPlus.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    setQtyEverywhere(getCurrentQty() + 1);
+    syncQtyUI();
+  });
+}
   // 初始同步一次（处理 max=0 / clamp）
   syncQtyUI();
-
+  // ✅ 页面初次：用购物车数量覆盖黑框，让两边一致
+try {
+  const cart = getCartSnapshot();
+  const qtyMap = normalizeCartToQtyMap(cart);
+  const inCart = Math.floor(Number(qtyMap?.[pid] || 0) || 0);
+  if (inCart > 0) {
+    setQtyEverywhere(inCart);
+    syncQtyUI();
+  }
+} catch {}
   function doAdd(ev) {
     ev.stopPropagation();
 
