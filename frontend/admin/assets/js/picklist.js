@@ -4,6 +4,13 @@ let currentPicklist = [];
 /* =========================
  * 小工具
  * ========================= */
+function $id(...ids) {
+  for (const id of ids) {
+    const el = document.getElementById(id);
+    if (el) return el;
+  }
+  return null;
+}
 function getAdminToken() {
   // ✅ 兼容你现在项目里实际存在的 token key
   return (
@@ -49,7 +56,7 @@ function toISOFromDatetimeLocal(v) {
  * 返回：{success:true,zones:[{zoneKey,zoneName,zips:[]},...]}
  * ========================= */
 async function loadZonesIntoSelect() {
-  const zoneSelect = document.getElementById("picklistZone");
+  const zoneSelect = $id("picklistZone", "zoneSelect");
   if (!zoneSelect) return;
 
   zoneSelect.innerHTML = `<option value="all">全部区域</option>`;
@@ -89,8 +96,8 @@ async function loadZonesIntoSelect() {
  * 渲染表格（SKU 为第一列）
  * ========================= */
 function renderPicklistTable() {
-  const tbody = document.getElementById("picklistTbody");
-  const infoSpan = document.getElementById("picklistInfo");
+  const tbody = $id("picklistTbody", "ordersTbody");      // ✅ 兼容你旧页面
+const infoSpan = $id("picklistInfo", "ordersMeta");     // ✅ 兼容你旧页面
   if (!tbody) return;
 
   tbody.innerHTML = "";
@@ -134,12 +141,10 @@ function renderPicklistTable() {
  * 读取筛选条件 -> querystring
  * ========================= */
 function buildPicklistParams() {
-  const scope = document.getElementById("picklistScope")?.value || "zone_group_only";
-  const zone = document.getElementById("picklistZone")?.value || "all";
-  const deliverTypes = getCheckedDeliverTypes();
-  const from = toISOFromDatetimeLocal(document.getElementById("picklistFrom")?.value || "");
-  const to = toISOFromDatetimeLocal(document.getElementById("picklistTo")?.value || "");
-
+  const scope = $id("picklistScope", "scopeSelect")?.value || "zone_group_only";
+const zone = $id("picklistZone", "zoneSelect")?.value || "all";
+const from = toISOFromDatetimeLocal($id("picklistFrom", "fromTime")?.value || "");
+const to = toISOFromDatetimeLocal($id("picklistTo", "toTime")?.value || "");
   const params = new URLSearchParams();
   params.set("scope", scope);
   params.set("zone", zone);
@@ -224,9 +229,8 @@ async function fetchPicklistFallbackOld() {
  * 加载配货数据（优先新接口）
  * ========================= */
 async function loadPicklist() {
-  const tbody = document.getElementById("picklistTbody");
-  const infoSpan = document.getElementById("picklistInfo");
-
+  const tbody = $id("picklistTbody", "ordersTbody");
+const infoSpan = $id("picklistInfo", "ordersMeta");
   if (tbody) {
     tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;">正在加载...</td></tr>`;
   }
@@ -378,15 +382,14 @@ window.addEventListener("DOMContentLoaded", async () => {
   loadPicklist();
 
   // 事件
-  const btnRefresh = document.getElementById("btnRefreshPicklist");
-  const btnPrint = document.getElementById("btnPrintPicklist");
-  const btnApply = document.getElementById("btnApplyPicklist");
+  const btnRefresh = $id("btnRefreshPicklist", "btnRefresh");
+const btnPrint = $id("btnPrintPicklist", "btnPrintPicklist", "btnPrint"); // 兼容多写法
+const btnApply = $id("btnApplyPicklist", "btnApplyFilter", "btnApply");
 
-  const zoneSelect = document.getElementById("picklistZone");
-  const scopeSelect = document.getElementById("picklistScope");
-  const fromEl = document.getElementById("picklistFrom");
-  const toEl = document.getElementById("picklistTo");
-
+const zoneSelect = $id("picklistZone", "zoneSelect");
+const scopeSelect = $id("picklistScope", "scopeSelect");
+const fromEl = $id("picklistFrom", "fromTime");
+const toEl = $id("picklistTo", "toTime");
   // ✅ 应用筛选按钮（推荐用它）
   if (btnApply) btnApply.addEventListener("click", loadPicklist);
 
