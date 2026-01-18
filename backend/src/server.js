@@ -62,6 +62,7 @@ import authVerifyRegisterRouter from "./routes/auth_verify_register.js";
 import authVerifyResetPasswordRouter from "./routes/auth_verify_reset_password.js";
 import driverDispatchRoutes from "./routes/driver_dispatch.js";
 import resetPwdRouter from "./routes/auth_reset_password.js";
+import zonesPublicListRouter from "./routes/zones_public_list.js";
 // =======================
 // ESM 环境下的 __dirname
 // =======================
@@ -122,6 +123,8 @@ app.use("/api/admin/products", (req, res, next) => {
   console.log("🧭 ENTER /api/admin/products:", req.method, req.originalUrl);
   return next();
 });
+app.use("/api/zones", zonesPublicListRouter);
+
 // =======================
 // 其他路由（保持你的顺序，但修正重复挂载）
 // =======================
