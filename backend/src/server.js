@@ -107,7 +107,11 @@ app.use(cors());
 // 其它 API 才用 json
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
+// ✅ DEBUG：确认 /api/admin/products 请求是否真的进入 products router
+app.use("/api/admin/products", (req, res, next) => {
+  console.log("🧭 ENTER /api/admin/products:", req.method, req.originalUrl);
+  return next();
+});
 // =======================
 // 其他路由（保持你的顺序，但修正重复挂载）
 // =======================
@@ -342,6 +346,16 @@ app.get("/driver/:page", (req, res) => {
 // 未匹配的 API 路由，统一返回 404 JSON（必须最后）
 // =======================
 app.use("/api", (req, res) => {
+  // ✅✅✅ 全局错误捕捉：打印具体文件 + 行号（必须放在 404 之前）
+app.use((err, req, res, next) => {
+  console.error("🔥 GLOBAL ERROR:", req.method, req.originalUrl);
+  console.error(err?.stack || err);
+
+  return res.status(500).json({
+    success: false,
+    message: err?.message || String(err) || "Server Error",
+  });
+});
   console.log("❌ API 404 捕获:", req.originalUrl);
   res.status(404).json({
     success: false,
