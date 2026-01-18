@@ -5,7 +5,7 @@ let filteredOrders = [];
 let currentPage = 1;
 const PAGE_SIZE = 10;
 const orderMap = {}; // key: orderId -> order 对象
-
+const ZONE_NAME_MAP = {}; // key: zoneId -> zoneName
 // ======================== 工具函数 ========================
 // ======================== 司机列表（派单用） ========================
 let DRIVER_OPTIONS = []; // [{id,label}]
@@ -30,7 +30,67 @@ async function loadDrivers() {
     DRIVER_OPTIONS = [];
   }
 }
+async function loadZones() {
+  try {
+    const token = localStorage.getItem("adminToken");
 
+    // ✅ 你后端如果已有接口：建议用 /api/admin/zones
+    // 如果你实际接口不是这个，把这里的 URL 改成你真实的即可
+    const res = await fetch("/api/admin/zones", {
+      headers: token ? { Authorization: "Bearer " + token } : {},
+    });
+    const data = await res.json();
+
+    // 兼容两种格式：数组 / {success, zones}
+    const zones = Array.isArray(data) ? data : (data?.zones || []);
+    if (!Array.isArray(zones)) throw new Error("zones format invalid");
+
+    // 1) 先清空映射
+    for (const k in ZONE_NAME_MAP) delete ZONE_NAME_MAP[k];
+
+    // 2) 填充映射（兼容字段名）
+    zones.forEach((z) => {
+      const id = String(z._id || z.id || z.zoneId || "").trim();
+      const name = String(z.name || z.zoneName || z.title || id).trim();
+      if (id) ZONE_NAME_MAP[id.toLowerCase()] = name;
+    });
+
+    // 3) 生成下拉框 options：显示 name，不显示 id
+    const select = document.getElementById("areaZoneFilter");
+    if (!select) return;
+
+    select.innerHTML = "";
+
+    // “全部区域”
+    const optAll = document.createElement("option");
+    optAll.value = "";
+    optAll.textContent = "全部区域";
+    select.appendChild(optAll);
+
+    zones.forEach((z) => {
+      const id = String(z._id || z.id || z.zoneId || "").trim();
+      if (!id) return;
+
+      const name = ZONE_NAME_MAP[id.toLowerCase()] || id;
+
+      // ✅ 如果后端有 count/orderCount，就一起显示（可选）
+      const count = z.count ?? z.orderCount ?? z.ordersCount ?? null;
+
+      const opt = document.createElement("option");
+      opt.value = id; // ✅ value 用 id（筛选用）
+      opt.textContent = count != null ? `${name}（${count}单）` : name; // ✅ 显示用 name
+      select.appendChild(opt);
+    });
+  } catch (e) {
+    console.error("获取区域列表失败:", e);
+
+    // 失败时保底：至少有“全部区域”
+    const select = document.getElementById("areaZoneFilter");
+    if (select && !select.options.length) {
+      select.innerHTML = `<option value="">全部区域</option>`;
+    }
+  }
+}
 function toDateInputValue(d) {
   const dt = d ? new Date(d) : new Date();
   const y = dt.getFullYear();
@@ -562,13 +622,14 @@ function printOrderList() {
       const modeText = getServiceModeText(order);
 
       const zoneRaw =
-        order.areaGroupZone ||
-        order.zoneName ||
-        order.zoneId ||
-        order.deliveryZone ||
-        "";
-      const zoneText = zoneRaw || "-";
+  order.areaGroupZone ||
+  order.zoneId ||
+  order.deliveryZone ||
+  order.zoneName ||
+  "";
 
+const zoneKey = String(zoneRaw || "").toLowerCase();
+const zoneText = ZONE_NAME_MAP[zoneKey] || zoneRaw || "-";
       return `
         <tr>
           <td>${id}</td>
@@ -662,10 +723,10 @@ function initAreaZoneFilterOptions() {
 window.addEventListener("DOMContentLoaded", () => {
   // ✅ 先拉司机列表，再拉订单（不然下拉为空）
   (async () => {
-    await loadDrivers();
-    await loadOrders();
-  })();
-
+  await loadDrivers();
+  await loadZones();   // ✅ 先把区域名称映射和下拉框准备好
+  await loadOrders();
+})();
   // 状态筛选
   const statusSelect = document.getElementById("statusFilter");
   if (statusSelect) {
