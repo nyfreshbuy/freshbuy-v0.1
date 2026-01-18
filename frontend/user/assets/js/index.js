@@ -1007,21 +1007,88 @@ function setQtyEverywhere(qty) {
     if (fixedAdd) fixedAdd.disabled = maxQty <= 0;
   }
 
-  if (btnMinus) {
-  btnMinus.addEventListener("click", (ev) => {
-    ev.stopPropagation();
-    setQtyEverywhere(getCurrentQty() - 1);
-    syncQtyUI();
-  });
+  function getCartQtyNow() {
+  try {
+    const cart = getCartSnapshot();
+    const qtyMap = normalizeCartToQtyMap(cart);
+    return Math.max(0, Math.floor(Number(qtyMap[pid] || 0)));
+  } catch {
+    return 0;
+  }
+}
+
+function syncBlackAndGreenToCart() {
+  const q = getCartQtyNow();
+
+  // 黑框数字（你现在的 qtyInput）
+  if (qtyInput) {
+    qtyInput.value = String(Math.max(1, q || 1));
+  }
+
+  // 绿色圆圈徽章
+  setProductBadge(pid, q);
+
+  // +/- 按钮状态
+  if (btnMinus) btnMinus.disabled = q <= 0 || maxQty <= 0;
+  if (btnPlus) btnPlus.disabled = maxQty <= 0 || q >= maxQty;
+}
+
+function getCartApi() {
+  return (
+    (window.FreshCart && (typeof window.FreshCart.addItem === "function" || typeof window.FreshCart.setQty === "function") && window.FreshCart) ||
+    (window.Cart && (typeof window.Cart.addItem === "function" || typeof window.Cart.setQty === "function") && window.Cart) ||
+    null
+  );
 }
 
 if (btnPlus) {
   btnPlus.addEventListener("click", (ev) => {
     ev.stopPropagation();
-    setQtyEverywhere(getCurrentQty() + 1);
-    syncQtyUI();
+
+    const cartApi = getCartApi();
+    if (!cartApi) return alert("购物车模块未加载（cart.js）");
+
+    const cur = getCartQtyNow();
+    const next = Math.min(maxQty, cur + 1);
+    if (maxQty <= 0) return;
+
+    // ✅ 优先用 setQty（如果你的 cart.js 支持）
+    if (typeof cartApi.setQty === "function") {
+      cartApi.setQty(pid, next);
+    } else if (typeof cartApi.addItem === "function") {
+      // ✅ 否则用 addItem +1（你项目里就是 addItem(normalized, qty)）
+      cartApi.addItem(normalized, 1);
+    }
+
+    // 同步黑框 + 绿圈
+    setTimeout(syncBlackAndGreenToCart, 0);
   });
 }
+
+if (btnMinus) {
+  btnMinus.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+
+    const cartApi = getCartApi();
+    if (!cartApi) return alert("购物车模块未加载（cart.js）");
+
+    const cur = getCartQtyNow();
+    const next = Math.max(0, cur - 1);
+
+    if (typeof cartApi.setQty === "function") {
+      cartApi.setQty(pid, next);
+    } else if (typeof cartApi.addItem === "function") {
+      // 你的 cart.js 如果支持 addItem 负数：就能减
+      cartApi.addItem(normalized, -1);
+    } else if (typeof cartApi.removeItem === "function") {
+      cartApi.removeItem(pid, 1); // 如果你有 removeItem(pid, qty)
+    }
+
+    setTimeout(syncBlackAndGreenToCart, 0);
+  });
+}
+// 初始化时也同步一次
+setTimeout(syncBlackAndGreenToCart, 0);
   // 初始同步一次（处理 max=0 / clamp）
   syncQtyUI();
   // ✅ 页面初次：用购物车数量覆盖黑框，让两边一致
