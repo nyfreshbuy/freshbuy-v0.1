@@ -1711,28 +1711,51 @@
           onPaySwitch();
         }
 
-        // 默认地址
-        loadDefaultLocal();
-        fetchDefaultAddressFromDB()
-          .then((a) => {
-            if (!a) return;
-            document.getElementById("firstName").value = a.firstName || "";
-            document.getElementById("lastName").value = a.lastName || "";
-            document.getElementById("shipPhone").value = a.phone || "";
-            document.getElementById("street").value = a.street1 || "";
-            document.getElementById("apt").value = a.apt || "";
-            document.getElementById("city").value = a.city || "";
-            document.getElementById("state").value = a.state || "";
-            document.getElementById("zip").value = a.zip || "";
-            if (typeof a.lat === "number") document.getElementById("addrLat").value = String(a.lat);
-            if (typeof a.lng === "number") document.getElementById("addrLng").value = String(a.lng);
-            if (a.fullText) document.getElementById("addrFullText").value = String(a.fullText);
-            if (a.placeId) document.getElementById("addrPlaceId").value = String(a.placeId);
-            saveDefaultLocal(a);
-            refreshAll();
-          })
-          .catch(() => {});
+       // 默认地址（✅ 只有登录才允许回填）
+const token = getToken();
 
+if (token) {
+  loadDefaultLocal();
+
+  fetchDefaultAddressFromDB()
+    .then((a) => {
+      if (!a) return;
+
+      document.getElementById("firstName").value = a.firstName || "";
+      document.getElementById("lastName").value = a.lastName || "";
+      document.getElementById("shipPhone").value = a.phone || "";
+      document.getElementById("street").value = a.street1 || "";
+      document.getElementById("apt").value = a.apt || "";
+      document.getElementById("city").value = a.city || "";
+      document.getElementById("state").value = a.state || "";
+      document.getElementById("zip").value = a.zip || "";
+
+      if (typeof a.lat === "number") document.getElementById("addrLat").value = String(a.lat);
+      if (typeof a.lng === "number") document.getElementById("addrLng").value = String(a.lng);
+      if (a.fullText) document.getElementById("addrFullText").value = String(a.fullText);
+      if (a.placeId) document.getElementById("addrPlaceId").value = String(a.placeId);
+
+      saveDefaultLocal(a);
+      refreshAll();
+    })
+    .catch(() => {});
+} else {
+  // ✅ 游客：不允许用本地默认地址回填
+  try {
+    localStorage.removeItem(LS_DEFAULT_ADDR_KEY); // defaultAddress_v2
+  } catch {}
+
+  // 清空表单（避免残留）
+  ["firstName", "lastName", "shipPhone", "street", "apt", "city", "zip"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.value = "";
+  });
+
+  const stateEl = document.getElementById("state");
+  if (stateEl) stateEl.value = "";
+
+  clearAddressSelection();
+}
         document.getElementById("btnClearAddr").addEventListener("click", () => {
           document.getElementById("street").value = "";
           document.getElementById("apt").value = "";
