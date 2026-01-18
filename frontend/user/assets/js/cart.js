@@ -97,7 +97,39 @@ console.log("✅ cart.js loaded on", location.pathname);
     const n = Number(v);
     return Number.isFinite(n) ? n : fallback;
   }
+  // ✅ 计算某个购物车 item 的最终行金额（支持：单价/2forX/规格整箱）
+// 约定：product.variantKey = "single" 或 "box12"...；
+//      product.variants = [{key,label,unitCount,price,enabled}]
+function calcItemPrice(product, qty) {
+  const q = Math.max(0, Number(qty || 0));
 
+  // 1) 先算“当前规格”的单价
+  let unitPrice = safeNum(product?.priceNum ?? product?.price ?? 0);
+
+  // 如果商品带 variants，且有 variantKey，则用对应规格的 price 覆盖
+  const vKey = String(product?.variantKey || "single");
+  const variants = Array.isArray(product?.variants) ? product.variants : [];
+  const v = variants.find((x) => String(x?.key || "") === vKey);
+
+  if (v && v.enabled !== false) {
+    const vp = v.price == null ? null : Number(v.price);
+    if (Number.isFinite(vp) && vp > 0) unitPrice = vp;
+  }
+
+  // 2) 再算 2 for $X / N for $X（仅对 single 生效，避免箱价被特价逻辑覆盖）
+  const specialEnabled = product?.specialEnabled === true || product?.specialEnabled === "true";
+  const specialQty = Math.max(1, Math.floor(Number(product?.specialQty || 1)));
+  const specialTotal = product?.specialTotalPrice == null ? null : Number(product.specialTotalPrice);
+
+  if (vKey === "single" && specialEnabled && Number.isFinite(specialTotal) && specialTotal > 0 && specialQty > 1) {
+    const groups = Math.floor(q / specialQty);
+    const remain = q % specialQty;
+    return Number((groups * specialTotal + remain * unitPrice).toFixed(2));
+  }
+
+  // 3) 默认：单价 * 数量
+  return Number((unitPrice * q).toFixed(2));
+}
   function isDealProduct(product) {
     if (!product) return false;
 
