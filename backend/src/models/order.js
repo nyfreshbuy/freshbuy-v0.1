@@ -130,7 +130,6 @@ const orderSchema = new mongoose.Schema(
     payment: {
       status: {
         type: String,
-        // ✅ 扩展：Stripe 分阶段状态
         enum: [
           "unpaid",
           "requires_payment_method",
@@ -151,22 +150,16 @@ const orderSchema = new mongoose.Schema(
         index: true,
       },
 
-      // ✅ 幂等键（你前端 intentKey 推荐存到这）
       idempotencyKey: { type: String, default: "", index: true },
-
-      // ✅ 更语义化的字段（建议和 idempotencyKey 同步写）
       intentKey: { type: String, default: "", index: true },
 
-      // ✅ 金额总额（支付快照 + 对账）
       amountTotal: { type: Number, default: 0 },
       paidTotal: { type: Number, default: 0 },
 
-      // ✅ Stripe 补全字段（你 pay_stripe.js / webhook 用得到）
       stripePaymentIntentId: { type: String, default: "", index: true },
       stripeClientSecret: { type: String, default: "" },
       stripeChargeId: { type: String, default: "" },
 
-      // ✅ 兼容你原先的 stripe 子结构（保留不破坏历史数据）
       stripe: {
         intentId: { type: String, default: "", index: true },
         paid: { type: Number, default: 0 },
@@ -183,13 +176,9 @@ const orderSchema = new mongoose.Schema(
         confirmedAt: Date,
       },
 
-      // ✅ 错误信息
       lastError: { type: String, default: "" },
-
-      // ✅ 支付时间（payment 内也留一份）
       paidAt: Date,
 
-      // 金额快照（由 pre-validate 自动写入）
       amountSubtotal: { type: Number, default: 0 },
       amountDeliveryFee: { type: Number, default: 0 },
       amountTax: { type: Number, default: 0 },
@@ -198,7 +187,6 @@ const orderSchema = new mongoose.Schema(
       amountDiscount: { type: Number, default: 0 },
     },
 
-    // ✅ 根字段 paidAt（你现有代码在用）
     paidAt: { type: Date, index: true },
 
     marketing: {
@@ -225,6 +213,8 @@ const orderSchema = new mongoose.Schema(
     salesTaxRate: { type: Number, default: 0 },
 
     addressText: { type: String, default: "" },
+
+    // ✅ 订单备注（落库字段仍然用 note）
     note: { type: String, default: "" },
 
     packBatchId: { type: String, default: "", index: true },
@@ -240,7 +230,6 @@ const orderSchema = new mongoose.Schema(
 
     items: { type: [orderItemSchema], default: [] },
 
-    // ✅ 新增字段：库存预扣快照（用于取消/失败回滚库存）
     stockReserve: { type: [stockReserveItemSchema], default: [] },
 
     driverId: { type: mongoose.Schema.Types.ObjectId, ref: "User", index: true },
@@ -261,8 +250,27 @@ const orderSchema = new mongoose.Schema(
     settlementGenerated: { type: Boolean, default: false, index: true },
     settlementId: { type: mongoose.Schema.Types.ObjectId, ref: "Settlement", index: true },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+
+    // ✅ 关键：让 virtual（remark）在返回 JSON/对象时也能看到
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
+  }
 );
+
+// =========================
+// ✅ Virtual：remark <-> note
+// 目的：你前端已经在传 remark，后端就算用 remark 赋值也会自动写入 note
+// =========================
+orderSchema
+  .virtual("remark")
+  .get(function () {
+    return this.note || "";
+  })
+  .set(function (v) {
+    this.note = String(v || "").trim();
+  });
 
 // =========================
 // 索引
@@ -273,13 +281,11 @@ orderSchema.index({ "dispatch.zoneId": 1, deliveryDate: 1, status: 1 });
 orderSchema.index({ "payment.status": 1, createdAt: -1 });
 orderSchema.index({ "payment.method": 1, createdAt: -1 });
 
-// ✅ Stripe 两套字段都建索引（兼容历史 + 新版）
 orderSchema.index({ "payment.stripe.intentId": 1 });
 orderSchema.index({ "payment.stripePaymentIntentId": 1 });
 orderSchema.index({ "payment.idempotencyKey": 1 });
 orderSchema.index({ "payment.intentKey": 1 });
 
-// ✅ 新增：stockReserve 里按 productId/variantKey 也能查
 orderSchema.index({ "stockReserve.productId": 1 });
 orderSchema.index({ "stockReserve.variantKey": 1 });
 
@@ -287,19 +293,16 @@ orderSchema.index({ "stockReserve.variantKey": 1 });
 // pre-validate：金额 / 批次 / 派单统一
 // =========================
 orderSchema.pre("validate", function () {
-  // ✅ paid 且已有 packBatchId => packing
   if (this.packBatchId && this.status === "paid") {
     this.status = "packing";
   }
 
-  // ✅ deliveryDate 默认次日，统一归零点
   if (!this.deliveryDate) {
     this.deliveryDate = startOfDay(addDays(new Date(), 1));
   } else {
     this.deliveryDate = startOfDay(this.deliveryDate);
   }
 
-  // ✅ zoneId：dispatch/fulfillment/address 三者统一
   const zoneId = this.dispatch?.zoneId || this.fulfillment?.zoneId || this.address?.zoneId || "";
 
   const ymd = toDateOnlyYMD(this.deliveryDate);
@@ -316,7 +319,6 @@ orderSchema.pre("validate", function () {
   this.fulfillment.batchKey = batchKey;
   this.fulfillment.batchName ||= batchName;
 
-  // ✅ items 重算
   let subtotal = 0;
   let taxableSubtotal = 0;
 
@@ -326,7 +328,6 @@ orderSchema.pre("validate", function () {
     it.lineTotal = round2(Number(it.price || 0) * qty);
     subtotal += it.lineTotal;
 
-    // hasTax 优先，其次 taxable 兼容
     const hasTax = !!it.hasTax || !!it.taxable;
     it.hasTax = hasTax;
     if (hasTax) taxableSubtotal += it.lineTotal;
@@ -335,10 +336,8 @@ orderSchema.pre("validate", function () {
   this.subtotal = round2(subtotal);
   this.taxableSubtotal = round2(taxableSubtotal);
 
-  // ✅ salesTax
   this.salesTax = round2(this.taxableSubtotal * Number(this.salesTaxRate || 0));
 
-  // ✅ platformFee：只要是 stripe 就收 2%
   const method = this.payment?.method || "none";
   const shouldPlatformFee = method === "stripe";
 
@@ -351,12 +350,10 @@ orderSchema.pre("validate", function () {
 
   this.tipFee = round2(this.tipFee || 0);
 
-  // ✅ 总额
   this.totalAmount = round2(
     this.subtotal + this.deliveryFee + this.salesTax + this.platformFee + this.tipFee - this.discount
   );
 
-  // ✅ payment 快照
   this.payment ||= {};
   this.payment.amountSubtotal = this.subtotal;
   this.payment.amountDeliveryFee = this.deliveryFee;
@@ -366,7 +363,6 @@ orderSchema.pre("validate", function () {
   this.payment.amountDiscount = this.discount;
   this.payment.amountTotal = this.totalAmount;
 
-  // ✅ 同步 intentKey <-> idempotencyKey（可选但强烈建议）
   if (!this.payment.intentKey && this.payment.idempotencyKey) {
     this.payment.intentKey = this.payment.idempotencyKey;
   }
@@ -374,7 +370,6 @@ orderSchema.pre("validate", function () {
     this.payment.idempotencyKey = this.payment.intentKey;
   }
 
-  // ✅ 同步 stripePaymentIntentId <-> stripe.intentId（兼容两套字段）
   if (!this.payment.stripePaymentIntentId && this.payment.stripe?.intentId) {
     this.payment.stripePaymentIntentId = this.payment.stripe.intentId;
   }

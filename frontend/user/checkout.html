@@ -1313,6 +1313,7 @@
             groupDay: deliveryType === "groupDay",
             zoneId: snapshot.zone?.id || "",
             zoneName: snapshot.zone?.name || "",
+            remark: f.note || "", // ✅ 新增：订单备注（用于后台订单/贴纸）
             items: (snapshot.items || []).map((it) => {
               const isTax = it.taxable === true || it.hasTax === true;
               return {
@@ -1460,6 +1461,7 @@
           groupDay: deliveryType === "groupDay",
           zoneId: snapshot.zone?.id || "",
           zoneName: snapshot.zone?.name || "",
+          remark: f.note || "", // ✅ 新增：订单备注（用于后台订单/贴纸）
           items: (snapshot.items || []).map((it) => {
             const isTax = it.taxable === true || it.hasTax === true;
             return {

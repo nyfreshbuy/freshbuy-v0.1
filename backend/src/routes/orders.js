@@ -207,7 +207,14 @@ async function buildOrderPayload(req, session = null) {
 
   const { items, receiver, shipping, zoneId, deliveryDate, tip, tipAmount } = body;
   const ship = shipping || receiver || {};
-
+    // ✅ 订单备注统一入口：支持 顶层 remark/note + shipping.note（用于后台订单/贴纸）
+  const orderNote = String(
+    body?.remark ??
+      body?.note ??
+      ship?.remark ??
+      ship?.note ??
+      ""
+  ).trim();
   if (!["dealsDay", "groupDay", "normal", "friendGroup"].includes(mode)) {
     const e = new Error("mode 不合法（请传 mode 或 deliveryMode）");
     e.status = 400;
@@ -516,8 +523,7 @@ async function buildOrderPayload(req, session = null) {
     payment: paymentSnap,
 
     addressText: String(addressText).trim(),
-    note: ship.note ? String(ship.note).trim() : "",
-
+    note: orderNote,
     address: { fullText, zip, zoneId: z, lat, lng },
 
     items: cleanItems,
@@ -603,6 +609,8 @@ router.get("/my", requireLogin, async (req, res) => {
         tipFee: o.tipFee,
         taxableSubtotal: o.taxableSubtotal,
         payment: o.payment,
+                note: o.note || "",
+        remark: o.remark || o.note || "", // ✅ 如果你 model 做了 virtual remark，这里也能拿到
         deliveryDate: o.deliveryDate,
         createdAt: o.createdAt,
         itemsCount: Array.isArray(o.items) ? o.items.length : 0,

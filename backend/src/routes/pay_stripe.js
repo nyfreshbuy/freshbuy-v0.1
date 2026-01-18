@@ -184,6 +184,14 @@ router.post("/order-intent", requireLogin, express.json(), async (req, res) => {
     const loginPhone10 = normPhone(loginPhoneRaw);
 
     const s = payload.shipping || {};
+        // ✅ 订单备注统一入口：支持 顶层 remark/note + shipping.note（用于后台订单/贴纸）
+    const orderNote = String(
+      payload?.remark ??
+        payload?.note ??
+        s?.remark ??
+        s?.note ??
+        ""
+    ).trim();
     if (!s.firstName || !s.lastName || !s.phone || !s.street1 || !s.city || !s.state || !s.zip) {
       return res.status(400).json({ success: false, message: "收货信息不完整" });
     }
@@ -277,7 +285,7 @@ router.post("/order-intent", requireLogin, express.json(), async (req, res) => {
 
         // 地址
         addressText: s.fullText || [s.street1, s.apt, s.city, s.state, s.zip].filter(Boolean).join(", "),
-        note: s.note || "",
+               note: orderNote,
         address: {
           fullText: s.fullText || "",
           zip: s.zip || "",

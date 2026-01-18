@@ -85,7 +85,17 @@ console.log("✅ /admin/assets/js/packing.js loaded");
     }
     return o.addressText || o.fullAddress || o.shippingAddress || "—";
   }
-
+    function getRemark(o) {
+    // ✅ 兼容后端多种返回：note / remark / shipping.note / address.note
+    const ship = o?.shipping || o?.receiver || o?.address || {};
+    const v =
+      o?.note ??
+      o?.remark ??
+      ship?.note ??
+      ship?.remark ??
+      "";
+    return String(v || "").trim();
+  }
   function getDeliveryType(o) {
     const v = String(
       o.deliveryType || o.fulfillmentType || o.shippingType || o.receiveMode || ""
@@ -518,14 +528,14 @@ console.log("✅ /admin/assets/js/packing.js loaded");
           const name = getName(o);
           const phone = getPhone(o);
           const addr = getAddress(o);
-          const note = String(o.note || o.remark || "—");
+                    const note = getRemark(o); // ✅ 用统一函数
 
           return `
             <div class="label">
               <div class="route-seq-big">${esc(seq)}</div>
               <div class="name">${esc(name)} ${phone ? `(${esc(phone)})` : ""}</div>
               <div class="addr">${esc(addr)}</div>
-              <div class="note">留言：${esc(note)}</div>
+              ${note ? `<div class="note">留言：${esc(note)}</div>` : ""}
               <div class="ord">订单号：${esc(no)} · 批次：${esc(batchId)}</div>
             </div>
           `;
@@ -621,6 +631,7 @@ console.log("✅ /admin/assets/js/packing.js loaded");
               <div><b>客户：</b>${esc(maskedName || "—")}</div>
               <div><b>电话：</b>${esc(maskedPhone || "—")}</div>
               <div><b>地址：</b>${esc(addr || "—")}</div>
+              ${getRemark(o) ? `<div><b>留言：</b>${esc(getRemark(o))}</div>` : ""}
             </div>
 
             <table>
@@ -817,9 +828,12 @@ console.log("✅ /admin/assets/js/packing.js loaded");
 
     const url = `/api/admin/orders/by-batch?batchId=${encodeURIComponent(batchId)}`;
     try {
-      const data = await apiGet(url);
-      orders = data.list || data.orders || [];
-
+            const data = await apiGet(url);
+      orders = (data.list || data.orders || []).map((o) => {
+        // ✅ 把备注统一挂到 note 字段，后面打印/展示都用 o.note
+        const remark = getRemark(o);
+        return { ...o, note: remark };
+      });
       // ✅ 保留已有 routeSeq（如果存在），没有就不强行写，避免“加载就变顺序”
       // 如果你希望每次加载默认写 1..N，打开下一行：
       // orders = ensureRouteSeqForList(orders);
