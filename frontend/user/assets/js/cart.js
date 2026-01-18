@@ -904,6 +904,9 @@ function calcItemPrice(product, qty) {
         subtotal: calcCartSubtotal(cartState.items),
       };
       window.dispatchEvent(new CustomEvent("freshcart:updated", { detail }));
+      try {
+  window.dispatchEvent(new CustomEvent("freshbuy:cartUpdated", { detail }));
+} catch {}
     } catch {}
   }
 
@@ -1268,6 +1271,27 @@ function calcItemPrice(product, qty) {
       const it = cartState.items.find((x) => x?.product?.id === id);
       return it ? (Number(it.qty) || 0) : 0;
     },
+    // ✅ 新增：精确设置数量（首页/分类页步进器用）
+setQty(productId, qty) {
+  const id = String(productId || "");
+  const target = Math.max(0, Math.floor(Number(qty || 0)));
+  if (!id) return;
+
+  const item = cartState.items.find((it) => it?.product?.id === id);
+
+  // 目标为 0：移除
+  if (target <= 0) {
+    if (item) Cart.removeItem(id);
+    return;
+  }
+
+  // 购物车里没有：无法凭空造 product，交给外部先 addItem
+  if (!item) return;
+
+  // 已有：直接改成目标数量
+  item.qty = target;
+  handleCartChange({ fromAdd: false });
+},
   };
 
   const FreshCart = {
@@ -1337,6 +1361,7 @@ function calcItemPrice(product, qty) {
 
     // ✅ 同步暴露
     getQty: Cart.getQty,
+    setQty: Cart.setQty,
   };
 
   window.Cart = Cart;

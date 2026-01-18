@@ -1033,34 +1033,102 @@ function syncBlackAndGreenToCart() {
   if (btnPlus) btnPlus.disabled = maxQty <= 0 || q >= maxQty;
 }
 
+// ✅ 统一拿到购物车 API（你这个项目里 FreshCart / Cart 都可能存在）
 function getCartApi() {
-  return (
-    (window.FreshCart && (typeof window.FreshCart.addItem === "function" || typeof window.FreshCart.setQty === "function") && window.FreshCart) ||
-    (window.Cart && (typeof window.Cart.addItem === "function" || typeof window.Cart.setQty === "function") && window.Cart) ||
-    null
-  );
+  return window.FreshCart || window.Cart || null;
 }
 
+// ✅ 读真实购物车数量（只信 cart.js 的状态）
+function getCartQtyNow() {
+  const cartApi = getCartApi();
+  if (!cartApi) return 0;
+  if (typeof cartApi.getQty === "function") return Math.max(0, Math.floor(cartApi.getQty(pid) || 0));
+  return 0;
+}
+
+// ✅ 写真实购物车数量：优先 setQty；没有 setQty 就用 changeQty 退化
+function setCartQty(nextQty) {
+  const cartApi = getCartApi();
+  if (!cartApi) {
+    alert("购物车模块未加载（cart.js）");
+    return;
+  }
+  const q = Math.max(0, Math.floor(Number(nextQty || 0)));
+
+  // 1) 最推荐：setQty（你需要在 cart.js 里补过 Cart.setQty + FreshCart.setQty）
+  if (typeof cartApi.setQty === "function") {
+    cartApi.setQty(pid, q);
+    return;
+  }
+
+  // 2) 退化：changeQty（你 cart.js 里有 Cart.changeQty）
+  if (typeof cartApi.changeQty === "function") {
+    const cur = getCartQtyNow();
+    const delta = q - cur;
+    if (delta !== 0) cartApi.changeQty(pid, delta);
+    return;
+  }
+
+  // 3) 再退化：如果只剩 addItem（只能加不能减）
+  if (typeof cartApi.addItem === "function") {
+    const cur = getCartQtyNow();
+    const delta = q - cur;
+    if (delta > 0) cartApi.addItem(normalized, delta);
+    else if (delta < 0) {
+      alert("当前 cart.js 不支持减少数量（缺少 setQty/changeQty），需要补 setQty");
+    }
+    return;
+  }
+
+  alert("cart.js 缺少 setQty / changeQty / addItem");
+}
+
+// ✅ 同步 UI：黑框数字 + 绿色圆圈（都显示真实购物车数量）
+function syncBlackAndGreenToCart() {
+  const q = getCartQtyNow();
+
+  // 黑框数字（如果你改成 span 就改 qtyNum；如果还是 input 就用 qtyInput）
+  if (typeof setQtyEverywhere === "function") {
+    // 你之前已有 setQtyEverywhere() 就用它
+    setQtyEverywhere(q > 0 ? q : 1);
+  } else {
+    if (qtyInput) qtyInput.value = String(q > 0 ? q : 1);
+    if (qtyNum) qtyNum.textContent = String(q);
+  }
+
+  // 绿色圆圈徽章（显示购物车真实数量）
+  if (typeof setProductBadge === "function") setProductBadge(pid, q);
+
+  // clamp 按钮状态
+  if (btnMinus) btnMinus.disabled = q <= 0 || maxQty <= 0;
+  if (btnPlus) btnPlus.disabled = maxQty <= 0 || q >= maxQty;
+
+  // 右侧提示
+  if (qtyHint) {
+    if (maxQty <= 0) qtyHint.textContent = "已售罄";
+    else if (variantKey !== "single") qtyHint.textContent = `仅剩 ${maxQty} 箱`;
+    else qtyHint.textContent = `仅剩 ${stockUnits}`;
+  }
+}
+
+// ✅ + / -：只改购物车真实数量，然后同步 UI（不允许嵌套监听！！）
 if (btnPlus) {
   btnPlus.addEventListener("click", (ev) => {
     ev.stopPropagation();
 
-    const cartApi = getCartApi();
-    if (!cartApi) return alert("购物车模块未加载（cart.js）");
-
     const cur = getCartQtyNow();
     const next = Math.min(maxQty, cur + 1);
-    if (maxQty <= 0) return;
 
-    // ✅ 优先用 setQty（如果你的 cart.js 支持）
-    if (typeof cartApi.setQty === "function") {
-      cartApi.setQty(pid, next);
-    } else if (typeof cartApi.addItem === "function") {
-      // ✅ 否则用 addItem +1（你项目里就是 addItem(normalized, qty)）
-      cartApi.addItem(normalized, 1);
+    // cur=0 时：用 addItem 先把商品放进购物车（因为 setQty 不会“凭空新增”）
+    if (cur <= 0) {
+      const cartApi = getCartApi();
+      if (cartApi && typeof cartApi.addItem === "function") cartApi.addItem(normalized, 1);
+      else setCartQty(next);
+    } else {
+      setCartQty(next);
     }
 
-    // 同步黑框 + 绿圈
+    // 让事件/渲染跑完再同步 UI
     setTimeout(syncBlackAndGreenToCart, 0);
   });
 }
@@ -1069,38 +1137,22 @@ if (btnMinus) {
   btnMinus.addEventListener("click", (ev) => {
     ev.stopPropagation();
 
-    const cartApi = getCartApi();
-    if (!cartApi) return alert("购物车模块未加载（cart.js）");
-
     const cur = getCartQtyNow();
     const next = Math.max(0, cur - 1);
 
-    if (typeof cartApi.setQty === "function") {
-      cartApi.setQty(pid, next);
-    } else if (typeof cartApi.addItem === "function") {
-      // 你的 cart.js 如果支持 addItem 负数：就能减
-      cartApi.addItem(normalized, -1);
-    } else if (typeof cartApi.removeItem === "function") {
-      cartApi.removeItem(pid, 1); // 如果你有 removeItem(pid, qty)
-    }
+    setCartQty(next);
 
     setTimeout(syncBlackAndGreenToCart, 0);
   });
 }
-// 初始化时也同步一次
+
+// ✅ 初始化：用购物车真实数量覆盖 UI（避免你说的“过一会儿变回去”）
 setTimeout(syncBlackAndGreenToCart, 0);
-  // 初始同步一次（处理 max=0 / clamp）
-  syncQtyUI();
-  // ✅ 页面初次：用购物车数量覆盖黑框，让两边一致
-try {
-  const cart = getCartSnapshot();
-  const qtyMap = normalizeCartToQtyMap(cart);
-  const inCart = Math.floor(Number(qtyMap?.[pid] || 0) || 0);
-  if (inCart > 0) {
-    setQtyEverywhere(inCart);
-    syncQtyUI();
-  }
-} catch {}
+
+// ✅ 监听 cart.js 广播：任何购物车变化都刷新本卡（推荐）
+window.addEventListener("freshcart:updated", () => {
+  setTimeout(syncBlackAndGreenToCart, 0);
+});
   function doAdd(ev) {
     ev.stopPropagation();
 
