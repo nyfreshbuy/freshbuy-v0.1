@@ -13,7 +13,7 @@ const productVariantSchema = new mongoose.Schema(
     // ✅ 换算到基础库存单位：单个=1，整箱(12)=12
     unitCount: { type: Number, default: 1 },
 
-    // ✅ 这个规格自己的售价（可选；为空就用 product.price）
+    // ✅ 这个规格自己的售价（可选；为空就用 product.price / originPrice）
     price: { type: Number, default: null },
 
     // 是否启用这个规格
@@ -35,12 +35,14 @@ const productSchema = new mongoose.Schema(
     desc: { type: String, trim: true },
 
     // 价格相关
-    price: { type: Number, required: true }, // 当前售卖价（后端会重算）
-    originPrice: { type: Number, default: 0 }, // 原价
+    // price: 你项目里经常把它当“当前售卖价”，但你又希望“单个买按原价”
+    // 所以这里继续保留，建议实际结算时以 originPrice 作为单件原价更稳
+    price: { type: Number, required: true }, // 当前售卖价（后端会重算/兼容旧逻辑）
+    originPrice: { type: Number, default: 0 }, // ✅ 单件原价（你现在后台填的“原价”）
     cost: { type: Number, default: 0 }, // 成本
     taxable: { type: Boolean, default: false }, // ✅ 是否收 NY 销售税
 
-    // 分类（✅ 你现在保存不了的核心）
+    // 分类
     topCategoryKey: { type: String, trim: true, default: "" }, // 导航大类 key：fresh/meat/...
     category: { type: String, trim: true, default: "" }, // 展示大类：生鲜果蔬
     subCategory: { type: String, trim: true, default: "" }, // 子类：叶菜类
@@ -53,11 +55,11 @@ const productSchema = new mongoose.Schema(
     image: { type: String, trim: true, default: "" },
 
     // =========================
-    // ✅ 新增：规格 variants（单个/整箱共用库存的关键）
+    // ✅ 规格 variants（单个/整箱共用库存）
     // =========================
     variants: { type: [productVariantSchema], default: [] },
 
-    // 库存（✅ 共用一个库存：以“基础单位”计数）
+    // 库存（共用一个库存：以“基础单位”计数）
     stock: { type: Number, default: 9999 },
     minStock: { type: Number },
     allowZeroStock: { type: Boolean, default: true },
@@ -71,9 +73,22 @@ const productSchema = new mongoose.Schema(
     activeFrom: { type: Date },
     activeTo: { type: Date },
 
-    // 特价/活动（你后台表单在用）
+    // =========================
+    // ✅ 特价/活动（支持 2 for 4.98）
+    // =========================
     specialEnabled: { type: Boolean, default: false },
+
+    // 旧字段：单件特价（为了兼容你旧前端/旧接口）
+    // 如果你只做 1 个特价（qty=1），可以继续用它
     specialPrice: { type: Number, default: null },
+
+    // ✅ 新字段：特价数量 N（例如：2 for 4.98 里的 2）
+    // 不填/填 1 就表示单件特价（配合 specialPrice 或 specialTotalPrice）
+    specialQty: { type: Number, default: 1, min: 1 },
+
+    // ✅ 新字段：特价总价（例如：2 for 4.98 里的 4.98）
+    specialTotalPrice: { type: Number, default: null },
+
     specialFrom: { type: Date },
     specialTo: { type: Date },
 
@@ -102,5 +117,30 @@ const productSchema = new mongoose.Schema(
 
 // ✅ 可选：给 variants.key 建索引（查找/过滤会更快）
 productSchema.index({ "variants.key": 1 });
+
+// ✅（可选但强烈建议）保存前规范化：
+// - specialEnabled=false 时清空特价字段
+// - specialQty<1 自动修正为 1
+productSchema.pre("save", function (next) {
+  try {
+    if (!this.specialEnabled) {
+      this.specialPrice = null;
+      this.specialQty = 1;
+      this.specialTotalPrice = null;
+      this.specialFrom = undefined;
+      this.specialTo = undefined;
+    } else {
+      const qty = Math.max(1, Math.floor(Number(this.specialQty || 1)));
+      this.specialQty = qty;
+
+      // 兼容：如果你只填了 “总价” 且 qty=1，把它同步到 specialPrice（旧逻辑也能吃到）
+      if (qty === 1 && this.specialTotalPrice != null) {
+        const t = Number(this.specialTotalPrice);
+        if (Number.isFinite(t) && t > 0) this.specialPrice = t;
+      }
+    }
+  } catch {}
+  next();
+});
 
 export default mongoose.models.Product || mongoose.model("Product", productSchema);

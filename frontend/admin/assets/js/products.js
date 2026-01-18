@@ -1,11 +1,20 @@
+// frontend/admin/assets/js/products.js
 // ===========================================================
 // 在鲜购拼好货 · 后台商品管理 products.js（完整版）
+// ✅ 特价：数量 specialQty + 总价 specialTotalPrice（显示 N for $X）
+// ✅ 规格 variants：单个/整箱（共用库存，stock 以“单个”为基础单位）
+// ✅ 修复：editProduct 传 _id / id 都能编辑；进货 tab 用 currentEditingId（_id）
 // ===========================================================
 
+console.log("✅ admin products.js loaded");
+
 // 全局状态
-let currentEditingId = null;
+let currentEditingId = null; // ✅ Mongo _id（用于 PATCH/DELETE/进货等）
 let productsCache = [];
 let currentEditorTab = "basic"; // basic | purchase
+
+// ✅ variants 编辑器：当前编辑商品的 variants
+let currentVariants = []; // [{ key, label, unitCount, price }]
 
 // 默认分类（会自动填充到 datalist）
 const defaultCategories = [
@@ -21,13 +30,93 @@ const defaultCategories = [
 const defaultSubCategories = [];
 
 // ===========================================================
-// 🌟 重置商品编辑表单 resetForm（纯原生 JS 版）
+// 工具
+// ===========================================================
+function money(n) {
+  const v = Number(n || 0);
+  if (Number.isNaN(v)) return "0.00";
+  return v.toFixed(2);
+}
+
+function safeInt(n, fallback = 0) {
+  const v = Number(n);
+  if (!Number.isFinite(v)) return fallback;
+  return Math.trunc(v);
+}
+
+function uniqKey(prefix = "v") {
+  return prefix + "_" + Date.now() + "_" + Math.floor(Math.random() * 100000);
+}
+
+function normalizeVariants(list) {
+  const arr = Array.isArray(list) ? list : [];
+  const out = arr
+    .map((v) => ({
+      key: String(v?.key || "").trim() || uniqKey("var"),
+      label: String(v?.label || "").trim() || "规格",
+      unitCount: Math.max(1, safeInt(v?.unitCount, 1)),
+      price:
+        v?.price === null || v?.price === undefined || v?.price === ""
+          ? null
+          : Number(v?.price),
+      enabled: v?.enabled === false ? false : true,
+      sortOrder: safeInt(v?.sortOrder, 0),
+    }))
+    .filter((v) => v.key);
+
+  // ✅ 至少给一个 default：单个
+  if (!out.length) {
+    out.push({ key: "single", label: "单个", unitCount: 1, price: null, enabled: true, sortOrder: 0 });
+  }
+
+  // ✅ 强制确保 unitCount >= 1
+  out.forEach((v) => {
+    if (!Number.isFinite(v.unitCount) || v.unitCount <= 0) v.unitCount = 1;
+  });
+
+  return out;
+}
+
+function toLocalInputValue(dt) {
+  if (!dt) return "";
+  const d = new Date(dt);
+  const pad = (n) => (n < 10 ? "0" + n : n);
+  const yyyy = d.getFullYear();
+  const MM = pad(d.getMonth() + 1);
+  const dd = pad(d.getDate());
+  const hh = pad(d.getHours());
+  const mm = pad(d.getMinutes());
+  return `${yyyy}-${MM}-${dd}T${hh}:${mm}`;
+}
+
+// ✅ 用 _id / id 都能找到商品
+function findProductAnyId(anyId) {
+  const key = String(anyId || "").trim();
+  if (!key) return null;
+  return (
+    productsCache.find((x) => String(x?._id || "") === key) ||
+    productsCache.find((x) => String(x?.id || "") === key) ||
+    null
+  );
+}
+// ===========================================================
+// 🌟 重置商品编辑表单 resetForm
 // ===========================================================
 function resetForm() {
   // 基本
   document.getElementById("p_name").value = "";
   document.getElementById("p_originPrice").value = "";
-  document.getElementById("p_specialPrice").value = "";
+
+  // ✅ 特价：新字段
+  const qtyEl = document.getElementById("p_specialQty");
+  const totalEl = document.getElementById("p_specialTotalPrice");
+  if (qtyEl) qtyEl.value = "";
+  if (totalEl) totalEl.value = "";
+
+  // 兼容：老字段（如果页面里存在）
+  const oldSpecial = document.getElementById("p_specialPrice");
+  if (oldSpecial) oldSpecial.value = "";
+
   document.getElementById("p_specialFrom").value = "";
   document.getElementById("p_specialTo").value = "";
 
@@ -36,15 +125,11 @@ function resetForm() {
   if (hasSpecial) hasSpecial.checked = false;
   if (specialArea) {
     specialArea.style.opacity = "0.4";
-    specialArea
-      .querySelectorAll("input")
-      .forEach((el) => (el.disabled = true));
+    specialArea.querySelectorAll("input").forEach((el) => (el.disabled = true));
   }
 
   const autoCancel = document.getElementById("p_autoCancelSpecial");
-  const autoCancelThreshold = document.getElementById(
-    "p_autoCancelSpecialThreshold"
-  );
+  const autoCancelThreshold = document.getElementById("p_autoCancelSpecialThreshold");
   if (autoCancel) autoCancel.checked = false;
   if (autoCancelThreshold) {
     autoCancelThreshold.value = "";
@@ -72,12 +157,15 @@ function resetForm() {
   document.getElementById("p_stock").value = "";
   document.getElementById("p_minStock").value = "";
   document.getElementById("p_allowZeroStock").checked = true;
-    // ✅ 税：默认不收税
+
+  // ✅ 税：默认不收税
   const taxable = document.getElementById("p_taxable");
   if (taxable) taxable.checked = false;
-  // ⭐ 导航大类（你新加的字段）
+
+  // ⭐ 导航大类
   const topCat = document.getElementById("p_topCategoryKey");
   if (topCat) topCat.value = "";
+
   document.getElementById("p_category").value = "";
   document.getElementById("p_subCategory").value = "";
   document.getElementById("p_sortOrder").value = "";
@@ -89,6 +177,10 @@ function resetForm() {
   document.getElementById("p_activeTo").value = "";
 
   document.getElementById("p_desc").value = "";
+
+  // ✅ variants reset
+  currentVariants = normalizeVariants([]);
+  renderVariantsEditor();
 
   // 清除当前编辑 ID
   currentEditingId = null;
@@ -103,7 +195,7 @@ function resetForm() {
   // 进货面板锁定
   lockPurchasePanelNoProduct();
 
-  console.log("表单已重置");
+  console.log("✅ 表单已重置");
 }
 
 // ===========================================================
@@ -181,7 +273,6 @@ function switchEditorTab(tab) {
     btnBasic.classList.remove("active");
   }
 }
-
 // ===========================================================
 // 表格状态渲染
 // ===========================================================
@@ -215,11 +306,123 @@ function renderFlags(p) {
   if (p.isNewArrival) flags.push("新品");
 
   if (!flags.length) return "—";
-  return flags
-    .map((f) => `<span class="tag-pill" style="margin-right:4px">${f}</span>`)
-    .join("");
+  return flags.map((f) => `<span class="tag-pill" style="margin-right:4px">${f}</span>`).join("");
 }
 
+// ✅ 表格里特价显示：N for $X
+function renderSpecialCell(p) {
+  if (!p.specialEnabled) return "—";
+
+  const qty = Math.max(1, safeInt(p.specialQty || 1, 1));
+  const total =
+    p.specialTotalPrice != null && p.specialTotalPrice !== ""
+      ? Number(p.specialTotalPrice)
+      : p.specialPrice != null && p.specialPrice !== ""
+      ? Number(p.specialPrice)
+      : null;
+
+  if (!total || !Number.isFinite(total) || total <= 0) return "—";
+
+  if (qty > 1) return `${qty} for $${money(total)}`;
+  return `$${money(total)}`;
+}
+
+// ===========================================================
+// ✅ Variants 编辑器：渲染 / 添加 / 删除 / 读取
+// ===========================================================
+function renderVariantsEditor() {
+  const box = document.getElementById("variantsEditor");
+  if (!box) return;
+
+  currentVariants = normalizeVariants(currentVariants);
+
+  box.innerHTML = "";
+  currentVariants.forEach((v) => {
+    const row = document.createElement("div");
+    row.style.display = "flex";
+    row.style.gap = "8px";
+    row.style.flexWrap = "wrap";
+    row.style.alignItems = "center";
+
+    row.innerHTML = `
+      <input class="inline-edit-input" style="width:120px;"
+        data-v-key="${v.key}" data-k="label"
+        placeholder="名称（单个/整箱12）"
+        value="${(v.label || "").replace(/"/g, "&quot;")}" />
+
+      <input class="inline-edit-input" style="width:110px;"
+        data-v-key="${v.key}" data-k="unitCount"
+        type="number" min="1" step="1"
+        placeholder="unitCount"
+        value="${v.unitCount || 1}" />
+
+      <input class="inline-edit-input" style="width:110px;"
+        data-v-key="${v.key}" data-k="price"
+        type="number" step="0.01"
+        placeholder="价格(可选)"
+        value="${v.price == null ? "" : v.price}" />
+
+      <span style="font-size:11px;color:#9ca3af;">key: ${v.key}</span>
+      <button type="button" class="admin-btn admin-btn-ghost"
+        data-del="${v.key}" style="margin-left:auto;">删除</button>
+    `;
+
+    box.appendChild(row);
+
+    // input change bind
+    row.querySelectorAll("input[data-v-key]").forEach((inp) => {
+      inp.addEventListener("input", () => {
+        const key = inp.getAttribute("data-v-key");
+        const k = inp.getAttribute("data-k");
+        const target = currentVariants.find((x) => x.key === key);
+        if (!target) return;
+
+        if (k === "unitCount") {
+          target.unitCount = Math.max(1, safeInt(inp.value, 1));
+        } else if (k === "price") {
+          const vv = String(inp.value || "").trim();
+          if (!vv) target.price = null;
+          else {
+            const n = Number(vv);
+            target.price = Number.isFinite(n) ? n : null;
+          }
+        } else if (k === "label") {
+          target.label = String(inp.value || "").trim();
+        }
+      });
+    });
+
+    // delete
+    const delBtn = row.querySelector("button[data-del]");
+    if (delBtn) {
+      delBtn.addEventListener("click", () => {
+        const key = delBtn.getAttribute("data-del");
+        if (!key) return;
+
+        // ✅ 至少保留一个
+        if (currentVariants.length <= 1) {
+          alert("至少需要保留一个规格（例如：单个）。");
+          return;
+        }
+        currentVariants = currentVariants.filter((x) => x.key !== key);
+        renderVariantsEditor();
+      });
+    }
+  });
+}
+
+function addVariantRow() {
+  currentVariants = normalizeVariants(currentVariants);
+  currentVariants.push({
+    key: uniqKey("var"),
+    label: "整箱(12个)",
+    unitCount: 12,
+    price: null,
+    enabled: true,
+    sortOrder: 0,
+  });
+  renderVariantsEditor();
+}
 // ===========================================================
 // 加载商品列表
 // ===========================================================
@@ -227,19 +430,18 @@ async function loadProducts() {
   const tbody = document.getElementById("productTableBody");
   if (!tbody) return;
 
-  const keyword = document.getElementById("searchKeyword").value.trim();
+  const keyword = document.getElementById("searchKeyword")?.value?.trim() || "";
   const params = new URLSearchParams();
   if (keyword) params.append("keyword", keyword);
 
   tbody.innerHTML = `<tr><td colspan="11">正在加载商品...</td></tr>`;
 
   try {
-    const res = await fetch("/api/admin/products?" + params.toString());
-    const data = await res.json();
+    const res = await fetch("/api/admin/products?" + params.toString(), { cache: "no-store" });
+    const data = await res.json().catch(() => ({}));
+
     if (!data.success) {
-      tbody.innerHTML = `<tr><td colspan="11">加载失败：${
-        data.message || "未知错误"
-      }</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="11">加载失败：${data.message || "未知错误"}</td></tr>`;
       return;
     }
 
@@ -247,10 +449,13 @@ async function loadProducts() {
     productsCache = list;
     rebuildCategoryOptions();
 
+    const summaryEl = document.getElementById("productSummary");
+    const countTextEl = document.getElementById("productCountText");
+
     if (!list.length) {
       tbody.innerHTML = `<tr><td colspan="11">暂无商品，请点击上方「新增 / 编辑商品」</td></tr>`;
-      document.getElementById("productSummary").textContent = "共 0 个商品";
-      document.getElementById("productCountText").textContent = "共 0 条";
+      if (summaryEl) summaryEl.textContent = "共 0 个商品";
+      if (countTextEl) countTextEl.textContent = "共 0 条";
       return;
     }
 
@@ -260,55 +465,43 @@ async function loadProducts() {
         ? `<img src="${p.image}" style="height:40px;border-radius:6px;object-fit:cover;">`
         : `<span style="font-size:11px;color:#9ca3af">无</span>`;
 
+      // ✅ 列表操作一律用 _id（Mongo 主键）
+      const mongoId = String(p._id || "");
+
       const tr = document.createElement("tr");
       tr.innerHTML = `
-        <td>${p.id}</td>
+        <td>${p.id || "—"}</td>
         <td>${imgHtml}</td>
-        <td>${p.name}</td>
+        <td>${p.name || "—"}</td>
         <td>${p.category || "—"}</td>
         <td>${renderType(p.type)}</td>
         <td>
           ${p.tag ? `<span class="tag-pill">${p.tag}</span>` : ""}
           ${renderFlags(p)}
         </td>
-        <td>${
-          p.specialEnabled && p.specialPrice
-            ? "￥" + Number(p.specialPrice).toFixed(2)
-            : "—"
-        }</td>
-        <td>￥${Number(p.originPrice || 0).toFixed(2)}</td>
+        <td>${renderSpecialCell(p)}</td>
+        <td>$${money(p.originPrice || 0)}</td>
         <td>${p.stock || 0}</td>
         <td>${renderStatus(p)}</td>
         <td>
-          <button class="admin-btn admin-btn-ghost" onclick="editProduct('${
-            p._id
-          }')">编辑</button>
-          <button class="admin-btn admin-btn-ghost" onclick="toggleProductStatus('${
-            p._id
-          }','${p.status || "on"}')">${
-        (p.status || "on") === "off" ? "上架" : "下架"
-      }</button>
-          <button class="admin-btn admin-btn-ghost" onclick="goToPurchase('${
-            p._id
-          }')">进货/成本</button>
-          <button class="admin-btn admin-btn-ghost" onclick="deleteProduct('${
-            p._id
-          }')">删除</button>
+          <button class="admin-btn admin-btn-ghost" onclick="editProduct('${mongoId}')">编辑</button>
+          <button class="admin-btn admin-btn-ghost" onclick="toggleProductStatus('${mongoId}','${p.status || "on"}')">${
+            (p.status || "on") === "off" ? "上架" : "下架"
+          }</button>
+          <button class="admin-btn admin-btn-ghost" onclick="goToPurchase('${mongoId}')">进货/成本</button>
+          <button class="admin-btn admin-btn-ghost" onclick="deleteProduct('${mongoId}')">删除</button>
         </td>
       `;
       tbody.appendChild(tr);
     });
 
-    document.getElementById("productSummary").textContent =
-      "共 " + list.length + " 个商品";
-    document.getElementById("productCountText").textContent =
-      "共 " + list.length + " 条";
+    if (summaryEl) summaryEl.textContent = "共 " + list.length + " 个商品";
+    if (countTextEl) countTextEl.textContent = "共 " + list.length + " 条";
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="11">请求失败，请检查 /api/admin/products</td></tr>`;
     console.error(err);
+    tbody.innerHTML = `<tr><td colspan="11">请求失败，请检查 /api/admin/products</td></tr>`;
   }
 }
-
 // ===========================================================
 // 保存商品（新增 / 编辑）
 // ===========================================================
@@ -317,9 +510,7 @@ async function saveProduct() {
   const originPriceRaw = document.getElementById("p_originPrice").value;
 
   const sku = document.getElementById("p_sku").value.trim();
-  const internalCompanyId = document
-    .getElementById("p_internalCompanyId")
-    .value.trim();
+  const internalCompanyId = document.getElementById("p_internalCompanyId").value.trim();
 
   const tag = document.getElementById("p_tag").value.trim();
   const type = document.getElementById("p_type").value || "normal";
@@ -328,25 +519,19 @@ async function saveProduct() {
   let image = document.getElementById("p_imageUrl").value.trim();
 
   const minStock = document.getElementById("p_minStock").value;
-  const allowZeroStock =
-    document.getElementById("p_allowZeroStock").checked;
-      // ✅ 税：是否收税（NY）
+  const allowZeroStock = document.getElementById("p_allowZeroStock").checked;
+
+  // ✅ 税：是否收税（NY）
   const taxable = !!document.getElementById("p_taxable")?.checked;
-  const topCategoryKey = document.getElementById("p_topCategoryKey").value || "";
+
+  // ⭐ 首页导航大类
+  const topCategoryKey = document.getElementById("p_topCategoryKey")?.value || "";
 
   const category = document.getElementById("p_category").value;
-  const subCategory = document
-    .getElementById("p_subCategory")
-    .value.trim();
+  const subCategory = document.getElementById("p_subCategory").value.trim();
   const sortOrder = document.getElementById("p_sortOrder").value;
 
   const isFlashDeal = document.getElementById("p_isFlashDeal").checked;
-  const isFamilyMustHave =
-    document.getElementById("p_isFamilyMustHave").checked;
-  const isBestSeller =
-    document.getElementById("p_isBestSeller").checked;
-  const isNewArrival =
-    document.getElementById("p_isNewArrival").checked;
 
   const isActive = document.getElementById("p_isActive").checked;
   const activeFromVal = document.getElementById("p_activeFrom").value;
@@ -361,20 +546,18 @@ async function saveProduct() {
     : [];
 
   const hasSpecial = document.getElementById("p_hasSpecial").checked;
-  const specialPriceRaw =
-    document.getElementById("p_specialPrice").value;
-  const specialFromVal =
-    document.getElementById("p_specialFrom").value;
-  const specialToVal =
-    document.getElementById("p_specialTo").value;
 
-  const autoCancelSpecial =
-    document.getElementById("p_autoCancelSpecial").checked;
-  const autoCancelSpecialThresholdRaw = document.getElementById(
-    "p_autoCancelSpecialThreshold"
-  ).value;
-  const autoCancelSpecialThreshold =
-    Number(autoCancelSpecialThresholdRaw) || 0;
+  // ✅ 新特价字段：数量 + 总价
+  const specialQtyRaw = document.getElementById("p_specialQty")?.value;
+  const specialTotalRaw = document.getElementById("p_specialTotalPrice")?.value;
+
+  const specialFromVal = document.getElementById("p_specialFrom").value;
+  const specialToVal = document.getElementById("p_specialTo").value;
+
+  const autoCancelSpecial = document.getElementById("p_autoCancelSpecial").checked;
+  const autoCancelSpecialThresholdRaw =
+    document.getElementById("p_autoCancelSpecialThreshold").value;
+  const autoCancelSpecialThreshold = Number(autoCancelSpecialThresholdRaw) || 0;
 
   // 校验
   if (!name || !originPriceRaw) {
@@ -388,17 +571,45 @@ async function saveProduct() {
     return;
   }
 
-  let specialPrice = null;
+  // ✅ variants 校验
+  currentVariants = normalizeVariants(currentVariants);
+  for (const v of currentVariants) {
+    if (!v.label || !String(v.label).trim()) {
+      alert("规格名称不能为空（例如：单个 / 整箱(12个)）");
+      return;
+    }
+    if (!Number.isFinite(v.unitCount) || v.unitCount <= 0) {
+      alert("规格 unitCount 必须 >= 1");
+      return;
+    }
+    if (v.price != null) {
+      const pn = Number(v.price);
+      if (!Number.isFinite(pn) || pn <= 0) {
+        alert("规格价格如果填写，必须 > 0");
+        return;
+      }
+    }
+  }
+
+  // ✅ 特价校验（hasSpecial 才校验）
+  let specialQty = 1;
+  let specialTotalPrice = null;
+
   if (hasSpecial) {
-    if (!specialPriceRaw) {
-      alert("启用特价后，特价金额必须填写");
+    specialQty = Math.max(1, safeInt(specialQtyRaw || 1, 1));
+
+    if (!specialTotalRaw) {
+      alert("启用特价后：特价总价必须填写（例如：4.98）");
       return;
     }
-    specialPrice = Number(specialPriceRaw);
-    if (specialPrice <= 0 || specialPrice >= originPrice) {
-      alert("特价必须大于 0 且低于原价");
+    specialTotalPrice = Number(specialTotalRaw);
+    if (!Number.isFinite(specialTotalPrice) || specialTotalPrice <= 0) {
+      alert("特价总价必须是大于 0 的数字");
       return;
     }
+  } else {
+    specialQty = 1;
+    specialTotalPrice = null;
   }
 
   if (autoCancelSpecial && autoCancelSpecialThreshold <= 0) {
@@ -408,7 +619,7 @@ async function saveProduct() {
 
   // 图片上传（本地文件）
   const fileInput = document.getElementById("p_imageFile");
-  const file = fileInput && fileInput.files[0];
+  const file = fileInput && fileInput.files && fileInput.files[0];
   if (file) {
     try {
       const fd = new FormData();
@@ -417,7 +628,7 @@ async function saveProduct() {
         method: "POST",
         body: fd,
       });
-      const upData = await up.json();
+      const upData = await up.json().catch(() => ({}));
       if (!upData.success) {
         alert("图片上传失败：" + (upData.message || "未知错误"));
         return;
@@ -431,11 +642,17 @@ async function saveProduct() {
     }
   }
 
-    const body = {
+  // ✅ price 兼容老逻辑：
+  // - 如果 specialQty=1 且开特价，就把 price 设为特价价（旧前台直接读 price 也能看到）
+  // - 如果 specialQty>1，你希望“单个按原价”，所以 price=originPrice
+  const compatPrice =
+    hasSpecial && specialTotalPrice && specialQty === 1 ? specialTotalPrice : originPrice;
+
+  const body = {
     name,
-    // 后端老版本用 price，这里兼容一下：
-    price: hasSpecial && specialPrice ? specialPrice : originPrice, // ✅ 新增这一行
+    price: compatPrice,
     originPrice,
+
     sku,
     internalCompanyId,
     tag,
@@ -445,72 +662,74 @@ async function saveProduct() {
     image,
     minStock,
     allowZeroStock,
-        taxable, // ✅ 新增：是否收税（NY）
-    // ⭐ 新增：首页导航大类
+    taxable,
     topCategoryKey,
     category,
     subCategory,
     sortOrder,
+
     isFlashDeal,
-    isFamilyMustHave,
-    isBestSeller,
-    isNewArrival,
     isActive,
-    activeFrom: activeFromVal
-      ? new Date(activeFromVal).toISOString()
-      : null,
-    activeTo: activeToVal
-      ? new Date(activeToVal).toISOString()
-      : null,
+
+    activeFrom: activeFromVal ? new Date(activeFromVal).toISOString() : null,
+    activeTo: activeToVal ? new Date(activeToVal).toISOString() : null,
     images,
+
+    // ✅ 特价（新）
     specialEnabled: hasSpecial,
-    specialPrice,
-    specialFrom: specialFromVal
-      ? new Date(specialFromVal).toISOString()
-      : null,
-    specialTo: specialToVal
-      ? new Date(specialToVal).toISOString()
-      : null,
+    specialQty: hasSpecial ? specialQty : 1,
+    specialTotalPrice: hasSpecial ? specialTotalPrice : null,
+
+    // ✅ 兼容老字段（避免后端仍读 specialPrice）
+    specialPrice: hasSpecial ? specialTotalPrice : null,
+
+    specialFrom: specialFromVal ? new Date(specialFromVal).toISOString() : null,
+    specialTo: specialToVal ? new Date(specialToVal).toISOString() : null,
+
     autoCancelSpecialOnLowStock: autoCancelSpecial,
     autoCancelSpecialThreshold,
+
+    // ✅ variants
+    variants: currentVariants,
   };
-console.log("SAVE body =", body);
+
+  console.log("✅ SAVE body =", body);
+
   const isEdit = !!currentEditingId;
 
   try {
     const res = await fetch(
-      isEdit
-        ? "/api/admin/products/" + currentEditingId
-        : "/api/admin/products",
+      isEdit ? "/api/admin/products/" + currentEditingId : "/api/admin/products",
       {
         method: isEdit ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       }
     );
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
     if (!data.success) {
       alert("保存失败：" + (data.message || "未知错误"));
       return;
     }
 
     const saved = data.product || data;
-    currentEditingId = saved._id || currentEditingId; // ✅
+    currentEditingId = saved._id || currentEditingId;
 
     alert(isEdit ? "商品已更新" : "商品已新增");
 
     await loadProducts();
-    bindPurchasePanelToProduct(saved);
+
+    // ✅ 保存完后：进货 tab 绑定当前商品（传 client product 或重新从 cache 找）
+    const latest = findProductAnyId(currentEditingId) || saved;
+    bindPurchasePanelToProduct(latest);
 
     const hint = document.getElementById("editHint");
-    if (hint)
-      hint.textContent =
-        "当前模式：编辑商品（ID = " + currentEditingId + "）";
+    if (hint) hint.textContent = "当前模式：编辑商品（ID = " + currentEditingId + "）";
     const btn = document.getElementById("btnSaveProduct");
     if (btn) btn.textContent = "💾 保存修改";
     const info = document.getElementById("currentEditingInfo");
     if (info) {
-      info.textContent = "当前商品 ID：" + currentEditingId;
+      info.textContent = "当前商品 _id：" + currentEditingId;
       info.style.display = "inline-flex";
     }
   } catch (err) {
@@ -518,27 +737,25 @@ console.log("SAVE body =", body);
     alert("请求失败，请检查 /api/admin/products 接口");
   }
 }
-
 // ===========================================================
 // 编辑商品（列表按钮 / 进货按钮）
 // ===========================================================
-function editProduct(id, tab) {
-  const p = productsCache.find((x) => x._id === id) || null;
+function editProduct(anyId, tab) {
+  const p = findProductAnyId(anyId);
   if (!p) {
-    alert("未找到商品：" + id);
+    alert("未找到商品：" + anyId);
     return;
   }
 
-  currentEditingId = id;
+  // ✅ 用 Mongo _id 做编辑主键
+  currentEditingId = String(p._id || anyId || "").trim() || null;
 
   // 基本字段
   document.getElementById("p_name").value = p.name || "";
-  document.getElementById("p_originPrice").value =
-    p.originPrice != null ? p.originPrice : "";
+  document.getElementById("p_originPrice").value = p.originPrice != null ? p.originPrice : "";
   document.getElementById("p_tag").value = p.tag || "";
   document.getElementById("p_type").value = p.type || "normal";
-  document.getElementById("p_stock").value =
-    p.stock != null ? p.stock : "";
+  document.getElementById("p_stock").value = p.stock != null ? p.stock : "";
   document.getElementById("p_desc").value = p.desc || "";
 
   // 图片
@@ -558,104 +775,83 @@ function editProduct(id, tab) {
 
   // 内部信息
   document.getElementById("p_sku").value = p.sku || "";
-  document.getElementById("p_internalCompanyId").value =
-    p.internalCompanyId || "";
-  document.getElementById("p_minStock").value =
-    p.minStock != null ? p.minStock : "";
-  document.getElementById("p_allowZeroStock").checked =
-    p.allowZeroStock !== false;
+  document.getElementById("p_internalCompanyId").value = p.internalCompanyId || "";
+  document.getElementById("p_minStock").value = p.minStock != null ? p.minStock : "";
+  document.getElementById("p_allowZeroStock").checked = p.allowZeroStock !== false;
+
   // ✅ 税：回填 taxable
   const taxableEl = document.getElementById("p_taxable");
   if (taxableEl) taxableEl.checked = !!p.taxable;
+
   // 分类
-  document.getElementById("p_topCategoryKey").value = p.topCategoryKey || "";
-  document.getElementById("p_category").value =
-    p.category || "";
-  document.getElementById("p_subCategory").value =
-    p.subCategory || "";
-  document.getElementById("p_sortOrder").value =
-    p.sortOrder != null ? p.sortOrder : "";
+  const topKeyEl = document.getElementById("p_topCategoryKey");
+  if (topKeyEl) topKeyEl.value = p.topCategoryKey || "";
+  document.getElementById("p_category").value = p.category || "";
+  document.getElementById("p_subCategory").value = p.subCategory || "";
+  document.getElementById("p_sortOrder").value = p.sortOrder != null ? p.sortOrder : "";
 
   // 前台展示标签
-  document.getElementById("p_isFlashDeal").checked =
-    !!p.isFlashDeal;
-  document.getElementById("p_isFamilyMustHave").checked =
-    !!p.isFamilyMustHave;
-  document.getElementById("p_isBestSeller").checked =
-    !!p.isBestSeller;
-  document.getElementById("p_isNewArrival").checked =
-    !!p.isNewArrival;
+  document.getElementById("p_isFlashDeal").checked = !!p.isFlashDeal;
 
   // 上下架状态
   document.getElementById("p_isActive").checked =
     p.isActive !== false && (p.status || "on") !== "off";
 
-  function toLocalInputValue(dt) {
-    if (!dt) return "";
-    const d = new Date(dt);
-    const pad = (n) => (n < 10 ? "0" + n : n);
-    const yyyy = d.getFullYear();
-    const MM = pad(d.getMonth() + 1);
-    const dd = pad(d.getDate());
-    const hh = pad(d.getHours());
-    const mm = pad(d.getMinutes());
-    return `${yyyy}-${MM}-${dd}T${hh}:${mm}`;
-  }
-
-  document.getElementById("p_activeFrom").value =
-    toLocalInputValue(p.activeFrom);
-  document.getElementById("p_activeTo").value =
-    toLocalInputValue(p.activeTo);
+  document.getElementById("p_activeFrom").value = toLocalInputValue(p.activeFrom);
+  document.getElementById("p_activeTo").value = toLocalInputValue(p.activeTo);
 
   // 多图
-  document.getElementById("p_images").value = Array.isArray(
-    p.images
-  )
-    ? p.images.join(",")
-    : "";
+  document.getElementById("p_images").value = Array.isArray(p.images) ? p.images.join(",") : "";
 
-  // 特价
-  document.getElementById("p_hasSpecial").checked =
-    !!p.specialEnabled;
-  document.getElementById("p_specialPrice").value =
-    p.specialPrice != null ? p.specialPrice : "";
-  document.getElementById("p_specialFrom").value =
-    toLocalInputValue(p.specialFrom);
-  document.getElementById("p_specialTo").value =
-    toLocalInputValue(p.specialTo);
+  // ✅ 特价：回填新字段（兼容老字段）
+  document.getElementById("p_hasSpecial").checked = !!p.specialEnabled;
+
+  const qtyEl = document.getElementById("p_specialQty");
+  const totalEl = document.getElementById("p_specialTotalPrice");
+
+  const qtyVal = p.specialQty != null ? p.specialQty : 1;
+  const totalVal =
+    p.specialTotalPrice != null
+      ? p.specialTotalPrice
+      : p.specialPrice != null
+      ? p.specialPrice
+      : "";
+
+  if (qtyEl) qtyEl.value = p.specialEnabled ? String(qtyVal || 1) : "";
+  if (totalEl) totalEl.value = p.specialEnabled ? (totalVal != null ? totalVal : "") : "";
+
+  document.getElementById("p_specialFrom").value = toLocalInputValue(p.specialFrom);
+  document.getElementById("p_specialTo").value = toLocalInputValue(p.specialTo);
+
   updateSpecialArea();
 
   // 库存保护
-  document.getElementById("p_autoCancelSpecial").checked =
-    !!p.autoCancelSpecialOnLowStock;
-  document.getElementById(
-    "p_autoCancelSpecialThreshold"
-  ).value =
-    p.autoCancelSpecialThreshold != null
-      ? p.autoCancelSpecialThreshold
-      : "";
+  document.getElementById("p_autoCancelSpecial").checked = !!p.autoCancelSpecialOnLowStock;
+  document.getElementById("p_autoCancelSpecialThreshold").value =
+    p.autoCancelSpecialThreshold != null ? p.autoCancelSpecialThreshold : "";
   updateAutoCancelSpecialArea();
+
+  // ✅ variants：回填 + 渲染
+  currentVariants = normalizeVariants(p.variants);
+  renderVariantsEditor();
 
   // 顶部提示
   const hint = document.getElementById("editHint");
-  if (hint) hint.textContent = "当前模式：编辑商品（ID = " + id + "）";
+  if (hint) hint.textContent = "当前模式：编辑商品（_id = " + currentEditingId + "）";
   const btn = document.getElementById("btnSaveProduct");
   if (btn) btn.textContent = "💾 保存修改";
   const info = document.getElementById("currentEditingInfo");
   if (info) {
-    info.textContent = "当前商品 ID：" + id;
+    info.textContent = `当前商品：id=${p.id || "—"} / _id=${currentEditingId}`;
     info.style.display = "inline-flex";
   }
 
-  // 绑定进货面板
+  // 绑定进货面板（进货接口通常按 _id）
   bindPurchasePanelToProduct(p);
 
   // tab 控制
-  if (tab === "purchase") {
-    switchEditorTab("purchase");
-  } else {
-    switchEditorTab("basic");
-  }
+  if (tab === "purchase") switchEditorTab("purchase");
+  else switchEditorTab("basic");
 
   showEditorPanel();
 }
@@ -664,7 +860,6 @@ function editProduct(id, tab) {
 function goToPurchase(id) {
   editProduct(id, "purchase");
 }
-
 // ===========================================================
 // 上下架切换
 // ===========================================================
@@ -672,19 +867,13 @@ async function toggleProductStatus(id, currentStatus) {
   if (!id) return;
 
   const next = (currentStatus || "on") === "off" ? "on" : "off";
-  const msg =
-    next === "on"
-      ? "确定要将该商品【上架】吗？"
-      : "确定要将该商品【下架】吗？";
+  const msg = next === "on" ? "确定要将该商品【上架】吗？" : "确定要将该商品【下架】吗？";
 
   if (!confirm(msg)) return;
 
   try {
-    const res = await fetch(
-      "/api/admin/products/" + id + "/toggle-status",
-      { method: "PATCH" }
-    );
-    const data = await res.json();
+    const res = await fetch("/api/admin/products/" + id + "/toggle-status", { method: "PATCH" });
+    const data = await res.json().catch(() => ({}));
     if (!data.success) {
       alert("切换状态失败：" + (data.message || "未知错误"));
       return;
@@ -692,9 +881,7 @@ async function toggleProductStatus(id, currentStatus) {
     loadProducts();
   } catch (err) {
     console.error(err);
-    alert(
-      "切换状态请求失败，请检查 /api/admin/products/:id/toggle-status 接口"
-    );
+    alert("切换状态请求失败，请检查 /api/admin/products/:id/toggle-status 接口");
   }
 }
 
@@ -702,13 +889,11 @@ async function toggleProductStatus(id, currentStatus) {
 // 删除商品
 // ===========================================================
 async function deleteProduct(id) {
- if (!confirm("确定要删除这个商品吗？此操作会从数据库中删除，无法恢复。")) return;
+  if (!confirm("确定要删除这个商品吗？此操作会从数据库中删除，无法恢复。")) return;
 
   try {
-    const res = await fetch("/api/admin/products/" + id, {
-      method: "DELETE",
-    });
-    const data = await res.json();
+    const res = await fetch("/api/admin/products/" + id, { method: "DELETE" });
+    const data = await res.json().catch(() => ({}));
     if (!data.success) {
       alert("删除失败：" + (data.message || "未知错误"));
       return;
@@ -737,16 +922,13 @@ function updateSpecialArea() {
 
 function updateAutoCancelSpecialArea() {
   const enableEl = document.getElementById("p_autoCancelSpecial");
-  const thresholdEl = document.getElementById(
-    "p_autoCancelSpecialThreshold"
-  );
+  const thresholdEl = document.getElementById("p_autoCancelSpecialThreshold");
   if (!enableEl || !thresholdEl) return;
 
   const enabled = enableEl.checked;
   thresholdEl.disabled = !enabled;
   thresholdEl.style.opacity = enabled ? "1" : "0.5";
 }
-
 // ===========================================================
 // 进货 / 成本管理：UI 绑定与重置
 // ===========================================================
@@ -764,17 +946,19 @@ function bindPurchasePanelToProduct(p) {
   const enabled = document.getElementById("purchaseEnabledBox");
   const label = document.getElementById("purchaseProductLabel");
 
-  if (!p || !p.id) {
+  if (!p) {
     lockPurchasePanelNoProduct();
     return;
   }
+
+  // ✅ 这里显示用 p.id（你自己的业务 id），但接口用 currentEditingId（_id）
+  const showId = p.id || p._id || "";
   if (disabled) disabled.style.display = "none";
   if (enabled) enabled.style.display = "block";
-  if (label)
-    label.textContent =
-      (p.name || "未命名商品") + " （ID：" + p.id + "）";
+  if (label) label.textContent = (p.name || "未命名商品") + " （ID：" + showId + "）";
 
-  loadPurchaseBatches(p.id);
+  // ✅ 拉取批次：默认按 currentEditingId（_id）
+  if (currentEditingId) loadPurchaseBatches(currentEditingId);
 }
 
 function resetPurchaseForm() {
@@ -799,7 +983,7 @@ function resetPurchaseForm() {
   const summary = document.getElementById("purchaseCalcSummary");
   if (summary) {
     summary.innerHTML =
-      '输入整箱进价、箱数和每箱数量后，会自动计算：<br />单件成本、总件数、总成本和建议零售价。';
+      "输入整箱进价、箱数和每箱数量后，会自动计算：<br />单件成本、总件数、总成本和建议零售价。";
   }
 }
 
@@ -811,39 +995,28 @@ function clearPurchaseBatchesTable() {
 }
 
 // ===========================================================
-// 进货表单自动计算（成本 & 建议零售价）
+// ✅ 进货表单自动计算（成本 & 建议零售价）
+// 你问的“总价在哪里算？”：
+// ✅ totalCost = boxPrice * boxCount 就在这里算（总价=箱价×箱数）
 // ===========================================================
 function recalcPurchaseCalc() {
-  const boxPrice =
-    Number(document.getElementById("pb_boxPrice").value) || 0;
-  const boxCount =
-    Number(document.getElementById("pb_boxCount").value) || 0;
-  const unitsPerBox =
-    Number(document.getElementById("pb_unitsPerBox").value) || 0;
-  const grossMarginPercent =
-    Number(
-      document.getElementById("pb_grossMarginPercent").value
-    ) || 0;
+  const boxPrice = Number(document.getElementById("pb_boxPrice").value) || 0;
+  const boxCount = Number(document.getElementById("pb_boxCount").value) || 0;
+  const unitsPerBox = Number(document.getElementById("pb_unitsPerBox").value) || 0;
+  const grossMarginPercent = Number(document.getElementById("pb_grossMarginPercent").value) || 0;
 
   let unitCost = 0;
   let totalUnits = 0;
   let totalCost = 0;
   let retailPrice = 0;
 
-  if (boxPrice > 0 && unitsPerBox > 0) {
-    unitCost = boxPrice / unitsPerBox;
-  }
-  if (boxCount > 0 && unitsPerBox > 0) {
-    totalUnits = boxCount * unitsPerBox;
-  }
-  if (boxPrice > 0 && boxCount > 0) {
-    totalCost = boxPrice * boxCount;
-  }
-  if (
-    unitCost > 0 &&
-    grossMarginPercent > 0 &&
-    grossMarginPercent < 100
-  ) {
+  if (boxPrice > 0 && unitsPerBox > 0) unitCost = boxPrice / unitsPerBox;
+  if (boxCount > 0 && unitsPerBox > 0) totalUnits = boxCount * unitsPerBox;
+
+  // ✅ 总价（总成本）= 整箱进价 × 进货箱数
+  if (boxPrice > 0 && boxCount > 0) totalCost = boxPrice * boxCount;
+
+  if (unitCost > 0 && grossMarginPercent > 0 && grossMarginPercent < 100) {
     const rate = grossMarginPercent / 100;
     retailPrice = unitCost / (1 - rate);
   } else if (unitCost > 0) {
@@ -864,27 +1037,18 @@ function recalcPurchaseCalc() {
   if (totalUnitsInput) totalUnitsInput.value = totalUnitsFixed;
   if (totalCostInput) totalCostInput.value = totalCostFixed;
 
-  if (retailInput && retailInput.value === "") {
-    retailInput.value = retailPriceFixed;
-  }
+  if (retailInput && retailInput.value === "") retailInput.value = retailPriceFixed;
 
   const summary = document.getElementById("purchaseCalcSummary");
   if (!summary) return;
 
-  let summaryHtml = "";
   if (!boxPrice || !boxCount || !unitsPerBox) {
-    summaryHtml =
-      '输入整箱进价、箱数和每箱数量后，会自动计算：<br />单件成本、总件数、总成本和建议零售价。';
+    summary.innerHTML =
+      "输入整箱进价、箱数和每箱数量后，会自动计算：<br />单件成本、总件数、总成本和建议零售价。";
   } else {
-    summaryHtml = `本批次共 <b>${totalUnitsFixed ||
-      "-"}</b> 件，总成本约 <b>$${totalCostFixed ||
-      "-"}</b>；<br/>单件成本约 <b>$${unitCostFixed ||
-      "-"}</b>，按毛利 <b>${grossMarginPercent ||
-      0}%</b> 建议零售价约为 <b>$${retailPriceFixed || "-"}</b>。`;
+    summary.innerHTML = `本批次共 <b>${totalUnitsFixed || "-"}</b> 件，总成本约 <b>$${totalCostFixed || "-"}</b>；<br/>单件成本约 <b>$${unitCostFixed || "-"}</b>，按毛利 <b>${grossMarginPercent || 0}%</b> 建议零售价约为 <b>$${retailPriceFixed || "-"}</b>。`;
   }
-  summary.innerHTML = summaryHtml;
 }
-
 // ===========================================================
 // 加载进货批次列表
 // ===========================================================
@@ -896,10 +1060,10 @@ async function loadPurchaseBatches(productId) {
     '<tr><td colspan="13" style="text-align:center;color:#6b7280;">正在加载进货批次...</td></tr>';
 
   try {
-    const res = await fetch(
-      "/api/admin/products/" + productId + "/purchase-batches"
-    );
-    const data = await res.json();
+    const res = await fetch("/api/admin/products/" + productId + "/purchase-batches", {
+      cache: "no-store",
+    });
+    const data = await res.json().catch(() => ({}));
     if (!data.success) {
       tbody.innerHTML =
         '<tr><td colspan="13" style="text-align:center;color:#f97373;">加载失败：' +
@@ -917,29 +1081,13 @@ async function loadPurchaseBatches(productId) {
     tbody.innerHTML = "";
     list.forEach((b) => {
       const tr = document.createElement("tr");
-      const createdStr = b.createdAt
-        ? new Date(b.createdAt).toLocaleString()
-        : "—";
-      const expireStr = b.expireAt
-        ? new Date(b.expireAt).toLocaleDateString()
-        : "—";
+      const createdStr = b.createdAt ? new Date(b.createdAt).toLocaleString() : "—";
+      const expireStr = b.expireAt ? new Date(b.expireAt).toLocaleDateString() : "—";
 
-      const boxPriceVal =
-        typeof b.boxPrice === "number"
-          ? b.boxPrice.toFixed(2)
-          : b.boxPrice;
-      const unitCostVal =
-        typeof b.unitCost === "number"
-          ? b.unitCost.toFixed(4)
-          : b.unitCost;
-      const totalCostVal =
-        typeof b.totalCost === "number"
-          ? b.totalCost.toFixed(2)
-          : b.totalCost;
-      const retailVal =
-        typeof b.retailPrice === "number"
-          ? b.retailPrice.toFixed(2)
-          : b.retailPrice;
+      const boxPriceVal = typeof b.boxPrice === "number" ? b.boxPrice.toFixed(2) : b.boxPrice;
+      const unitCostVal = typeof b.unitCost === "number" ? b.unitCost.toFixed(4) : b.unitCost;
+      const totalCostVal = typeof b.totalCost === "number" ? b.totalCost.toFixed(2) : b.totalCost;
+      const retailVal = typeof b.retailPrice === "number" ? b.retailPrice.toFixed(2) : b.retailPrice;
 
       tr.innerHTML = `
         <td>${createdStr}</td>
@@ -954,11 +1102,7 @@ async function loadPurchaseBatches(productId) {
         <td>${b.grossMarginPercent || 0}%</td>
         <td>$${retailVal || "0.00"}</td>
         <td>${expireStr}</td>
-        <td>${
-          b.remainingUnits != null
-            ? b.remainingUnits
-            : b.totalUnits || 0
-        }</td>
+        <td>${b.remainingUnits != null ? b.remainingUnits : b.totalUnits || 0}</td>
       `;
       tbody.appendChild(tr);
     });
@@ -978,39 +1122,18 @@ async function savePurchaseBatch() {
     return;
   }
 
-  const supplierName = document
-    .getElementById("pb_supplierName")
-    .value.trim();
-  const supplierCompanyId = document
-    .getElementById("pb_supplierCompanyId")
-    .value.trim();
-  const boxPrice =
-    Number(document.getElementById("pb_boxPrice").value) || 0;
-  const boxCount =
-    Number(document.getElementById("pb_boxCount").value) || 0;
-  const unitsPerBox =
-    Number(document.getElementById("pb_unitsPerBox").value) || 0;
-  const grossMarginPercent =
-    Number(
-      document.getElementById("pb_grossMarginPercent").value
-    ) || 0;
-  const expireAt =
-    document.getElementById("pb_expireAt").value || null;
-  const retailPriceManual =
-    Number(document.getElementById("pb_retailPrice").value) || 0;
+  const supplierName = document.getElementById("pb_supplierName").value.trim();
+  const supplierCompanyId = document.getElementById("pb_supplierCompanyId").value.trim();
+  const boxPrice = Number(document.getElementById("pb_boxPrice").value) || 0;
+  const boxCount = Number(document.getElementById("pb_boxCount").value) || 0;
+  const unitsPerBox = Number(document.getElementById("pb_unitsPerBox").value) || 0;
+  const grossMarginPercent = Number(document.getElementById("pb_grossMarginPercent").value) || 0;
+  const expireAt = document.getElementById("pb_expireAt").value || null;
+  const retailPriceManual = Number(document.getElementById("pb_retailPrice").value) || 0;
 
-  if (!boxPrice || boxPrice <= 0) {
-    alert("整箱进价必须大于 0");
-    return;
-  }
-  if (!boxCount || boxCount <= 0) {
-    alert("进货箱数必须大于 0");
-    return;
-  }
-  if (!unitsPerBox || unitsPerBox <= 0) {
-    alert("每箱几包必须大于 0");
-    return;
-  }
+  if (!boxPrice || boxPrice <= 0) return alert("整箱进价必须大于 0");
+  if (!boxCount || boxCount <= 0) return alert("进货箱数必须大于 0");
+  if (!unitsPerBox || unitsPerBox <= 0) return alert("每箱几包必须大于 0");
 
   const body = {
     supplierName,
@@ -1024,15 +1147,12 @@ async function savePurchaseBatch() {
   };
 
   try {
-    const res = await fetch(
-      "/api/admin/products/" + currentEditingId + "/purchase-batches",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      }
-    );
-    const data = await res.json();
+    const res = await fetch("/api/admin/products/" + currentEditingId + "/purchase-batches", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
     if (!data.success) {
       alert("保存进货批次失败：" + (data.message || "未知错误"));
       return;
@@ -1043,13 +1163,13 @@ async function savePurchaseBatch() {
     await loadProducts();
     await loadPurchaseBatches(currentEditingId);
 
+    // 如果后端返回 product，可回填库存/原价
     if (data.product) {
-      document.getElementById("p_stock").value =
-        data.product.stock || 0;
-      document.getElementById("p_originPrice").value =
-        data.product.originPrice || "";
+      document.getElementById("p_stock").value = data.product.stock || 0;
+      document.getElementById("p_originPrice").value = data.product.originPrice || "";
     }
 
+    // 清空进货表单
     document.getElementById("pb_boxPrice").value = "";
     document.getElementById("pb_boxCount").value = "";
     document.getElementById("pb_unitsPerBox").value = "";
@@ -1064,13 +1184,16 @@ async function savePurchaseBatch() {
     alert("保存进货批次请求失败");
   }
 }
-
 // ===========================================================
 // DOMContentLoaded 初始化
 // ===========================================================
 window.addEventListener("DOMContentLoaded", () => {
   // 初次加载商品
   loadProducts();
+
+  // ✅ variants 初始
+  currentVariants = normalizeVariants([]);
+  renderVariantsEditor();
 
   // 图片预览
   const fileInput = document.getElementById("p_imageFile");
@@ -1090,95 +1213,83 @@ window.addEventListener("DOMContentLoaded", () => {
   }
 
   // 顶部按钮
-  document
-    .getElementById("btnRefresh")
-    .addEventListener("click", loadProducts);
+  const btnRefresh = document.getElementById("btnRefresh");
+  if (btnRefresh) btnRefresh.addEventListener("click", loadProducts);
 
-  document
-    .getElementById("btnSaveProduct")
-    .addEventListener("click", (e) => {
+  const btnSave = document.getElementById("btnSaveProduct");
+  if (btnSave)
+    btnSave.addEventListener("click", (e) => {
       e.preventDefault();
       saveProduct();
     });
 
-  document
-    .getElementById("btnResetForm")
-    .addEventListener("click", (e) => {
+  const btnReset = document.getElementById("btnResetForm");
+  if (btnReset)
+    btnReset.addEventListener("click", (e) => {
       e.preventDefault();
       resetForm();
     });
 
-  document
-    .getElementById("btnOpenNewEditor")
-    .addEventListener("click", () => {
+  const btnOpenNew = document.getElementById("btnOpenNewEditor");
+  if (btnOpenNew)
+    btnOpenNew.addEventListener("click", () => {
       resetForm();
       switchEditorTab("basic");
       showEditorPanel();
     });
 
-  document
-    .getElementById("btnCloseEditor")
-    .addEventListener("click", hideEditorPanel);
+  const btnClose = document.getElementById("btnCloseEditor");
+  if (btnClose) btnClose.addEventListener("click", hideEditorPanel);
 
   // 搜索回车
-  document
-    .getElementById("searchKeyword")
-    .addEventListener("keydown", (e) => {
+  const kw = document.getElementById("searchKeyword");
+  if (kw) {
+    kw.addEventListener("keydown", (e) => {
       if (e.key === "Enter") loadProducts();
     });
+  }
 
   // 特价 & 库存保护开关
   const hasSpecialEl = document.getElementById("p_hasSpecial");
-  if (hasSpecialEl) {
-    hasSpecialEl.addEventListener("change", updateSpecialArea);
-  }
+  if (hasSpecialEl) hasSpecialEl.addEventListener("change", updateSpecialArea);
   updateSpecialArea();
 
   const autoCancelEl = document.getElementById("p_autoCancelSpecial");
-  if (autoCancelEl) {
-    autoCancelEl.addEventListener(
-      "change",
-      updateAutoCancelSpecialArea
-    );
-  }
+  if (autoCancelEl) autoCancelEl.addEventListener("change", updateAutoCancelSpecialArea);
   updateAutoCancelSpecialArea();
 
   // tab 切换
-  document
-    .getElementById("tabBtnBasic")
-    .addEventListener("click", () => {
-      switchEditorTab("basic");
-    });
-  document
-    .getElementById("tabBtnPurchase")
-    .addEventListener("click", () => {
-      switchEditorTab("purchase");
-    });
+  const tabBasic = document.getElementById("tabBtnBasic");
+  const tabPurchase = document.getElementById("tabBtnPurchase");
+  if (tabBasic) tabBasic.addEventListener("click", () => switchEditorTab("basic"));
+  if (tabPurchase) tabPurchase.addEventListener("click", () => switchEditorTab("purchase"));
 
   // 进货表单实时计算
-  ["pb_boxPrice", "pb_boxCount", "pb_unitsPerBox", "pb_grossMarginPercent"].forEach(
-    (id) => {
-      const el = document.getElementById(id);
-      if (el) el.addEventListener("input", recalcPurchaseCalc);
-    }
-  );
+  ["pb_boxPrice", "pb_boxCount", "pb_unitsPerBox", "pb_grossMarginPercent"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener("input", recalcPurchaseCalc);
+  });
 
-  document
-    .getElementById("btnSavePurchaseBatch")
-    .addEventListener("click", (e) => {
+  const btnSaveBatch = document.getElementById("btnSavePurchaseBatch");
+  if (btnSaveBatch)
+    btnSaveBatch.addEventListener("click", (e) => {
       e.preventDefault();
       savePurchaseBatch();
     });
 
-  document
-    .getElementById("btnResetPurchaseForm")
-    .addEventListener("click", (e) => {
+  const btnResetBatch = document.getElementById("btnResetPurchaseForm");
+  if (btnResetBatch)
+    btnResetBatch.addEventListener("click", (e) => {
       e.preventDefault();
       resetPurchaseForm();
     });
 
   // 初始锁定进货面板
   lockPurchasePanelNoProduct();
+
+  // ✅ variants：添加按钮
+  const addBtn = document.getElementById("btnAddVariant");
+  if (addBtn) addBtn.addEventListener("click", addVariantRow);
 });
 
 // ===========================================================

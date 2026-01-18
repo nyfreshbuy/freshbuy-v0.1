@@ -373,18 +373,31 @@
 
                 <div class="form-row" id="specialArea">
                   <div class="field-block">
-                    <div class="field-label">特价金额</div>
-                    <input
-                      id="p_specialPrice"
-                      type="number"
-                      step="0.01"
-                      placeholder="例如：1.99"
-                    />
-                    <div class="field-help">
-                      特价必须低于原价，且启用后为必填。
-                    </div>
-                  </div>
+  <div class="field-label">特价数量（N）</div>
+  <input
+    id="p_specialQty"
+    type="number"
+    step="1"
+    min="1"
+    placeholder="例如：2"
+  />
+  <div class="field-help">
+    例如：填 2 表示「2 个/份」参与特价；不填或填 1 表示单件特价。
+  </div>
+</div>
 
+<div class="field-block">
+  <div class="field-label">特价总价（$）</div>
+  <input
+    id="p_specialTotalPrice"
+    type="number"
+    step="0.01"
+    placeholder="例如：4.98"
+  />
+  <div class="field-help">
+    例如：2 个 $4.98；如果只想 1 个 $4.98，就填数量 1、总价 4.98。
+  </div>
+</div>
                   <div class="field-block">
                     <div class="field-label">特价开始时间（可选）</div>
                     <input id="p_specialFrom" type="datetime-local" />
@@ -532,7 +545,34 @@
                     />
                   </div>
                 </div>
+                <!-- =========================
+✅ 规格（variants）：单个/整箱（共用库存）
+========================= -->
+<div class="form-row" style="margin-top:10px;">
+  <div class="field-block" style="flex: 1 1 100%;">
+    <div class="field-label">规格（单个 / 整箱）</div>
+    <div class="field-help">
+      单个/整箱共用一个库存（stock 以“单个”为基础单位）。
+      例：整箱 12 个，则 unitCount=12；卖 1 箱会扣 12 个库存。
+    </div>
 
+    <div
+      id="variantsEditor"
+      style="margin-top:8px;display:flex;flex-direction:column;gap:8px;"
+    >
+      <!-- JS 会动态渲染每一行 -->
+    </div>
+
+    <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
+      <button type="button" class="admin-btn admin-btn-ghost" id="btnAddVariant">
+        ＋ 添加规格
+      </button>
+      <span style="font-size:11px;color:#9ca3af;">
+        建议至少保留 single（单个）和 box12（整箱 12）。
+      </span>
+    </div>
+  </div>
+</div>
                 <div class="form-row">
                   <label style="font-size: 12px; color: #e5e7eb;">
                     <input type="checkbox" id="p_allowZeroStock" checked />
@@ -540,6 +580,7 @@
                   </label>
                 </div>
                 <!-- 首页导航大类（顶栏用的） -->
+              
 <div class="form-row">
   <div class="field-block">
     <div class="field-label">导航大类（首页顶部分类）</div>

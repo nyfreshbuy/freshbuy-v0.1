@@ -824,29 +824,48 @@ function createProductCard(p, extraBadgeText) {
     p.__displayPrice != null && Number.isFinite(Number(p.__displayPrice))
       ? Number(p.__displayPrice)
       : null;
+  // ✅✅✅ 新价格逻辑：支持 specialEnabled + specialQty + specialTotalPrice
+// 规则：
+// - 单个买：按 originPrice（不因为 2 for 4.98 就变成特价）
+// - 展示：如果 specialQty>1，则大字显示 “N for $X”，小字显示 “单个原价 $Y”
+// - 如果 specialQty===1（单件特价），才可把单价当特价显示
 
-  // ✅ 价格：优先显示特价（sale/special/flash），并展示划线原价
-  const basePrice =
-    displayPriceOverride != null
-      ? displayPriceOverride
-      : Number(p.price ?? p.originPrice ?? p.regularPrice ?? 0);
+const originUnit =
+  Number(p.originPrice ?? p.originalPrice ?? p.regularPrice ?? p.price ?? 0) || 0;
 
-  const salePrice = Number(
-    p.salePrice ?? p.specialPrice ?? p.discountPrice ?? p.flashPrice ?? 0
-  );
+// 规格卡（整箱）如果有 override 价格，就用 override 当“单次购买价”
+const basePrice =
+  displayPriceOverride != null ? displayPriceOverride : originUnit;
 
-  const finalPrice =
-    basePrice > 0 && salePrice > 0 && salePrice < basePrice
-      ? salePrice
-      : basePrice || salePrice || 0;
+// 后端新字段
+const specialEnabled = !!p.specialEnabled;
+const specialQty = Math.max(1, Math.floor(Number(p.specialQty || 1) || 1));
+const specialTotal =
+  p.specialTotalPrice != null && p.specialTotalPrice !== ""
+    ? Number(p.specialTotalPrice)
+    : (p.specialPrice != null && p.specialPrice !== "" ? Number(p.specialPrice) : 0);
 
-  const originNum =
-    basePrice > 0 && salePrice > 0 && salePrice < basePrice
-      ? basePrice
-      : Number(p.originPrice ?? 0);
+// 只对“单个卡”显示 N for $X（避免整箱也显示 2 for）
+const isSingleVariant = (String(variantKey || "single") === "single");
 
-  const hasOrigin = originNum > 0 && originNum > finalPrice;
+// 最终：展示用（大字、小字）
+let priceMainText = `$${Number(basePrice || 0).toFixed(2)}`;
+let priceSubText = "";
 
+// ✅ A) 2 for $X：展示大字是 “2 for $4.98”，小字显示单个原价
+if (isSingleVariant && specialEnabled && specialQty > 1 && specialTotal > 0) {
+  priceMainText = `${specialQty} for $${specialTotal.toFixed(2)}`;
+  if (originUnit > 0) priceSubText = `单个原价 $${originUnit.toFixed(2)}`;
+}
+// ✅ B) 单件特价：展示大字是特价，小字显示原价
+else if (isSingleVariant && specialEnabled && specialQty === 1 && specialTotal > 0 && originUnit > specialTotal) {
+  priceMainText = `$${specialTotal.toFixed(2)}`;
+  priceSubText = `原价 $${originUnit.toFixed(2)}`;
+}
+// ✅ C) 非单个卡（整箱）：就显示 basePrice；小字可提示单个原价
+else {
+  if (!isSingleVariant && originUnit > 0) priceSubText = `单个原价 $${originUnit.toFixed(2)}`;
+}
   const badgeText =
     extraBadgeText || ((p.tag || "").includes("爆品") ? "爆品" : "");
 
@@ -862,38 +881,41 @@ function createProductCard(p, extraBadgeText) {
     p.limitQty || p.limitPerUser || p.maxQty || p.purchaseLimit || 0;
 
   article.innerHTML = `
-    <div class="product-image-wrap">
-      ${badgeText ? `<span class="special-badge">${badgeText}</span>` : ""}
-      <img src="${imageUrl}" class="product-image" alt="${displayName}" />
+  <div class="product-image-wrap">
+    ${badgeText ? `<span class="special-badge">${badgeText}</span>` : ""}
+    <img src="${imageUrl}" class="product-image" alt="${displayName}" />
 
-      <!-- ✅ 商品图片右下角数量徽章（JS 会控制显示/隐藏） -->
-      <div class="product-qty-badge" data-pid="${pid}"></div>
+    <div class="product-qty-badge" data-pid="${pid}"></div>
 
-      <div class="product-overlay">
-        <div class="overlay-btn-row">
-          <button type="button" class="overlay-btn fav">⭐ 收藏</button>
-          <button type="button" class="overlay-btn add" data-add-pid="${pid}">
-            加入购物车${limitQty > 0 ? `（限购${limitQty}）` : ""}
-          </button>
-        </div>
+    <div class="product-overlay">
+      <div class="overlay-btn-row">
+        <button type="button" class="overlay-btn fav">⭐ 收藏</button>
+        <button type="button" class="overlay-btn add" data-add-pid="${pid}">
+          加入购物车${limitQty > 0 ? `（限购${limitQty}）` : ""}
+        </button>
       </div>
     </div>
+  </div>
+  <div class="product-name">${displayName}</div>
+  <div class="product-desc">${p.desc || ""}</div>
 
-    <div class="product-name">${displayName}</div>
-    <div class="product-desc">${p.desc || ""}</div>
+  <div class="product-price-row" style="display:flex;flex-direction:column;gap:2px;">
+    <span class="product-price" style="font-size:18px;font-weight:900;line-height:1.1;">
+      ${priceMainText}
+    </span>
+    ${
+      priceSubText
+        ? `<span class="product-origin" style="font-size:12px;opacity:.75;">${priceSubText}</span>`
+        : ""
+    }
+  </div>
 
-    <div class="product-price-row">
-      <span class="product-price">$${finalPrice.toFixed(2)}</span>
-      ${hasOrigin ? `<span class="product-origin">$${originNum.toFixed(2)}</span>` : ""}
-    </div>
+  <div class="product-tagline">${tagline}</div>
 
-    <div class="product-tagline">${tagline}</div>
-
-    <button type="button" class="product-add-fixed" data-add-pid="${pid}">
-      加入购物车
-    </button>
-  `;
-
+  <button type="button" class="product-add-fixed" data-add-pid="${pid}">
+    加入购物车
+  </button>
+`;
   // ✅ 点卡片进详情：用 productId（不是 pid/cartKey）
   article.addEventListener("click", () => {
     if (!productId) return;
@@ -919,24 +941,31 @@ function createProductCard(p, extraBadgeText) {
       alert("购物车模块暂未启用（请确认 cart.js 已加载）");
       return;
     }
+    // ✅【新增】计算加购单价（必须在对象外）
+let cartUnitPrice = basePrice;
 
+// 单个规格：强制使用单个原价
+if (isSingleVariant && originUnit > 0) {
+  cartUnitPrice = originUnit;
+}
     // ✅✅✅ 关键：加购时把 productId + variantKey 带上（给后端扣共用库存）
     const normalized = {
-      id: pid, // cartKey
+  id: pid, // cartKey（productId::variantKey）
 
-      productId: productId,
-      variantKey: variantKey,
+  productId: productId,
+  variantKey: variantKey,
 
-      name: displayName || "商品",
-      price: finalPrice,
-      priceNum: finalPrice,
-      image: p.image || imageUrl,
-      tag: p.tag || "",
-      type: p.type || "",
-      isSpecial: isHotProduct(p),
-      isDeal: isHotProduct(p),
-    };
+  name: displayName || "商品",
 
+  price: cartUnitPrice,
+  priceNum: cartUnitPrice,
+
+  image: p.image || imageUrl,
+  tag: p.tag || "",
+  type: p.type || "",
+  isSpecial: isHotProduct(p),
+  isDeal: isHotProduct(p),
+};
     cartApi.addItem(normalized, 1);
 
     // ✅✅✅ 加购后立刻显示徽章 +1
@@ -1568,24 +1597,6 @@ if (fpCode) {
     fpCode.value = String(fpCode.value || "").replace(/[^\d]/g, "").slice(0, 8);
   });
 }
-// ================================
-// ✅ 忘记密码按钮：跳转到找回密码页
-// ================================
-(function bindForgotPassword() {
-  function goForgot() {
-    // 你后面要做找回密码页面，就用这个路径
-    window.location.href = "/user/forgot_password.html?v=" + Date.now();
-  }
-
-  // 事件委托：弹窗打开/切换 tab 后也能点到
-  document.addEventListener("click", (e) => {
-    const btn = e.target.closest("#forgotPwdLink");
-    if (!btn) return;
-    e.preventDefault();
-    e.stopPropagation();
-    goForgot();
-  });
-})();
 if (regSendCodeBtn) {
   regSendCodeBtn.addEventListener("click", async () => {
     const phone = (regPhone && regPhone.value.trim()) || "";

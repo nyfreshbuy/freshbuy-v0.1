@@ -140,7 +140,7 @@ console.log("✅ cart.js loaded on", location.pathname);
     return items.reduce((sum, { product, qty }) => {
       if (!product) return sum;
       const price = Number(product.price ?? product.priceNum ?? 0);
-      return sum + price * qty;
+      return sum + calcItemPrice(product, qty);
     }, 0);
   }
 
@@ -738,18 +738,17 @@ console.log("✅ cart.js loaded on", location.pathname);
   }
 
   function buildOrderItemsFromCart() {
-    return cartState.items.map(({ product, qty }) => ({
-      productId: product.id,
-      name: product.name,
-      price: safeNum(product.price ?? product.priceNum, 0),
-      qty: Number(qty) || 1,
-      tag: product.tag || "",
-      type: product.type || "",
-      isDeal: isDealProduct(product),
-      taxable: !!product.taxable, // ✅ 订单里也带上（后续算税用）
-    }));
-  }
-
+  return cartState.items.map(({ product, qty }) => ({
+    productId: product.id,
+    variantKey: product.variantKey || "single", // ✅
+    name: product.name,
+    unitPrice: safeNum(product.price ?? product.priceNum, 0),
+    finalLinePrice: calcItemPrice(product, qty), // ✅ 折后
+    qty,
+    isDeal: isDealProduct(product),
+    taxable: !!product.taxable,
+  }));
+}
   async function quickCheckout() {
     const { rule, subtotal, shippingFee, meetMin } = getCurrentShippingRule();
     if (!rule || !cartState.items.length) return;
@@ -1156,7 +1155,12 @@ console.log("✅ cart.js loaded on", location.pathname);
     addItem(product, qty = 1) {
       if (!product || !product.id) return;
 
-      const normalized = { ...product };
+      const normalized = {
+  ...product,
+  variantKey: product.variantKey || "single", // ✅ 必须
+  twoForX: product.twoForX || null             // ✅ 可选
+};
+
       normalized.taxable = !!normalized.taxable; // ✅ 保证 boolean
       normalized.isDeal = isDealProduct(normalized);
 
