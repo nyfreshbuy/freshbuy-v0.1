@@ -11,17 +11,19 @@ function $id(...ids) {
   }
   return null;
 }
+
 function getAdminToken() {
   // ✅ 兼容你现在项目里实际存在的 token key
   return (
-    localStorage.getItem("adminToken") ||      // 旧写法（目前没有）
-    localStorage.getItem("admin_token") ||     // ✅ 你现在有
-    localStorage.getItem("auth_token") ||      // ✅ 你现在有
-    localStorage.getItem("token") ||           // ✅ 你现在有
-    localStorage.getItem("freshbuy_token") ||  // ✅ 你现在有
+    localStorage.getItem("adminToken") ||      // 旧写法（可能没有）
+    localStorage.getItem("admin_token") ||     // ✅ 你项目常用
+    localStorage.getItem("auth_token") ||      // ✅ 你项目常用
+    localStorage.getItem("token") ||           // ✅ 你项目常用
+    localStorage.getItem("freshbuy_token") ||  // ✅ 你项目常用
     ""
   );
 }
+
 function authHeaders() {
   const token = getAdminToken();
   return token ? { Authorization: "Bearer " + token } : {};
@@ -37,9 +39,14 @@ function qsAppendArray(params, key, arr) {
 }
 
 function getCheckedDeliverTypes() {
-  return Array.from(document.querySelectorAll('input[name="deliverTypes"]:checked'))
-    .map((i) => String(i.value || "").trim())
-    .filter(Boolean);
+  // ✅ 没有 checkbox 也不会报错，只会返回 []
+  try {
+    return Array.from(document.querySelectorAll('input[name="deliverTypes"]:checked'))
+      .map((i) => String(i.value || "").trim())
+      .filter(Boolean);
+  } catch (e) {
+    return [];
+  }
 }
 
 function toISOFromDatetimeLocal(v) {
@@ -66,11 +73,16 @@ async function loadZonesIntoSelect() {
       cache: "no-store",
       headers: authHeaders(),
     });
-    const data = await res.json();
+
+    if (!res.ok) {
+      console.warn("zones/list 不可用（HTTP " + res.status + "），使用默认“全部区域”");
+      return;
+    }
+
+    const data = await res.json().catch(() => null);
 
     if (!data || !data.success || !Array.isArray(data.zones)) {
-      // 兼容：如果暂时没有 zones/list，就放一个默认选项
-      console.warn("zones/list 不可用，使用默认“全部区域”");
+      console.warn("zones/list 返回不符合预期，使用默认“全部区域”");
       return;
     }
 
@@ -85,7 +97,6 @@ async function loadZonesIntoSelect() {
       zoneSelect.appendChild(opt);
     });
 
-    // 默认 all
     if (!zoneSelect.value) zoneSelect.value = "all";
   } catch (e) {
     console.warn("加载 zones 失败：", e);
@@ -96,8 +107,8 @@ async function loadZonesIntoSelect() {
  * 渲染表格（SKU 为第一列）
  * ========================= */
 function renderPicklistTable() {
-  const tbody = $id("picklistTbody", "ordersTbody");      // ✅ 兼容你旧页面
-const infoSpan = $id("picklistInfo", "ordersMeta");     // ✅ 兼容你旧页面
+  const tbody = $id("picklistTbody", "ordersTbody");
+  const infoSpan = $id("picklistInfo", "ordersMeta");
   if (!tbody) return;
 
   tbody.innerHTML = "";
@@ -141,15 +152,29 @@ const infoSpan = $id("picklistInfo", "ordersMeta");     // ✅ 兼容你旧页�
  * 读取筛选条件 -> querystring
  * ========================= */
 function buildPicklistParams() {
+  // ✅ 兼容多套 DOM id
   const scope = $id("picklistScope", "scopeSelect")?.value || "zone_group_only";
-const zone = $id("picklistZone", "zoneSelect")?.value || "all";
-const from = toISOFromDatetimeLocal($id("picklistFrom", "fromTime")?.value || "");
-const to = toISOFromDatetimeLocal($id("picklistTo", "toTime")?.value || "");
+  const zone = $id("picklistZone", "zoneSelect")?.value || "all";
+
+  // ✅ 永远保证 deliverTypes 是数组
+  let deliverTypes = [];
+  try {
+    deliverTypes = getCheckedDeliverTypes();
+  } catch (e) {
+    console.warn("读取 deliverTypes 失败，使用空数组兜底", e);
+    deliverTypes = [];
+  }
+
+  const from = toISOFromDatetimeLocal($id("picklistFrom", "fromTime")?.value || "");
+  const to = toISOFromDatetimeLocal($id("picklistTo", "toTime")?.value || "");
+
   const params = new URLSearchParams();
   params.set("scope", scope);
   params.set("zone", zone);
 
-  if (deliverTypes.length) qsAppendArray(params, "deliverTypes", deliverTypes);
+  if (Array.isArray(deliverTypes) && deliverTypes.length) {
+    qsAppendArray(params, "deliverTypes", deliverTypes);
+  }
   if (from) params.set("from", from);
   if (to) params.set("to", to);
 
@@ -168,22 +193,20 @@ async function fetchPicklistSummaryNew(params) {
     headers: authHeaders(),
   });
 
-  // 让调用方决定如何处理 404
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    const err = new Error(`HTTP ${res.status} ${text || ""}`);
+    const err = new Error(`HTTP ${res.status} ${text || ""}`.trim());
     err.status = res.status;
     throw err;
   }
 
-  const data = await res.json();
+  const data = await res.json().catch(() => null);
 
   if (!data || !data.success || !Array.isArray(data.items)) {
     console.warn("新配货接口返回不符合预期：", data);
     return [];
   }
 
-  // 统一字段
   return data.items.map((x) => ({
     sku: x.sku || "",
     name: x.name || "",
@@ -196,32 +219,36 @@ async function fetchPicklistSummaryNew(params) {
 
 /* =========================
  * 旧接口：/api/admin/orders/picklist
- * （兼容你原来的 week/zone 逻辑）
- * 注意：旧接口无法按“配送方式多选/时间范围/sku”统计
- * 这里只做兜底，至少页面不挂。
+ * 兜底：至少页面不挂
  * ========================= */
 async function fetchPicklistFallbackOld() {
-  const zone = document.getElementById("picklistZone")?.value || "";
+  const zone = $id("picklistZone", "zoneSelect")?.value || "";
   const params = new URLSearchParams();
   if (zone && zone !== "all") params.append("zone", zone);
 
   const res = await fetch(`/api/admin/orders/picklist?${params.toString()}`, {
+    cache: "no-store",
     headers: authHeaders(),
   });
-  const data = await res.json();
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`OLD HTTP ${res.status} ${text || ""}`.trim());
+  }
+
+  const data = await res.json().catch(() => null);
 
   let items = [];
   if (Array.isArray(data)) items = data;
   else if (data && Array.isArray(data.items)) items = data.items;
 
-  // 尽量归一（旧接口没有 sku）
   return (items || []).map((x) => ({
-    sku: x.sku || "", // 基本不会有
+    sku: x.sku || "",
     name: x.name || "",
     spec: x.spec || "",
     unit: x.unit || "",
-    totalQty: Number(x.totalQty || 0),
-    totalAmount: Number(x.totalAmount || 0),
+    totalQty: Number(x.totalQty || x.qty || 0),
+    totalAmount: Number(x.totalAmount || x.amount || 0),
   }));
 }
 
@@ -230,7 +257,8 @@ async function fetchPicklistFallbackOld() {
  * ========================= */
 async function loadPicklist() {
   const tbody = $id("picklistTbody", "ordersTbody");
-const infoSpan = $id("picklistInfo", "ordersMeta");
+  const infoSpan = $id("picklistInfo", "ordersMeta");
+
   if (tbody) {
     tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;">正在加载...</td></tr>`;
   }
@@ -241,7 +269,6 @@ const infoSpan = $id("picklistInfo", "ordersMeta");
   const params = buildPicklistParams();
 
   try {
-    // 优先新接口
     const items = await fetchPicklistSummaryNew(params);
     currentPicklist = items;
     renderPicklistTable();
@@ -348,15 +375,13 @@ function printPicklist() {
  * 初始化：默认时间范围（可选）
  * ========================= */
 function initDefaultTimeRange() {
-  const fromEl = document.getElementById("picklistFrom");
-  const toEl = document.getElementById("picklistTo");
+  const fromEl = $id("picklistFrom", "fromTime");
+  const toEl = $id("picklistTo", "toTime");
   if (!fromEl || !toEl) return;
 
-  // 默认：最近 7 天（你也可以改成“本周一 00:00 到现在”）
   const now = new Date();
   const from = new Date(now.getTime() - 7 * 24 * 3600 * 1000);
 
-  // datetime-local 需要 "YYYY-MM-DDTHH:mm"
   const toLocalInput = (d) => {
     const pad = (x) => String(x).padStart(2, "0");
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
@@ -372,43 +397,27 @@ function initDefaultTimeRange() {
  * 事件绑定
  * ========================= */
 window.addEventListener("DOMContentLoaded", async () => {
-  // zones
   await loadZonesIntoSelect();
-
-  // 默认时间
   initDefaultTimeRange();
-
-  // 首次加载
   loadPicklist();
 
-  // 事件
   const btnRefresh = $id("btnRefreshPicklist", "btnRefresh");
-const btnPrint = $id("btnPrintPicklist", "btnPrintPicklist", "btnPrint"); // 兼容多写法
-const btnApply = $id("btnApplyPicklist", "btnApplyFilter", "btnApply");
+  const btnPrint = $id("btnPrintPicklist", "btnPrint", "btnPrintPicklist");
+  const btnApply = $id("btnApplyPicklist", "btnApplyFilter", "btnApply");
 
-const zoneSelect = $id("picklistZone", "zoneSelect");
-const scopeSelect = $id("picklistScope", "scopeSelect");
-const fromEl = $id("picklistFrom", "fromTime");
-const toEl = $id("picklistTo", "toTime");
-  // ✅ 应用筛选按钮（推荐用它）
+  const zoneSelect = $id("picklistZone", "zoneSelect");
+  const scopeSelect = $id("picklistScope", "scopeSelect");
+
   if (btnApply) btnApply.addEventListener("click", loadPicklist);
-
-  // ✅ 刷新
   if (btnRefresh) btnRefresh.addEventListener("click", loadPicklist);
-
-  // ✅ 打印
   if (btnPrint) btnPrint.addEventListener("click", printPicklist);
 
-  // 可选：改动就自动加载（你也可以注释掉，只用“应用筛选”按钮）
   if (zoneSelect) zoneSelect.addEventListener("change", loadPicklist);
   if (scopeSelect) scopeSelect.addEventListener("change", loadPicklist);
 
-  // 时间改动频繁，建议只点“应用筛选”，这里不自动监听
-  // if (fromEl) fromEl.addEventListener("change", loadPicklist);
-  // if (toEl) toEl.addEventListener("change", loadPicklist);
-
-  // 配送方式 checkbox：变化就重新加载
-  document.querySelectorAll('input[name="deliverTypes"]').forEach((el) => {
-    el.addEventListener("change", loadPicklist);
-  });
+  // 配送方式 checkbox：变化就重新加载（页面没有也不报错）
+  const deliverTypeEls = document.querySelectorAll('input[name="deliverTypes"]');
+  if (deliverTypeEls && deliverTypeEls.length) {
+    deliverTypeEls.forEach((el) => el.addEventListener("change", loadPicklist));
+  }
 });
