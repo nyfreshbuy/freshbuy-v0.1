@@ -936,7 +936,7 @@ function createProductCard(p, extraBadgeText) {
         font-weight:800;
         background:#fff;
       "
-    >1</div>
+    >0</div>
 
     <button type="button" class="qty-btn" data-qty-plus style="width:34px;height:34px;border-radius:10px;">+</button>
 
@@ -966,26 +966,19 @@ function createProductCard(p, extraBadgeText) {
   const btnMinus = article.querySelector("[data-qty-minus]");
   const btnPlus = article.querySelector("[data-qty-plus]");
   const qtyHint = article.querySelector("[data-qty-hint]");
-  function getCurrentQty() {
-  const n = Math.floor(Number(qtyInput?.value || 0) || 0);
-  return Number.isFinite(n) ? n : 0;
-}
-
 // ✅✅✅ 核心：黑框=绿圈=购物车数量
 function setQtyEverywhere(qty) {
   const q = clampQty(qty);
 
-  // 1) 黑框
-  if (qtyInput) qtyInput.value = String(q);
+  // ✅ 1) 黑框（你现在是 div[data-qty-display]）
+  if (qtyDisplay) qtyDisplay.textContent = String(q);
 
-  // 2) 绿圈徽章（你的函数已经有 cap）
+  // ✅ 2) 绿圈徽章
   setProductBadge(pid, q);
 
-  // 3) 通知购物车（让 cart.js 去同步）
+  // ✅ 3) 通知购物车（如果你后面真的用这个事件）
   try {
-    window.dispatchEvent(
-      new CustomEvent("freshbuy:cartQtySet", { detail: { pid, qty: q } })
-    );
+    window.dispatchEvent(new CustomEvent("freshbuy:cartQtySet", { detail: { pid, qty: q } }));
   } catch {}
 }
   function syncQtyUI() {
@@ -1018,21 +1011,21 @@ function setQtyEverywhere(qty) {
 }
 
 function syncBlackAndGreenToCart() {
-  const q = getCartQtyNow();
+  const q = getCartQtyNow(); // q 允许 0
 
-  // 黑框数字（你现在的 qtyInput）
-  if (qtyInput) {
-    qtyInput.value = String(Math.max(1, q || 1));
-  }
+  // ✅ 用购物车数量覆盖内部状态
+  selectedQty = clampQty(q);
 
-  // 绿色圆圈徽章
-  setProductBadge(pid, q);
+  // ✅ 黑框
+  if (qtyDisplay) qtyDisplay.textContent = String(selectedQty);
 
-  // +/- 按钮状态
-  if (btnMinus) btnMinus.disabled = q <= 0 || maxQty <= 0;
-  if (btnPlus) btnPlus.disabled = maxQty <= 0 || q >= maxQty;
+  // ✅ 绿圈
+  setProductBadge(pid, selectedQty);
+
+  // ✅ +/- 状态
+  if (btnMinus) btnMinus.disabled = selectedQty <= 0 || maxQty <= 0;
+  if (btnPlus) btnPlus.disabled = maxQty <= 0 || selectedQty >= maxQty;
 }
-
 // ✅ 统一拿到购物车 API（你这个项目里 FreshCart / Cart 都可能存在）
 function getCartApi() {
   return window.FreshCart || window.Cart || null;
