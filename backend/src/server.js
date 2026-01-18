@@ -106,6 +106,16 @@ app.use(cors());
 
 // 其它 API 才用 json
 app.use(express.json());
+// ✅ DEBUG：确认新代码已部署（浏览器打开这个地址必须看到 ok:true）
+app.get("/api/__debug_server_version", (req, res) => {
+  res.json({ ok: true, ts: new Date().toISOString(), file: "backend/src/server.js" });
+});
+
+// ✅ DEBUG：确认 /api/admin/products 请求是否进入 server.js 这层
+app.use("/api/admin/products", (req, res, next) => {
+  console.log("🧭 ENTER /api/admin/products:", req.method, req.originalUrl);
+  return next();
+});
 app.use(express.urlencoded({ extended: true }));
 // ✅ DEBUG：确认 /api/admin/products 请求是否真的进入 products router
 app.use("/api/admin/products", (req, res, next) => {

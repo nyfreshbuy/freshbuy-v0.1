@@ -22,6 +22,10 @@ import { toClient, toClientList } from "../utils/toClient.js";
 const router = express.Router();
 router.use(express.json()); // ✅ 必须加：解析 JSON bod
 // ===================== 工具函数 =====================
+// ✅ DEBUG：确认 admin_products router 已部署并被挂载成功
+router.get("/__ping", (req, res) => {
+  res.json({ ok: true, router: "admin_products.js", time: new Date().toISOString() });
+});
 
 // ESM 下的 __dirname
 const __filename = fileURLToPath(import.meta.url);
