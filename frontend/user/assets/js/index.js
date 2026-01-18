@@ -2609,18 +2609,60 @@ function bindQtyButtonsOnlyOnce() {
     const minus = card.querySelector("[data-qty-minus]");
     const plus = card.querySelector("[data-qty-plus]");
 
-    if (minus) {
-      minus.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        const maxQty = calcMaxQtyForCard(card);
-        let want = getWantedQtyFromCard(card);
-        want = Math.max(1, want - 1);
-        if (maxQty > 0) want = Math.min(want, maxQty);
-        setWantedQtyToCard(card, want);
-        syncOneCardStockUI(card);
-      });
-    }
+    function getPidFromCard(card) {
+  const badge = card.querySelector(".product-qty-badge[data-pid]");
+  return String(badge?.getAttribute("data-pid") || "").trim();
+}
 
+if (minus) {
+  minus.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+
+    const pid = getPidFromCard(card);
+    const maxQty = calcMaxQtyForCard(card);
+
+    let want = getWantedQtyFromCard(card);
+    want = Math.max(1, want - 1);
+    if (maxQty > 0) want = Math.min(want, maxQty);
+    else want = 0;
+
+    // 1) 黑框（你现在的数字框）
+    setWantedQtyToCard(card, want);
+
+    // 2) 绿色徽章
+    if (pid) setProductBadge(pid, want);
+
+    // 3) 通知购物车（让购物车数量也变）
+    try {
+      window.dispatchEvent(new CustomEvent("freshbuy:cartQtySet", { detail: { pid, qty: want } }));
+    } catch {}
+
+    syncOneCardStockUI(card);
+  });
+}
+
+if (plus) {
+  plus.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+
+    const pid = getPidFromCard(card);
+    const maxQty = calcMaxQtyForCard(card);
+
+    let want = getWantedQtyFromCard(card);
+    want = want + 1;
+    if (maxQty > 0) want = Math.min(want, maxQty);
+    else want = 0;
+
+    setWantedQtyToCard(card, want);
+    if (pid) setProductBadge(pid, want);
+
+    try {
+      window.dispatchEvent(new CustomEvent("freshbuy:cartQtySet", { detail: { pid, qty: want } }));
+    } catch {}
+
+    syncOneCardStockUI(card);
+  });
+}
     if (plus) {
       plus.addEventListener("click", (ev) => {
         ev.stopPropagation();
