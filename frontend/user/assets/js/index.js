@@ -51,7 +51,40 @@ const SECTION_LIMITS = {
     default: 6,
   },
 };
+function money(n) {
+  const v = Number(n || 0);
+  return v % 1 === 0 ? String(v.toFixed(0)) : String(v.toFixed(2));
+}
 
+function getSpecialText(p) {
+  if (!p || !p.specialEnabled) return "";
+  const qty = Math.max(1, Math.floor(Number(p.specialQty || 1)));
+  const total = p.specialTotalPrice == null ? null : Number(p.specialTotalPrice);
+  // ✅ 2 for X
+  if (qty > 1 && Number.isFinite(total) && total > 0) {
+    return `${qty} for $${money(total)}`;
+  }
+  // ✅ 单件特价
+  const sp = p.specialPrice == null ? null : Number(p.specialPrice);
+  if (Number.isFinite(sp) && sp > 0) return `特价 $${money(sp)}`;
+  return "";
+}
+
+function buildVariantPriceLines(p) {
+  const vs = Array.isArray(p?.variants) ? p.variants.filter(v => v && v.enabled !== false) : [];
+  if (!vs.length) return "";
+  // 只显示 unitCount>1 的（整箱）
+  const boxes = vs.filter(v => Number(v.unitCount || 1) > 1).sort((a,b)=>(a.sortOrder||0)-(b.sortOrder||0));
+  if (!boxes.length) return "";
+  const lines = boxes.map(v => {
+    const boxPrice = (v.price != null && Number(v.price) > 0)
+      ? Number(v.price)
+      : Number(p.price || p.originPrice || 0) * Number(v.unitCount || 1);
+    const label = v.label || `整箱(${Number(v.unitCount || 1)}个)`;
+    return `<div class="variant-line">📦 ${label}：$${money(boxPrice)}</div>`;
+  });
+  return `<div class="variant-box">${lines.join("")}</div>`;
+}
 function isMobileView() {
   return window.matchMedia("(max-width: 768px)").matches;
 }
@@ -1053,7 +1086,7 @@ async function loadHomeProductsFromSimple() {
       : [];
 
     console.log("首页从 /api/products-simple 拿到商品：", list);
-
+    console.log("DEBUG first item fields:", list?.[0]);
     if (!list.length) {
       [
         "productGridHot",
