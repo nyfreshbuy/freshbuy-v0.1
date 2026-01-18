@@ -44,7 +44,7 @@ async function loadZones() {
     // 兼容两种格式：数组 / {success, zones}
     const zones = Array.isArray(data) ? data : (data?.zones || []);
     if (!Array.isArray(zones)) throw new Error("zones format invalid");
-
+    console.log("✅ zones raw:", zones);
     // 1) 先清空映射
     for (const k in ZONE_NAME_MAP) delete ZONE_NAME_MAP[k];
 
@@ -703,23 +703,11 @@ function initAreaZoneFilterOptions() {
   const select = document.getElementById("areaZoneFilter");
   if (!select) return;
 
-  // 你后面可以改成从后端 /api/admin/zones 拉
-  const zones = [
-    { id: "", name: "全部区域" },
-    { id: "zone_freshmeadows", name: "Fresh Meadows" },
-    { id: "zone_flushing", name: "Flushing" },
-    { id: "zone_bayside", name: "Bayside" },
-  ];
-
-  select.innerHTML = "";
-  zones.forEach((z) => {
-    const opt = document.createElement("option");
-    opt.value = z.id;
-    opt.textContent = z.name;
-    select.appendChild(opt);
-  });
+  // ✅ 只做保底：如果 loadZones() 失败，至少有“全部区域”
+  if (!select.options.length) {
+    select.innerHTML = `<option value="">全部区域</option>`;
+  }
 }
-
 window.addEventListener("DOMContentLoaded", () => {
   // ✅ 先拉司机列表，再拉订单（不然下拉为空）
   (async () => {
@@ -784,46 +772,3 @@ window.addEventListener("DOMContentLoaded", () => {
     btnPrintList.addEventListener("click", printOrderList);
   }
 });
-  // 重置按钮
-  const btnReset = document.getElementById("btnResetFilter");
-  if (btnReset) {
-    btnReset.addEventListener("click", () => {
-      if (statusSelect) statusSelect.value = "";
-      if (searchInput) searchInput.value = "";
-
-      const serviceModeSelect =
-        document.getElementById("serviceModeFilter");
-      const areaZoneSelect = document.getElementById("areaZoneFilter");
-      if (serviceModeSelect) serviceModeSelect.value = "";
-      if (areaZoneSelect) areaZoneSelect.value = "";
-
-      applyFilterAndRender();
-    });
-  }
-
-  // 导出（占位）
-  const btnExport = document.getElementById("btnExportOrders");
-  if (btnExport) {
-    btnExport.addEventListener("click", () => {
-      alert("导出功能可以后面接成 CSV / Excel，目前只是占位按钮。");
-    });
-  }
-
-  // 新增：配送模式筛选
-  const serviceModeSelect = document.getElementById("serviceModeFilter");
-  if (serviceModeSelect) {
-    serviceModeSelect.addEventListener("change", applyFilterAndRender);
-  }
-
-  // 新增：区域筛选
-  initAreaZoneFilterOptions();
-  const areaZoneSelect = document.getElementById("areaZoneFilter");
-  if (areaZoneSelect) {
-    areaZoneSelect.addEventListener("change", applyFilterAndRender);
-  }
-
-  // 新增：一键打印筛选订单
-  const btnPrintList = document.getElementById("btnPrintOrderList");
-  if (btnPrintList) {
-    btnPrintList.addEventListener("click", printOrderList);
-  }
