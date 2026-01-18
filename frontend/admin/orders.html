@@ -829,8 +829,7 @@ function bindOrderTableActions() {
       async function loadOrders(page = 1) {
         currentPage = page;
         const tbody = document.getElementById("ordersTableBody");
-        tbody.innerHTML = '<tr><td colspan="10">正在加载订单...</td></tr>';
-
+        tbody.innerHTML = '<tr><td colspan="11">正在加载订单...</td></tr>';
         const keyword = document.getElementById("searchKeyword").value.trim();
         const status = document.getElementById("filterStatus").value || "";
 
@@ -866,7 +865,7 @@ function bindOrderTableActions() {
 
           if (!data.success) {
             tbody.innerHTML =
-              '<tr><td colspan="10">加载失败：' + (data.message || "未知错误") + "</td></tr>";
+  '<tr><td colspan="11">加载失败：' + (data.message || "未知错误") + "</td></tr>";
             return;
           }
 
@@ -908,7 +907,7 @@ function bindOrderTableActions() {
           currentOrdersCache = filtered;
 
           if (!currentOrdersCache.length) {
-            tbody.innerHTML = '<tr><td colspan="10">暂无符合条件的订单</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="11">暂无符合条件的订单</td></tr>';
             document.getElementById("gmvSummary").innerHTML =
               '当前筛选 GMV：<span class="stat-highlight">$0.00</span>';
             document.getElementById("ordersSummary").textContent = `共 0 笔订单`;
@@ -922,7 +921,7 @@ function bindOrderTableActions() {
         } catch (e) {
           console.error(e);
           tbody.innerHTML =
-            '<tr><td colspan="10">请求出错，请检查 /api/admin/orders 是否可用</td></tr>';
+  '<tr><td colspan="11">请求出错，请检查 /api/admin/orders 是否可用</td></tr>';
         }
       bindCheckAll();
       }
@@ -1288,11 +1287,11 @@ function bindOrderTableActions() {
         });
       }
 
-      window.addEventListener("DOMContentLoaded", () => {
-        bindOrderTableActions();
-        // ✅ 先把 zoneId->zoneName 拉下来，这样下拉框就能显示中文
+      window.addEventListener("DOMContentLoaded", async () => {
+  bindOrderTableActions();
+  // ✅ 先把 zoneId->zoneName 拉下来，这样下拉框就能显示中文
   await loadZoneNameMap();
-        loadOrders(1);     
+  loadOrders(1);  
         document.getElementById("btnSearch").addEventListener("click", () => loadOrders(1));
         document.getElementById("btnRefresh").addEventListener("click", () => loadOrders(currentPage));
         document.getElementById("btnPrevPage").addEventListener("click", () => {
