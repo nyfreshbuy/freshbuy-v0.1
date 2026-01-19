@@ -919,35 +919,46 @@ function createProductCard(p, extraBadgeText) {
 
   <div class="product-tagline">${tagline}</div>
 
-  <!-- ✅✅✅ 数量步进器：无输入框，只保留 +/- 和数字显示 -->
-  <div class="qty-row" style="display:flex;align-items:center;gap:8px;margin-top:10px;">
-    <button type="button" class="qty-btn" data-qty-minus style="width:34px;height:34px;border-radius:10px;">-</button>
+    <!-- ✅✅✅ 合并：同一位置切换显示（qty=0 显示加入购物车；qty>=1 显示黑框） -->
+  <div class="product-action" data-action-pid="${pid}" style="margin-top:10px;">
 
-    <div
-      data-qty-display
-      style="
-        width:64px;
-        height:34px;
-        border-radius:10px;
-        display:flex;
-        align-items:center;
-        justify-content:center;
-        border:2px solid #111;
-        font-weight:800;
-        background:#fff;
-      "
-    >1</div>
+    <!-- 黑框数量条（默认先隐藏，JS 会根据购物车数量决定显示谁） -->
+    <div class="qty-row" data-qty-row style="display:none;align-items:center;gap:8px;">
+      <button type="button" class="qty-btn" data-qty-minus style="width:34px;height:34px;border-radius:10px;">-</button>
 
-    <button type="button" class="qty-btn" data-qty-plus style="width:34px;height:34px;border-radius:10px;">+</button>
+      <div
+        data-qty-display
+        style="
+          width:64px;
+          height:34px;
+          border-radius:10px;
+          display:flex;
+          align-items:center;
+          justify-content:center;
+          border:2px solid #111;
+          font-weight:800;
+          background:#fff;
+        "
+      >1</div>
 
-    <span data-qty-hint style="font-size:12px;opacity:.7;margin-left:auto;">
-      ${maxQty <= 0 ? "已售罄" : maxText}
-    </span>
+      <button type="button" class="qty-btn" data-qty-plus style="width:34px;height:34px;border-radius:10px;">+</button>
+
+      <span data-qty-hint style="font-size:12px;opacity:.7;margin-left:auto;">
+        ${maxQty <= 0 ? "已售罄" : maxText}
+      </span>
+    </div>
+
+    <!-- 加入购物车按钮（qty=0 显示） -->
+    <button
+      type="button"
+      class="product-add-fixed"
+      data-add-pid="${pid}"
+      data-add-only
+      style="width:100%;"
+      ${maxQty <= 0 ? "disabled" : ""}>
+      ${maxQty <= 0 ? "已售罄" : "加入购物车"}
+    </button>
   </div>
-
-  <button type="button" class="product-add-fixed" data-add-pid="${pid}" ${maxQty <= 0 ? "disabled" : ""}>
-    ${maxQty <= 0 ? "已售罄" : "加入购物车"}
-  </button>
 `;
 
   // ✅ 点卡片进详情：用 productId（不是 pid/cartKey）
@@ -966,7 +977,105 @@ function createProductCard(p, extraBadgeText) {
   const btnMinus = article.querySelector("[data-qty-minus]");
   const btnPlus = article.querySelector("[data-qty-plus]");
   const qtyHint = article.querySelector("[data-qty-hint]");
+    // ============================
+  // ✅ 合并显示逻辑：qty=0 显示“加入购物车”；qty>=1 显示黑框
+  // 黑框数量 = 购物车数量（不是 selectedQty）
+  // ============================
+  const actionWrap = article.querySelector(".product-action[data-action-pid]");
+  const qtyRow = article.querySelector("[data-qty-row]");
+  const addOnlyBtn = article.querySelector(".product-add-fixed[data-add-only]");
 
+  function getCartQtyForThisPid() {
+    const snap = getCartSnapshot();
+    const map = normalizeCartToQtyMap(snap);
+    return Math.max(0, Math.floor(Number(map[pid] || 0) || 0));
+  }
+
+  function setCartQtyForThisPid(targetQty) {
+    const cartApi =
+      (window.FreshCart && window.FreshCart) ||
+      (window.Cart && window.Cart) ||
+      null;
+
+    const next = Math.max(0, Math.floor(Number(targetQty || 0) || 0));
+
+    if (!cartApi) return;
+
+    // 常见能力：setQty / updateQty / changeQty / removeItem / addItem
+    try {
+      if (typeof cartApi.setQty === "function") return cartApi.setQty(pid, next);
+      if (typeof cartApi.updateQty === "function") return cartApi.updateQty(pid, next);
+      if (typeof cartApi.changeQty === "function") return cartApi.changeQty(pid, next);
+      if (typeof cartApi.setItemQty === "function") return cartApi.setItemQty(pid, next);
+    } catch {}
+
+    // 兜底：只能用 addItem / removeItem 时
+    const cur = getCartQtyForThisPid();
+    const delta = next - cur;
+
+    if (delta === 0) return;
+
+    // 加
+    if (delta > 0) {
+      const normalized = {
+        id: pid, // cartKey（productId::variantKey）
+        productId: productId,
+        variantKey: variantKey,
+        name: displayName || "商品",
+        price: (isSingleVariant && originUnit > 0) ? originUnit : basePrice,
+        priceNum: (isSingleVariant && originUnit > 0) ? originUnit : basePrice,
+        image: p.image || imageUrl,
+        tag: p.tag || "",
+        type: p.type || "",
+        isSpecial: isHotProduct(p),
+        isDeal: isHotProduct(p),
+      };
+      if (typeof cartApi.addItem === "function") cartApi.addItem(normalized, delta);
+      return;
+    }
+
+    // 减（优先 removeItem / removeOne / decrease）
+    if (next === 0) {
+      if (typeof cartApi.removeItem === "function") return cartApi.removeItem(pid);
+      if (typeof cartApi.remove === "function") return cartApi.remove(pid);
+    }
+
+    // 如果没有明确减的方法，就尝试“逐个减”
+    const steps = Math.abs(delta);
+    for (let i = 0; i < steps; i++) {
+      if (typeof cartApi.decreaseItem === "function") cartApi.decreaseItem(pid, 1);
+      else if (typeof cartApi.removeOne === "function") cartApi.removeOne(pid);
+      else if (typeof cartApi.addItem === "function") {
+        // 有些实现允许 addItem 传负数（不保证）
+        try { cartApi.addItem({ id: pid }, -1); } catch {}
+      }
+    }
+  }
+
+  function renderActionByCartQty() {
+    const cartQty = getCartQtyForThisPid();
+
+    // 库存上限
+    const cap0 = Number(article.__maxQty);
+    const cap = Number.isFinite(cap0) ? Math.max(0, Math.floor(cap0)) : 0;
+
+    // clamp cartQty 到库存上限（只影响显示与按钮可用性）
+    const showQty = cap > 0 ? Math.min(cartQty, cap) : cartQty;
+
+    // qty=0：显示加入购物车；qty>=1：显示黑框
+    if (addOnlyBtn) addOnlyBtn.style.display = cartQty <= 0 ? "" : "none";
+    if (qtyRow) qtyRow.style.display = cartQty > 0 ? "flex" : "none";
+
+    if (qtyDisplay) qtyDisplay.textContent = String(Math.max(1, showQty || 1));
+
+    // +/- 状态
+    if (btnMinus) btnMinus.disabled = cartQty <= 0 || cap <= 0;
+    if (btnPlus) btnPlus.disabled = cap <= 0 || cartQty >= cap;
+
+    // hint
+    const newMaxText = unitCount > 1 ? `仅剩 ${Math.max(0, cap)} 箱` : `仅剩 ${Math.max(0, cap)}`;
+    if (qtyHint) qtyHint.textContent = cap <= 0 ? "已售罄" : newMaxText;
+  }
   function syncQtyUI() {
     selectedQty = clampQty(selectedQty);
 
@@ -988,18 +1097,30 @@ function createProductCard(p, extraBadgeText) {
 
   if (btnMinus) {
     btnMinus.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      selectedQty -= 1;
-      syncQtyUI();
-    });
-  }
+  ev.stopPropagation();
+  const cur = getCartQtyForThisPid();
+  const next = Math.max(0, cur - 1);
+  setCartQtyForThisPid(next);
 
+  try { window.dispatchEvent(new CustomEvent("freshbuy:cartUpdated", { detail: { pid, delta: -1 } })); } catch {}
+  renderActionByCartQty();
+  setTimeout(() => { try { scheduleBadgeSync(); } catch {} }, 50);
+});
+  }
   if (btnPlus) {
     btnPlus.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      selectedQty += 1;
-      syncQtyUI();
-    });
+  ev.stopPropagation();
+  const cap0 = Number(article.__maxQty);
+  const cap = Number.isFinite(cap0) ? Math.max(0, Math.floor(cap0)) : 0;
+
+  const cur = getCartQtyForThisPid();
+  const next = cap > 0 ? Math.min(cap, cur + 1) : cur + 1;
+  setCartQtyForThisPid(next);
+
+  try { window.dispatchEvent(new CustomEvent("freshbuy:cartUpdated", { detail: { pid, delta: 1 } })); } catch {}
+  renderActionByCartQty();
+  setTimeout(() => { try { scheduleBadgeSync(); } catch {} }, 50);
+});
   }
 
   // 初始同步一次（处理 max=0 / clamp）
@@ -1019,7 +1140,7 @@ function createProductCard(p, extraBadgeText) {
     }
 
     // ✅ 无输入框：直接用 selectedQty
-    const wantQty = clampQty(selectedQty);
+    const wantQty = 1; // ✅ 点击“加入购物车”只加 1
     if (wantQty <= 0) {
       alert("该商品已售罄");
       return;
@@ -1068,6 +1189,7 @@ function createProductCard(p, extraBadgeText) {
         scheduleBadgeSync();
       } catch {}
     }, 150);
+     renderActionByCartQty();
   }
 
   const overlayAdd = article.querySelector('.overlay-btn.add[data-add-pid]');
@@ -1109,6 +1231,14 @@ function createProductCard(p, extraBadgeText) {
       scheduleBadgeSync();
     } catch {}
   };
+  // 初次渲染：根据购物车数量决定显示“加入购物车”还是“黑框”
+  renderActionByCartQty();
+
+  // 购物车更新/多标签页变化：刷新该卡片显示
+  window.addEventListener("freshbuy:cartUpdated", renderActionByCartQty);
+  window.addEventListener("storage", (e) => {
+    if (e?.key && String(e.key).toLowerCase().includes("cart")) renderActionByCartQty();
+  });
 
   return article;
 }
