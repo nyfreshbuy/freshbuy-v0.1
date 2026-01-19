@@ -822,34 +822,55 @@ function setCartQty(pid, targetQty, normalizedItem) {
 
   if (!cartApi) {
     alert("购物车模块暂未启用（请确认 cart.js 已加载）");
-    return;
+    return false;
   }
 
   // 优先走 setQty / updateQty 一类（最干净）
   try {
-    if (typeof cartApi.setQty === "function") return cartApi.setQty(pid, next);
-    if (typeof cartApi.updateQty === "function") return cartApi.updateQty(pid, next);
-    if (typeof cartApi.changeQty === "function") return cartApi.changeQty(pid, next);
-    if (typeof cartApi.setItemQty === "function") return cartApi.setItemQty(pid, next);
-  } catch {}
-
+  if (typeof cartApi.setQty === "function") { cartApi.setQty(pid, next); return true; }
+  if (typeof cartApi.updateQty === "function") { cartApi.updateQty(pid, next); return true; }
+  if (typeof cartApi.changeQty === "function") { cartApi.changeQty(pid, next); return true; }
+  if (typeof cartApi.setItemQty === "function") { cartApi.setItemQty(pid, next); return true; }
+} catch {}
   // 兜底：用 addItem/removeItem 做差量
   const cur = getCartQty(pid);
   const delta = next - cur;
   if (delta === 0) return;
 
-  // 需要增加
-  if (delta > 0) {
-    if (typeof cartApi.addItem === "function") {
-      cartApi.addItem(normalizedItem || { id: pid }, delta);
-      return;
-    }
-  }
+  // 需要增加（✅ 兼容不同 addItem 签名）
+if (delta > 0) {
+  if (typeof cartApi.addItem === "function") {
+    const item = normalizedItem || { id: pid };
 
+    // 有些实现是 addItem(item, qty)
+    try {
+      cartApi.addItem(item, delta);
+      return true;
+    } catch {}
+
+    // 有些实现是 addItem(pid, qty)
+    try {
+      cartApi.addItem(pid, delta);
+      return true;
+    } catch {}
+
+    // 有些实现是 addItem({ ...item, qty })
+    try {
+      cartApi.addItem({ ...item, qty: delta, quantity: delta, count: delta });
+      return true;
+    } catch {}
+
+    // 都不行就失败
+    return false;
+  }
+  return false;
+}
   // 需要减少到 0：优先 removeItem/remove
   if (next === 0) {
-    if (typeof cartApi.removeItem === "function") return cartApi.removeItem(pid);
-    if (typeof cartApi.remove === "function") return cartApi.remove(pid);
+    if (next === 0) {
+  if (typeof cartApi.removeItem === "function") { cartApi.removeItem(pid); return true; }
+  if (typeof cartApi.remove === "function") { cartApi.remove(pid); return true; }
+}
   }
 
   // 再兜底：逐个减少
@@ -858,6 +879,7 @@ function setCartQty(pid, targetQty, normalizedItem) {
     if (typeof cartApi.decreaseItem === "function") cartApi.decreaseItem(pid, 1);
     else if (typeof cartApi.removeOne === "function") cartApi.removeOne(pid);
   }
+  return true;
 }
 
 // 3) 根据购物车数量切换某张卡的显示（qty=0 显示加入购物车；qty>=1 显示黑框）
@@ -2674,12 +2696,12 @@ function renderActionInstant(nextQty) {
   if (cap <= 0) return;
 
   const next = 1;
-  setCartQty(pid, next, normalizedItem);
+  const ok = setCartQty(pid, 1, normalizedItem);
+if (!ok) return;
 
-  try { window.dispatchEvent(new CustomEvent("freshbuy:cartUpdated", { detail: { pid, delta: 1 } })); } catch {}
-
-  renderActionInstant(next);   // ✅ 立刻显示黑框
-  scheduleBadgeSync();         // ✅ 稍后用真实购物车兜底同步
+try { window.dispatchEvent(new CustomEvent("freshbuy:cartUpdated", { detail: { pid, delta: 1 } })); } catch {}
+renderCardAction(card);
+scheduleBadgeSync();
   return;
 }
     // ✅ 点击图片 overlay 的“加入购物车” => 直接 +1
