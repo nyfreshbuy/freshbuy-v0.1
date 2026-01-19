@@ -2999,30 +2999,6 @@ function bindQtyButtonsOnlyOnce() {
   });
 }
 
-// ✅ 页面初次渲染完、以及每次搜索/刷新库存后，都要重新绑定 & 同步
-window.addEventListener("DOMContentLoaded", () => {
-  setTimeout(() => {
-    syncAllCardsStockUI();
-  }, 0);
-});
-// ✅ 当你刷新库存（refreshStockAndCards）后，调用一次同步
-// （你第6段里有 setInterval(refreshStockAndCards, ...)，这里监听一个事件更稳）
-window.addEventListener("freshbuy:stockRefreshed", () => {
-  syncAllCardsStockUI();
-});
-
-// ✅ 当购物车更新（徽章变化）时，也顺便同步卡片状态（比如 maxQty 变更后 clamp）
-window.addEventListener("freshbuy:cartUpdated", () => {
-  syncAllCardsStockUI();
-});
-
-// ✅ ✅ ✅ 如果你不想改 refreshStockAndCards 的函数体：这里加一个“兜底定时同步”
-//    （避免某些情况下卡片没更新到 maxQty）
-setInterval(() => {
-  try {
-    syncAllCardsStockUI();
-  } catch {}
-}, 6000);
 // =====================================================
 // ✅ 自动刷新库存：每隔一段时间拉 /api/products-simple
 // 只更新：每张商品卡的 stock/maxQty + UI（仅剩/售罄/禁用）+ 徽章兜底
