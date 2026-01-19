@@ -1274,10 +1274,6 @@ function createProductCard(p, extraBadgeText) {
 
     function syncQtyUI() {
   selectedQty = clampQty(selectedQty);
-
-  // ✅ 不要写 data-qty-display（黑框数字只允许由购物车数量渲染）
-  // if (qtyDisplay) qtyDisplay.textContent = String(selectedQty);
-
   if (btnMinus) btnMinus.disabled = selectedQty <= 1 || maxQty <= 0;
   if (btnPlus) btnPlus.disabled = maxQty <= 0 || selectedQty >= maxQty;
 
