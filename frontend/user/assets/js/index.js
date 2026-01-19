@@ -826,12 +826,40 @@ function setCartQty(pid, targetQty, normalizedItem) {
   }
 
   // 优先走 setQty / updateQty 一类（最干净）
+  // ✅ 先判断当前是否已存在（因为 cart.js 的 setQty 不会“凭空创建 item”）
+const curQty =
+  (typeof cartApi.getQty === "function" ? Number(cartApi.getQty(pid) || 0) : 0) || 0;
+
+// 目标为 0：优先走 setQty/remove（都可以）
+if (next === 0) {
   try {
+    if (typeof cartApi.setQty === "function") { cartApi.setQty(pid, 0); return true; }
+  } catch {}
+  try {
+    if (typeof cartApi.removeItem === "function") { cartApi.removeItem(pid); return true; }
+    if (typeof cartApi.remove === "function") { cartApi.remove(pid); return true; }
+  } catch {}
+  return true;
+}
+
+// ✅ next > 0 且当前不存在：必须用 addItem（不能用 setQty）
+if (curQty <= 0) {
+  if (typeof cartApi.addItem === "function") {
+    cartApi.addItem(normalizedItem || { id: pid }, next);
+    return true;
+  }
+  return false;
+}
+
+// ✅ 已存在才用 setQty / updateQty（这时不会被 cart.js 直接 return）
+try {
   if (typeof cartApi.setQty === "function") { cartApi.setQty(pid, next); return true; }
   if (typeof cartApi.updateQty === "function") { cartApi.updateQty(pid, next); return true; }
   if (typeof cartApi.changeQty === "function") { cartApi.changeQty(pid, next); return true; }
   if (typeof cartApi.setItemQty === "function") { cartApi.setItemQty(pid, next); return true; }
 } catch {}
+
+return false;
   // 兜底：用 addItem/removeItem 做差量
   const cur = getCartQty(pid);
   const delta = next - cur;
