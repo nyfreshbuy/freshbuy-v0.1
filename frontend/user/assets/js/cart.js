@@ -92,106 +92,12 @@ console.log("✅ cart.js loaded on", location.pathname);
   // ==============================
   // 3. 小工具
   // ==============================
-  // ==============================
-// ✅ 库存限制（单卖/整箱共用库存，stock 以“单个”为基础单位）
-// 规则：
-// - 单卖 qty 表示“单个数量”
-// - 整箱 qty 表示“箱数”，unitCount=每箱多少个
-// - 同一商品不同规格共享库存：sum(qty*unitCount) <= product.stock
-// ==============================
 
-function getUnitCountByVariant(product) {
-  const vKey = String(product?.variantKey || "single");
-  if (vKey === "single") return 1;
-
-  const variants = Array.isArray(product?.variants) ? product.variants : [];
-  const v = variants.find((x) => String(x?.key || "") === vKey);
-  const uc = Number(v?.unitCount || 1);
-  return Number.isFinite(uc) && uc > 0 ? uc : 1;
-}
-
-function getProductStockUnits(product) {
-  const s = Number(product?.stock ?? product?.qty ?? product?.inventory ?? 0);
-  return Number.isFinite(s) && s >= 0 ? Math.floor(s) : 0;
-}
-
-function calcUsedUnitsForProduct(productId) {
-  const pid = String(productId || "");
-  if (!pid) return 0;
-
-  let used = 0;
-  cartState.items.forEach(({ product, qty }) => {
-    if (!product) return;
-    if (String(product.productId || product.id || "") !== pid) return;
-
-    const unitCount = getUnitCountByVariant(product);
-    used += (Number(qty) || 0) * unitCount;
-  });
-  return used;
-}
-
-// ✅ 对“某个规格”计算最多允许的 qty（单卖就是最多单个数；整箱就是最多箱数）
-function getMaxQtyForThisVariant(product) {
-  const pid = String(product?.productId || product?.id || "");
-  const stockUnits = getProductStockUnits(product);
-  if (!pid || stockUnits <= 0) return 0;
-
-  const unitCount = getUnitCountByVariant(product);
-  const usedUnits = calcUsedUnitsForProduct(pid);
-
-  // 当前这条 item 自己占用也算在 usedUnits 里，所以先减掉它自己再算可用
-  const selfUnits = (Number(cartState.items.find(it => it?.product?.id === product.id)?.qty || 0) || 0) * unitCount;
-  const usedWithoutSelf = Math.max(0, usedUnits - selfUnits);
-
-  const availableUnits = Math.max(0, stockUnits - usedWithoutSelf);
-
-  // 可用单位换算成该规格的最大 qty
-  return Math.floor(availableUnits / unitCount);
-}
-
-// ✅ 把 qty clamp 到库存范围内
-function clampQtyByStock(product, desiredQty) {
-  const maxQty = getMaxQtyForThisVariant(product);
-  const q = Math.max(0, Math.floor(Number(desiredQty || 0)));
-  return Math.min(q, maxQty);
-}
   function safeNum(v, fallback = 0) {
     const n = Number(v);
     return Number.isFinite(n) ? n : fallback;
   }
-  // ✅ 计算某个购物车 item 的最终行金额（支持：单价/2forX/规格整箱）
-// 约定：product.variantKey = "single" 或 "box12"...；
-//      product.variants = [{key,label,unitCount,price,enabled}]
-function calcItemPrice(product, qty) {
-  const q = Math.max(0, Number(qty || 0));
 
-  // 1) 先算“当前规格”的单价
-  let unitPrice = safeNum(product?.priceNum ?? product?.price ?? 0);
-
-  // 如果商品带 variants，且有 variantKey，则用对应规格的 price 覆盖
-  const vKey = String(product?.variantKey || "single");
-  const variants = Array.isArray(product?.variants) ? product.variants : [];
-  const v = variants.find((x) => String(x?.key || "") === vKey);
-
-  if (v && v.enabled !== false) {
-    const vp = v.price == null ? null : Number(v.price);
-    if (Number.isFinite(vp) && vp > 0) unitPrice = vp;
-  }
-
-  // 2) 再算 2 for $X / N for $X（仅对 single 生效，避免箱价被特价逻辑覆盖）
-  const specialEnabled = product?.specialEnabled === true || product?.specialEnabled === "true";
-  const specialQty = Math.max(1, Math.floor(Number(product?.specialQty || 1)));
-  const specialTotal = product?.specialTotalPrice == null ? null : Number(product.specialTotalPrice);
-
-  if (vKey === "single" && specialEnabled && Number.isFinite(specialTotal) && specialTotal > 0 && specialQty > 1) {
-    const groups = Math.floor(q / specialQty);
-    const remain = q % specialQty;
-    return Number((groups * specialTotal + remain * unitPrice).toFixed(2));
-  }
-
-  // 3) 默认：单价 * 数量
-  return Number((unitPrice * q).toFixed(2));
-}
   function isDealProduct(product) {
     if (!product) return false;
 
@@ -234,7 +140,7 @@ function calcItemPrice(product, qty) {
     return items.reduce((sum, { product, qty }) => {
       if (!product) return sum;
       const price = Number(product.price ?? product.priceNum ?? 0);
-      return sum + calcItemPrice(product, qty);
+      return sum + price * qty;
     }, 0);
   }
 
@@ -832,17 +738,18 @@ function calcItemPrice(product, qty) {
   }
 
   function buildOrderItemsFromCart() {
-  return cartState.items.map(({ product, qty }) => ({
-    productId: product.id,
-    variantKey: product.variantKey || "single", // ✅
-    name: product.name,
-    unitPrice: safeNum(product.price ?? product.priceNum, 0),
-    finalLinePrice: calcItemPrice(product, qty), // ✅ 折后
-    qty,
-    isDeal: isDealProduct(product),
-    taxable: !!product.taxable,
-  }));
-}
+    return cartState.items.map(({ product, qty }) => ({
+      productId: product.id,
+      name: product.name,
+      price: safeNum(product.price ?? product.priceNum, 0),
+      qty: Number(qty) || 1,
+      tag: product.tag || "",
+      type: product.type || "",
+      isDeal: isDealProduct(product),
+      taxable: !!product.taxable, // ✅ 订单里也带上（后续算税用）
+    }));
+  }
+
   async function quickCheckout() {
     const { rule, subtotal, shippingFee, meetMin } = getCurrentShippingRule();
     if (!rule || !cartState.items.length) return;
@@ -966,9 +873,6 @@ function calcItemPrice(product, qty) {
         subtotal: calcCartSubtotal(cartState.items),
       };
       window.dispatchEvent(new CustomEvent("freshcart:updated", { detail }));
-      try {
-  window.dispatchEvent(new CustomEvent("freshbuy:cartUpdated", { detail }));
-} catch {}
     } catch {}
   }
 
@@ -1252,37 +1156,16 @@ function calcItemPrice(product, qty) {
     addItem(product, qty = 1) {
       if (!product || !product.id) return;
 
-      const normalized = {
-  ...product,
-  variantKey: product.variantKey || "single", // ✅ 必须
-  twoForX: product.twoForX || null             // ✅ 可选
-};
-
+      const normalized = { ...product };
       normalized.taxable = !!normalized.taxable; // ✅ 保证 boolean
       normalized.isDeal = isDealProduct(normalized);
 
       const wasPureDealsBefore = isPureDeals(cartState.items);
 
       const existing = cartState.items.find((it) => it.product.id === normalized.id);
+      if (existing) existing.qty += qty;
+      else cartState.items.push({ product: normalized, qty });
 
-// ✅ 先算想要的 qty，再按库存 clamp
-const desired = (existing ? Number(existing.qty || 0) : 0) + (Number(qty || 0) || 0);
-const clamped = clampQtyByStock(normalized, desired);
-
-// ✅ 如果库存不够，直接提示（你也可以换成 toast）
-if (clamped <= 0 && desired > 0) {
-  alert("库存不足");
-  return;
-}
-
-if (existing) existing.qty = clamped;
-else cartState.items.push({ product: normalized, qty: clamped });
-
-handleCartChange({
-  fromAdd: true,
-  addedProduct: normalized,
-  wasPureDeals: wasPureDealsBefore,
-});
       handleCartChange({
         fromAdd: true,
         addedProduct: normalized,
@@ -1294,21 +1177,12 @@ handleCartChange({
       const item = cartState.items.find((it) => it.product.id === productId);
       if (!item) return;
 
-      const desired = (Number(item.qty || 0) || 0) + (Number(delta || 0) || 0);
-const clamped = clampQtyByStock(item.product, desired);
-
-if (clamped <= 0) {
-  Cart.removeItem(productId);
-  return;
-}
-
-// 如果被 clamp 住了，说明库存不够（只在 delta>0 时提示）
-if (clamped < desired && Number(delta || 0) > 0) {
-  alert("库存不足");
-}
-
-item.qty = clamped;
-handleCartChange({ fromAdd: false });
+      item.qty += delta;
+      if (item.qty <= 0) {
+        Cart.removeItem(productId);
+        return;
+      }
+      handleCartChange({ fromAdd: false });
     },
 
     removeItem(productId) {
@@ -1358,36 +1232,6 @@ handleCartChange({ fromAdd: false });
       const it = cartState.items.find((x) => x?.product?.id === id);
       return it ? (Number(it.qty) || 0) : 0;
     },
-    // ✅ 新增：精确设置数量（首页/分类页步进器用）
-setQty(productId, qty) {
-  const id = String(productId || "");
-  const target = Math.max(0, Math.floor(Number(qty || 0)));
-  if (!id) return;
-
-  const item = cartState.items.find((it) => it?.product?.id === id);
-
-  // 目标为 0：移除
-  if (target <= 0) {
-    if (item) Cart.removeItem(id);
-    return;
-  }
-
-  // 购物车里没有：无法凭空造 product，交给外部先 addItem
-  if (!item) return;
-
-  // 已有：直接改成目标数量
-  const clamped = clampQtyByStock(item.product, target);
-
-if (clamped <= 0) {
-  Cart.removeItem(id);
-  return;
-}
-
-if (clamped < target) alert("库存不足");
-
-item.qty = clamped;
-handleCartChange({ fromAdd: false });
-},
   };
 
   const FreshCart = {
@@ -1457,7 +1301,6 @@ handleCartChange({ fromAdd: false });
 
     // ✅ 同步暴露
     getQty: Cart.getQty,
-    setQty: Cart.setQty,
   };
 
   window.Cart = Cart;
