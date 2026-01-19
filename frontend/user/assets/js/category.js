@@ -1,9 +1,9 @@
-// assets/js/category.js
-console.log("category page script loaded");
+// frontend/user/assets/js/category.js
+console.log("category.js loaded (HOME-CARD-STYLE + variants single/box)");
 
-// =========================
-// Auth (Mongo) helpers - same token key as index.js
-// =========================
+/* =========================
+   Auth (Mongo) helpers - same token key as index.js
+   ========================= */
 const AUTH_TOKEN_KEY = "freshbuy_token";
 const AUTH_PHONE_KEY = "freshbuy_login_phone";
 
@@ -79,9 +79,9 @@ async function apiMe() {
   return data.user || data.data?.user || null;
 }
 
-// =========================
-// DOM refs
-// =========================
+/* =========================
+   DOM refs
+   ========================= */
 const gridEl = document.getElementById("productGrid");
 const emptyTipEl = document.getElementById("emptyTip");
 const categoryTitleEl = document.getElementById("categoryTitle");
@@ -96,9 +96,9 @@ let currentCatKey = "fresh";
 let currentProducts = [];
 let currentFilter = "all";
 
-// ============================
-// 1) URL 解析当前大类
-// ============================
+/* ============================
+   1) URL 解析当前大类
+   ============================ */
 (function initCategoryFromURL() {
   const params = new URLSearchParams(window.location.search || "");
   const cat = params.get("cat") || "fresh";
@@ -138,9 +138,9 @@ let currentFilter = "all";
   }
 })();
 
-// ============================
-// 2) 判断商品属于哪个大类
-// ============================
+/* ============================
+   2) 判断商品属于哪个大类
+   ============================ */
 function isProductInCategory(p, catKey) {
   const cat = (p.category || "").toString();
   const sub = (p.subCategory || "").toString();
@@ -167,13 +167,12 @@ function isProductInCategory(p, catKey) {
   }
 }
 
-// ============================
-// 2.5) 爆品判定（分类页排除爆品）
-// ============================
+/* ============================
+   2.5) 爆品判定（分类页排除爆品）
+   ============================ */
 function isTrueFlag(v) {
   return v === true || v === "true" || v === 1 || v === "1";
 }
-
 function hasKeywordSimple(p, keyword) {
   if (!p) return false;
   const kw = String(keyword).toLowerCase();
@@ -192,7 +191,6 @@ function hasKeywordSimple(p, keyword) {
   if (Array.isArray(p.labels) && p.labels.some((t) => norm(t).includes(kw))) return true;
   return false;
 }
-
 function isHotProduct(p) {
   return (
     isTrueFlag(p?.isHot) ||
@@ -204,11 +202,57 @@ function isHotProduct(p) {
   );
 }
 
-// ============================
-// ✅ 分类页：统一商品卡动作（与首页一致）
-// ============================
+/* ============================
+   ✅ 首页同款卡片：variants（单卖/整箱）
+   ============================ */
+function normalizeVariants(p) {
+  const arr = Array.isArray(p?.variants) ? p.variants : [];
+  return arr
+    .map((x) => ({
+      key: String(x?.key || "").trim(),
+      label: String(x?.label || "").trim(),
+      unitCount: Number(x?.unitCount || 1) || 1,
+      price: x?.price == null ? null : Number(x.price),
+      enabled: x?.enabled !== false,
+    }))
+    .filter((v) => v.key && v.enabled !== false);
+}
+function pickSingleVariant(p) {
+  const vars = normalizeVariants(p);
+  return (
+    vars.find((x) => x.key === "single") ||
+    vars.find((x) => x.unitCount === 1) || {
+      key: "single",
+      label: "单个",
+      unitCount: 1,
+      price: null,
+      enabled: true,
+    }
+  );
+}
+function pickBoxVariant(p) {
+  const vars = normalizeVariants(p);
+  // 只在后台确实配置了整箱才显示，避免箱数乱
+  return vars.find((x) => x.unitCount > 1 && x.key !== "single") || null;
+}
+function variantLabel(v) {
+  if (!v) return "";
+  const base = v.label || (v.key === "single" ? "单个" : "整箱");
+  const uc = Number(v.unitCount || 1);
+  if (v.key !== "single" && uc > 1) return `${base}（${uc}个）`;
+  return base;
+}
 
-// 读数量：优先 FreshCart.getQty，其次 Cart.getQty
+/* ============================
+   ✅ 购物车统一接口（读 qty / 改 qty）
+   ============================ */
+function getCartApi() {
+  const fc = window.FreshCart;
+  if (fc && (typeof fc.addItem === "function" || typeof fc.addToCartWithLimit === "function")) return fc;
+  const c = window.Cart;
+  if (c && typeof c.addItem === "function") return c;
+  return null;
+}
 function getCartQty(pid) {
   const id = String(pid || "");
   if (!id) return 0;
@@ -224,19 +268,17 @@ function getCartQty(pid) {
   } catch {}
   return 0;
 }
-
-// 设置数量：第一次用 addItem，已有用 setQty/changeQty
 function setCartQty(pid, targetQty, normalizedItem) {
   const id = String(pid || "");
   const next = Math.max(0, Math.floor(Number(targetQty || 0)));
   if (!id) return false;
 
-  const api = window.FreshCart || window.Cart;
+  const api = getCartApi();
   if (!api) return false;
 
   const cur = getCartQty(id);
 
-  // 目标为 0：删/设0
+  // next = 0：删/设0
   if (next === 0) {
     try {
       if (typeof api.setQty === "function") {
@@ -249,12 +291,7 @@ function setCartQty(pid, targetQty, normalizedItem) {
         api.removeItem(id);
         return true;
       }
-      if (typeof api.remove === "function") {
-        api.remove(id);
-        return true;
-      }
     } catch {}
-    // 只有 changeQty 的兜底
     try {
       if (typeof api.changeQty === "function" && cur > 0) {
         api.changeQty(id, -cur);
@@ -264,10 +301,14 @@ function setCartQty(pid, targetQty, normalizedItem) {
     return true;
   }
 
-  // ✅ 当前不存在：必须 addItem（cart.js 的 setQty 不会创建新 item）
+  // ✅ 不存在：必须 addItem（cart.js 的 setQty 不会凭空造 item）
   if (cur <= 0) {
     if (typeof api.addItem === "function") {
       api.addItem(normalizedItem || { id }, next);
+      return true;
+    }
+    if (typeof api.addToCartWithLimit === "function") {
+      api.addToCartWithLimit(normalizedItem || { id });
       return true;
     }
     return false;
@@ -289,6 +330,9 @@ function setCartQty(pid, targetQty, normalizedItem) {
   return false;
 }
 
+/* ============================
+   ✅ 首页同款“底部合体动作”渲染
+   ============================ */
 function renderCardAction(card) {
   if (!card) return;
   const pid = String(card.dataset.cartPid || "");
@@ -299,134 +343,145 @@ function renderCardAction(card) {
   const addBtn = card.querySelector(".product-add-fixed[data-add-only]");
   const qtyRow = card.querySelector("[data-qty-row]");
   const qtyDisplay = card.querySelector("[data-qty-display]");
+  const badge = card.querySelector(".product-qty-badge");
 
   if (addBtn) addBtn.style.display = qty <= 0 ? "" : "none";
   if (qtyRow) qtyRow.style.display = qty > 0 ? "flex" : "none";
   if (qtyDisplay) qtyDisplay.textContent = String(Math.max(1, qty || 1));
-}
 
+  // ✅ 右下角绿色数量徽章（跟首页一致）
+  if (badge) {
+    if (qty > 0) {
+      badge.textContent = String(qty);
+      badge.style.display = "flex";
+    } else {
+      badge.style.display = "none";
+    }
+  }
+}
 function renderAllCardsAction() {
   document.querySelectorAll(".product-card[data-cart-pid]").forEach(renderCardAction);
 }
 
-// ============================
-// ✅ variants：从商品上挑 “single + box” 两个规格
-// ============================
-function normalizeVariants(p) {
-  const arr = Array.isArray(p?.variants) ? p.variants : [];
-  return arr
-    .map((x) => ({
-      key: String(x?.key || "").trim(),
-      label: String(x?.label || "").trim(),
-      unitCount: Number(x?.unitCount || 1) || 1,
-      price: x?.price == null ? null : Number(x.price),
-      enabled: x?.enabled !== false,
-    }))
-    .filter((v) => v.key && v.enabled !== false);
+/* ============================
+   ✅ 首页同款：图片字段统一 + 价格读取
+   ============================ */
+function getProductImageUrl(p, seed) {
+  const raw =
+    (p?.imageUrl && String(p.imageUrl).trim()) ||
+    (p?.image && String(p.image).trim()) ||
+    (p?.img && String(p.img).trim()) ||
+    "";
+  if (!raw) return `https://picsum.photos/seed/${encodeURIComponent(seed || "fb")}/500/400`;
+  if (/^https?:\/\//i.test(raw)) return raw;
+  if (raw.startsWith("/")) return location.origin + raw;
+  if (raw.startsWith("uploads/")) return location.origin + "/" + raw;
+  return raw;
+}
+function getNum(p, keys, def = 0) {
+  for (const k of keys) {
+    const v = p?.[k];
+    const n = Number(v);
+    if (!Number.isNaN(n) && Number.isFinite(n) && n !== 0) return n;
+  }
+  return def;
+}
+function getPrice(p) {
+  return getNum(p, ["price", "flashPrice", "specialPrice", "originPrice"], 0);
 }
 
-function pickSingleVariant(p) {
-  const vars = normalizeVariants(p);
-  const v =
-    vars.find((x) => x.key === "single") ||
-    vars.find((x) => x.unitCount === 1) ||
-    { key: "single", label: "单个", unitCount: 1, price: null, enabled: true };
-  return v;
+/* ============================
+   ✅ 首页同款商品卡：单卖 + 整箱两张卡
+   - 只有图片/名字跳详情
+   - 底部合体：加入购物车 <-> 黑框 +/-
+   ============================ */
+function buildNormalizedCartItem(p, productId, variant) {
+  const vKey = String(variant?.key || "single").trim() || "single";
+  const pid = `${productId}::${vKey}`;
+
+  const basePrice = getPrice(p);
+  const vPrice =
+    variant?.price != null && Number.isFinite(Number(variant.price)) ? Number(variant.price) : null;
+  const finalPrice = vPrice != null && vPrice > 0 ? vPrice : basePrice;
+
+  const limitQty = Number(p?.limitQty || p?.limitPerUser || p?.maxQty || p?.purchaseLimit || 0) || 0;
+
+  return {
+    id: pid,
+    productId,
+    variantKey: vKey,
+    variants: Array.isArray(p?.variants) ? p.variants : [],
+
+    name: p?.name || "商品",
+    price: Number(finalPrice || 0),
+    priceNum: Number(finalPrice || 0),
+    tag: p?.tag || "",
+    type: p?.type || "",
+    taxable: !!p?.taxable,
+
+    // 兼容你 cart.js 的特价/爆品判断
+    isSpecial: !!(p?.specialEnabled || p?.isSpecial || String(p?.tag || "").includes("爆品")),
+    isDeal: !!(p?.isDeal || p?.specialEnabled || p?.isSpecial || String(p?.tag || "").includes("爆品")),
+
+    specialEnabled: !!p?.specialEnabled,
+    specialQty: p?.specialQty,
+    specialTotalPrice: p?.specialTotalPrice,
+
+    limitQty,
+    imageUrl: p?.imageUrl || p?.image || p?.img || "",
+  };
 }
 
-function pickBoxVariant(p) {
-  const vars = normalizeVariants(p);
-
-  // 先找 unitCount > 1 的第一个（最常见就是整箱）
-  let v = vars.find((x) => x.unitCount > 1 && x.key !== "single");
-
-  // 兜底：key 里带 box/case 的
-  if (!v) v = vars.find((x) => /box|case|carton|箱/i.test(x.key));
-
-  // 仍然没有：返回 null（不硬造，避免错箱数）
-  return v || null;
-}
-
-function variantLabel(v) {
-  if (!v) return "";
-  const base = v.label || (v.key === "single" ? "单个" : "整箱");
-  const uc = Number(v.unitCount || 1);
-  if (v.key !== "single" && uc > 1) return `${base}（${uc}个）`;
-  return base;
-}
-
-// ============================
-// 3) 商品卡片（单个/整箱 两张卡）
-// - 只有图片/名字可进详情（data-go-detail）
-// - 底部合体：qty=0 显示加入购物车；qty>0 显示黑框 +/-
-// - overlay + 也统一
-// ============================
-function createProductCard(p, variant) {
+function createProductCardHomeStyle(p, variant) {
+  const productId = String(p?._id || p?.id || "").trim();
   const article = document.createElement("article");
   article.className = "product-card";
 
-  const productId = String(p._id || p.id || "").trim();
   if (!productId) return article;
 
   const vKey = String(variant?.key || "single").trim() || "single";
   const pid = `${productId}::${vKey}`;
   article.dataset.cartPid = pid;
 
-  // 价格：单卖用商品主价；整箱优先用 variant.price
-  const basePrice = Number(p.price || p.flashPrice || p.specialPrice || p.originPrice || 0) || 0;
-  const vPrice = variant?.price != null && Number.isFinite(Number(variant.price)) ? Number(variant.price) : null;
-  const finalPrice = vPrice != null && vPrice > 0 ? vPrice : basePrice;
+  const img = getProductImageUrl(p, productId);
+  const basePrice = getPrice(p);
+  const vPrice =
+    variant?.price != null && Number.isFinite(Number(variant.price)) ? Number(variant.price) : null;
+  const price = vPrice != null && vPrice > 0 ? vPrice : basePrice;
 
-  const originNum = Number(p.originPrice || 0) || 0;
-  const hasOrigin = originNum > 0 && originNum > finalPrice;
-
-  const imageUrl =
-    p.image && String(p.image).trim()
-      ? p.image
-      : `https://picsum.photos/seed/${productId}/500/400`;
+  const origin = getNum(p, ["originPrice"], 0);
+  const hasOrigin = origin > 0 && origin > price;
 
   const badgeText =
-    p.specialEnabled || p.isSpecial || (p.tag || "").includes("爆品") ? "特价" : "";
+    p?.specialEnabled || p?.isSpecial || String(p?.tag || "").includes("爆品") ? "特价" : "";
 
-  // ✅ 给 cart.js 用：必须有 id + variantKey + variants
-  const normalizedItem = {
-    id: pid,
-    productId,
-    variantKey: vKey,
-    variants: Array.isArray(p?.variants) ? p.variants : [],
-
-    name: p.name || "商品",
-    price: finalPrice,
-    priceNum: finalPrice,
-    tag: p.tag || "",
-    type: p.type || "",
-    taxable: !!p.taxable,
-    isDeal: !!(p.isDeal || p.specialEnabled || p.isSpecial || (p.tag || "").includes("爆品")),
-    specialEnabled: !!p.specialEnabled,
-    specialQty: p.specialQty,
-    specialTotalPrice: p.specialTotalPrice,
-
-    imageUrl: p.image || p.imageUrl || p.img || "",
-  };
-  article.__normalizedItem = normalizedItem;
+  const stock = Number(p?.stock ?? p?.qty ?? p?.inventory ?? 0);
+  const stockText = Number.isFinite(stock) && stock > 0 ? `仅剩 ${stock}` : "";
 
   const vText = variantLabel(variant);
+  const detailUrl = productId ? `product_detail.html?id=${encodeURIComponent(productId)}` : "#";
+
+  const normalizedItem = buildNormalizedCartItem(p, productId, variant);
+  article.__normalizedItem = normalizedItem;
 
   article.innerHTML = `
     <div class="product-image-wrap" data-go-detail>
       ${badgeText ? `<span class="special-badge">${badgeText}</span>` : ""}
-      <img src="${imageUrl}" class="product-image" alt="${(p.name || "").replace(/"/g, "&quot;")}" />
+      <img src="${img}" class="product-image" alt="${(p?.name || "").replace(/"/g, "&quot;")}" />
       <button class="overlay-btn add" type="button" data-add-pid="${pid}">+</button>
+      <span class="product-qty-badge" style="display:none;"></span>
     </div>
 
-    <div class="product-name" data-go-detail>${p.name || ""}</div>
-
-    <div class="product-desc">${p.desc || ""}</div>
+    <div class="product-name" data-go-detail>${p?.name || ""}</div>
 
     <div class="product-price-row">
-      <span class="product-price">$${Number(finalPrice || 0).toFixed(2)}</span>
-      ${hasOrigin && vKey === "single" ? `<span class="product-origin">$${originNum.toFixed(2)}</span>` : ""}
-      <span class="product-tagline">${vText || (p.tag || p.subCategory || "")}</span>
+      <span class="product-price">$${Number(price || 0).toFixed(2)}</span>
+      ${hasOrigin && vKey === "single" ? `<span class="product-origin">$${Number(origin).toFixed(2)}</span>` : ""}
+    </div>
+
+    <div class="product-meta-row">
+      <span class="product-tagline">${p?.tag || p?.subCategory || ""}${vText ? ` · ${vText}` : ""}</span>
+      <span class="product-stock">${stockText}</span>
     </div>
 
     <div class="product-action">
@@ -440,21 +495,26 @@ function createProductCard(p, variant) {
     </div>
   `;
 
-  // 初次渲染数量
   renderCardAction(article);
-
   return article;
 }
 
-// ============================
-// 子分类 pills（保留你原逻辑）
-// ============================
+function createCardsForProduct(p) {
+  const singleV = pickSingleVariant(p);
+  const boxV = pickBoxVariant(p);
+
+  const cards = [];
+  cards.push(createProductCardHomeStyle(p, singleV));
+  if (boxV) cards.push(createProductCardHomeStyle(p, boxV));
+  return cards;
+}
+
+/* ============================
+   子分类 pills（保持你原逻辑）
+   ============================ */
 function rebuildSubCategoryPills() {
   const wrap = document.getElementById("subCategoryPills");
-  if (!wrap) {
-    console.warn("未找到 #subCategoryPills（请在 category.html 给子分类按钮容器加 id=subCategoryPills）");
-    return;
-  }
+  if (!wrap) return;
 
   const set = new Set();
   currentProducts.forEach((p) => {
@@ -483,9 +543,9 @@ function rebuildSubCategoryPills() {
   subs.forEach((s) => wrap.appendChild(makeBtn(s, s, currentFilter === s)));
 }
 
-// ============================
-// 4) 加载当前分类商品
-// ============================
+/* ============================
+   4) 加载当前分类商品
+   ============================ */
 async function loadCategoryProducts() {
   if (!gridEl) return;
   gridEl.innerHTML = "";
@@ -530,9 +590,9 @@ async function loadCategoryProducts() {
   }
 }
 
-// ============================
-// 5) 筛选 + 排序 + 搜索 + 渲染（单个/整箱两张卡）
-// ============================
+/* ============================
+   5) 筛选 + 排序 + 搜索
+   ============================ */
 function applyFilterAndRender() {
   if (!gridEl) return;
 
@@ -545,9 +605,7 @@ function applyFilterAndRender() {
   if (kw) {
     const lower = kw.toLowerCase();
     list = list.filter(
-      (p) =>
-        (p.name || "").toLowerCase().includes(lower) ||
-        (p.desc || "").toLowerCase().includes(lower)
+      (p) => (p.name || "").toLowerCase().includes(lower) || (p.desc || "").toLowerCase().includes(lower)
     );
   }
 
@@ -571,22 +629,17 @@ function applyFilterAndRender() {
   }
   if (emptyTipEl) emptyTipEl.style.display = "none";
 
-  // ✅ 每个商品：单个 +（如果有）整箱
   list.forEach((p) => {
-    const singleV = pickSingleVariant(p);
-    const boxV = pickBoxVariant(p);
-
-    gridEl.appendChild(createProductCard(p, singleV));
-    if (boxV) gridEl.appendChild(createProductCard(p, boxV));
+    const cards = createCardsForProduct(p);
+    cards.forEach((c) => gridEl.appendChild(c));
   });
 
-  // 渲染完立即对齐数量
   renderAllCardsAction();
 }
 
-// ============================
-// 6) 顶部登录 UI（保留你原逻辑）
-// ============================
+/* ============================
+   6) 顶部登录 UI（保持你原逻辑）
+   ============================ */
 function applyLoggedInUI(phone) {
   const loginBtn = document.getElementById("loginBtn");
   const registerBtn = document.getElementById("registerBtn");
@@ -604,7 +657,6 @@ function applyLoggedInUI(phone) {
   if (userNameLabel) userNameLabel.textContent = tail ? "尾号 " + tail : "我的账户";
   if (userAvatar) userAvatar.textContent = "我";
 }
-
 function applyLoggedOutUI() {
   const loginBtn = document.getElementById("loginBtn");
   const registerBtn = document.getElementById("registerBtn");
@@ -613,7 +665,6 @@ function applyLoggedOutUI() {
   if (registerBtn) registerBtn.style.display = "";
   if (userProfile) userProfile.style.display = "none";
 }
-
 async function initAuthUIFromStorage() {
   localStorage.removeItem("freshbuy_is_logged_in");
 
@@ -634,9 +685,9 @@ async function initAuthUIFromStorage() {
   }
 }
 
-// ============================
-// 7) 登录弹窗（保持你原逻辑）
-// ============================
+/* ============================
+   7) 登录弹窗（保持你原逻辑）
+   ============================ */
 const authBackdrop = document.getElementById("authBackdrop");
 const authCloseBtn = document.getElementById("authCloseBtn");
 const loginBtnTop = document.getElementById("loginBtn");
@@ -674,12 +725,10 @@ function openAuthModal(mode = "login") {
     loginRemember.checked = true;
   }
 }
-
 function closeAuthModal() {
   if (!authBackdrop) return;
   authBackdrop.classList.remove("active");
 }
-
 function switchAuthMode(mode) {
   if (!tabLogin || !tabRegister || !loginPanel || !registerPanel || !authTitle) return;
 
@@ -755,23 +804,27 @@ if (registerSubmitBtn) {
   });
 }
 
-// ============================
-// ✅✅✅ 分类页：统一点击委托（加入购物车 + overlay + 黑框 +/-）
-// 只让图片/名字跳详情：用 data-go-detail 控制
-// ============================
+/* ============================
+   ✅ 统一点击委托（首页同款）
+   - 只有图片/名字跳详情（data-go-detail）
+   - 加入购物车 / overlay + / 黑框 +/- 都不会跳详情
+   ============================ */
 document.addEventListener("click", (e) => {
-  // 仅图片/名字可跳详情
+  // 1) 只让图片/名字跳详情
   const go = e.target.closest("[data-go-detail]");
   if (go) {
     const card = go.closest(".product-card");
     const pid = String(card?.dataset?.cartPid || "");
     if (!pid) return;
+
     const productId = String(pid).split("::")[0];
     if (!productId) return;
+
     window.location.href = `product_detail.html?id=${encodeURIComponent(productId)}`;
     return;
   }
 
+  // 2) 购物车动作
   const addBtn = e.target.closest(".product-add-fixed[data-add-only]");
   const overlayAddBtn = e.target.closest(".overlay-btn.add[data-add-pid]");
   const minusBtn = e.target.closest("[data-qty-minus]");
@@ -780,6 +833,7 @@ document.addEventListener("click", (e) => {
   if (!addBtn && !overlayAddBtn && !minusBtn && !plusBtn) return;
 
   e.preventDefault();
+  e.stopPropagation();
 
   const card = e.target.closest(".product-card");
   if (!card) return;
@@ -797,18 +851,21 @@ document.addEventListener("click", (e) => {
   const item = card.__normalizedItem || { id: pid };
   const cur = getCartQty(pid);
 
+  // 加入购物车 = 设为 1
   if (addBtn) {
     const ok = setCartQty(pid, 1, item);
     if (ok) renderCardAction(card);
     return;
   }
 
+  // overlay + 或 plus
   if (overlayAddBtn || plusBtn) {
     const ok = setCartQty(pid, cur + 1, item);
     if (ok) renderCardAction(card);
     return;
   }
 
+  // minus
   if (minusBtn) {
     const ok = setCartQty(pid, Math.max(0, cur - 1), item);
     if (ok) renderCardAction(card);
@@ -816,15 +873,192 @@ document.addEventListener("click", (e) => {
   }
 });
 
-// 购物车变更后，刷新所有卡片底部显示
+// cart.js 更新后同步刷新
 window.addEventListener("freshcart:updated", () => {
   renderAllCardsAction();
 });
 
-// ============================
-// 8) DOMContentLoaded 初始化
-// ============================
+// 多标签页同步
+window.addEventListener("storage", (e) => {
+  if (!e) return;
+  if (e.key === "fresh_cart_v1") renderAllCardsAction();
+});
+
+/* ============================
+   ✅ 注入“首页图片样式”（确保 category 跟首页一致）
+   ============================ */
+function injectHomeCardStyleOnce() {
+  if (document.getElementById("categoryHomeCardStyle")) return;
+  const style = document.createElement("style");
+  style.id = "categoryHomeCardStyle";
+  style.textContent = `
+    .product-card{
+      background:#fff;
+      border-radius:18px;
+      box-shadow: 0 4px 12px rgba(15,23,42,.08);
+      padding:12px;
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+    }
+    /* ✅ 首页同款：图片区域是“白底内嵌卡” + 居中 + cover 不变形 */
+    .product-image-wrap{
+      position:relative;
+      background:#f8fafc;
+      border-radius:16px;
+      overflow:hidden;
+      padding:10px;
+      height:190px;            /* 关键：保证跟首页视觉一致 */
+      display:flex;
+      align-items:center;
+      justify-content:center;
+    }
+    .product-image{
+      width:100%;
+      height:100%;
+      object-fit:contain;       /* ✅ 你要的“首页样式”：瓶子不会被裁切/拉伸 */
+      display:block;
+    }
+    .special-badge{
+      position:absolute;
+      left:10px;
+      top:10px;
+      background:#f97316;
+      color:#fff;
+      font-weight:900;
+      font-size:12px;
+      padding:6px 10px;
+      border-radius:999px;
+      z-index:2;
+    }
+    .overlay-btn.add{
+      position:absolute;
+      right:12px;
+      bottom:12px;
+      width:36px;
+      height:36px;
+      border:none;
+      border-radius:12px;
+      background: rgba(17,24,39,.88);
+      color:#fff;
+      font-weight:900;
+      font-size:18px;
+      cursor:pointer;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      z-index:2;
+    }
+    /* ✅ 绿色数量徽章（右侧） */
+    .product-qty-badge{
+      position:absolute;
+      right:12px;
+      top:12px;
+      min-width:32px;
+      height:32px;
+      border-radius:999px;
+      background:#22c55e;
+      color:#fff;
+      font-weight:900;
+      display:none;
+      align-items:center;
+      justify-content:center;
+      box-shadow: 0 10px 18px rgba(22,163,74,.22);
+      z-index:2;
+    }
+
+    .product-name{
+      font-weight:900;
+      font-size:15px;
+      line-height:1.25;
+      color:#111827;
+    }
+
+    .product-price-row{
+      display:flex;
+      align-items:baseline;
+      gap:8px;
+    }
+    .product-price{
+      color:#16a34a;
+      font-weight:900;
+      font-size:20px;
+    }
+    .product-origin{
+      color:#94a3b8;
+      text-decoration:line-through;
+      font-size:12px;
+      font-weight:700;
+    }
+
+    .product-meta-row{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      color:#f97316;
+      font-size:12px;
+      font-weight:800;
+    }
+    .product-stock{
+      color:#6b7280;
+      font-weight:700;
+    }
+
+    /* ✅ 底部合体动作：加入购物车 / 黑框 stepper */
+    .product-action{ margin-top:6px; }
+    .product-add-fixed{
+      width:100%;
+      height:44px;
+      border:none;
+      border-radius:14px;
+      background: linear-gradient(135deg,#22c55e,#16a34a);
+      color:#fff;
+      font-weight:900;
+      cursor:pointer;
+      box-shadow: 0 10px 18px rgba(22,163,74,.18);
+    }
+    .qty-row{
+      width:100%;
+      height:44px;
+      padding:6px 10px;
+      border-radius:14px;
+      background:#111827;
+      color:#fff;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+    }
+    .qty-btn{
+      width:44px;
+      height:36px;
+      border:none;
+      border-radius:12px;
+      background: rgba(255,255,255,.12);
+      color:#fff;
+      font-size:18px;
+      font-weight:900;
+      cursor:pointer;
+    }
+    .qty-num{
+      min-width:28px;
+      text-align:center;
+      font-weight:900;
+      border:2px solid #fff;
+      border-radius:10px;
+      padding:4px 10px;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+/* ============================
+   8) DOMContentLoaded 初始化
+   ============================ */
 document.addEventListener("DOMContentLoaded", () => {
+  injectHomeCardStyleOnce();
+
   loadCategoryProducts();
   if (sortSelectEl) sortSelectEl.addEventListener("change", applyFilterAndRender);
 
@@ -833,7 +1067,6 @@ document.addEventListener("DOMContentLoaded", () => {
       if (e.key === "Enter") applyFilterAndRender();
     });
   }
-
   if (globalSearchInput) {
     globalSearchInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter") applyFilterAndRender();
@@ -868,9 +1101,9 @@ document.addEventListener("DOMContentLoaded", () => {
       cartPageUrl: "/user/cart.html",
     });
   } else {
-    console.warn("FreshCart.initCartUI 不存在，请确认已经引入 cart.js");
+    console.warn("FreshCart.initCartUI 不存在，请确认 category.html 已引入 cart.js");
   }
 
-  // 首次也刷新一次（防止初始 qty 不对）
+  // 首次也刷新一次
   renderAllCardsAction();
 });
