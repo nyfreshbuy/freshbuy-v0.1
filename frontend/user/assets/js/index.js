@@ -771,7 +771,103 @@ function scheduleBadgeSync() {
     trySyncBadgesFromCart();
   }, 50);
 }
+// =====================================================
+// ✅✅✅ 统一模块：购物车数量 set/get + 卡片显示切换（加入购物车 ↔ 黑框）
+// =====================================================
 
+// 1) 获取某个 pid 在购物车里的数量（pid 是你的 cartKey：productId::variantKey）
+function getCartQty(pid) {
+  const snap = getCartSnapshot();
+  const map = normalizeCartToQtyMap(snap);
+  return Math.max(0, Math.floor(Number(map[pid] || 0) || 0));
+}
+
+// 2) 把购物车里某个 pid 的数量设置为 targetQty
+// normalizedItem：当需要 addItem 时用（你 createProductCard 里已经有 normalized）
+function setCartQty(pid, targetQty, normalizedItem) {
+  const next = Math.max(0, Math.floor(Number(targetQty || 0) || 0));
+
+  const cartApi =
+    (window.FreshCart && window.FreshCart) ||
+    (window.Cart && window.Cart) ||
+    null;
+
+  if (!cartApi) {
+    alert("购物车模块暂未启用（请确认 cart.js 已加载）");
+    return;
+  }
+
+  // 优先走 setQty / updateQty 一类（最干净）
+  try {
+    if (typeof cartApi.setQty === "function") return cartApi.setQty(pid, next);
+    if (typeof cartApi.updateQty === "function") return cartApi.updateQty(pid, next);
+    if (typeof cartApi.changeQty === "function") return cartApi.changeQty(pid, next);
+    if (typeof cartApi.setItemQty === "function") return cartApi.setItemQty(pid, next);
+  } catch {}
+
+  // 兜底：用 addItem/removeItem 做差量
+  const cur = getCartQty(pid);
+  const delta = next - cur;
+  if (delta === 0) return;
+
+  // 需要增加
+  if (delta > 0) {
+    if (typeof cartApi.addItem === "function") {
+      cartApi.addItem(normalizedItem || { id: pid }, delta);
+      return;
+    }
+  }
+
+  // 需要减少到 0：优先 removeItem/remove
+  if (next === 0) {
+    if (typeof cartApi.removeItem === "function") return cartApi.removeItem(pid);
+    if (typeof cartApi.remove === "function") return cartApi.remove(pid);
+  }
+
+  // 再兜底：逐个减少
+  const steps = Math.abs(delta);
+  for (let i = 0; i < steps; i++) {
+    if (typeof cartApi.decreaseItem === "function") cartApi.decreaseItem(pid, 1);
+    else if (typeof cartApi.removeOne === "function") cartApi.removeOne(pid);
+  }
+}
+
+// 3) 根据购物车数量切换某张卡的显示（qty=0 显示加入购物车；qty>=1 显示黑框）
+function renderCardAction(card) {
+  if (!card) return;
+  const pid = String(card.dataset.cartPid || "").trim();
+  if (!pid) return;
+
+  const qty = getCartQty(pid);
+
+  const qtyRow = card.querySelector("[data-qty-row]");
+  const addBtn = card.querySelector(".product-add-fixed[data-add-only]");
+  const qtyDisplay = card.querySelector("[data-qty-display]");
+
+  // 库存上限（你已有 __maxQty）
+  const cap0 = Number(card.__maxQty);
+  const cap = Number.isFinite(cap0) ? Math.max(0, Math.floor(cap0)) : 0;
+
+  // 显示逻辑
+  if (addBtn) addBtn.style.display = qty <= 0 ? "" : "none";
+  if (qtyRow) qtyRow.style.display = qty > 0 ? "flex" : "none";
+
+  // 黑框数字：显示购物车数量（最少显示 1）
+  if (qtyDisplay) qtyDisplay.textContent = String(Math.max(1, qty));
+
+  // +/- 禁用
+  const minus = card.querySelector("[data-qty-minus]");
+  const plus = card.querySelector("[data-qty-plus]");
+  if (minus) minus.disabled = qty <= 0 || cap <= 0;
+  if (plus) plus.disabled = cap <= 0 || qty >= cap;
+}
+
+// 4) 批量刷新所有卡片（购物车变化/多标签页变化/初始化时调用）
+function renderAllCardsAction() {
+  document.querySelectorAll(".product-card[data-cart-pid]").forEach((card) => {
+    renderCardAction(card);
+  });
+}
 /* ====== 下一段从 createProductCard() 开始 ====== */
 function createProductCard(p, extraBadgeText) {
   const article = document.createElement("article");
@@ -796,7 +892,7 @@ function createProductCard(p, extraBadgeText) {
 
   // ✅ badge / 加购按钮都用 cartKey（这样单个和整箱数量不会混在一起）
   const pid = cartKey;
-
+  article.dataset.cartPid = pid; // ✅ 统一模块用它定位购物车数量
   // ✅ 展示名 & 展示价格（variant.price 优先）
   const displayName = String(p.__displayName || p.name || "").trim();
   const displayPriceOverride =
@@ -1030,6 +1126,7 @@ function createProductCard(p, extraBadgeText) {
         isSpecial: isHotProduct(p),
         isDeal: isHotProduct(p),
       };
+      article.__normalizedItem = normalized; // ✅ 统一模块 setCartQty 的 addItem 兜底用
       if (typeof cartApi.addItem === "function") cartApi.addItem(normalized, delta);
       return;
     }
@@ -1094,35 +1191,6 @@ function createProductCard(p, extraBadgeText) {
     if (overlayAdd) overlayAdd.disabled = maxQty <= 0;
     if (fixedAdd) fixedAdd.disabled = maxQty <= 0;
   }
-
-  if (btnMinus) {
-    btnMinus.addEventListener("click", (ev) => {
-  ev.stopPropagation();
-  const cur = getCartQtyForThisPid();
-  const next = Math.max(0, cur - 1);
-  setCartQtyForThisPid(next);
-
-  try { window.dispatchEvent(new CustomEvent("freshbuy:cartUpdated", { detail: { pid, delta: -1 } })); } catch {}
-  renderActionByCartQty();
-  setTimeout(() => { try { scheduleBadgeSync(); } catch {} }, 50);
-});
-  }
-  if (btnPlus) {
-    btnPlus.addEventListener("click", (ev) => {
-  ev.stopPropagation();
-  const cap0 = Number(article.__maxQty);
-  const cap = Number.isFinite(cap0) ? Math.max(0, Math.floor(cap0)) : 0;
-
-  const cur = getCartQtyForThisPid();
-  const next = cap > 0 ? Math.min(cap, cur + 1) : cur + 1;
-  setCartQtyForThisPid(next);
-
-  try { window.dispatchEvent(new CustomEvent("freshbuy:cartUpdated", { detail: { pid, delta: 1 } })); } catch {}
-  renderActionByCartQty();
-  setTimeout(() => { try { scheduleBadgeSync(); } catch {} }, 50);
-});
-  }
-
   // 初始同步一次（处理 max=0 / clamp）
   syncQtyUI();
 
@@ -1366,6 +1434,7 @@ async function loadHomeProductsFromSimple() {
     // ✅✅✅ 商品渲染完后同步一次徽章（如果购物车里已有数量）
     try {
       setTimeout(() => scheduleBadgeSync(), 0);
+      setTimeout(() => renderAllCardsAction(), 0);
     } catch {}
   } catch (err) {
     console.error("首页加载 /api/products-simple 失败：", err);
@@ -2519,8 +2588,66 @@ document.addEventListener("DOMContentLoaded", () => {
 // ✅ cart.js 或 doAdd() 广播时同步
 window.addEventListener("freshbuy:cartUpdated", () => {
   scheduleBadgeSync();
+   renderAllCardsAction(); // ✅ 统一切换显示
 });
+// =====================================================
+// ✅✅✅ 统一绑定：底部加入购物车 + 黑框 +/- （事件委托，只绑一次）
+// =====================================================
+document.addEventListener("click", (e) => {
+  const addBtn = e.target.closest(".product-add-fixed[data-add-only]");
+  const minusBtn = e.target.closest("[data-qty-minus]");
+  const plusBtn = e.target.closest("[data-qty-plus]");
+  if (!addBtn && !minusBtn && !plusBtn) return;
 
+  const card = e.target.closest(".product-card");
+  if (!card) return;
+
+  // 阻止点按钮触发“进入详情页”
+  e.preventDefault();
+  e.stopPropagation();
+
+  const pid = String(card.dataset.cartPid || "").trim();
+  if (!pid) return;
+
+  // 从卡片上取 normalizedItem（我们在 createProductCard 里挂）
+  const normalizedItem = card.__normalizedItem || { id: pid };
+
+  const cap0 = Number(card.__maxQty);
+  const cap = Number.isFinite(cap0) ? Math.max(0, Math.floor(cap0)) : 0;
+
+  const cur = getCartQty(pid);
+
+  // 点击“加入购物车” => qty 变成 1
+  if (addBtn) {
+    if (cap <= 0) return;
+    setCartQty(pid, 1, normalizedItem);
+    try { window.dispatchEvent(new CustomEvent("freshbuy:cartUpdated", { detail: { pid, delta: 1 } })); } catch {}
+    renderCardAction(card);
+    scheduleBadgeSync();
+    return;
+  }
+
+  // 点击 -
+  if (minusBtn) {
+    const next = Math.max(0, cur - 1);
+    setCartQty(pid, next, normalizedItem);
+    try { window.dispatchEvent(new CustomEvent("freshbuy:cartUpdated", { detail: { pid, delta: -1 } })); } catch {}
+    renderCardAction(card);
+    scheduleBadgeSync();
+    return;
+  }
+
+  // 点击 +
+  if (plusBtn) {
+    if (cap <= 0) return;
+    const next = Math.min(cap, cur + 1);
+    setCartQty(pid, next, normalizedItem);
+    try { window.dispatchEvent(new CustomEvent("freshbuy:cartUpdated", { detail: { pid, delta: 1 } })); } catch {}
+    renderCardAction(card);
+    scheduleBadgeSync();
+    return;
+  }
+});
 // ✅ 多标签页同步
 window.addEventListener("storage", (e) => {
   if (!e || !e.key) return;
