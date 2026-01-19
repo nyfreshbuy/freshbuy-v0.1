@@ -627,31 +627,30 @@ function setProductBadge(pid, cartQty) {
 }
 
 // ✅ 更强：从 FreshCart / Cart / localStorage 自动找“像购物车”的数据
+// ✅ 更强：从 FreshCart / Cart / localStorage 自动找“像购物车”的数据
 function getCartSnapshot() {
+  // 1) FreshCart 优先（你现在有 getState）
   try {
     const fc = window.FreshCart;
     if (fc) {
-      if (typeof fc.getCart === "function") return fc.getCart();
       if (typeof fc.getState === "function") return fc.getState();
-      if (typeof fc.getItems === "function") return { items: fc.getItems() };
-      if (Array.isArray(fc.items)) return { items: fc.items };
-      if (fc.cart) return fc.cart;
+      // 兜底：有些实现把 state 直接挂出来
       if (fc.state) return fc.state;
+      if (fc.cart) return fc.cart;
     }
   } catch {}
 
+  // 2) Cart 兼容（你现在也有 getState）
   try {
     const c = window.Cart;
     if (c) {
-      if (typeof c.getCart === "function") return c.getCart();
       if (typeof c.getState === "function") return c.getState();
-      if (typeof c.getItems === "function") return { items: c.getItems() };
-      if (Array.isArray(c.items)) return { items: c.items };
-      if (c.cart) return c.cart;
       if (c.state) return c.state;
+      if (c.cart) return c.cart;
     }
   } catch {}
 
+  // 3) 最后才扫 localStorage（兜底）
   try {
     const candidates = [];
     for (let i = 0; i < localStorage.length; i++) {
@@ -663,7 +662,8 @@ function getCartSnapshot() {
     candidates.sort((a, b) => {
       const A = a.toLowerCase();
       const B = b.toLowerCase();
-      const score = (s) => (s.includes("freshbuy") ? 10 : 0) + (s.includes("fb") ? 3 : 0) + (s.includes("cart") ? 1 : 0);
+      const score = (s) =>
+        (s.includes("freshbuy") ? 10 : 0) + (s.includes("fb") ? 3 : 0) + (s.includes("cart") ? 1 : 0);
       return score(B) - score(A);
     });
 
@@ -685,7 +685,6 @@ function getCartSnapshot() {
 
   return null;
 }
-
 // ✅ 把各种“购物车结构”统一成 { [pid/cartKey]: qty }
 function normalizeCartToQtyMap(cart) {
   const map = {};
