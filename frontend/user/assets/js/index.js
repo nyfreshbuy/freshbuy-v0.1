@@ -1273,8 +1273,23 @@ function createProductCard(p, extraBadgeText) {
   function syncQtyUI() {
     selectedQty = clampQty(selectedQty);
 
-    if (qtyDisplay) qtyDisplay.textContent = String(selectedQty);
+    function syncQtyUI() {
+  selectedQty = clampQty(selectedQty);
 
+  // ✅ 不要写 data-qty-display（黑框数字只允许由购物车数量渲染）
+  // if (qtyDisplay) qtyDisplay.textContent = String(selectedQty);
+
+  if (btnMinus) btnMinus.disabled = selectedQty <= 1 || maxQty <= 0;
+  if (btnPlus) btnPlus.disabled = maxQty <= 0 || selectedQty >= maxQty;
+
+  const newMaxText = unitCount > 1 ? `仅剩 ${Math.max(0, maxQty)} 箱` : `仅剩 ${Math.max(0, maxQty)}`;
+  if (qtyHint) qtyHint.textContent = maxQty <= 0 ? "已售罄" : newMaxText;
+
+  const overlayAdd = article.querySelector('.overlay-btn.add[data-add-pid]');
+  const fixedAdd = article.querySelector('.product-add-fixed[data-add-pid]');
+  if (overlayAdd) overlayAdd.disabled = maxQty <= 0;
+  if (fixedAdd) fixedAdd.disabled = maxQty <= 0;
+}
     if (btnMinus) btnMinus.disabled = selectedQty <= 1 || maxQty <= 0;
     if (btnPlus) btnPlus.disabled = maxQty <= 0 || selectedQty >= maxQty;
 
@@ -1384,7 +1399,7 @@ function createProductCard(p, extraBadgeText) {
     // 选中数量可能超了，要 clamp
     selectedQty = clampQty(selectedQty);
     syncQtyUI();
-
+    renderActionByCartQty(); // ✅ 关键：库存刷新后黑框回到购物车数量
     // 强制同步徽章（兜底：如果购物车里原数量>新库存，会被 setProductBadge 压回去）
     try {
       scheduleBadgeSync();
@@ -2786,287 +2801,4 @@ window.addEventListener("focusin", (e) => {
     document.body.scrollLeft = 0;
     window.scrollTo(0, window.scrollY);
   }
-});
-
-/* ====== 下一段（第9段）将包含：你页面里“去掉输入框/只能点+/-”相关的最终收尾逻辑，以及库存刷新后的卡片UI同步函数（如果你放在文件末尾） ====== */
-// =====================================================
-// ✅✅✅ 第9段：去掉数量输入框（只允许 +/-）+ 库存刷新时同步卡片UI
-// =====================================================
-
-// ✅ 统一：计算某张卡片的 maxQty（单个=stock；整箱=floor(stock/unitCount)）
-function calcMaxQtyForCard(card) {
-  if (!card) return 0;
-  const vKey = String(card.dataset.variantKey || "single").trim() || "single";
-  const unitCount = Math.max(1, Math.floor(Number(card.dataset.unitCount || 1) || 1));
-  const stockUnits = Math.max(0, Math.floor(Number(card.__stockUnits ?? card.dataset.stockUnits ?? 0) || 0));
-
-  const maxQty = vKey === "single" ? stockUnits : Math.floor(stockUnits / unitCount);
-  return Math.max(0, Math.floor(maxQty));
-}
-
-// ✅ 把输入框隐藏，换成一个“数字显示”（只读）
-function ensureQtyDisplayOnly(card) {
-  if (!card) return;
-
-  const qtyInput = card.querySelector('[data-qty-input]');
-  const already = card.querySelector('[data-qty-display]');
-
-  // 如果已经有 display，就不重复做
-  if (already) {
-    // 仍然隐藏 input（以防旧DOM有）
-    if (qtyInput) qtyInput.style.display = "none";
-    return;
-  }
-
-  if (qtyInput) {
-    // 1) 隐藏输入框（客户不能手输）
-    qtyInput.style.display = "none";
-    qtyInput.setAttribute("readonly", "readonly");
-    qtyInput.setAttribute("disabled", "disabled");
-    qtyInput.style.pointerEvents = "none";
-
-    // 2) 插入一个 span 显示数字
-    const span = document.createElement("span");
-    span.setAttribute("data-qty-display", "1");
-    span.style.width = "64px";
-    span.style.height = "34px";
-    span.style.display = "inline-flex";
-    span.style.alignItems = "center";
-    span.style.justifyContent = "center";
-    span.style.borderRadius = "10px";
-    span.style.textAlign = "center";
-    span.style.userSelect = "none";
-    span.style.fontWeight = "800";
-    span.style.background = "#f3f4f6";
-
-    // 默认同步一次
-    span.textContent = String(Math.max(1, Math.floor(Number(qtyInput.value || 1) || 1)));
-
-    // 插在 input 原位置
-    qtyInput.insertAdjacentElement("afterend", span);
-  } else {
-    // 如果你未来把 input 完全从HTML删了，这里也兼容：
-    // 没有 input 就找一个空位（qty-row里）
-    const row = card.querySelector(".qty-row");
-    if (!row) return;
-    const span = document.createElement("span");
-    span.setAttribute("data-qty-display", "1");
-    span.style.width = "64px";
-    span.style.height = "34px";
-    span.style.display = "inline-flex";
-    span.style.alignItems = "center";
-    span.style.justifyContent = "center";
-    span.style.borderRadius = "10px";
-    span.style.textAlign = "center";
-    span.style.userSelect = "none";
-    span.style.fontWeight = "800";
-    span.style.background = "#f3f4f6";
-    span.textContent = "1";
-
-    // 放到 minus 和 plus 之间
-    const minus = row.querySelector("[data-qty-minus]");
-    if (minus) minus.insertAdjacentElement("afterend", span);
-    else row.insertAdjacentElement("afterbegin", span);
-  }
-}
-
-// ✅ 获取“当前想加购数量”（从 display 或 input）
-function getWantedQtyFromCard(card) {
-  const disp = card.querySelector("[data-qty-display]");
-  if (disp) return Math.max(1, Math.floor(Number(disp.textContent || 1) || 1));
-
-  const input = card.querySelector("[data-qty-input]");
-  if (input) return Math.max(1, Math.floor(Number(input.value || 1) || 1));
-
-  return 1;
-}
-
-// ✅ 写回“当前想加购数量”
-function setWantedQtyToCard(card, n) {
-  const v = Math.max(0, Math.floor(Number(n || 0) || 0));
-
-  const disp = card.querySelector("[data-qty-display]");
-  if (disp) disp.textContent = String(v);
-
-  const input = card.querySelector("[data-qty-input]");
-  if (input) input.value = String(v);
-}
-
-// ✅ 同步某张卡片：maxQty、按钮禁用、提示文案（含“仅剩 1 箱”）
-function syncOneCardStockUI(card) {
-  if (!card) return;
-
-  // 1) 确保输入框被隐藏，只显示数字
-  ensureQtyDisplayOnly(card);
-
-  // 2) 计算 maxQty（用最新 stock）
-  const maxQty = calcMaxQtyForCard(card);
-  card.__maxQty = maxQty;
-
-  // 3) 当前想加购数量 clamp 到 [1, maxQty]
-  let want = getWantedQtyFromCard(card);
-  if (maxQty <= 0) want = 0;
-  else if (want < 1) want = 1;
-  else if (want > maxQty) want = maxQty;
-  setWantedQtyToCard(card, want);
-
-  // 4) 按钮禁用规则（+/-）
-  const minus = card.querySelector("[data-qty-minus]");
-  const plus = card.querySelector("[data-qty-plus]");
-  if (minus) minus.disabled = maxQty <= 0 || want <= 1;
-  if (plus) plus.disabled = maxQty <= 0 || want >= maxQty;
-
-  // 5) 加购按钮禁用（overlay + 固定底部按钮）
-  const adds = card.querySelectorAll('[data-add-pid]');
-  adds.forEach((btn) => {
-    if (!btn || btn.tagName !== "BUTTON") return;
-    btn.disabled = maxQty <= 0;
-    if (maxQty <= 0) btn.textContent = "已售罄";
-  });
-
-  // 6) 文案：单个“仅剩 X”；整箱“仅剩 1 箱/仅剩 X 箱”
-  const hint = card.querySelector("[data-qty-hint]");
-  if (hint) {
-    const vKey = String(card.dataset.variantKey || "single").trim() || "single";
-    if (maxQty <= 0) {
-      hint.textContent = "已售罄";
-    } else if (vKey !== "single") {
-      hint.textContent = maxQty === 1 ? "仅剩 1 箱" : `仅剩 ${maxQty} 箱`;
-    } else {
-      hint.textContent = `仅剩 ${maxQty}`;
-    }
-  }
-}
-
-// ✅ 同步页面上所有卡片（库存变化/购物车变化都可以调用）
-function syncAllCardsStockUI() {
-  document.querySelectorAll(".product-card[data-product-id]").forEach((card) => {
-    syncOneCardStockUI(card);
-  });
-
-  // ✅ 徽章兜底：再同步一次（保证 badge<=maxQty）
-  try {
-    scheduleBadgeSync();
-  } catch {}
-}
-
-// ✅ 绑定 +/- 事件：只允许点击改变（不允许手输）
-function bindQtyButtonsOnlyOnce() {
-  document.querySelectorAll(".product-card[data-product-id]").forEach((card) => {
-    if (card.dataset.qtyBound === "1") return;
-    card.dataset.qtyBound = "1";
-
-    const minus = card.querySelector("[data-qty-minus]");
-    const plus = card.querySelector("[data-qty-plus]");
-
-    if (minus) {
-      minus.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        const maxQty = calcMaxQtyForCard(card);
-        let want = getWantedQtyFromCard(card);
-        want = Math.max(1, want - 1);
-        if (maxQty > 0) want = Math.min(want, maxQty);
-        setWantedQtyToCard(card, want);
-        syncOneCardStockUI(card);
-      });
-    }
-
-    if (plus) {
-      plus.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        const maxQty = calcMaxQtyForCard(card);
-        let want = getWantedQtyFromCard(card);
-        want = want + 1;
-        if (maxQty > 0) want = Math.min(want, maxQty);
-        else want = 0;
-        setWantedQtyToCard(card, want);
-        syncOneCardStockUI(card);
-      });
-    }
-
-    // ✅ 如果旧版还存在 input，这里阻止交互（防止手机弹数字键盘）
-    const input = card.querySelector("[data-qty-input]");
-    if (input) {
-      input.addEventListener("click", (e) => e.stopPropagation());
-      input.addEventListener("focus", (e) => {
-        e.preventDefault();
-        input.blur();
-      });
-      input.addEventListener("keydown", (e) => {
-        e.preventDefault();
-      });
-    }
-  });
-}
-
-// =====================================================
-// ✅ 自动刷新库存：每隔一段时间拉 /api/products-simple
-// 只更新：每张商品卡的 stock/maxQty + UI（仅剩/售罄/禁用）+ 徽章兜底
-// =====================================================
-async function refreshStockAndCards() {
-  try {
-    const res = await fetch("/api/products-simple", { cache: "no-store" });
-    const data = await res.json().catch(() => ({}));
-
-    const list = Array.isArray(data)
-      ? data
-      : Array.isArray(data.items)
-      ? data.items
-      : Array.isArray(data.list)
-      ? data.list
-      : Array.isArray(data.products)
-      ? data.products
-      : [];
-
-    if (!list.length) return;
-
-    // productId -> 最新库存（单位=单个）
-    const stockMap = {};
-    const variantsMap = {}; // productId -> variants（可选备用）
-    list.forEach((p) => {
-      const id = String(p?._id || p?.id || "").trim();
-      if (!id) return;
-      stockMap[id] = Math.max(0, Math.floor(Number(p.stock ?? p.inventory ?? 0) || 0));
-      variantsMap[id] = Array.isArray(p?.variants) ? p.variants : [];
-    });
-
-    // 遍历页面已有卡片，更新 __stockUnits/__maxQty
-    document.querySelectorAll(".product-card[data-product-id]").forEach((card) => {
-      const pid = String(card.dataset.productId || "").trim();
-      const vKey = String(card.dataset.variantKey || "single").trim() || "single";
-      const unitCount = Math.max(1, Math.floor(Number(card.dataset.unitCount || 1) || 1));
-
-      if (!pid) return;
-
-      const stockUnits = Number(stockMap[pid]);
-      if (!Number.isFinite(stockUnits)) return;
-
-      // ✅ 单个/整箱 maxQty
-      const maxQty = vKey === "single" ? stockUnits : Math.floor(stockUnits / unitCount);
-
-      card.__stockUnits = stockUnits;
-      card.__maxQty = Math.max(0, Math.floor(maxQty));
-
-      // 也写到 dataset，给其它逻辑兜底使用（可选）
-      card.dataset.stockUnits = String(stockUnits);
-      card.dataset.maxQty = String(Math.max(0, Math.floor(maxQty)));
-    });
-
-    // ✅ 立刻派发：库存已刷新（让第9段马上同步卡片UI）
-    try {
-      window.dispatchEvent(new CustomEvent("freshbuy:stockRefreshed"));
-    } catch {}
-
-    // ✅ 徽章兜底同步（保证 badge <= maxQty）
-    try {
-      scheduleBadgeSync();
-    } catch {}
-  } catch (e) {
-    console.warn("refreshStockAndCards failed:", e);
-  }
-}
-
-// 页面加载后开启轮询
-window.addEventListener("DOMContentLoaded", () => {
-  setInterval(refreshStockAndCards, STOCK_REFRESH_MS);
 });
