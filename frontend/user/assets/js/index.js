@@ -735,7 +735,7 @@ function normalizeCartToQtyMap(cart) {
           k || ""
       ).trim();
 
-      const qty = Number(it.qty ?? it.quantity ?? it.count ?? it.num ?? it.amount ?? it.n ?? it.q ?? 0);
+      const qty = Number(it.qty ?? it.quantity ?? it.count ?? it.num ?? it.n ?? it.q ?? 0);
       if (id) map[id] = (map[id] || 0) + (Number.isFinite(qty) ? qty : 0);
     });
 
@@ -756,8 +756,7 @@ function normalizeCartToQtyMap(cart) {
           ""
       ).trim();
 
-      const qty = Number(it.qty ?? it.quantity ?? it.count ?? it.num ?? it.amount ?? it.n ?? it.q ?? 0);
-
+      const qty = Number(it.qty ?? it.quantity ?? it.count ?? it.num ?? it.n ?? it.q ?? 0);
       if (id) map[id] = (map[id] || 0) + (Number.isFinite(qty) ? qty : 0);
     });
     return map;
