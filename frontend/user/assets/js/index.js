@@ -1306,13 +1306,6 @@ function createProductCard(p, extraBadgeText) {
   window.addEventListener("storage", (e) => {
     if (e?.key && String(e.key).toLowerCase().includes("cart")) renderActionByCartQty();
   });
-  // ✅ 阻止点击“底部操作区”时跳转到详情页
-  const actionArea = article.querySelector(".product-action");
-  if (actionArea) {
-    actionArea.addEventListener("click", (e) => {
-      e.stopPropagation(); // ⭐ 关键：阻止冒泡到 article
-    });
-  }
   return article;
 }
 
