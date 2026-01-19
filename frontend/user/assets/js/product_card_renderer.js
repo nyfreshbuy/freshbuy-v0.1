@@ -921,3 +921,21 @@
 
   // 默认：不自动绑定/不自动轮询（由页面决定）
 })();
+// ✅ expose to window for all pages (DailySpecial / others)
+try {
+  // 你渲染函数如果叫别的名，把 renderProductCardFn 换成你真实函数名
+  const renderProductCardFn =
+    typeof renderProductCard === "function"
+      ? renderProductCard
+      : (typeof window.renderProductCard === "function" ? window.renderProductCard : null);
+
+  if (renderProductCardFn) {
+    window.renderProductCard = renderProductCardFn;
+    window.ProductCardRenderer = window.ProductCardRenderer || {};
+    window.ProductCardRenderer.render = renderProductCardFn;
+  } else {
+    console.warn("⚠️ product_card_renderer.js loaded but no renderProductCard function found");
+  }
+} catch (e) {
+  console.warn("⚠️ expose renderProductCard failed:", e);
+}
