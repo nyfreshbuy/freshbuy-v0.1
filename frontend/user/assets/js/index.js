@@ -2653,8 +2653,6 @@ setInterval(() => {
 // ✅ 自动刷新库存：每隔一段时间拉 /api/products-simple
 // 只更新：每张商品卡的 stock/maxQty + UI（仅剩/售罄/禁用）+ 徽章兜底
 // =====================================================
-const STOCK_REFRESH_MS = 15000; // 15秒，你可改 10s/20s
-
 async function refreshStockAndCards() {
   try {
     const res = await fetch("/api/products-simple", { cache: "no-store" });
