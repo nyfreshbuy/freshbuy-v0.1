@@ -1260,12 +1260,6 @@ function createProductCard(p, extraBadgeText) {
      renderActionByCartQty();
   }
 
-  const overlayAdd = article.querySelector('.overlay-btn.add[data-add-pid]');
-  if (overlayAdd) overlayAdd.addEventListener("click", doAdd);
-
-  const fixedAdd = article.querySelector('.product-add-fixed[data-add-pid]');
-  if (fixedAdd) fixedAdd.addEventListener("click", doAdd);
-
   const favBtn = article.querySelector(".overlay-btn.fav");
   if (favBtn) {
     favBtn.addEventListener("click", (ev) => {
@@ -2595,6 +2589,7 @@ window.addEventListener("freshbuy:cartUpdated", () => {
 // =====================================================
 document.addEventListener("click", (e) => {
   const addBtn = e.target.closest(".product-add-fixed[data-add-only]");
+  const overlayAddBtn = e.target.closest(".overlay-btn.add[data-add-pid]"); // ✅ 新增：overlay 加购
   const minusBtn = e.target.closest("[data-qty-minus]");
   const plusBtn = e.target.closest("[data-qty-plus]");
   if (!addBtn && !minusBtn && !plusBtn) return;
@@ -2626,7 +2621,20 @@ document.addEventListener("click", (e) => {
     scheduleBadgeSync();
     return;
   }
+    // ✅ 点击图片 overlay 的“加入购物车” => 直接 +1
+  if (overlayAddBtn) {
+    if (cap <= 0) return;
+    const next = Math.min(cap, cur + 1);
+    setCartQty(pid, next, normalizedItem);
 
+    try {
+      window.dispatchEvent(new CustomEvent("freshbuy:cartUpdated", { detail: { pid, delta: 1 } }));
+    } catch {}
+
+    renderCardAction(card);
+    scheduleBadgeSync();
+    return;
+  }
   // 点击 -
   if (minusBtn) {
     const next = Math.max(0, cur - 1);
