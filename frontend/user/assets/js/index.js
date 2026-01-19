@@ -853,7 +853,11 @@ if (curQty <= 0) {
 try {
   if (typeof cartApi.setQty === "function") { cartApi.setQty(pid, next); return true; }
   if (typeof cartApi.updateQty === "function") { cartApi.updateQty(pid, next); return true; }
-  if (typeof cartApi.changeQty === "function") { cartApi.changeQty(pid, next); return true; }
+  if (typeof cartApi.changeQty === "function") {
+  const delta = next - curQty;          // ✅ changeQty 需要增量
+  cartApi.changeQty(pid, delta);
+  return true;
+}
   if (typeof cartApi.setItemQty === "function") { cartApi.setItemQty(pid, next); return true; }
 } catch {}
 
