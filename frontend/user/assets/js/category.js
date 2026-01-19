@@ -205,168 +205,196 @@ function isHotProduct(p) {
 }
 
 // ============================
-// ✅ 分类页：读购物车数量（兼容 Cart / FreshCart / localStorage(fresh_cart_v1)）
+// ✅ 分类页：统一商品卡动作（与首页一致）
 // ============================
-const CART_STORAGE_KEY = "fresh_cart_v1";
 
-// 返回：{ [pid]: qty }
-function getQtyMapSafe() {
-  // ✅ 优先：Cart.getState（你 cart.js 里有）
+// 读数量：优先 FreshCart.getQty，其次 Cart.getQty
+function getCartQty(pid) {
+  const id = String(pid || "");
+  if (!id) return 0;
   try {
-    if (window.Cart && typeof window.Cart.getState === "function") {
-      const st = window.Cart.getState();
-      const items = Array.isArray(st?.items) ? st.items : [];
-      const map = {};
-      items.forEach((it) => {
-        const pid = it?.product?.id;
-        const qty = Number(it?.qty || 0);
-        if (pid) map[String(pid)] = qty;
-      });
-      return map;
+    if (window.FreshCart && typeof window.FreshCart.getQty === "function") {
+      return Number(window.FreshCart.getQty(id) || 0) || 0;
     }
   } catch {}
-
-  // ✅ 次优：FreshCart.getState（如果你只暴露 FreshCart）
   try {
-    if (window.FreshCart && typeof window.FreshCart.getState === "function") {
-      const st = window.FreshCart.getState();
-      const items = Array.isArray(st?.items) ? st.items : [];
-      const map = {};
-      items.forEach((it) => {
-        const pid = it?.product?.id;
-        const qty = Number(it?.qty || 0);
-        if (pid) map[String(pid)] = qty;
-      });
-      return map;
+    if (window.Cart && typeof window.Cart.getQty === "function") {
+      return Number(window.Cart.getQty(id) || 0) || 0;
     }
   } catch {}
-
-  // ✅ localStorage fresh_cart_v1（你 cart.js 存的）
-  try {
-    const raw = localStorage.getItem(CART_STORAGE_KEY);
-    const data = raw ? JSON.parse(raw) : null;
-    const items = Array.isArray(data?.items) ? data.items : [];
-    const map = {};
-    items.forEach((it) => {
-      const pid = it?.product?.id;
-      const qty = Number(it?.qty || 0);
-      if (pid) map[String(pid)] = qty;
-    });
-    return map;
-  } catch {}
-
-  // ✅ 兜底：旧 key（如果你以前用过）
-  try {
-    const legacy = JSON.parse(localStorage.getItem("freshbuy_cart") || "{}");
-    const map = {};
-    Object.keys(legacy || {}).forEach((k) => {
-      const v = legacy[k];
-      const qty = Number(v?.qty ?? v?.quantity ?? v?.count ?? 0);
-      map[String(k)] = qty;
-    });
-    return map;
-  } catch {}
-
-  return {};
+  return 0;
 }
 
-// ✅ 把步进器数量刷新到每张卡片上
-function updateCategorySteppers() {
-  const qtyMap = getQtyMapSafe();
+// 设置数量：第一次用 addItem，已有用 setQty/changeQty
+function setCartQty(pid, targetQty, normalizedItem) {
+  const id = String(pid || "");
+  const next = Math.max(0, Math.floor(Number(targetQty || 0)));
+  if (!id) return false;
 
-  document.querySelectorAll(".product-card[data-pid]").forEach((card) => {
-    const pid = String(card.dataset.pid || "");
-    if (!pid) return;
+  const api = window.FreshCart || window.Cart;
+  if (!api) return false;
 
-    const qty = Number(qtyMap[pid] || 0);
+  const cur = getCartQty(id);
 
-    const wrap = card.querySelector(".qty-stepper");
-    const minusBtn = card.querySelector(".qty-minus");
-    const plusBtn = card.querySelector(".qty-plus");
-    const numEl = card.querySelector(".qty-num");
+  // 目标为 0：删/设0
+  if (next === 0) {
+    try {
+      if (typeof api.setQty === "function") {
+        api.setQty(id, 0);
+        return true;
+      }
+    } catch {}
+    try {
+      if (typeof api.removeItem === "function") {
+        api.removeItem(id);
+        return true;
+      }
+      if (typeof api.remove === "function") {
+        api.remove(id);
+        return true;
+      }
+    } catch {}
+    // 只有 changeQty 的兜底
+    try {
+      if (typeof api.changeQty === "function" && cur > 0) {
+        api.changeQty(id, -cur);
+        return true;
+      }
+    } catch {}
+    return true;
+  }
 
-    if (!wrap || !minusBtn || !plusBtn || !numEl) return;
-
-    if (qty > 0) {
-      wrap.classList.add("active");
-      numEl.textContent = String(qty);
-      minusBtn.disabled = false;
-    } else {
-      wrap.classList.remove("active");
-      numEl.textContent = "0";
-      minusBtn.disabled = true;
+  // ✅ 当前不存在：必须 addItem（cart.js 的 setQty 不会创建新 item）
+  if (cur <= 0) {
+    if (typeof api.addItem === "function") {
+      api.addItem(normalizedItem || { id }, next);
+      return true;
     }
-  });
-}
+    return false;
+  }
 
-// ============================
-// ✅ 分类页：步进器动作（+ / -）
-// ============================
-function cartAdd(pid, productForCart) {
-  if (window.Cart && typeof window.Cart.addItem === "function") {
-    window.Cart.addItem(productForCart, 1);
-    return true;
-  }
-  if (window.FreshCart && typeof window.FreshCart.addItem === "function") {
-    window.FreshCart.addItem(productForCart, 1);
-    return true;
-  }
+  // 已存在：优先 setQty，不行再 changeQty
+  try {
+    if (typeof api.setQty === "function") {
+      api.setQty(id, next);
+      return true;
+    }
+  } catch {}
+  try {
+    if (typeof api.changeQty === "function") {
+      api.changeQty(id, next - cur);
+      return true;
+    }
+  } catch {}
   return false;
 }
 
-function cartChangeQty(pid, delta) {
-  if (window.Cart && typeof window.Cart.changeQty === "function") {
-    window.Cart.changeQty(pid, delta);
-    return true;
-  }
-  if (window.FreshCart && typeof window.FreshCart.changeQty === "function") {
-    window.FreshCart.changeQty(pid, delta);
-    return true;
-  }
-  return false;
+function renderCardAction(card) {
+  if (!card) return;
+  const pid = String(card.dataset.cartPid || "");
+  if (!pid) return;
+
+  const qty = getCartQty(pid);
+
+  const addBtn = card.querySelector(".product-add-fixed[data-add-only]");
+  const qtyRow = card.querySelector("[data-qty-row]");
+  const qtyDisplay = card.querySelector("[data-qty-display]");
+
+  if (addBtn) addBtn.style.display = qty <= 0 ? "" : "none";
+  if (qtyRow) qtyRow.style.display = qty > 0 ? "flex" : "none";
+  if (qtyDisplay) qtyDisplay.textContent = String(Math.max(1, qty || 1));
 }
 
-function cartRemove(pid) {
-  if (window.Cart && typeof window.Cart.removeItem === "function") {
-    window.Cart.removeItem(pid);
-    return true;
-  }
-  if (window.FreshCart && typeof window.FreshCart.removeItem === "function") {
-    window.FreshCart.removeItem(pid);
-    return true;
-  }
-  return false;
+function renderAllCardsAction() {
+  document.querySelectorAll(".product-card[data-cart-pid]").forEach(renderCardAction);
 }
 
 // ============================
-// 3) 商品卡片：图片 + 标题可进详情页 + ✅ 步进器
+// ✅ variants：从商品上挑 “single + box” 两个规格
 // ============================
-function createProductCard(p) {
+function normalizeVariants(p) {
+  const arr = Array.isArray(p?.variants) ? p.variants : [];
+  return arr
+    .map((x) => ({
+      key: String(x?.key || "").trim(),
+      label: String(x?.label || "").trim(),
+      unitCount: Number(x?.unitCount || 1) || 1,
+      price: x?.price == null ? null : Number(x.price),
+      enabled: x?.enabled !== false,
+    }))
+    .filter((v) => v.key && v.enabled !== false);
+}
+
+function pickSingleVariant(p) {
+  const vars = normalizeVariants(p);
+  const v =
+    vars.find((x) => x.key === "single") ||
+    vars.find((x) => x.unitCount === 1) ||
+    { key: "single", label: "单个", unitCount: 1, price: null, enabled: true };
+  return v;
+}
+
+function pickBoxVariant(p) {
+  const vars = normalizeVariants(p);
+
+  // 先找 unitCount > 1 的第一个（最常见就是整箱）
+  let v = vars.find((x) => x.unitCount > 1 && x.key !== "single");
+
+  // 兜底：key 里带 box/case 的
+  if (!v) v = vars.find((x) => /box|case|carton|箱/i.test(x.key));
+
+  // 仍然没有：返回 null（不硬造，避免错箱数）
+  return v || null;
+}
+
+function variantLabel(v) {
+  if (!v) return "";
+  const base = v.label || (v.key === "single" ? "单个" : "整箱");
+  const uc = Number(v.unitCount || 1);
+  if (v.key !== "single" && uc > 1) return `${base}（${uc}个）`;
+  return base;
+}
+
+// ============================
+// 3) 商品卡片（单个/整箱 两张卡）
+// - 只有图片/名字可进详情（data-go-detail）
+// - 底部合体：qty=0 显示加入购物车；qty>0 显示黑框 +/-
+// - overlay + 也统一
+// ============================
+function createProductCard(p, variant) {
   const article = document.createElement("article");
   article.className = "product-card";
 
-  const pid = p._id || p.id || "";
-  article.dataset.pid = pid; // ✅ 必须有
+  const productId = String(p._id || p.id || "").trim();
+  if (!productId) return article;
 
-  const priceNum = Number(p.price || p.flashPrice || p.specialPrice || 0);
-  const originNum = Number(p.originPrice || p.price || 0);
-  const finalPrice = priceNum || originNum || 0;
-  const priceText = finalPrice.toFixed(2);
+  const vKey = String(variant?.key || "single").trim() || "single";
+  const pid = `${productId}::${vKey}`;
+  article.dataset.cartPid = pid;
+
+  // 价格：单卖用商品主价；整箱优先用 variant.price
+  const basePrice = Number(p.price || p.flashPrice || p.specialPrice || p.originPrice || 0) || 0;
+  const vPrice = variant?.price != null && Number.isFinite(Number(variant.price)) ? Number(variant.price) : null;
+  const finalPrice = vPrice != null && vPrice > 0 ? vPrice : basePrice;
+
+  const originNum = Number(p.originPrice || 0) || 0;
   const hasOrigin = originNum > 0 && originNum > finalPrice;
 
   const imageUrl =
     p.image && String(p.image).trim()
       ? p.image
-      : `https://picsum.photos/seed/${pid || Math.random()}/500/400`;
+      : `https://picsum.photos/seed/${productId}/500/400`;
 
   const badgeText =
     p.specialEnabled || p.isSpecial || (p.tag || "").includes("爆品") ? "特价" : "";
 
-  const detailUrl = pid ? `product_detail.html?id=${encodeURIComponent(pid)}` : "#";
+  // ✅ 给 cart.js 用：必须有 id + variantKey + variants
+  const normalizedItem = {
+    id: pid,
+    productId,
+    variantKey: vKey,
+    variants: Array.isArray(p?.variants) ? p.variants : [],
 
-  // ✅ 统一给购物车的 product 结构（和 cart.js 兼容）
-  const productForCart = {
-    id: pid || p.name,
     name: p.name || "商品",
     price: finalPrice,
     priceNum: finalPrice,
@@ -374,93 +402,57 @@ function createProductCard(p) {
     type: p.type || "",
     taxable: !!p.taxable,
     isDeal: !!(p.isDeal || p.specialEnabled || p.isSpecial || (p.tag || "").includes("爆品")),
+    specialEnabled: !!p.specialEnabled,
+    specialQty: p.specialQty,
+    specialTotalPrice: p.specialTotalPrice,
+
     imageUrl: p.image || p.imageUrl || p.img || "",
   };
+  article.__normalizedItem = normalizedItem;
+
+  const vText = variantLabel(variant);
 
   article.innerHTML = `
-    <a class="product-image-wrap" href="${detailUrl}">
+    <div class="product-image-wrap" data-go-detail>
       ${badgeText ? `<span class="special-badge">${badgeText}</span>` : ""}
-      <img src="${imageUrl}" class="product-image" alt="${p.name || ""}" />
-    </a>
-
-    <!-- ✅ 右下角步进器（像叮咚/盒马） -->
-    <div class="qty-stepper" data-pid="${pid}">
-      <button class="qty-minus" type="button" aria-label="减">−</button>
-      <span class="qty-num">0</span>
-      <button class="qty-plus" type="button" aria-label="加">+</button>
+      <img src="${imageUrl}" class="product-image" alt="${(p.name || "").replace(/"/g, "&quot;")}" />
+      <button class="overlay-btn add" type="button" data-add-pid="${pid}">+</button>
     </div>
 
-    <a class="product-name" href="${detailUrl}">
-      ${p.name || ""}
-    </a>
+    <div class="product-name" data-go-detail>${p.name || ""}</div>
 
     <div class="product-desc">${p.desc || ""}</div>
 
     <div class="product-price-row">
-      <span class="product-price">$${priceText}</span>
-      ${hasOrigin ? `<span class="product-origin">$${originNum.toFixed(2)}</span>` : ""}
+      <span class="product-price">$${Number(finalPrice || 0).toFixed(2)}</span>
+      ${hasOrigin && vKey === "single" ? `<span class="product-origin">$${originNum.toFixed(2)}</span>` : ""}
+      <span class="product-tagline">${vText || (p.tag || p.subCategory || "")}</span>
     </div>
 
-    <div class="product-bottom-row">
-      <span class="product-tagline">${p.tag || p.subCategory || ""}</span>
-      <button class="btn-add-cart" type="button">加入购物车</button>
+    <div class="product-action">
+      <button class="product-add-fixed" type="button" data-add-only data-add-pid="${pid}">加入购物车</button>
+
+      <div class="qty-row" data-qty-row style="display:none;">
+        <button class="qty-btn" type="button" data-qty-minus data-qty-pid="${pid}">-</button>
+        <span class="qty-num" data-qty-display>1</span>
+        <button class="qty-btn" type="button" data-qty-plus data-qty-pid="${pid}">+</button>
+      </div>
     </div>
   `;
 
-  // ✅ “加入购物车”= 等同点一次 +
-  const addBtn = article.querySelector(".btn-add-cart");
-  if (addBtn) {
-    addBtn.addEventListener("click", (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      if (!pid) return;
-
-      const ok = cartAdd(pid, productForCart);
-      if (!ok) console.warn("Cart/FreshCart 未初始化，请检查 cart.js 引入");
-    });
-  }
-
-  // ✅ 步进器按钮
-  const minusBtn = article.querySelector(".qty-minus");
-  const plusBtn = article.querySelector(".qty-plus");
-
-  if (plusBtn) {
-    plusBtn.addEventListener("click", (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      if (!pid) return;
-
-      const qtyMap = getQtyMapSafe();
-      const cur = Number(qtyMap[String(pid)] || 0);
-
-      if (cur <= 0) cartAdd(pid, productForCart);
-      else cartChangeQty(String(pid), +1);
-    });
-  }
-
-  if (minusBtn) {
-    minusBtn.addEventListener("click", (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      if (!pid) return;
-
-      const qtyMap = getQtyMapSafe();
-      const cur = Number(qtyMap[String(pid)] || 0);
-
-      if (cur <= 1) cartRemove(String(pid));
-      else cartChangeQty(String(pid), -1);
-    });
-  }
+  // 初次渲染数量
+  renderCardAction(article);
 
   return article;
 }
 
+// ============================
+// 子分类 pills（保留你原逻辑）
+// ============================
 function rebuildSubCategoryPills() {
   const wrap = document.getElementById("subCategoryPills");
   if (!wrap) {
-    console.warn(
-      "未找到 #subCategoryPills（请在 category.html 给子分类按钮容器加 id=subCategoryPills）"
-    );
+    console.warn("未找到 #subCategoryPills（请在 category.html 给子分类按钮容器加 id=subCategoryPills）");
     return;
   }
 
@@ -522,9 +514,7 @@ async function loadCategoryProducts() {
     const cleaned = list.filter((p) => !p.isDeleted && p.deleted !== true && p.status !== "deleted");
 
     // ✅ 分类页排除爆品
-    currentProducts = cleaned.filter(
-      (p) => isProductInCategory(p, currentCatKey) && !isHotProduct(p)
-    );
+    currentProducts = cleaned.filter((p) => isProductInCategory(p, currentCatKey) && !isHotProduct(p));
 
     if (categoryStatEl) categoryStatEl.textContent = `共 ${currentProducts.length} 个商品`;
 
@@ -541,7 +531,7 @@ async function loadCategoryProducts() {
 }
 
 // ============================
-// 5) 筛选 + 排序 + 搜索
+// 5) 筛选 + 排序 + 搜索 + 渲染（单个/整箱两张卡）
 // ============================
 function applyFilterAndRender() {
   if (!gridEl) return;
@@ -581,14 +571,21 @@ function applyFilterAndRender() {
   }
   if (emptyTipEl) emptyTipEl.style.display = "none";
 
-  list.forEach((p) => gridEl.appendChild(createProductCard(p)));
+  // ✅ 每个商品：单个 +（如果有）整箱
+  list.forEach((p) => {
+    const singleV = pickSingleVariant(p);
+    const boxV = pickBoxVariant(p);
 
-  // ✅ 渲染完立刻刷新步进器数量
-  updateCategorySteppers();
+    gridEl.appendChild(createProductCard(p, singleV));
+    if (boxV) gridEl.appendChild(createProductCard(p, boxV));
+  });
+
+  // 渲染完立即对齐数量
+  renderAllCardsAction();
 }
 
 // ============================
-// 6) 顶部登录 UI
+// 6) 顶部登录 UI（保留你原逻辑）
 // ============================
 function applyLoggedInUI(phone) {
   const loginBtn = document.getElementById("loginBtn");
@@ -759,20 +756,70 @@ if (registerSubmitBtn) {
 }
 
 // ============================
-// ✅ 分类页：实时监听购物车变化（关键）
+// ✅✅✅ 分类页：统一点击委托（加入购物车 + overlay + 黑框 +/-）
+// 只让图片/名字跳详情：用 data-go-detail 控制
 // ============================
-function bindRealtimeCartListeners() {
-  // 1) cart.js 每次变更都会 dispatch 这个事件
-  window.addEventListener("freshcart:updated", () => {
-    updateCategorySteppers();
-  });
+document.addEventListener("click", (e) => {
+  // 仅图片/名字可跳详情
+  const go = e.target.closest("[data-go-detail]");
+  if (go) {
+    const card = go.closest(".product-card");
+    const pid = String(card?.dataset?.cartPid || "");
+    if (!pid) return;
+    const productId = String(pid).split("::")[0];
+    if (!productId) return;
+    window.location.href = `product_detail.html?id=${encodeURIComponent(productId)}`;
+    return;
+  }
 
-  // 2) 多标签页同步（localStorage 变更）
-  window.addEventListener("storage", (e) => {
-    if (!e) return;
-    if (e.key === CART_STORAGE_KEY) updateCategorySteppers();
-  });
-}
+  const addBtn = e.target.closest(".product-add-fixed[data-add-only]");
+  const overlayAddBtn = e.target.closest(".overlay-btn.add[data-add-pid]");
+  const minusBtn = e.target.closest("[data-qty-minus]");
+  const plusBtn = e.target.closest("[data-qty-plus]");
+
+  if (!addBtn && !overlayAddBtn && !minusBtn && !plusBtn) return;
+
+  e.preventDefault();
+
+  const card = e.target.closest(".product-card");
+  if (!card) return;
+
+  const pid = String(
+    (addBtn && addBtn.dataset.addPid) ||
+      (overlayAddBtn && overlayAddBtn.dataset.addPid) ||
+      (minusBtn && minusBtn.dataset.qtyPid) ||
+      (plusBtn && plusBtn.dataset.qtyPid) ||
+      card.dataset.cartPid ||
+      ""
+  );
+  if (!pid) return;
+
+  const item = card.__normalizedItem || { id: pid };
+  const cur = getCartQty(pid);
+
+  if (addBtn) {
+    const ok = setCartQty(pid, 1, item);
+    if (ok) renderCardAction(card);
+    return;
+  }
+
+  if (overlayAddBtn || plusBtn) {
+    const ok = setCartQty(pid, cur + 1, item);
+    if (ok) renderCardAction(card);
+    return;
+  }
+
+  if (minusBtn) {
+    const ok = setCartQty(pid, Math.max(0, cur - 1), item);
+    if (ok) renderCardAction(card);
+    return;
+  }
+});
+
+// 购物车变更后，刷新所有卡片底部显示
+window.addEventListener("freshcart:updated", () => {
+  renderAllCardsAction();
+});
 
 // ============================
 // 8) DOMContentLoaded 初始化
@@ -824,9 +871,6 @@ document.addEventListener("DOMContentLoaded", () => {
     console.warn("FreshCart.initCartUI 不存在，请确认已经引入 cart.js");
   }
 
-  // ✅ 开启实时监听
-  bindRealtimeCartListeners();
-
-  // ✅ 首次也刷新一次
-  updateCategorySteppers();
+  // 首次也刷新一次（防止初始 qty 不对）
+  renderAllCardsAction();
 });
