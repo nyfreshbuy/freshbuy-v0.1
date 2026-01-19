@@ -642,6 +642,28 @@
         cursor: pointer;
         white-space: nowrap;
       }
+      /* ✅ 关键：FBCard 渲染器底部按钮的真实 class */
+.product-add-fixed {
+  width: 100%;
+  border: none;
+  border-radius: 999px;
+  padding: 10px 12px;
+  background: #22c55e;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.product-add-fixed:hover {
+  filter: brightness(0.95);
+}
+
+.product-add-fixed:disabled {
+  background: #e5e7eb;
+  color: #9ca3af;
+  cursor: not-allowed;
+}
 
       .btn-add-cart:hover {
         filter: brightness(0.95);
