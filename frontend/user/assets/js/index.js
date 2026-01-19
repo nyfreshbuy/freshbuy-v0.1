@@ -703,7 +703,11 @@ function normalizeCartToQtyMap(cart) {
     if (Array.isArray(obj.state?.cart?.items)) return obj.state.cart.items;
     if (Array.isArray(obj.data?.items)) return obj.data.items;
     if (Array.isArray(obj.payload?.items)) return obj.payload.items;
-
+        // ✅ 新增：更多常见字段
+    if (obj.itemsById) return obj.itemsById;
+    if (obj.cartItems) return obj.cartItems;
+    if (obj.lines) return obj.lines;
+    if (obj.lineItems) return obj.lineItems;
     for (const key of Object.keys(obj)) {
       const got = findItems(obj[key], depth + 1);
       if (got) return got;
@@ -712,7 +716,31 @@ function normalizeCartToQtyMap(cart) {
   }
 
   const items = findItems(cart);
+   // ✅ 新增：支持 items 是对象映射（FreshCart/某些实现会用 map 而不是数组）
+  if (items && typeof items === "object" && !Array.isArray(items)) {
+    Object.keys(items).forEach((k) => {
+      const it = items[k];
+      if (!it || typeof it !== "object") return;
 
+      const id = String(
+        it.id ||
+          it.pid ||
+          it.productId ||
+          it.product_id ||
+          it.sku ||
+          it._id ||
+          it.product?._id ||
+          it.product?.id ||
+          it.product?.sku ||
+          k || ""
+      ).trim();
+
+      const qty = Number(it.qty ?? it.quantity ?? it.count ?? it.num ?? it.amount ?? it.n ?? it.q ?? 0);
+      if (id) map[id] = (map[id] || 0) + (Number.isFinite(qty) ? qty : 0);
+    });
+
+    return map;
+  }
   if (Array.isArray(items)) {
     items.forEach((it) => {
       const id = String(
@@ -2628,50 +2656,69 @@ document.addEventListener("click", (e) => {
   const cap = Number.isFinite(cap0) ? Math.max(0, Math.floor(cap0)) : 0;
 
   const cur = getCartQty(pid);
+    // ✅ 立即渲染（不依赖 getCartQty 立刻读到）
+function renderActionInstant(nextQty) {
+  const qtyRow = card.querySelector("[data-qty-row]");
+  const addBtn2 = card.querySelector(".product-add-fixed[data-add-only]");
+  const qtyDisplay = card.querySelector("[data-qty-display]");
 
+  if (addBtn2) addBtn2.style.display = nextQty <= 0 ? "" : "none";
+  if (qtyRow) qtyRow.style.display = nextQty > 0 ? "flex" : "none";
+  if (qtyDisplay) qtyDisplay.textContent = String(Math.max(1, nextQty || 1));
+
+  // 徽章立刻同步一下
+  try { setProductBadge(pid, nextQty); } catch {}
+}
   // 点击“加入购物车” => qty 变成 1
   if (addBtn) {
-    if (cap <= 0) return;
-    setCartQty(pid, 1, normalizedItem);
-    try { window.dispatchEvent(new CustomEvent("freshbuy:cartUpdated", { detail: { pid, delta: 1 } })); } catch {}
-    renderCardAction(card);
-    scheduleBadgeSync();
-    return;
-  }
+  if (cap <= 0) return;
+
+  const next = 1;
+  setCartQty(pid, next, normalizedItem);
+
+  try { window.dispatchEvent(new CustomEvent("freshbuy:cartUpdated", { detail: { pid, delta: 1 } })); } catch {}
+
+  renderActionInstant(next);   // ✅ 立刻显示黑框
+  scheduleBadgeSync();         // ✅ 稍后用真实购物车兜底同步
+  return;
+}
     // ✅ 点击图片 overlay 的“加入购物车” => 直接 +1
-  if (overlayAddBtn) {
-    if (cap <= 0) return;
-    const next = Math.min(cap, cur + 1);
-    setCartQty(pid, next, normalizedItem);
+ if (overlayAddBtn) {
+  if (cap <= 0) return;
 
-    try {
-      window.dispatchEvent(new CustomEvent("freshbuy:cartUpdated", { detail: { pid, delta: 1 } }));
-    } catch {}
+  const next = Math.min(cap, cur + 1);
+  setCartQty(pid, next, normalizedItem);
 
-    renderCardAction(card);
-    scheduleBadgeSync();
-    return;
-  }
+  try { window.dispatchEvent(new CustomEvent("freshbuy:cartUpdated", { detail: { pid, delta: 1 } })); } catch {}
+
+  renderActionInstant(next);
+  scheduleBadgeSync();
+  return;
+}
   // 点击 -
   if (minusBtn) {
-    const next = Math.max(0, cur - 1);
-    setCartQty(pid, next, normalizedItem);
-    try { window.dispatchEvent(new CustomEvent("freshbuy:cartUpdated", { detail: { pid, delta: -1 } })); } catch {}
-    renderCardAction(card);
-    scheduleBadgeSync();
-    return;
-  }
+  const next = Math.max(0, cur - 1);
+  setCartQty(pid, next, normalizedItem);
 
+  try { window.dispatchEvent(new CustomEvent("freshbuy:cartUpdated", { detail: { pid, delta: -1 } })); } catch {}
+
+  renderActionInstant(next);
+  scheduleBadgeSync();
+  return;
+}
   // 点击 +
-  if (plusBtn) {
-    if (cap <= 0) return;
-    const next = Math.min(cap, cur + 1);
-    setCartQty(pid, next, normalizedItem);
-    try { window.dispatchEvent(new CustomEvent("freshbuy:cartUpdated", { detail: { pid, delta: 1 } })); } catch {}
-    renderCardAction(card);
-    scheduleBadgeSync();
-    return;
-  }
+ if (plusBtn) {
+  if (cap <= 0) return;
+
+  const next = Math.min(cap, cur + 1);
+  setCartQty(pid, next, normalizedItem);
+
+  try { window.dispatchEvent(new CustomEvent("freshbuy:cartUpdated", { detail: { pid, delta: 1 } })); } catch {}
+
+  renderActionInstant(next);
+  scheduleBadgeSync();
+  return;
+}
 });
 // ✅ 多标签页同步
 window.addEventListener("storage", (e) => {
