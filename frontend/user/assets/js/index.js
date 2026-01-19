@@ -876,14 +876,15 @@ function createProductCard(p, extraBadgeText) {
 
   // ✅ clamp：把用户选择数量限制在 [1, maxQty]
   function clampQty(q) {
-  let n = Math.floor(Number(q || 0));
-  if (!Number.isFinite(n) || n < 0) n = 0;
-  if (maxQty <= 0) return 0;
-  if (n > maxQty) n = maxQty;
-  return n;
-}
+    let n = Math.floor(Number(q || 1));
+    if (!Number.isFinite(n) || n < 1) n = 1;
+    if (maxQty <= 0) return 0;
+    if (n > maxQty) n = maxQty;
+    return n;
+  }
+
   // ✅ 当前选择数量（没有输入框，内部变量）
-  let selectedQty = 0;
+  let selectedQty = 1;
 
   article.innerHTML = `
   <div class="product-image-wrap">
@@ -935,7 +936,7 @@ function createProductCard(p, extraBadgeText) {
         font-weight:800;
         background:#fff;
       "
-    >0</div>
+    >1</div>
 
     <button type="button" class="qty-btn" data-qty-plus style="width:34px;height:34px;border-radius:10px;">+</button>
 
@@ -965,42 +966,13 @@ function createProductCard(p, extraBadgeText) {
   const btnMinus = article.querySelector("[data-qty-minus]");
   const btnPlus = article.querySelector("[data-qty-plus]");
   const qtyHint = article.querySelector("[data-qty-hint]");
-  const qtyRow = article.querySelector(".qty-row");
-const addBtn = article.querySelector(".product-add-fixed[data-add-pid]");
-const favBtn = article.querySelector(".overlay-btn.fav");
-function updateQtyVisibility(q) {
-  const n = Math.max(0, Math.floor(Number(q || 0)));
-  if (n > 0) {
-    if (qtyRow) qtyRow.style.display = "flex";
-    if (addBtn) addBtn.style.display = "none";
-    if (overlayAddBtn) overlayAddBtn.style.display = "none";
-  } else {
-    if (qtyRow) qtyRow.style.display = "none";
-    if (addBtn) addBtn.style.display = "block";
-    if (overlayAddBtn) overlayAddBtn.style.display = "";
-  }
-}
-// ✅✅✅ 核心：黑框=绿圈=购物车数量
-function setQtyEverywhere(qty) {
-  const q = clampQty(qty);
 
-  // ✅ 1) 黑框（你现在是 div[data-qty-display]）
-  if (qtyDisplay) qtyDisplay.textContent = String(q);
-
-  // ✅ 2) 绿圈徽章
-  setProductBadge(pid, q);
-
-  // ✅ 3) 通知购物车（如果你后面真的用这个事件）
-  try {
-    window.dispatchEvent(new CustomEvent("freshbuy:cartQtySet", { detail: { pid, qty: q } }));
-  } catch {}
-}
   function syncQtyUI() {
     selectedQty = clampQty(selectedQty);
 
     if (qtyDisplay) qtyDisplay.textContent = String(selectedQty);
 
-    if (btnMinus) btnMinus.disabled = selectedQty <= 0 || maxQty <= 0;
+    if (btnMinus) btnMinus.disabled = selectedQty <= 1 || maxQty <= 0;
     if (btnPlus) btnPlus.disabled = maxQty <= 0 || selectedQty >= maxQty;
 
     const newMaxText =
@@ -1014,120 +986,104 @@ function setQtyEverywhere(qty) {
     if (fixedAdd) fixedAdd.disabled = maxQty <= 0;
   }
 
-  function getCartQtyNow() {
-  try {
-    const cart = getCartSnapshot();
-    const qtyMap = normalizeCartToQtyMap(cart);
-    return Math.max(0, Math.floor(Number(qtyMap[pid] || 0)));
-  } catch {
-    return 0;
-  }
-}
-
-function syncBlackAndGreenToCart() {
-  const q = getCartQtyNow(); // q 允许 0
-
-  // ✅ 用购物车数量覆盖内部状态
-  selectedQty = clampQty(q);
-
-  // ✅ 黑框
-  if (qtyDisplay) qtyDisplay.textContent = String(selectedQty);
-
-  // ✅ 绿圈
-  setProductBadge(pid, selectedQty);
-
-  // ✅ +/- 状态
-  if (btnMinus) btnMinus.disabled = selectedQty <= 0 || maxQty <= 0;
-  if (btnPlus) btnPlus.disabled = maxQty <= 0 || selectedQty >= maxQty;
-  updateQtyVisibility(selectedQty);
-}
-function handleAddOnce(ev) {
-  ev.stopPropagation();
-  const cur = (window.FreshCart?.getQty && window.FreshCart.getQty(pid)) || getCartQtyNow();
-  if (cur > 0) return;        // 已经有了就不再 add
-  setCartQty(1);              // ✅ 只把数量设为 1
-  setTimeout(syncBlackAndGreenToCart, 0);
-}
-
-if (addBtn) addBtn.addEventListener("click", handleAddOnce);
-if (overlayAddBtn) overlayAddBtn.addEventListener("click", handleAddOnce);
-// ✅ 统一拿到购物车 API（你这个项目里 FreshCart / Cart 都可能存在）
-function getCartApi() {
-  return window.FreshCart || window.Cart || null;
-}
-// ✅ 给 setCartQty / handleAddOnce / +/- 共用的购物车商品对象（避免 normalized undefined）
-let cartUnitPrice = basePrice;
-if (isSingleVariant && originUnit > 0) cartUnitPrice = originUnit;
-
-const cartItem = {
-  id: pid,                 // cartKey（productId::variantKey）
-  productId: productId,
-  variantKey: variantKey,
-  name: displayName || "商品",
-  price: cartUnitPrice,
-  priceNum: cartUnitPrice,
-  image: p.image || imageUrl,
-  tag: p.tag || "",
-  type: p.type || "",
-  isSpecial: isHotProduct(p),
-  isDeal: isHotProduct(p),
-};
-function setCartQty(nextQty) {
-  const cartApi = getCartApi();
-  if (!cartApi) return;
-
-  const q = Math.max(0, Math.floor(Number(nextQty || 0)));
-
-  // 如果你有 setQty 就用（你现在大概率没有）
-  if (typeof cartApi.setQty === "function") {
-    cartApi.setQty(pid, q);
-    return;
+  if (btnMinus) {
+    btnMinus.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      selectedQty -= 1;
+      syncQtyUI();
+    });
   }
 
-  // ✅ 你 cart.js 里有 changeQty(id, delta)
-  if (typeof cartApi.changeQty === "function") {
-    const cur = (cartApi.getQty && cartApi.getQty(pid)) || getCartQtyNow();
-    const delta = q - cur;
-    if (delta !== 0) cartApi.changeQty(pid, delta);
-    return;
+  if (btnPlus) {
+    btnPlus.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      selectedQty += 1;
+      syncQtyUI();
+    });
   }
 
-  // 兜底：如果只有 addItem
-  if (typeof cartApi.addItem === "function") {
-    const cur = (cartApi.getQty && cartApi.getQty(pid)) || getCartQtyNow();
-    const delta = q - cur;
-    const step = delta > 0 ? 1 : -1;
-    for (let i = 0; i < Math.abs(delta); i++) cartApi.addItem(cartItem, step);
-  }
-}
-// ✅ + / -：永远只改购物车数量（黑框/绿圈全部从购物车同步）
-if (btnPlus) {
-  btnPlus.addEventListener("click", (ev) => {
+  // 初始同步一次（处理 max=0 / clamp）
+  syncQtyUI();
+
+  function doAdd(ev) {
     ev.stopPropagation();
-    const cur = getCartQtyNow();
-    const next = Math.min(maxQty, cur + 1);
-    setCartQty(next);
-    setTimeout(syncBlackAndGreenToCart, 0);
-  });
-}
 
-if (btnMinus) {
-  btnMinus.addEventListener("click", (ev) => {
-    ev.stopPropagation();
-    const cur = getCartQtyNow();
-    const next = Math.max(0, cur - 1);
-    setCartQty(next);
-    setTimeout(syncBlackAndGreenToCart, 0);
-  });
-}
+    const cartApi =
+      (window.FreshCart && typeof window.FreshCart.addItem === "function" && window.FreshCart) ||
+      (window.Cart && typeof window.Cart.addItem === "function" && window.Cart) ||
+      null;
+
+    if (!cartApi) {
+      alert("购物车模块暂未启用（请确认 cart.js 已加载）");
+      return;
+    }
+
+    // ✅ 无输入框：直接用 selectedQty
+    const wantQty = clampQty(selectedQty);
+    if (wantQty <= 0) {
+      alert("该商品已售罄");
+      return;
+    }
+
+    // ✅ 加购单价：默认 basePrice；单个规格优先用单个原价（你的旧逻辑保持）
+    let cartUnitPrice = basePrice;
+    if (isSingleVariant && originUnit > 0) cartUnitPrice = originUnit;
+
+    const normalized = {
+      id: pid, // cartKey（productId::variantKey）
+      productId: productId,
+      variantKey: variantKey,
+      name: displayName || "商品",
+      price: cartUnitPrice,
+      priceNum: cartUnitPrice,
+      image: p.image || imageUrl,
+      tag: p.tag || "",
+      type: p.type || "",
+      isSpecial: isHotProduct(p),
+      isDeal: isHotProduct(p),
+    };
+
+    cartApi.addItem(normalized, wantQty);
+
+    // ✅✅✅ 加购后立刻显示徽章：但永不超过 card.__maxQty（强兜底）
+    try {
+      const badge = article.querySelector(`.product-qty-badge[data-pid="${pid}"]`);
+      const cur = Number((badge?.textContent || "").replace("+", "")) || 0;
+      const cap0 = Number(article.__maxQty);
+      const cap = Number.isFinite(cap0) ? Math.max(0, Math.floor(cap0)) : 999999;
+      const next = Math.min(cur + wantQty, cap);
+      if (badge) {
+        badge.textContent = next >= 99 ? "99+" : String(next);
+        badge.style.display = next > 0 ? "flex" : "none";
+      }
+    } catch {}
+
+    // ✅ 通知全站：购物车已更新（delta=wantQty）
+    try {
+      window.dispatchEvent(new CustomEvent("freshbuy:cartUpdated", { detail: { pid, delta: wantQty } }));
+    } catch {}
+
+    setTimeout(() => {
+      try {
+        scheduleBadgeSync();
+      } catch {}
+    }, 150);
+  }
+
   const overlayAdd = article.querySelector('.overlay-btn.add[data-add-pid]');
+  if (overlayAdd) overlayAdd.addEventListener("click", doAdd);
+
+  const fixedAdd = article.querySelector('.product-add-fixed[data-add-pid]');
+  if (fixedAdd) fixedAdd.addEventListener("click", doAdd);
+
+  const favBtn = article.querySelector(".overlay-btn.fav");
   if (favBtn) {
     favBtn.addEventListener("click", (ev) => {
       ev.stopPropagation();
       alert("收藏功能后续接入，这里先做占位提示。");
     });
   }
- 
+
   // ✅ 提供一个公开的“库存刷新入口”，给 refreshStockAndCards 调用
   // 这样库存变化时：maxQty、提示文案、按钮、+/- 都能立刻更新
   article.__refreshStockUI = function refreshStockUI(newStockUnits) {
@@ -1153,8 +1109,7 @@ if (btnMinus) {
       scheduleBadgeSync();
     } catch {}
   };
-updateQtyVisibility(0);
-setTimeout(syncBlackAndGreenToCart, 0);
+
   return article;
 }
 
@@ -2452,4 +2407,318 @@ window.addEventListener("focusin", (e) => {
     document.body.scrollLeft = 0;
     window.scrollTo(0, window.scrollY);
   }
+});
+
+/* ====== 下一段（第9段）将包含：你页面里“去掉输入框/只能点+/-”相关的最终收尾逻辑，以及库存刷新后的卡片UI同步函数（如果你放在文件末尾） ====== */
+// =====================================================
+// ✅✅✅ 第9段：去掉数量输入框（只允许 +/-）+ 库存刷新时同步卡片UI
+// =====================================================
+
+// ✅ 统一：计算某张卡片的 maxQty（单个=stock；整箱=floor(stock/unitCount)）
+function calcMaxQtyForCard(card) {
+  if (!card) return 0;
+  const vKey = String(card.dataset.variantKey || "single").trim() || "single";
+  const unitCount = Math.max(1, Math.floor(Number(card.dataset.unitCount || 1) || 1));
+  const stockUnits = Math.max(0, Math.floor(Number(card.__stockUnits ?? card.dataset.stockUnits ?? 0) || 0));
+
+  const maxQty = vKey === "single" ? stockUnits : Math.floor(stockUnits / unitCount);
+  return Math.max(0, Math.floor(maxQty));
+}
+
+// ✅ 把输入框隐藏，换成一个“数字显示”（只读）
+function ensureQtyDisplayOnly(card) {
+  if (!card) return;
+
+  const qtyInput = card.querySelector('[data-qty-input]');
+  const already = card.querySelector('[data-qty-display]');
+
+  // 如果已经有 display，就不重复做
+  if (already) {
+    // 仍然隐藏 input（以防旧DOM有）
+    if (qtyInput) qtyInput.style.display = "none";
+    return;
+  }
+
+  if (qtyInput) {
+    // 1) 隐藏输入框（客户不能手输）
+    qtyInput.style.display = "none";
+    qtyInput.setAttribute("readonly", "readonly");
+    qtyInput.setAttribute("disabled", "disabled");
+    qtyInput.style.pointerEvents = "none";
+
+    // 2) 插入一个 span 显示数字
+    const span = document.createElement("span");
+    span.setAttribute("data-qty-display", "1");
+    span.style.width = "64px";
+    span.style.height = "34px";
+    span.style.display = "inline-flex";
+    span.style.alignItems = "center";
+    span.style.justifyContent = "center";
+    span.style.borderRadius = "10px";
+    span.style.textAlign = "center";
+    span.style.userSelect = "none";
+    span.style.fontWeight = "800";
+    span.style.background = "#f3f4f6";
+
+    // 默认同步一次
+    span.textContent = String(Math.max(1, Math.floor(Number(qtyInput.value || 1) || 1)));
+
+    // 插在 input 原位置
+    qtyInput.insertAdjacentElement("afterend", span);
+  } else {
+    // 如果你未来把 input 完全从HTML删了，这里也兼容：
+    // 没有 input 就找一个空位（qty-row里）
+    const row = card.querySelector(".qty-row");
+    if (!row) return;
+    const span = document.createElement("span");
+    span.setAttribute("data-qty-display", "1");
+    span.style.width = "64px";
+    span.style.height = "34px";
+    span.style.display = "inline-flex";
+    span.style.alignItems = "center";
+    span.style.justifyContent = "center";
+    span.style.borderRadius = "10px";
+    span.style.textAlign = "center";
+    span.style.userSelect = "none";
+    span.style.fontWeight = "800";
+    span.style.background = "#f3f4f6";
+    span.textContent = "1";
+
+    // 放到 minus 和 plus 之间
+    const minus = row.querySelector("[data-qty-minus]");
+    if (minus) minus.insertAdjacentElement("afterend", span);
+    else row.insertAdjacentElement("afterbegin", span);
+  }
+}
+
+// ✅ 获取“当前想加购数量”（从 display 或 input）
+function getWantedQtyFromCard(card) {
+  const disp = card.querySelector("[data-qty-display]");
+  if (disp) return Math.max(1, Math.floor(Number(disp.textContent || 1) || 1));
+
+  const input = card.querySelector("[data-qty-input]");
+  if (input) return Math.max(1, Math.floor(Number(input.value || 1) || 1));
+
+  return 1;
+}
+
+// ✅ 写回“当前想加购数量”
+function setWantedQtyToCard(card, n) {
+  const v = Math.max(0, Math.floor(Number(n || 0) || 0));
+
+  const disp = card.querySelector("[data-qty-display]");
+  if (disp) disp.textContent = String(v);
+
+  const input = card.querySelector("[data-qty-input]");
+  if (input) input.value = String(v);
+}
+
+// ✅ 同步某张卡片：maxQty、按钮禁用、提示文案（含“仅剩 1 箱”）
+function syncOneCardStockUI(card) {
+  if (!card) return;
+
+  // 1) 确保输入框被隐藏，只显示数字
+  ensureQtyDisplayOnly(card);
+
+  // 2) 计算 maxQty（用最新 stock）
+  const maxQty = calcMaxQtyForCard(card);
+  card.__maxQty = maxQty;
+
+  // 3) 当前想加购数量 clamp 到 [1, maxQty]
+  let want = getWantedQtyFromCard(card);
+  if (maxQty <= 0) want = 0;
+  else if (want < 1) want = 1;
+  else if (want > maxQty) want = maxQty;
+  setWantedQtyToCard(card, want);
+
+  // 4) 按钮禁用规则（+/-）
+  const minus = card.querySelector("[data-qty-minus]");
+  const plus = card.querySelector("[data-qty-plus]");
+  if (minus) minus.disabled = maxQty <= 0 || want <= 1;
+  if (plus) plus.disabled = maxQty <= 0 || want >= maxQty;
+
+  // 5) 加购按钮禁用（overlay + 固定底部按钮）
+  const adds = card.querySelectorAll('[data-add-pid]');
+  adds.forEach((btn) => {
+    if (!btn || btn.tagName !== "BUTTON") return;
+    btn.disabled = maxQty <= 0;
+    if (maxQty <= 0) btn.textContent = "已售罄";
+  });
+
+  // 6) 文案：单个“仅剩 X”；整箱“仅剩 1 箱/仅剩 X 箱”
+  const hint = card.querySelector("[data-qty-hint]");
+  if (hint) {
+    const vKey = String(card.dataset.variantKey || "single").trim() || "single";
+    if (maxQty <= 0) {
+      hint.textContent = "已售罄";
+    } else if (vKey !== "single") {
+      hint.textContent = maxQty === 1 ? "仅剩 1 箱" : `仅剩 ${maxQty} 箱`;
+    } else {
+      hint.textContent = `仅剩 ${maxQty}`;
+    }
+  }
+}
+
+// ✅ 同步页面上所有卡片（库存变化/购物车变化都可以调用）
+function syncAllCardsStockUI() {
+  document.querySelectorAll(".product-card[data-product-id]").forEach((card) => {
+    syncOneCardStockUI(card);
+  });
+
+  // ✅ 徽章兜底：再同步一次（保证 badge<=maxQty）
+  try {
+    scheduleBadgeSync();
+  } catch {}
+}
+
+// ✅ 绑定 +/- 事件：只允许点击改变（不允许手输）
+function bindQtyButtonsOnlyOnce() {
+  document.querySelectorAll(".product-card[data-product-id]").forEach((card) => {
+    if (card.dataset.qtyBound === "1") return;
+    card.dataset.qtyBound = "1";
+
+    const minus = card.querySelector("[data-qty-minus]");
+    const plus = card.querySelector("[data-qty-plus]");
+
+    if (minus) {
+      minus.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const maxQty = calcMaxQtyForCard(card);
+        let want = getWantedQtyFromCard(card);
+        want = Math.max(1, want - 1);
+        if (maxQty > 0) want = Math.min(want, maxQty);
+        setWantedQtyToCard(card, want);
+        syncOneCardStockUI(card);
+      });
+    }
+
+    if (plus) {
+      plus.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const maxQty = calcMaxQtyForCard(card);
+        let want = getWantedQtyFromCard(card);
+        want = want + 1;
+        if (maxQty > 0) want = Math.min(want, maxQty);
+        else want = 0;
+        setWantedQtyToCard(card, want);
+        syncOneCardStockUI(card);
+      });
+    }
+
+    // ✅ 如果旧版还存在 input，这里阻止交互（防止手机弹数字键盘）
+    const input = card.querySelector("[data-qty-input]");
+    if (input) {
+      input.addEventListener("click", (e) => e.stopPropagation());
+      input.addEventListener("focus", (e) => {
+        e.preventDefault();
+        input.blur();
+      });
+      input.addEventListener("keydown", (e) => {
+        e.preventDefault();
+      });
+    }
+  });
+}
+
+// ✅ 页面初次渲染完、以及每次搜索/刷新库存后，都要重新绑定 & 同步
+window.addEventListener("DOMContentLoaded", () => {
+  // 初次：绑定+同步
+  setTimeout(() => {
+    bindQtyButtonsOnlyOnce();
+    syncAllCardsStockUI();
+  }, 0);
+});
+
+// ✅ 当你刷新库存（refreshStockAndCards）后，调用一次同步
+// （你第6段里有 setInterval(refreshStockAndCards, ...)，这里监听一个事件更稳）
+window.addEventListener("freshbuy:stockRefreshed", () => {
+  bindQtyButtonsOnlyOnce();
+  syncAllCardsStockUI();
+});
+
+// ✅ 当购物车更新（徽章变化）时，也顺便同步卡片状态（比如 maxQty 变更后 clamp）
+window.addEventListener("freshbuy:cartUpdated", () => {
+  syncAllCardsStockUI();
+});
+
+// ✅ ✅ ✅ 如果你不想改 refreshStockAndCards 的函数体：这里加一个“兜底定时同步”
+//    （避免某些情况下卡片没更新到 maxQty）
+setInterval(() => {
+  try {
+    bindQtyButtonsOnlyOnce();
+    syncAllCardsStockUI();
+  } catch {}
+}, 6000);
+// =====================================================
+// ✅ 自动刷新库存：每隔一段时间拉 /api/products-simple
+// 只更新：每张商品卡的 stock/maxQty + UI（仅剩/售罄/禁用）+ 徽章兜底
+// =====================================================
+const STOCK_REFRESH_MS = 15000; // 15秒，你可改 10s/20s
+
+async function refreshStockAndCards() {
+  try {
+    const res = await fetch("/api/products-simple", { cache: "no-store" });
+    const data = await res.json().catch(() => ({}));
+
+    const list = Array.isArray(data)
+      ? data
+      : Array.isArray(data.items)
+      ? data.items
+      : Array.isArray(data.list)
+      ? data.list
+      : Array.isArray(data.products)
+      ? data.products
+      : [];
+
+    if (!list.length) return;
+
+    // productId -> 最新库存（单位=单个）
+    const stockMap = {};
+    const variantsMap = {}; // productId -> variants（可选备用）
+    list.forEach((p) => {
+      const id = String(p?._id || p?.id || "").trim();
+      if (!id) return;
+      stockMap[id] = Math.max(0, Math.floor(Number(p.stock ?? p.inventory ?? 0) || 0));
+      variantsMap[id] = Array.isArray(p?.variants) ? p.variants : [];
+    });
+
+    // 遍历页面已有卡片，更新 __stockUnits/__maxQty
+    document.querySelectorAll(".product-card[data-product-id]").forEach((card) => {
+      const pid = String(card.dataset.productId || "").trim();
+      const vKey = String(card.dataset.variantKey || "single").trim() || "single";
+      const unitCount = Math.max(1, Math.floor(Number(card.dataset.unitCount || 1) || 1));
+
+      if (!pid) return;
+
+      const stockUnits = Number(stockMap[pid]);
+      if (!Number.isFinite(stockUnits)) return;
+
+      // ✅ 单个/整箱 maxQty
+      const maxQty = vKey === "single" ? stockUnits : Math.floor(stockUnits / unitCount);
+
+      card.__stockUnits = stockUnits;
+      card.__maxQty = Math.max(0, Math.floor(maxQty));
+
+      // 也写到 dataset，给其它逻辑兜底使用（可选）
+      card.dataset.stockUnits = String(stockUnits);
+      card.dataset.maxQty = String(Math.max(0, Math.floor(maxQty)));
+    });
+
+    // ✅ 立刻派发：库存已刷新（让第9段马上同步卡片UI）
+    try {
+      window.dispatchEvent(new CustomEvent("freshbuy:stockRefreshed"));
+    } catch {}
+
+    // ✅ 徽章兜底同步（保证 badge <= maxQty）
+    try {
+      scheduleBadgeSync();
+    } catch {}
+  } catch (e) {
+    console.warn("refreshStockAndCards failed:", e);
+  }
+}
+
+// 页面加载后开启轮询
+window.addEventListener("DOMContentLoaded", () => {
+  setInterval(refreshStockAndCards, STOCK_REFRESH_MS);
 });
