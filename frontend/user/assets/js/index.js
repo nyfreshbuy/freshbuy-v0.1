@@ -952,7 +952,15 @@ function renderAllCardsAction() {
 function createProductCard(p, extraBadgeText) {
   const article = document.createElement("article");
   article.className = "product-card";
-
+// ✅ 兼容旧调用：你代码里还在用 renderActionByCartQty()
+// 让它变成一个“别名”，内部统一走 renderCardAction(article)
+function renderActionByCartQty() {
+  try {
+    renderCardAction(article);
+  } catch (e) {
+    console.warn("renderActionByCartQty failed:", e);
+  }
+}
   // ✅ 展示层：同一个商品拆成单个/整箱两张卡
   const productId = String(p.__productId || p._id || p.id || "").trim();
   const variantKey = String(p.__variantKey || "single").trim() || "single";
