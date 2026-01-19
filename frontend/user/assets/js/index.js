@@ -1073,10 +1073,6 @@ function createProductCard(p, extraBadgeText) {
     el.style.cursor = "pointer";
     el.addEventListener("click", goDetail);
   });
-    // ✅ 兜底：所有按钮/操作区点击都不触发详情
-  article.querySelectorAll("button, .product-action, .qty-row, .product-tagline, .product-desc, .product-price-row").forEach((el) => {
-    el.addEventListener("click", (e) => e.stopPropagation());
-  });
   // ✅ 数量控件绑定（无输入框）
   const qtyDisplay = article.querySelector("[data-qty-display]");
   const btnMinus = article.querySelector("[data-qty-minus]");
