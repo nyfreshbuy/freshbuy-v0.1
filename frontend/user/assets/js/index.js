@@ -983,7 +983,7 @@ function createProductCard(p, extraBadgeText) {
   let selectedQty = 1;
 
   article.innerHTML = `
-  <div class="product-image-wrap">
+  <div class="product-image-wrap" data-go-detail>
     ${badgeText ? `<span class="special-badge">${badgeText}</span>` : ""}
     <img src="${imageUrl}" class="product-image" alt="${displayName}" />
 
@@ -999,7 +999,7 @@ function createProductCard(p, extraBadgeText) {
     </div>
   </div>
 
-  <div class="product-name">${displayName}</div>
+  <div class="product-name" data-go-detail>${displayName}</div>
   <div class="product-desc">${p.desc || ""}</div>
 
   <div class="product-price-row" style="display:flex;flex-direction:column;gap:2px;">
@@ -1056,9 +1056,10 @@ function createProductCard(p, extraBadgeText) {
     </button>
   </div>
 `;
-
-  // ✅ 点卡片进详情：用 productId（不是 pid/cartKey）
-  article.addEventListener("click", () => {
+  // ✅ 只允许：图片区域 + 商品名 跳转详情
+  function goDetail(e) {
+    e.preventDefault();
+    e.stopPropagation();
     if (!productId) return;
     const url =
       "product_detail.html?id=" +
@@ -1066,8 +1067,16 @@ function createProductCard(p, extraBadgeText) {
       "&variant=" +
       encodeURIComponent(variantKey);
     window.location.href = url;
-  });
+  }
 
+  article.querySelectorAll("[data-go-detail]").forEach((el) => {
+    el.style.cursor = "pointer";
+    el.addEventListener("click", goDetail);
+  });
+    // ✅ 兜底：所有按钮/操作区点击都不触发详情
+  article.querySelectorAll("button, .product-action, .qty-row, .product-tagline, .product-desc, .product-price-row").forEach((el) => {
+    el.addEventListener("click", (e) => e.stopPropagation());
+  });
   // ✅ 数量控件绑定（无输入框）
   const qtyDisplay = article.querySelector("[data-qty-display]");
   const btnMinus = article.querySelector("[data-qty-minus]");
