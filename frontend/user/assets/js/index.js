@@ -825,9 +825,7 @@ function setCartQty(pid, targetQty, normalizedItem) {
 
   // 优先走 setQty / updateQty 一类（最干净）
   // ✅ 先判断当前是否已存在（因为 cart.js 的 setQty 不会“凭空创建 item”）
-const curQty =
-  (typeof cartApi.getQty === "function" ? Number(cartApi.getQty(pid) || 0) : 0) || 0;
-
+const curQty = getCartQty(pid); // ✅ 统一口径：从快照取真实数量
 // 目标为 0：优先走 setQty/remove（都可以）
 if (next === 0) {
   try {
@@ -842,13 +840,12 @@ if (next === 0) {
 
 // ✅ next > 0 且当前不存在：必须用 addItem（不能用 setQty）
 if (curQty <= 0) {
-  if (typeof cartApi.addItem === "function") {
+  if (next > 0 && typeof cartApi.addItem === "function") {
     cartApi.addItem(normalizedItem || { id: pid }, next);
     return true;
   }
-  return false;
+  return true;
 }
-
 // ✅ 已存在才用 setQty / updateQty（这时不会被 cart.js 直接 return）
 try {
   if (typeof cartApi.setQty === "function") { cartApi.setQty(pid, next); return true; }
@@ -953,14 +950,6 @@ function createProductCard(p, extraBadgeText) {
   const article = document.createElement("article");
   article.className = "product-card";
 // ✅ 兼容旧调用：你代码里还在用 renderActionByCartQty()
-// 让它变成一个“别名”，内部统一走 renderCardAction(article)
-function renderActionByCartQty() {
-  try {
-    renderCardAction(article);
-  } catch (e) {
-    console.warn("renderActionByCartQty failed:", e);
-  }
-}
   // ✅ 展示层：同一个商品拆成单个/整箱两张卡
   const productId = String(p.__productId || p._id || p.id || "").trim();
   const variantKey = String(p.__variantKey || "single").trim() || "single";
@@ -1188,13 +1177,6 @@ function renderActionByCartQty() {
   const qtyRow = article.querySelector("[data-qty-row]");
   const addOnlyBtn = article.querySelector(".product-add-fixed[data-add-only]");
   // ✅ 只用全局统一模块渲染（不要再用卡片内 renderActionByCartQty）
-renderCardAction(article);
-
-// ✅ cart 更新时刷新这张卡
-window.addEventListener("freshbuy:cartUpdated", () => renderCardAction(article));
-window.addEventListener("storage", (e) => {
-  if (e?.key && String(e.key).toLowerCase().includes("cart")) renderCardAction(article);
-});
   function syncQtyUI() {
   selectedQty = clampQty(selectedQty);
 
@@ -1272,7 +1254,6 @@ window.addEventListener("storage", (e) => {
         scheduleBadgeSync();
       } catch {}
     }, 150);
-     renderActionByCartQty();
   }
 
   const favBtn = article.querySelector(".overlay-btn.fav");
@@ -1302,20 +1283,14 @@ window.addEventListener("storage", (e) => {
     // 选中数量可能超了，要 clamp
     selectedQty = clampQty(selectedQty);
     syncQtyUI();
-    renderActionByCartQty(); // ✅ 关键：库存刷新后黑框回到购物车数量
+    renderCardAction(article);
+ // ✅ 关键：库存刷新后黑框回到购物车数量
     // 强制同步徽章（兜底：如果购物车里原数量>新库存，会被 setProductBadge 压回去）
     try {
       scheduleBadgeSync();
     } catch {}
   };
   // 初次渲染：根据购物车数量决定显示“加入购物车”还是“黑框”
-  renderActionByCartQty();
-
-  // 购物车更新/多标签页变化：刷新该卡片显示
-  window.addEventListener("freshbuy:cartUpdated", renderActionByCartQty);
-  window.addEventListener("storage", (e) => {
-    if (e?.key && String(e.key).toLowerCase().includes("cart")) renderActionByCartQty();
-  });
   return article;
 }
 
