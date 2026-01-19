@@ -734,7 +734,7 @@ function normalizeCartToQtyMap(cart) {
           k || ""
       ).trim();
 
-      const qty = Number(it.qty ?? it.quantity ?? it.count ?? it.num ?? it.n ?? it.q ?? 0);
+      const qty = Number(it.qty ?? it.quantity ?? it.count ?? it.q ?? 0);
       if (id) map[id] = (map[id] || 0) + (Number.isFinite(qty) ? qty : 0);
     });
 
@@ -755,7 +755,7 @@ function normalizeCartToQtyMap(cart) {
           ""
       ).trim();
 
-      const qty = Number(it.qty ?? it.quantity ?? it.count ?? it.num ?? it.n ?? it.q ?? 0);
+      const qty = Number(it.qty ?? it.quantity ?? it.count ?? it.q ?? 0);
       if (id) map[id] = (map[id] || 0) + (Number.isFinite(qty) ? qty : 0);
     });
     return map;
@@ -1175,7 +1175,14 @@ function createProductCard(p, extraBadgeText) {
   const actionWrap = article.querySelector(".product-action[data-action-pid]");
   const qtyRow = article.querySelector("[data-qty-row]");
   const addOnlyBtn = article.querySelector(".product-add-fixed[data-add-only]");
+  // ✅ 只用全局统一模块渲染（不要再用卡片内 renderActionByCartQty）
+renderCardAction(article);
 
+// ✅ cart 更新时刷新这张卡
+window.addEventListener("freshbuy:cartUpdated", () => renderCardAction(article));
+window.addEventListener("storage", (e) => {
+  if (e?.key && String(e.key).toLowerCase().includes("cart")) renderCardAction(article);
+});
   function getCartQtyForThisPid() {
     const snap = getCartSnapshot();
     const map = normalizeCartToQtyMap(snap);
@@ -1269,10 +1276,8 @@ function createProductCard(p, extraBadgeText) {
     if (qtyHint) qtyHint.textContent = cap <= 0 ? "已售罄" : newMaxText;
   }
   function syncQtyUI() {
-    selectedQty = clampQty(selectedQty);
-
-    function syncQtyUI() {
   selectedQty = clampQty(selectedQty);
+
   if (btnMinus) btnMinus.disabled = selectedQty <= 1 || maxQty <= 0;
   if (btnPlus) btnPlus.disabled = maxQty <= 0 || selectedQty >= maxQty;
 
@@ -1284,22 +1289,6 @@ function createProductCard(p, extraBadgeText) {
   if (overlayAdd) overlayAdd.disabled = maxQty <= 0;
   if (fixedAdd) fixedAdd.disabled = maxQty <= 0;
 }
-    if (btnMinus) btnMinus.disabled = selectedQty <= 1 || maxQty <= 0;
-    if (btnPlus) btnPlus.disabled = maxQty <= 0 || selectedQty >= maxQty;
-
-    const newMaxText =
-      unitCount > 1 ? `仅剩 ${Math.max(0, maxQty)} 箱` : `仅剩 ${Math.max(0, maxQty)}`;
-    if (qtyHint) qtyHint.textContent = maxQty <= 0 ? "已售罄" : newMaxText;
-
-    // ✅ 同步按钮禁用状态（库存变化时也能更新）
-    const overlayAdd = article.querySelector('.overlay-btn.add[data-add-pid]');
-    const fixedAdd = article.querySelector('.product-add-fixed[data-add-pid]');
-    if (overlayAdd) overlayAdd.disabled = maxQty <= 0;
-    if (fixedAdd) fixedAdd.disabled = maxQty <= 0;
-  }
-  // 初始同步一次（处理 max=0 / clamp）
-  syncQtyUI();
-
   function doAdd(ev) {
     ev.stopPropagation();
 
