@@ -981,7 +981,21 @@ function createProductCard(p, extraBadgeText) {
 
   // ✅ 当前选择数量（没有输入框，内部变量）
   let selectedQty = 1;
-
+    // ✅ 提前准备好购物车 item（给全局事件委托用）
+  const normalized = {
+    id: pid,                // cartKey（productId::variantKey）
+    productId: productId,
+    variantKey: variantKey,
+    name: displayName || "商品",
+    price: (isSingleVariant && originUnit > 0) ? originUnit : basePrice,
+    priceNum: (isSingleVariant && originUnit > 0) ? originUnit : basePrice,
+    image: p.image || imageUrl,
+    tag: p.tag || "",
+    type: p.type || "",
+    isSpecial: isHotProduct(p),
+    isDeal: isHotProduct(p),
+  };
+  article.__normalizedItem = normalized;
   article.innerHTML = `
   <div class="product-image-wrap" data-go-detail>
     ${badgeText ? `<span class="special-badge">${badgeText}</span>` : ""}
@@ -2596,8 +2610,7 @@ document.addEventListener("click", (e) => {
   const overlayAddBtn = e.target.closest(".overlay-btn.add[data-add-pid]"); // ✅ 新增：overlay 加购
   const minusBtn = e.target.closest("[data-qty-minus]");
   const plusBtn = e.target.closest("[data-qty-plus]");
-  if (!addBtn && !minusBtn && !plusBtn) return;
-
+  if (!addBtn && !overlayAddBtn && !minusBtn && !plusBtn) return;
   const card = e.target.closest(".product-card");
   if (!card) return;
 
@@ -2891,17 +2904,13 @@ function bindQtyButtonsOnlyOnce() {
 
 // ✅ 页面初次渲染完、以及每次搜索/刷新库存后，都要重新绑定 & 同步
 window.addEventListener("DOMContentLoaded", () => {
-  // 初次：绑定+同步
   setTimeout(() => {
-    bindQtyButtonsOnlyOnce();
     syncAllCardsStockUI();
   }, 0);
 });
-
 // ✅ 当你刷新库存（refreshStockAndCards）后，调用一次同步
 // （你第6段里有 setInterval(refreshStockAndCards, ...)，这里监听一个事件更稳）
 window.addEventListener("freshbuy:stockRefreshed", () => {
-  bindQtyButtonsOnlyOnce();
   syncAllCardsStockUI();
 });
 
@@ -2914,7 +2923,6 @@ window.addEventListener("freshbuy:cartUpdated", () => {
 //    （避免某些情况下卡片没更新到 maxQty）
 setInterval(() => {
   try {
-    bindQtyButtonsOnlyOnce();
     syncAllCardsStockUI();
   } catch {}
 }, 6000);
