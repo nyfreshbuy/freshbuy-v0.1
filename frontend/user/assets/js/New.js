@@ -1,8 +1,8 @@
 // frontend/user/assets/js/New.js
-console.log("✅ New.js loaded (renderer-driven, DailySpecial layout cloned)");
+console.log("✅ New.js loaded (DailySpecial UI cloned)");
 
 // =========================
-// Auth helpers（跟你其他页一致）
+// Auth helpers
 // =========================
 const AUTH_TOKEN_KEY = "freshbuy_token";
 function getToken() { return localStorage.getItem(AUTH_TOKEN_KEY) || ""; }
@@ -22,7 +22,7 @@ async function apiFetch(url, options = {}) {
 }
 
 // =========================
-// DOM refs
+// DOM
 // =========================
 const gridEl = document.getElementById("newGrid");
 const filterBarEl = document.getElementById("filterBar");
@@ -36,33 +36,27 @@ let productsViewAll = [];
 let currentFilter = "all";
 
 // =========================
-// 新品判定（多口径兜底）
+// New 判定（多口径兜底）
 // =========================
 function isTrueFlag(v) {
   return v === true || v === "true" || v === 1 || v === "1";
 }
-function norm(v){ return v ? String(v).toLowerCase() : ""; }
+function norm(v) { return v ? String(v).toLowerCase() : ""; }
 
-function hasKeyword(p, kw){
+function hasKeyword(p, kw) {
   const k = String(kw).toLowerCase();
   const fields = [p.tag, p.type, p.category, p.subCategory, p.mainCategory, p.subcategory, p.section, p.name, p.desc];
-  if (fields.some(f => norm(f).includes(k))) return true;
-  if (Array.isArray(p.tags) && p.tags.some(t => norm(t).includes(k))) return true;
-  if (Array.isArray(p.labels) && p.labels.some(t => norm(t).includes(k))) return true;
+  if (fields.some((f) => norm(f).includes(k))) return true;
+  if (Array.isArray(p.tags) && p.tags.some((t) => norm(t).includes(k))) return true;
+  if (Array.isArray(p.labels) && p.labels.some((t) => norm(t).includes(k))) return true;
   return false;
 }
 
-function isNewProduct(p){
-  // ✅ 你后台如果有明确字段，优先用
+function isNewProduct(p) {
   if (isTrueFlag(p.isNew) || isTrueFlag(p.newArrival) || isTrueFlag(p.isNewArrival)) return true;
-
-  // ✅ 关键词兜底
   if (hasKeyword(p, "新品") || hasKeyword(p, "new") || hasKeyword(p, "new arrival") || hasKeyword(p, "上新")) return true;
 
-  // ✅ 时间兜底：createdAt / created_at / created（30天内算新品）
-  const t =
-    p.createdAt || p.created_at || p.created || p.createdTime || p.created_time || null;
-
+  const t = p.createdAt || p.created_at || p.created || p.createdTime || p.created_time || null;
   if (t) {
     const ts = Date.parse(t);
     if (!Number.isNaN(ts)) {
@@ -73,9 +67,9 @@ function isNewProduct(p){
   return false;
 }
 
-// ============================
+// =========================
 // 分类 pills（优先 subCategory；没有就用 category）
-// ============================
+// =========================
 function rebuildCategoryPills() {
   if (!filterBarEl) return;
 
@@ -108,9 +102,9 @@ function rebuildCategoryPills() {
   cats.forEach((c) => filterBarEl.appendChild(makeBtn(c, c, currentFilter === c)));
 }
 
-// ============================
-// 排序 / 分类过滤
-// ============================
+// =========================
+// 排序/过滤
+// =========================
 function getNum(p, keys, def = 0) {
   for (const k of keys) {
     const v = p?.[k];
@@ -155,14 +149,14 @@ function applyFilterAndRender() {
   window.FBCard.renderGrid(gridEl, list, { badgeText: "" });
 }
 
-// ============================
-// 加载新品商品
-// ============================
+// =========================
+// Load
+// =========================
 async function loadNewProducts() {
   if (!gridEl) return;
 
   if (!window.FBCard) {
-    console.error("❌ FBCard 不存在：请检查 product_card_renderer.js 引入顺序");
+    console.error("❌ FBCard 不存在：检查 product_card_renderer.js 是否加载/顺序");
     gridEl.innerHTML = '<div style="padding:12px;font-size:13px;color:#6b7280;">页面缺少商品卡渲染器。</div>';
     return;
   }
@@ -189,17 +183,15 @@ async function loadNewProducts() {
   }
 }
 
-// ============================
-// 初始化
-// ============================
+// =========================
+// Init
+// =========================
 document.addEventListener("DOMContentLoaded", () => {
-  // 1) FBCard 全局绑定（加购/黑框/徽章）
+  // 1) FBCard 统一绑定
   if (window.FBCard?.ensureGlobalBindings) window.FBCard.ensureGlobalBindings();
-
-  // 2) 库存轮询（可选：跟分类页一致）
   if (window.FBCard?.startStockPolling) window.FBCard.startStockPolling();
 
-  // 3) 购物车抽屉 UI（必须）
+  // 2) 购物车抽屉（关键：保证能打开、按钮变绿）
   if (window.FreshCart?.initCartUI) {
     window.FreshCart.initCartUI({
       cartIconId: "cartIcon",
@@ -218,9 +210,7 @@ document.addEventListener("DOMContentLoaded", () => {
     console.warn("❌ FreshCart.initCartUI 不存在：确认 cart.js 已加载且无报错");
   }
 
-  // 4) 加载数据
   loadNewProducts();
 
-  // 5) 排序监听
   if (sortSelectEl) sortSelectEl.addEventListener("change", applyFilterAndRender);
 });
