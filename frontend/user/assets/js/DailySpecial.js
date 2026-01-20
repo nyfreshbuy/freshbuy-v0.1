@@ -1,5 +1,5 @@
 // frontend/user/assets/js/DailySpecial.js
-console.log("✅ DailySpecial.js loaded (renderer-driven + sticky category pills)");
+console.log("✅ DailySpecial.js loaded (renderer-driven + sticky category pills FINAL)");
 
 // =========================
 // Auth helpers（跟 category.js 一致）
@@ -37,19 +37,35 @@ async function apiFetch(url, options = {}) {
 // DOM refs
 // =========================
 const gridEl = document.getElementById("dailyGrid");
-const emptyTipEl = document.getElementById("emptyTip");
-
-const filterBarEl = document.getElementById("filterBar"); // ✅ 顶部 pills 容器（你 HTML 已有）
+const filterBarEl = document.getElementById("filterBar");
 const sortSelectEl = document.getElementById("sortSelect");
 const searchInputEl = document.getElementById("searchInput");
 const globalSearchInput = document.getElementById("globalSearchInput");
 
+// ✅ empty tip 兜底（页面没有 #emptyTip 也不报错）
+let emptyTipEl = document.getElementById("emptyTip");
+function ensureEmptyTip() {
+  if (emptyTipEl) return emptyTipEl;
+  if (!gridEl) return null;
+
+  const div = document.createElement("div");
+  div.id = "emptyTip";
+  div.style.display = "none";
+  div.style.padding = "12px";
+  div.style.fontSize = "13px";
+  div.style.color = "#6b7280";
+  div.textContent = "暂无商品";
+  gridEl.parentElement?.insertBefore(div, gridEl);
+  emptyTipEl = div;
+  return emptyTipEl;
+}
+
 // =========================
 // State
 // =========================
-let productsRaw = [];      // 原始商品（不拆卡）
-let productsViewAll = [];  // 拆卡后的全量视图（单卖/整箱两张）
-let currentFilter = "all"; // pills 选中值
+let productsRaw = [];       // 原始商品（不拆卡）
+let productsViewAll = [];   // 拆卡后的全量视图（单卖/整箱两张）
+let currentFilter = "all";  // pills 选中值
 
 // ============================
 // 特价判定（DailySpecial=所有特价）
@@ -97,18 +113,24 @@ function isDailySpecialProduct(p) {
 // ============================
 // 分类 pills（优先 subCategory；没有就用 category）
 // ============================
+function pickCategoryLabel(p) {
+  const sub = String(p?.subCategory || "").trim();
+  const cat = String(p?.category || "").trim();
+  return sub || cat || "";
+}
+
 function rebuildCategoryPills() {
   if (!filterBarEl) return;
 
   const set = new Set();
   productsRaw.forEach((p) => {
-    const sub = String(p.subCategory || "").trim();
-    const cat = String(p.category || "").trim();
-    if (sub) set.add(sub);
-    else if (cat) set.add(cat);
+    const label = pickCategoryLabel(p);
+    if (label) set.add(label);
   });
 
-  const cats = Array.from(set);
+  // ✅ 更稳定的排序（中文/英文自然排序）
+  const cats = Array.from(set).sort((a, b) => String(a).localeCompare(String(b), "zh-Hans-CN"));
+
   filterBarEl.innerHTML = "";
 
   const makeBtn = (label, val, active) => {
@@ -116,12 +138,20 @@ function rebuildCategoryPills() {
     btn.className = "filter-pill" + (active ? " active" : "");
     btn.textContent = label;
     btn.dataset.filter = val;
+
     btn.addEventListener("click", () => {
       filterBarEl.querySelectorAll(".filter-pill").forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
       currentFilter = val;
+
       applyFilterAndRender();
+
+      // ✅ 手机体验：点分类后让 pills 保持在视野（可选）
+      try {
+        filterBarEl.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      } catch {}
     });
+
     return btn;
   };
 
@@ -148,15 +178,14 @@ function getPriceForSort(p) {
   return getNum(p, ["price", "flashPrice", "specialPrice", "originPrice"], 0);
 }
 
-// 兼容你 HTML 里 sortSelect 的值：
-// - sales_desc（默认）
-// - price_asc / price_desc
 function getSalesForSort(p) {
   return getNum(p, ["sales", "sold", "soldCount", "monthlySales", "salesCount"], 0);
 }
 
 function applyFilterAndRender() {
   if (!gridEl || !window.FBCard) return;
+
+  ensureEmptyTip();
 
   let list = [...productsViewAll];
 
@@ -194,7 +223,11 @@ function applyFilterAndRender() {
       return sortVal === "price_asc" ? pa - pb : pb - pa;
     });
   } else if (sortVal === "sales_desc") {
-    list.sort((a, b) => getSalesForSort(b) - getSalesForSort(a));
+    // ✅ 如果销量字段全为 0，就不强行打乱顺序
+    const hasAnySales = list.some((p) => getSalesForSort(p) > 0);
+    if (hasAnySales) {
+      list.sort((a, b) => getSalesForSort(b) - getSalesForSort(a));
+    }
   }
 
   // 渲染
@@ -216,6 +249,7 @@ function applyFilterAndRender() {
 // ============================
 async function loadDailySpecialProducts() {
   if (!gridEl) return;
+  ensureEmptyTip();
 
   gridEl.innerHTML = "";
   if (emptyTipEl) emptyTipEl.style.display = "none";
