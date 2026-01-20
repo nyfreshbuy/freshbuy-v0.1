@@ -7,102 +7,135 @@
   <link rel="stylesheet" href="./assets/css/main.css?v=10" />
 
   <style>
-    :root{
-      --sticky-shadow: 0 4px 12px rgba(15,23,42,.08);
-    }
-
     /* =========================================================
-       ✅ 关键：一个“总 sticky 容器”包住（标题+分类+排序）
+       ✅ 终极方案：分类条（pills+排序）永远固定在屏幕顶部
+       兼容 iPhone/微信 fixed 被 transform 影响的坑
        ========================================================= */
-    .sticky-header{
-      position: sticky;
-      top: 0;
-      z-index: 200;            /* 高于商品卡/overlay */
-      background:#fff;
-      transition: box-shadow .2s ease;
-    }
-    /* 滚动后加阴影（更 App 感） */
-    .sticky-header.is-scrolled{
-      box-shadow: var(--sticky-shadow);
+
+    :root{
+      --filterbar-h: 62px; /* JS 会动态覆盖 */
+      --app-shadow: 0 4px 12px rgba(15,23,42,.10);
     }
 
-    .top-nav{
-      position: relative;      /* ❗ 不再 sticky（避免多 sticky 叠加不稳） */
+    /* 1) iOS/微信：若祖先有 transform，会导致 fixed 失效（跟着滚）
+          这里强制解除（只影响本页） */
+    html, body{
+      transform: none !important;
+      filter: none !important;
+      perspective: none !important;
+      contain: none !important;
+    }
+
+    /* ======================
+       顶部区域（标题那块）
+       ====================== */
+    .top-title{
       background:#fff;
       border-bottom:1px solid #eef2f7;
     }
-    .top-nav-inner{
-      max-width: 1400px; margin:0 auto; padding:10px 14px;
-      display:flex; align-items:center; gap:12px; justify-content:space-between;
+    .top-title-inner{
+      max-width:1400px;
+      margin:0 auto;
+      padding:12px 14px 10px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
     }
-
-    .logo-area{display:flex; align-items:center; gap:10px;}
+    .logo-area{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      cursor:pointer;
+    }
     .logo-badge{
       width:40px;height:40px;border-radius:999px;
       background: radial-gradient(circle at 30% 30%, #22c55e, #16a34a);
-      display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900;
+      display:flex;align-items:center;justify-content:center;
+      color:#fff;font-weight:900;font-size:18px;
       box-shadow: 0 8px 18px rgba(34,197,94,.22);
-      font-size:18px;
     }
-    .logo-text-main{font-weight:900; font-size:18px;}
-    .logo-sub{font-size:12px;color:#6b7280; margin-top:2px;}
+    .logo-text-main{font-weight:900; font-size:18px; line-height:1.1;}
+    .logo-sub{font-size:12px;color:#6b7280; margin-top:3px;}
 
-    .right-actions{display:flex; align-items:center; gap:12px;}
+    .right-actions{
+      display:flex;
+      align-items:center;
+      gap:12px;
+    }
     .back-home-btn{
       padding:10px 14px;
       border-radius:999px;
       border:1px solid #e5e7eb;
       background:#fff;
       font-size:14px;
-      font-weight:700;
+      font-weight:800;
       cursor:pointer;
       white-space:nowrap;
     }
 
     .cart-icon{
-      position:relative; width:46px;height:46px;border-radius:16px;
-      background:#0f172a; display:flex;align-items:center;justify-content:center;
-      color:#e5e7eb; cursor:pointer; user-select:none;
+      position:relative;
+      width:46px;height:46px;border-radius:16px;
+      background:#0f172a;
+      display:flex;align-items:center;justify-content:center;
+      color:#e5e7eb;
+      cursor:pointer;
+      user-select:none;
       box-shadow: 0 10px 18px rgba(15,23,42,.18);
       font-size:18px;
     }
     .cart-count-badge{
       position:absolute; top:-6px; right:-6px;
-      background:#ef4444; color:#fff; font-size:11px; padding:2px 7px;
-      border-radius:999px; min-width:22px; text-align:center; display:none;
+      background:#ef4444;
+      color:#fff;
+      font-size:11px;
+      padding:2px 7px;
+      border-radius:999px;
+      min-width:22px;
+      text-align:center;
+      display:none;
       box-shadow: 0 6px 14px rgba(239,68,68,.25);
     }
 
-    /* 分类 + 排序栏（仍在 sticky-header 内） */
-   /* ✅ pills + 排序：永远固定在屏幕顶部 */
-.filter-wrap{
-  position: fixed;
-  left: 0;
-  right: 0;
-  top: 0;
-  z-index: 9999;
-  background:#fff;
-  border-bottom: 1px solid #eef2f7;
+    /* ==========================================
+       ✅ 分类条：固定在屏幕顶部（永远不跑）
+       ========================================== */
+    .filter-wrap{
+      position: fixed !important;
+      top: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      z-index: 999999 !important;
+      background:#fff !important;
+      border-bottom: 1px solid #eef2f7 !important;
 
-  /* iPhone 刘海安全区 */
-  padding-top: env(safe-area-inset-top);
+      /* iPhone 刘海安全区 */
+      padding-top: env(safe-area-inset-top) !important;
 
-  /* 保持你原来的布局 */
-  max-width: 1400px;
-  margin: 0 auto;
-  padding-left: 14px;
-  padding-right: 14px;
-  padding-bottom: 10px;
+      transition: box-shadow .2s ease;
+    }
+    .filter-wrap.is-scrolled{
+      box-shadow: var(--app-shadow);
+    }
 
-  display:flex;
-  gap:10px;
-  align-items:center;
-  justify-content:space-between;
-}
+    .filter-wrap-inner{
+      max-width:1400px;
+      margin:0 auto;
+      padding:10px 14px 12px;
+      display:flex;
+      gap:12px;
+      align-items:center;
+      justify-content:space-between;
+    }
+
     .filter-bar{
-      display:flex; gap:10px; overflow-x:auto;
+      display:flex;
+      gap:10px;
+      overflow-x:auto;
       -webkit-overflow-scrolling: touch;
       padding-bottom:2px;
+      flex: 1 1 auto;
     }
     .filter-bar::-webkit-scrollbar{display:none;}
 
@@ -115,7 +148,7 @@
       font-size:14px;
       cursor:pointer;
       white-space:nowrap;
-      font-weight:700;
+      font-weight:800;
     }
     .filter-pill.active{
       border-color:rgba(34,197,94,.9);
@@ -126,33 +159,64 @@
 
     .sort-box{
       flex:0 0 auto;
-      display:flex; align-items:center; gap:8px;
-      font-size:13px; color:#6b7280;
+      display:flex;
+      align-items:center;
+      gap:8px;
+      font-size:13px;
+      color:#6b7280;
       white-space:nowrap;
     }
     .sort-select{
-      padding:10px 12px; border-radius:14px; border:1px solid #e5e7eb;
-      background:#fff; font-size:14px; outline:none; font-weight:700;
+      padding:10px 12px;
+      border-radius:14px;
+      border:1px solid #e5e7eb;
+      background:#fff;
+      font-size:14px;
+      outline:none;
+      font-weight:900;
     }
 
-    /* 页面主体 */
-    .page{max-width:1400px; margin:0 auto; padding:14px 14px 30px;}
-    .page-title{display:flex; align-items:flex-end; justify-content:space-between; gap:10px; margin:8px 0 12px;}
-    .page-title h2{margin:0; font-size:18px;}
-    .page-title .sub{color:#6b7280; font-size:12px;}
-
-    /* Toast */
+    /* ======================
+       Toast
+       ====================== */
     .add-cart-toast{
-      position:fixed; top:78px; left:50%;
+      position:fixed;
+      top: calc(env(safe-area-inset-top) + 72px);
+      left:50%;
       transform:translateX(-50%) translateY(-16px);
-      background:#111827; color:#f9fafb;
-      padding:7px 14px; border-radius:999px; font-size:12px;
+      background:#111827;
+      color:#f9fafb;
+      padding:7px 14px;
+      border-radius:999px;
+      font-size:12px;
       box-shadow:0 10px 22px rgba(15,23,42,.35);
-      opacity:0; pointer-events:none;
+      opacity:0;
+      pointer-events:none;
       transition: opacity .25s ease, transform .25s ease;
-      z-index:9999; white-space:nowrap;
+      z-index:999999;
+      white-space:nowrap;
     }
     .add-cart-toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+
+    /* ======================
+       页面主体：给 fixed 分类条让位（JS 写 --filterbar-h）
+       ====================== */
+    main.page{
+      max-width:1400px;
+      margin:0 auto;
+      padding: 14px 14px 30px;
+      padding-top: calc(var(--filterbar-h) + 12px) !important; /* ✅ 让位 */
+    }
+
+    .page-title{
+      display:flex;
+      align-items:flex-end;
+      justify-content:space-between;
+      gap:10px;
+      margin:8px 0 12px;
+    }
+    .page-title h2{margin:0; font-size:18px;}
+    .page-title .sub{color:#6b7280; font-size:12px;}
 
     /* ✅ 本页兜底：renderer 的加入购物车按钮强制绿色 */
     .product-add-fixed{
@@ -172,96 +236,114 @@
     }
     .overlay-btn.add:disabled{opacity:.55 !important;}
 
-    /* ✅ 购物车抽屉（如果 main.css 没有也能用） */
+    /* ======================
+       购物车抽屉（兜底）
+       ====================== */
     .cart-backdrop{
-      position:fixed; inset:0; background:rgba(15,23,42,.45);
-      display:none; z-index: 9998;
+      position:fixed; inset:0;
+      background:rgba(15,23,42,.45);
+      display:none;
+      z-index: 999998;
     }
     .cart-backdrop.active{display:block;}
 
     .cart-drawer{
-      position:fixed; right:0; top:0; height:100vh; width:360px; max-width:92vw;
-      background:#fff; box-shadow:-12px 0 30px rgba(15,23,42,.18);
-      transform:translateX(110%); transition:transform .25s ease;
-      z-index: 9999; display:flex; flex-direction:column;
+      position:fixed;
+      right:0;
+      top:0;
+      height:100vh;
+      width:360px;
+      max-width:92vw;
+      background:#fff;
+      box-shadow:-12px 0 30px rgba(15,23,42,.18);
+      transform:translateX(110%);
+      transition:transform .25s ease;
+      z-index: 999999;
+      display:flex;
+      flex-direction:column;
       border-left:1px solid #eef2f7;
     }
     .cart-drawer.active{transform:translateX(0);}
 
     .cart-drawer-header{
-      padding:12px 12px; display:flex; align-items:center; justify-content:space-between;
+      padding:12px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
       border-bottom:1px solid #eef2f7;
     }
     .cart-close-btn{
-      width:36px; height:36px; border-radius:12px;
-      border:1px solid #e5e7eb; background:#fff; cursor:pointer;
+      width:36px;height:36px;
+      border-radius:12px;
+      border:1px solid #e5e7eb;
+      background:#fff;
+      cursor:pointer;
       font-weight:900;
     }
 
     .cart-drawer-body{padding:12px; overflow:auto; flex:1;}
     .cart-empty{padding:12px; color:#6b7280; font-size:13px;}
     .cart-items{display:flex; flex-direction:column; gap:10px;}
-
-    .cart-drawer-footer{
-      padding:12px; border-top:1px solid #eef2f7;
-    }
+    .cart-drawer-footer{padding:12px; border-top:1px solid #eef2f7;}
     .cart-go-btn{
-      width:100%; height:46px; border:none; border-radius:14px;
-      background:#0f172a; color:#fff; font-weight:900; cursor:pointer;
+      width:100%;
+      height:46px;
+      border:none;
+      border-radius:14px;
+      background:#0f172a;
+      color:#fff;
+      font-weight:900;
+      cursor:pointer;
     }
 
-    /* 手机端细节优化 */
     @media (max-width: 520px){
-      .top-nav-inner{padding:12px 12px;}
-      .filter-wrap{padding:10px 12px 12px;}
-      .back-home-btn{padding:10px 12px;}
-      .logo-text-main{font-size:18px;}
+      .top-title-inner{padding:12px 12px 10px;}
+      .filter-wrap-inner{padding:10px 12px 12px;}
+      main.page{padding-left:12px; padding-right:12px;}
     }
   </style>
 </head>
 
 <body>
 
-  <!-- ✅ 吸顶总容器：截图区域“始终在屏幕上” -->
-  <div class="sticky-header" id="stickyHeader">
-    <header class="top-nav">
-      <div class="top-nav-inner">
-        <div class="logo-area" onclick="location.href='/user/index.html'" style="cursor:pointer;">
-          <div class="logo-badge">鲜</div>
-          <div>
-            <div class="logo-text-main">家庭必备专区</div>
-            <div class="logo-sub">常备清单 · 高频复购 · 一站补齐</div>
-          </div>
-        </div>
-
-        <div class="right-actions">
-          <button type="button" class="back-home-btn" onclick="location.href='/user/index.html'">
-            ← 返回首页
-          </button>
-
-          <div class="cart-icon" id="cartIcon" title="打开购物车">
-            🛒
-            <span class="cart-count-badge" id="cartCount">0</span>
-          </div>
+  <!-- 标题区（不固定，正常在文档流里） -->
+  <div class="top-title">
+    <div class="top-title-inner">
+      <div class="logo-area" onclick="location.href='/user/index.html'">
+        <div class="logo-badge">鲜</div>
+        <div>
+          <div class="logo-text-main">家庭必备专区</div>
+          <div class="logo-sub">常备清单 · 高频复购 · 一站补齐</div>
         </div>
       </div>
 
-      <!-- 分类 pills + 排序（JS 会往 #filterBar 塞按钮） -->
-      <div class="filter-wrap" id="filterWrap">
-  <div class="filter-wrap-inner">
-    <div class="filter-bar" id="filterBar"></div>
+      <div class="right-actions">
+        <button type="button" class="back-home-btn" onclick="location.href='/user/index.html'">
+          ← 返回首页
+        </button>
 
-    <div class="sort-box amalgam-sort-box">
-      <span>排序</span>
-      <select class="sort-select" id="sortSelect">
-        <option value="sales_desc">销量高 → 低</option>
-        <option value="price_asc">价格低 → 高</option>
-        <option value="price_desc">价格高 → 低</option>
-      </select>
+        <div class="cart-icon" id="cartIcon" title="打开购物车">
+          🛒
+          <span class="cart-count-badge" id="cartCount">0</span>
+        </div>
+      </div>
     </div>
   </div>
-</div>
-    </header>
+
+  <!-- ✅ 分类条（固定在屏幕顶部） -->
+  <div class="filter-wrap" id="filterWrap">
+    <div class="filter-wrap-inner">
+      <div class="filter-bar" id="filterBar"></div>
+
+      <div class="sort-box">
+        <span>排序</span>
+        <select class="sort-select" id="sortSelect">
+          <option value="sales_desc">销量高 → 低</option>
+          <option value="price_asc">价格低 → 高</option>
+          <option value="price_desc">价格高 → 低</option>
+        </select>
+      </div>
+    </div>
   </div>
 
   <div class="add-cart-toast" id="addCartToast">已加入购物车</div>
@@ -277,7 +359,7 @@
     <div class="product-grid" id="dailyGrid"></div>
   </main>
 
-  <!-- ✅ 购物车抽屉 DOM（保证 cartIcon 点击一定有效） -->
+  <!-- ✅ 购物车抽屉 DOM -->
   <div class="cart-backdrop" id="cartBackdrop"></div>
 
   <aside class="cart-drawer" id="cartDrawer" aria-hidden="true">
@@ -302,41 +384,34 @@
       <button type="button" class="cart-go-btn" id="goCartBtn">去购物车结算</button>
     </div>
   </aside>
-  <script>
-  (function () {
-    const bar = document.querySelector(".filter-wrap");
-    const main = document.querySelector("main.page");
-    if (!bar || !main) return;
 
-    function applyOffset(){
-      const h = bar.getBoundingClientRect().height || 0;
-      main.style.paddingTop = (h + 12) + "px"; // 12px 留点空隙更像 App
-    }
-
-    // 初次 + 旋转/地址栏变化都重算
-    applyOffset();
-    window.addEventListener("resize", applyOffset);
-    window.addEventListener("orientationchange", applyOffset);
-  })();
-</script>
-  <!-- ✅ 脚本顺序：cart.js → renderer → page -->
+  <!-- ✅ 脚本顺序：cart → renderer → page -->
   <script src="/user/assets/js/cart.js?v=10"></script>
   <script src="/user/assets/js/product_card_renderer.js?v=2"></script>
   <script src="/user/assets/js/DailySpecial.js?v=3"></script>
 
-  <!-- ✅ 滚动阴影：更 App 感 -->
+  <!-- ✅ 自动计算 fixed 分类条高度，给 main.page 让位 + 滚动阴影 -->
   <script>
     (function () {
-      const header = document.getElementById("stickyHeader");
-      if (!header) return;
+      const bar = document.getElementById("filterWrap");
+      if (!bar) return;
 
-      function onScroll() {
-        if (window.scrollY > 4) header.classList.add("is-scrolled");
-        else header.classList.remove("is-scrolled");
+      function applyHeight() {
+        const h = Math.ceil(bar.getBoundingClientRect().height || 0);
+        document.documentElement.style.setProperty("--filterbar-h", h + "px");
       }
 
-      window.addEventListener("scroll", onScroll, { passive: true });
+      function onScroll() {
+        if (window.scrollY > 4) bar.classList.add("is-scrolled");
+        else bar.classList.remove("is-scrolled");
+      }
+
+      applyHeight();
       onScroll();
+
+      window.addEventListener("resize", applyHeight, { passive: true });
+      window.addEventListener("orientationchange", applyHeight, { passive: true });
+      window.addEventListener("scroll", onScroll, { passive: true });
     })();
   </script>
 
