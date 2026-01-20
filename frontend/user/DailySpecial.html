@@ -74,11 +74,31 @@
     }
 
     /* 分类 + 排序栏（仍在 sticky-header 内） */
-    .filter-wrap{
-      max-width:1400px; margin:0 auto; padding:10px 14px 12px;
-      display:flex; gap:12px; align-items:center; justify-content:space-between;
-      background:#fff;
-    }
+   /* ✅ pills + 排序：永远固定在屏幕顶部 */
+.filter-wrap{
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  z-index: 9999;
+  background:#fff;
+  border-bottom: 1px solid #eef2f7;
+
+  /* iPhone 刘海安全区 */
+  padding-top: env(safe-area-inset-top);
+
+  /* 保持你原来的布局 */
+  max-width: 1400px;
+  margin: 0 auto;
+  padding-left: 14px;
+  padding-right: 14px;
+  padding-bottom: 10px;
+
+  display:flex;
+  gap:10px;
+  align-items:center;
+  justify-content:space-between;
+}
     .filter-bar{
       display:flex; gap:10px; overflow-x:auto;
       -webkit-overflow-scrolling: touch;
@@ -280,7 +300,23 @@
       <button type="button" class="cart-go-btn" id="goCartBtn">去购物车结算</button>
     </div>
   </aside>
+  <script>
+  (function () {
+    const bar = document.querySelector(".filter-wrap");
+    const main = document.querySelector("main.page");
+    if (!bar || !main) return;
 
+    function applyOffset(){
+      const h = bar.getBoundingClientRect().height || 0;
+      main.style.paddingTop = (h + 12) + "px"; // 12px 留点空隙更像 App
+    }
+
+    // 初次 + 旋转/地址栏变化都重算
+    applyOffset();
+    window.addEventListener("resize", applyOffset);
+    window.addEventListener("orientationchange", applyOffset);
+  })();
+</script>
   <!-- ✅ 脚本顺序：cart.js → renderer → page -->
   <script src="/user/assets/js/cart.js?v=10"></script>
   <script src="/user/assets/js/product_card_renderer.js?v=2"></script>
