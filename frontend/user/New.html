@@ -202,6 +202,39 @@
       .filter-wrap{padding:8px 12px 10px;}
       main.page{padding-left:12px;padding-right:12px;}
     }
+    /* =========================
+   ✅ FIX: New 页“加入购物车”字号偏小
+   只影响 renderer 的按钮
+   ========================= */
+#newGrid .product-add-fixed,
+#newGrid .overlay-btn.add,
+#newGrid button[data-action="add-to-cart"],
+#newGrid button[data-action="add"],
+#newGrid .add-btn{
+  height: 46px !important;
+  min-height: 46px !important;
+  font-size: 16px !important;
+  font-weight: 900 !important;
+  line-height: 46px !important;
+  border-radius: 14px !important;
+}
+
+/* 有些 renderer 用 span 包字，这里一起兜底 */
+#newGrid .product-add-fixed *,
+#newGrid .overlay-btn.add *,
+#newGrid .add-btn__text{
+  font-size: 16px !important;
+  font-weight: 900 !important;
+}
+
+/* 让按钮更“分类页同款” */
+#newGrid .product-add-fixed,
+#newGrid .overlay-btn.add,
+#newGrid .add-btn{
+  background: #22c55e !important;
+  color: #fff !important;
+  border: none !important;
+}
   </style>
 </head>
 
