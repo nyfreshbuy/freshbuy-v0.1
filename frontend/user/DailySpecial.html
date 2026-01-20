@@ -27,6 +27,7 @@
       position:relative; width:38px;height:38px;border-radius:999px;
       background:#0f172a; display:flex;align-items:center;justify-content:center;
       color:#e5e7eb; cursor:pointer;
+      user-select:none;
     }
     .cart-count-badge{
       position:absolute; top:-4px; right:-4px;
@@ -87,11 +88,71 @@
       z-index:9999; white-space:nowrap;
     }
     .add-cart-toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+
+    /* =========================================================
+       ✅ 本页兜底：让 renderer 的“加入购物车”按钮一定是绿色
+       （避免 main.css 没覆盖到 .product-add-fixed / .overlay-btn.add）
+       ========================================================= */
+    .product-add-fixed {
+      background: #22c55e !important;
+      color: #fff !important;
+      border: none !important;
+      border-radius: 14px !important;
+      font-weight: 800 !important;
+      height: 44px !important;
+    }
+    .product-add-fixed:disabled { opacity: .55 !important; }
+
+    .overlay-btn.add {
+      background: #22c55e !important;
+      color: #fff !important;
+      border: none !important;
+      font-weight: 800 !important;
+    }
+    .overlay-btn.add:disabled { opacity: .55 !important; }
+
+    /* =========================================================
+       ✅ 购物车抽屉：如果 main.css 已经有，可删；没有也能正常显示
+       ========================================================= */
+    .cart-backdrop{
+      position:fixed; inset:0; background:rgba(15,23,42,.45);
+      display:none; z-index: 9998;
+    }
+    .cart-backdrop.active{display:block;}
+
+    .cart-drawer{
+      position:fixed; right:0; top:0; height:100vh; width:360px; max-width:92vw;
+      background:#fff; box-shadow:-12px 0 30px rgba(15,23,42,.18);
+      transform:translateX(110%); transition:transform .25s ease;
+      z-index: 9999; display:flex; flex-direction:column;
+      border-left:1px solid #eef2f7;
+    }
+    .cart-drawer.active{transform:translateX(0);}
+
+    .cart-drawer-header{
+      padding:12px 12px; display:flex; align-items:center; justify-content:space-between;
+      border-bottom:1px solid #eef2f7;
+    }
+    .cart-close-btn{
+      width:34px; height:34px; border-radius:10px;
+      border:1px solid #e5e7eb; background:#fff; cursor:pointer;
+    }
+
+    .cart-drawer-body{padding:12px; overflow:auto; flex:1;}
+    .cart-empty{padding:12px; color:#6b7280; font-size:13px;}
+    .cart-items{display:flex; flex-direction:column; gap:10px;}
+
+    .cart-drawer-footer{
+      padding:12px; border-top:1px solid #eef2f7;
+    }
+    .cart-go-btn{
+      width:100%; height:44px; border:none; border-radius:14px;
+      background:#0f172a; color:#fff; font-weight:800; cursor:pointer;
+    }
   </style>
 </head>
 
 <body>
-
   <header class="top-nav">
     <div class="top-nav-inner">
       <div class="logo-area" onclick="location.href='/user/index.html'" style="cursor:pointer;">
@@ -119,7 +180,7 @@
           ← 返回首页
         </button>
 
-        <div class="cart-icon" id="cartIcon">
+        <div class="cart-icon" id="cartIcon" title="打开购物车">
           🛒
           <span class="cart-count-badge" id="cartCount">0</span>
         </div>
@@ -145,14 +206,42 @@
     <div class="page-title">
       <div>
         <h2>🏠 家庭必备</h2>
-       <div class="sub">家庭必备 = 所有特价商品（后台开启特价即可出现）</div>
+        <div class="sub">家庭必备 = 所有特价商品（后台开启特价即可出现）</div>
       </div>
     </div>
 
     <div class="product-grid" id="dailyGrid"></div>
   </main>
+
+  <!-- ✅ 购物车抽屉 DOM：DailySpecial 必须有，否则 cartIcon 点击无效 -->
+  <div class="cart-backdrop" id="cartBackdrop"></div>
+
+  <aside class="cart-drawer" id="cartDrawer" aria-hidden="true">
+    <div class="cart-drawer-header">
+      <div style="font-weight:800;">购物车</div>
+      <button type="button" class="cart-close-btn" id="cartCloseBtn">✕</button>
+    </div>
+
+    <div class="cart-drawer-body">
+      <div style="font-size:12px;color:#6b7280; margin-bottom:10px;">
+        共 <span id="cartTotalItems">0</span> 件
+      </div>
+
+      <div class="cart-empty" id="cartEmptyText" style="display:none;">
+        购物车还是空的，快去挑点好东西～
+      </div>
+
+      <div class="cart-items" id="cartItemsList"></div>
+    </div>
+
+    <div class="cart-drawer-footer">
+      <button type="button" class="cart-go-btn" id="goCartBtn">去购物车结算</button>
+    </div>
+  </aside>
+
+  <!-- ✅ 脚本顺序：cart.js → renderer → page -->
+  <script src="/user/assets/js/cart.js?v=10"></script>
   <script src="/user/assets/js/product_card_renderer.js?v=2"></script>
-<script src="/user/assets/js/cart.js?v=10"></script>
-<script src="/user/assets/js/DailySpecial.js?v=3"></script>
+  <script src="/user/assets/js/DailySpecial.js?v=3"></script>
 </body>
 </html>
