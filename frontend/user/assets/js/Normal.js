@@ -1,26 +1,25 @@
-// frontend/user/assets/js/Normal.js
-console.log("✅ Normal.js loaded (renderer-driven, New-style UI)");
+// /user/assets/js/Normal.js
+console.log("✅ Normal.js loaded (homepage card + homepage cart + sticky top)");
 
 (() => {
   const gridEl = document.getElementById("normalGrid");
   const filterBarEl = document.getElementById("filterBar");
   const sortSelectEl = document.getElementById("sortSelect");
 
-  // ---------- 兜底 ----------
   function showInline(msg, color = "#6b7280") {
     if (!gridEl) return;
     gridEl.innerHTML = `<div style="padding:12px;font-size:13px;color:${color};line-height:1.6;">${msg}</div>`;
   }
 
-  if (!gridEl) return console.error("❌ normalGrid 不存在");
+  if (!gridEl) return console.error("❌ normalGrid 不存在：检查 Normal.html");
   if (!window.FBCard) {
     console.error("❌ FBCard 不存在：Normal.html 必须先引入 product_card_renderer.js（在 Normal.js 之前）");
-    showInline("❌ 页面缺少渲染器 product_card_renderer.js（引入顺序错误）。", "#b91c1c");
+    showInline("❌ 缺少渲染器 product_card_renderer.js（脚本顺序不对）。", "#b91c1c");
     return;
   }
 
   // =========================
-  // Auth fetch（跟分类页一致）
+  // Auth fetch（跟你其它页一致）
   // =========================
   const AUTH_TOKEN_KEY = "freshbuy_token";
   function getToken() { return localStorage.getItem(AUTH_TOKEN_KEY) || ""; }
@@ -40,7 +39,7 @@ console.log("✅ Normal.js loaded (renderer-driven, New-style UI)");
   }
 
   // =========================
-  // 判断工具
+  // 判定工具
   // =========================
   function isTrueFlag(v) {
     return v === true || v === "true" || v === 1 || v === "1" || v === "yes";
@@ -59,7 +58,12 @@ console.log("✅ Normal.js loaded (renderer-driven, New-style UI)");
     return false;
   }
 
-  // 爆品
+  function getCreatedAt(p) {
+    const t = p?.createdAt || p?.created_at || p?.updatedAt || p?.updated_at || p?.publishAt || p?.publish_at || null;
+    const ts = t ? Date.parse(t) : NaN;
+    return Number.isNaN(ts) ? 0 : ts;
+  }
+
   function isHotProduct(p) {
     return (
       isTrueFlag(p?.isHot) ||
@@ -71,7 +75,6 @@ console.log("✅ Normal.js loaded (renderer-driven, New-style UI)");
     );
   }
 
-  // 特价 / 家庭必备
   function isDailySpecialProduct(p) {
     return (
       isTrueFlag(p?.hasSpecial) ||
@@ -89,12 +92,6 @@ console.log("✅ Normal.js loaded (renderer-driven, New-style UI)");
     );
   }
 
-  // 新品
-  function getCreatedAt(p) {
-    const t = p?.createdAt || p?.created_at || p?.updatedAt || p?.updated_at || p?.publishAt || p?.publish_at || null;
-    const ts = t ? Date.parse(t) : NaN;
-    return Number.isNaN(ts) ? 0 : ts;
-  }
   function isNewProduct(p) {
     if (
       isTrueFlag(p?.isNew) ||
@@ -106,7 +103,7 @@ console.log("✅ Normal.js loaded (renderer-driven, New-style UI)");
       hasKeywordSimple(p, "new")
     ) return true;
 
-    // 30 天兜底：createdAt 很新的也算
+    // 30 天兜底：最近上架也算新品
     const ts = getCreatedAt(p);
     if (ts > 0) {
       const days = (Date.now() - ts) / (1000 * 60 * 60 * 24);
@@ -115,7 +112,6 @@ console.log("✅ Normal.js loaded (renderer-driven, New-style UI)");
     return false;
   }
 
-  // 畅销
   function isBestSellerProduct(p) {
     if (
       isTrueFlag(p?.isBest) ||
@@ -135,7 +131,7 @@ console.log("✅ Normal.js loaded (renderer-driven, New-style UI)");
   }
 
   // =========================
-  // New 风格 pills：优先 subCategory；没有就 category
+  // pills：优先 subCategory；没有就 category
   // =========================
   let productsRaw = [];
   let productsViewAll = [];
@@ -174,7 +170,7 @@ console.log("✅ Normal.js loaded (renderer-driven, New-style UI)");
   }
 
   // =========================
-  // 排序
+  // 排序（跟 New 风格）
   // =========================
   function getNum(p, keys, def = 0) {
     for (const k of keys) {
@@ -220,11 +216,12 @@ console.log("✅ Normal.js loaded (renderer-driven, New-style UI)");
       return;
     }
 
+    // ✅ 关键：用 renderer 渲染（卡片就跟首页一致）
     window.FBCard.renderGrid(gridEl, list, { badgeText: "" });
   }
 
   // =========================
-  // Load normal：排除 爆品/特价/新品/畅销
+  // Load：Normal = 排除 爆品/特价/新品/畅销
   // =========================
   async function loadNormalProducts() {
     showInline("加载中…");
@@ -251,12 +248,13 @@ console.log("✅ Normal.js loaded (renderer-driven, New-style UI)");
       return true;
     });
 
-    // 兜底：如果 normal 被排空，就直接显示非爆品（至少不空）
+    // ✅ 兜底：如果 normal 被排空，就至少显示“非爆品”
     if (!productsRaw.length && cleaned.length) {
-      console.warn("[Normal] empty fallback: use non-hot products");
+      console.warn("[Normal] normal empty fallback: use non-hot products");
       productsRaw = cleaned.filter((p) => !isHotProduct(p));
     }
 
+    // ✅ 关键：expand（单卖/整箱拆成两张卡）→ 跟首页一致
     productsViewAll = window.FBCard.expand(productsRaw);
 
     currentFilter = "all";
@@ -268,11 +266,11 @@ console.log("✅ Normal.js loaded (renderer-driven, New-style UI)");
   // Init
   // =========================
   document.addEventListener("DOMContentLoaded", () => {
-    // renderer bindings
+    // ✅ renderer 全局绑定（按钮/黑框 +/- /徽章/点击图&名跳详情），跟首页一致
     if (window.FBCard?.ensureGlobalBindings) window.FBCard.ensureGlobalBindings();
     if (window.FBCard?.startStockPolling) window.FBCard.startStockPolling();
 
-    // cart drawer (右上角购物车必须能打开)
+    // ✅ 购物车抽屉（右上角购物车必须能点开）
     if (window.FreshCart?.initCartUI) {
       window.FreshCart.initCartUI({
         cartIconId: "cartIcon",
