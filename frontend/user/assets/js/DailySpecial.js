@@ -1,8 +1,8 @@
 // frontend/user/assets/js/DailySpecial.js
-console.log("DailySpecial page script loaded (renderer-driven, same as category)");
+console.log("✅ DailySpecial.js loaded (renderer-driven + sticky category pills)");
 
 // =========================
-// Auth helpers - same token key as index.js/category.js
+// Auth helpers（跟 category.js 一致）
 // =========================
 const AUTH_TOKEN_KEY = "freshbuy_token";
 
@@ -13,7 +13,6 @@ function clearToken() {
   localStorage.removeItem(AUTH_TOKEN_KEY);
 }
 
-// 统一 fetch：自动带 token，401 自动清 token
 async function apiFetch(url, options = {}) {
   const headers = Object.assign({}, options.headers || {});
   headers["Content-Type"] = headers["Content-Type"] || "application/json";
@@ -40,16 +39,20 @@ async function apiFetch(url, options = {}) {
 const gridEl = document.getElementById("dailyGrid");
 const emptyTipEl = document.getElementById("emptyTip");
 
-// 可选：如果 DailySpecial 页也有排序/搜索控件，就会自动生效；没有也不报错
+const filterBarEl = document.getElementById("filterBar"); // ✅ 顶部 pills 容器（你 HTML 已有）
 const sortSelectEl = document.getElementById("sortSelect");
 const searchInputEl = document.getElementById("searchInput");
 const globalSearchInput = document.getElementById("globalSearchInput");
 
-let productsRaw = []; // 原始商品（不拆卡）
-let productsView = []; // 拆卡后的视图（单卖/整箱两张）
+// =========================
+// State
+// =========================
+let productsRaw = [];      // 原始商品（不拆卡）
+let productsViewAll = [];  // 拆卡后的全量视图（单卖/整箱两张）
+let currentFilter = "all"; // pills 选中值
 
 // ============================
-// Special 判定（尽量兼容你项目字段）
+// 特价判定（DailySpecial=所有特价）
 // ============================
 function isTrueFlag(v) {
   return v === true || v === "true" || v === 1 || v === "1";
@@ -74,13 +77,6 @@ function hasKeywordSimple(p, keyword) {
   return false;
 }
 
-/**
- * ✅ “家庭必备 / DailySpecial” = 所有特价商品（Special Deals）
- * 兼容字段：
- * - hasSpecial / isSpecial / isSpecialDeal
- * - specialPrice / specialQty / specialTotalPrice（N for $X）
- * - tag/tags/labels/section 含 special/deal/特价/家庭必备/daily
- */
 function isDailySpecialProduct(p) {
   return (
     isTrueFlag(p?.hasSpecial) ||
@@ -99,7 +95,42 @@ function isDailySpecialProduct(p) {
 }
 
 // ============================
-// 搜索 / 排序（最后交给 FBCard.renderGrid）
+// 分类 pills（优先 subCategory；没有就用 category）
+// ============================
+function rebuildCategoryPills() {
+  if (!filterBarEl) return;
+
+  const set = new Set();
+  productsRaw.forEach((p) => {
+    const sub = String(p.subCategory || "").trim();
+    const cat = String(p.category || "").trim();
+    if (sub) set.add(sub);
+    else if (cat) set.add(cat);
+  });
+
+  const cats = Array.from(set);
+  filterBarEl.innerHTML = "";
+
+  const makeBtn = (label, val, active) => {
+    const btn = document.createElement("button");
+    btn.className = "filter-pill" + (active ? " active" : "");
+    btn.textContent = label;
+    btn.dataset.filter = val;
+    btn.addEventListener("click", () => {
+      filterBarEl.querySelectorAll(".filter-pill").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      currentFilter = val;
+      applyFilterAndRender();
+    });
+    return btn;
+  };
+
+  filterBarEl.appendChild(makeBtn("全部", "all", currentFilter === "all"));
+  cats.forEach((c) => filterBarEl.appendChild(makeBtn(c, c, currentFilter === c)));
+}
+
+// ============================
+// 排序 / 搜索 / 分类过滤
 // ============================
 function getNum(p, keys, def = 0) {
   for (const k of keys) {
@@ -111,19 +142,25 @@ function getNum(p, keys, def = 0) {
 }
 
 function getPriceForSort(p) {
-  // ✅ 对拆卡视图：如果是整箱卡，优先用 variant price（__displayPrice）
+  // ✅ 拆卡视图：整箱卡优先 __displayPrice
   const vPrice = p?.__displayPrice;
   if (vPrice != null && Number.isFinite(Number(vPrice))) return Number(vPrice);
   return getNum(p, ["price", "flashPrice", "specialPrice", "originPrice"], 0);
 }
 
+// 兼容你 HTML 里 sortSelect 的值：
+// - sales_desc（默认）
+// - price_asc / price_desc
+function getSalesForSort(p) {
+  return getNum(p, ["sales", "sold", "soldCount", "monthlySales", "salesCount"], 0);
+}
+
 function applyFilterAndRender() {
-  if (!gridEl) return;
-  if (!window.FBCard) return;
+  if (!gridEl || !window.FBCard) return;
 
-  let list = [...productsView];
+  let list = [...productsViewAll];
 
-  // 搜索（支持局部搜索框/全局搜索框）
+  // 搜索（支持局部/全局）
   const kw =
     (searchInputEl && searchInputEl.value.trim()) ||
     (globalSearchInput && globalSearchInput.value.trim()) ||
@@ -139,14 +176,25 @@ function applyFilterAndRender() {
     );
   }
 
+  // ✅ 分类过滤（pills）
+  if (currentFilter && currentFilter !== "all") {
+    list = list.filter((p) => {
+      const cat = String(p.category || "").trim();
+      const sub = String(p.subCategory || "").trim();
+      return cat === currentFilter || sub === currentFilter;
+    });
+  }
+
   // 排序
-  const sortVal = sortSelectEl?.value || "default";
-  if (sortVal === "priceAsc" || sortVal === "priceDesc") {
+  const sortVal = sortSelectEl?.value || "sales_desc";
+  if (sortVal === "price_asc" || sortVal === "price_desc") {
     list.sort((a, b) => {
       const pa = getPriceForSort(a);
       const pb = getPriceForSort(b);
-      return sortVal === "priceAsc" ? pa - pb : pb - pa;
+      return sortVal === "price_asc" ? pa - pb : pb - pa;
     });
+  } else if (sortVal === "sales_desc") {
+    list.sort((a, b) => getSalesForSort(b) - getSalesForSort(a));
   }
 
   // 渲染
@@ -154,18 +202,17 @@ function applyFilterAndRender() {
     gridEl.innerHTML = "";
     if (emptyTipEl) {
       emptyTipEl.style.display = "block";
-      emptyTipEl.textContent = "当前没有特价商品。";
+      emptyTipEl.textContent = "当前筛选条件下没有商品。";
     }
     return;
   }
-  if (emptyTipEl) emptyTipEl.style.display = "none";
 
-  // ✅ 关键：统一用公共渲染器输出卡片（跟分类页一致）
+  if (emptyTipEl) emptyTipEl.style.display = "none";
   window.FBCard.renderGrid(gridEl, list, { badgeText: "" });
 }
 
 // ============================
-// 加载特价商品（只拿数据，不自己拼卡）
+// 加载商品（只拿数据 -> 特价过滤 -> expand -> pills -> render）
 // ============================
 async function loadDailySpecialProducts() {
   if (!gridEl) return;
@@ -173,7 +220,6 @@ async function loadDailySpecialProducts() {
   gridEl.innerHTML = "";
   if (emptyTipEl) emptyTipEl.style.display = "none";
 
-  // ✅ 必须有渲染器
   if (!window.FBCard) {
     console.error("❌ FBCard 不存在：请检查是否引入 product_card_renderer.js");
     if (emptyTipEl) {
@@ -191,18 +237,20 @@ async function loadDailySpecialProducts() {
 
     if (!res.ok) throw new Error(data?.message || data?.msg || "加载失败");
 
-    // ✅ 复用渲染器的 list 提取（兼容数组/包装对象）
     const list = window.FBCard.extractList(data);
-
-    // 清理删除态
     const cleaned = list.filter((p) => !p.isDeleted && p.deleted !== true && p.status !== "deleted");
 
-    // ✅ DailySpecial：只保留特价
+    // ✅ 只保留特价
     productsRaw = cleaned.filter((p) => isDailySpecialProduct(p));
 
-    // ✅ 拆卡：单卖/整箱两张卡（跟首页/分类页一致）
-    productsView = window.FBCard.expand(productsRaw);
+    // ✅ 拆卡：单卖/整箱两张
+    productsViewAll = window.FBCard.expand(productsRaw);
 
+    // ✅ 分类 pills 重建
+    currentFilter = "all";
+    rebuildCategoryPills();
+
+    // ✅ 渲染
     applyFilterAndRender();
   } catch (err) {
     console.error("加载 DailySpecial 商品失败:", err);
@@ -214,42 +262,22 @@ async function loadDailySpecialProducts() {
 }
 
 // ============================
-// DOMContentLoaded 初始化（对齐 category.js）
+// 初始化（绑定事件 + 购物车抽屉 + 库存轮询）
 // ============================
 document.addEventListener("DOMContentLoaded", () => {
-  // ✅ 统一商品卡：全局绑定（只做一次，会自动去重）
+  // 1) FBCard 全局绑定（加购/黑框+/-/徽章）
   if (window.FBCard && typeof window.FBCard.ensureGlobalBindings === "function") {
     window.FBCard.ensureGlobalBindings();
   } else {
     console.warn("❌ FBCard.ensureGlobalBindings 不存在：检查 product_card_renderer.js 是否引入/顺序是否正确");
   }
 
-  // ✅ DailySpecial 也开启库存轮询（跟首页/分类页一样）
+  // 2) 库存轮询（跟分类页一致）
   if (window.FBCard && typeof window.FBCard.startStockPolling === "function") {
-    window.FBCard.startStockPolling(); // 默认 15s，可传 ms
+    window.FBCard.startStockPolling();
   }
-  // ===== 自检：购物车抽屉为什么没反应（缺 DOM / 缺 cart.js）=====
-const needIds = [
-  "cartIcon","cartBackdrop","cartDrawer","cartCloseBtn",
-  "cartCount","cartTotalItems","cartEmptyText","cartItemsList",
-  "addCartToast","goCartBtn"
-];
-const missing = needIds.filter(id => !document.getElementById(id));
-if (missing.length) {
-  console.error("❌ DailySpecial 缺少购物车 DOM（所以点购物车没反应）:", missing);
-} else {
-  console.log("✅ DailySpecial 购物车 DOM 齐全");
-}
 
-if (!window.FreshCart) {
-  console.error("❌ window.FreshCart 不存在：cart.js 没加载（检查 script 路径/顺序）");
-} else if (!window.FreshCart.initCartUI) {
-  console.error("❌ FreshCart.initCartUI 不存在：cart.js 版本不对或未暴露该方法");
-} else {
-  console.log("✅ FreshCart.initCartUI 存在");
-}
-
-  // ✅ 先初始化购物车抽屉（点购物车图标才会弹）
+  // 3) 购物车抽屉 UI
   if (window.FreshCart && window.FreshCart.initCartUI) {
     window.FreshCart.initCartUI({
       cartIconId: "cartIcon",
@@ -265,13 +293,13 @@ if (!window.FreshCart) {
       cartPageUrl: "/user/cart.html",
     });
   } else {
-    console.warn("FreshCart.initCartUI 不存在，请确认已经引入 cart.js");
+    console.warn("❌ FreshCart.initCartUI 不存在：请确认 cart.js 已引入且顺序正确");
   }
 
-  // ✅ 加载商品
+  // 4) 加载商品
   loadDailySpecialProducts();
 
-  // ✅ 控件监听（有就生效，没有就忽略）
+  // 5) 控件监听
   if (sortSelectEl) sortSelectEl.addEventListener("change", applyFilterAndRender);
 
   if (searchInputEl) {

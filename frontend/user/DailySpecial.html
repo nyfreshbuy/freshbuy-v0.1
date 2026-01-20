@@ -35,11 +35,23 @@
       border-radius:999px; min-width:20px; text-align:center; display:none;
     }
 
-    .filter-wrap{
-      max-width:1400px; margin:0 auto; padding:8px 14px 10px;
-      display:flex; gap:10px; align-items:center; justify-content:space-between;
-      border-top:1px solid #f3f4f6;
-    }
+   /* ✅ 分类条：吸顶一直显示在屏幕里（在 top-nav 下面） */
+.filter-wrap{
+  max-width:1400px;
+  margin:0 auto;
+  padding:8px 14px 10px;
+  display:flex;
+  gap:10px;
+  align-items:center;
+  justify-content:space-between;
+
+  border-top:1px solid #f3f4f6;
+  background:#fff;
+
+  position: sticky;
+  top: 58px;           /* ✅ 这里是 top-nav-inner 的高度，必要时微调 54~70 */
+  z-index: 60;
+}
     .filter-bar{
       display:flex; gap:8px; overflow-x:auto; padding-bottom:2px;
       -webkit-overflow-scrolling: touch;
