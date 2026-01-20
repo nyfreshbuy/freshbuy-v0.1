@@ -9,9 +9,10 @@
   <style>
     :root{
       --app-shadow: 0 6px 16px rgba(15,23,42,.10);
+      --cart-top-offset: 0px; /* ✅ JS 会动态写入：让购物车抽屉从顶栏下面开始 */
     }
 
-    /* ✅ 顶部两排一起 sticky：购物车行 + 分类行 都一直在屏幕顶上 */
+    /* ✅ 顶部两排一起 sticky：购物车行 + 分类行 */
     .top-nav{
       position: sticky;
       top: 0;
@@ -42,17 +43,19 @@
 
     .cart-icon{
       position:relative;
-      width:38px;height:38px;border-radius:999px;
+      width:40px;height:40px;border-radius:14px;
       background:#0f172a;
       display:flex;align-items:center;justify-content:center;
       color:#e5e7eb;
       cursor:pointer;
       user-select:none;
+      box-shadow: 0 10px 18px rgba(15,23,42,.18);
     }
     .cart-count-badge{
-      position:absolute; top:-4px; right:-4px;
-      background:#ef4444; color:#fff; font-size:10px; padding:0 6px;
-      border-radius:999px; min-width:20px; text-align:center; display:none;
+      position:absolute; top:-6px; right:-6px;
+      background:#ef4444; color:#fff; font-size:11px; padding:2px 7px;
+      border-radius:999px; min-width:22px; text-align:center; display:none;
+      box-shadow: 0 6px 14px rgba(239,68,68,.25);
     }
 
     .filter-wrap{
@@ -76,59 +79,144 @@
     .filter-bar::-webkit-scrollbar{display:none;}
     .filter-pill{
       flex:0 0 auto;
-      padding:8px 12px;
+      padding:10px 14px;
       border-radius:999px;
       border:1px solid #e5e7eb;
       background:#fff;
-      font-size:13px;
+      font-size:14px;
       cursor:pointer;
       white-space:nowrap;
+      font-weight:800;
     }
     .filter-pill.active{
       border-color:rgba(34,197,94,.9);
       background:linear-gradient(135deg,#ecfdf3,#dcfce7);
       color:#15803d;
-      font-weight:800;
+      font-weight:900;
     }
 
     .sort-box{display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;white-space:nowrap;}
-    .sort-select{padding:8px 10px;border-radius:10px;border:1px solid #e5e7eb;background:#fff;font-size:13px;outline:none;}
+    .sort-select{padding:10px 12px;border-radius:12px;border:1px solid #e5e7eb;background:#fff;font-size:14px;outline:none;font-weight:900;}
 
     .page{max-width:1400px;margin:0 auto;padding:14px 14px 30px;}
     .page-title{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;margin:6px 0 10px;}
     .page-title h2{margin:0;font-size:18px;}
     .page-title .sub{color:#6b7280;font-size:12px;}
 
+    /* =========================================================
+       ✅ 关键修复 1：把 renderer 的“加入购物车”条做成首页那种大按钮
+       （你现在截图里小，就是这里被压了）
+       ========================================================= */
+    #normalGrid .product-add-fixed{
+      height: 48px !important;
+      border-radius: 16px !important;
+      font-size: 16px !important;
+      font-weight: 900 !important;
+      letter-spacing: .02em !important;
+      background:#22c55e !important;
+      color:#fff !important;
+      border:none !important;
+    }
+    #normalGrid .product-add-fixed:disabled{opacity:.55 !important;}
+
+    /* 有些卡片用 overlay 按钮（加购/售罄）也统一变大 */
+    #normalGrid .overlay-btn.add,
+    #normalGrid .overlay-btn.primary{
+      height: 46px !important;
+      border-radius: 16px !important;
+      font-size: 16px !important;
+      font-weight: 900 !important;
+      background:#22c55e !important;
+      color:#fff !important;
+      border:none !important;
+    }
+    #normalGrid .overlay-btn:disabled{opacity:.55 !important;}
+
+    /* toast */
     .add-cart-toast{
-      position:fixed; top:70px; left:50%;
+      position:fixed;
+      top: calc(var(--cart-top-offset) + 12px);
+      left:50%;
       transform:translateX(-50%) translateY(-16px);
       background:#111827; color:#f9fafb;
-      padding:6px 14px; border-radius:999px; font-size:12px;
-      box-shadow:0 8px 20px rgba(15,23,42,.4);
+      padding:7px 14px; border-radius:999px; font-size:12px;
+      box-shadow:0 10px 22px rgba(15,23,42,.35);
       opacity:0; pointer-events:none;
       transition: opacity .25s ease, transform .25s ease;
       z-index:99999; white-space:nowrap;
     }
     .add-cart-toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
 
-    /* ✅ 强制“加入购物车”按钮用首页那种绿色（防止被别的 CSS 覆盖成灰框） */
-    #normalGrid .product-add-fixed,
-    #normalGrid .overlay-btn.add,
-    #normalGrid .overlay-btn.primary,
-    #normalGrid button[data-action="add-to-cart"],
-    #normalGrid button[data-action="add"],
-    #normalGrid .btn-add-cart{
-      background:#22c55e !important;
-      color:#fff !important;
-      border:none !important;
-      font-weight:900 !important;
+    /* =========================================================
+       ✅ 关键修复 2：购物车抽屉“跟首页一样”
+       - 不被顶栏盖住：top 用 --cart-top-offset
+       ========================================================= */
+    .cart-backdrop{
+      position:fixed; inset:0;
+      background:rgba(15,23,42,.45);
+      display:none;
+      z-index: 99990;
+    }
+    .cart-backdrop.active{display:block;}
+
+    .cart-drawer{
+      position:fixed;
+      right:0;
+      top: var(--cart-top-offset);
+      height: calc(100vh - var(--cart-top-offset));
+      width:360px;
+      max-width:92vw;
+      background:#fff;
+      box-shadow:-12px 0 30px rgba(15,23,42,.18);
+      transform:translateX(110%);
+      transition:transform .25s ease;
+      z-index: 99999;
+      display:flex;
+      flex-direction:column;
+      border-left:1px solid #eef2f7;
+    }
+    .cart-drawer.active{transform:translateX(0);}
+
+    .cart-drawer-header{
+      padding:12px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      border-bottom:1px solid #eef2f7;
+    }
+    .cart-close-btn{
+      width:36px;height:36px;
+      border-radius:12px;
+      border:1px solid #e5e7eb;
+      background:#fff;
+      cursor:pointer;
+      font-weight:900;
+    }
+    .cart-drawer-body{padding:12px; overflow:auto; flex:1;}
+    .cart-empty{padding:12px; color:#6b7280; font-size:13px;}
+    .cart-items{display:flex; flex-direction:column; gap:10px;}
+    .cart-drawer-footer{padding:12px; border-top:1px solid #eef2f7;}
+    .cart-go-btn{
+      width:100%;
+      height:46px;
+      border:none;
+      border-radius:14px;
+      background:#0f172a;
+      color:#fff;
+      font-weight:900;
+      cursor:pointer;
+    }
+
+    @media (max-width: 520px){
+      .top-nav-inner{padding:10px 12px;}
+      .filter-wrap{padding:8px 12px 10px;}
+      .page{padding-left:12px;padding-right:12px;}
     }
   </style>
 </head>
 
 <body>
   <header class="top-nav" id="topNav">
-    <!-- ✅ 第一排：标题 + 返回 + 购物车（一直固定） -->
     <div class="top-nav-inner">
       <div class="logo-area" onclick="location.href='/user/index.html'">
         <div class="logo-badge">鲜</div>
@@ -150,7 +238,6 @@
       </div>
     </div>
 
-    <!-- ✅ 第二排：分类 pills + 排序（一直固定） -->
     <div class="filter-wrap">
       <div class="filter-bar" id="filterBar"></div>
       <div class="sort-box">
@@ -170,48 +257,66 @@
     <div class="page-title">
       <div>
         <h2>✅ 精选好物</h2>
-        <div class="sub">Normal = 排除 爆品/特价/新品/畅销 后的全部普通商品</div>
+        <div class="sub">Normal = 排除 爆品/特价/新品/畅销 后的普通商品</div>
       </div>
     </div>
 
     <div class="product-grid" id="normalGrid"></div>
   </main>
 
-  <!-- ✅ 必须：购物车抽屉 DOM（否则右上角购物车没反应） -->
+  <!-- ✅ 购物车抽屉 DOM（必须有这些 ID，cart.js 才能绑定） -->
   <div class="cart-backdrop" id="cartBackdrop"></div>
-  <aside class="cart-drawer" id="cartDrawer">
+
+  <aside class="cart-drawer" id="cartDrawer" aria-hidden="true">
     <div class="cart-drawer-header">
       <div style="font-weight:900;">购物车</div>
       <button type="button" class="cart-close-btn" id="cartCloseBtn">✕</button>
     </div>
+
     <div class="cart-drawer-body">
-      <div style="font-size:12px;color:#6b7280;margin-bottom:10px;">
+      <div style="font-size:12px;color:#6b7280; margin-bottom:10px;">
         共 <span id="cartTotalItems">0</span> 件
       </div>
-      <div class="cart-empty" id="cartEmptyText" style="display:none;">购物车还是空的，快去挑点好东西～</div>
+
+      <div class="cart-empty" id="cartEmptyText" style="display:none;">
+        购物车还是空的，快去挑点好东西～
+      </div>
+
       <div class="cart-items" id="cartItemsList"></div>
     </div>
+
     <div class="cart-drawer-footer">
       <button type="button" class="cart-go-btn" id="goCartBtn">去购物车结算</button>
     </div>
   </aside>
 
-  <!-- ✅ 脚本顺序：cart → renderer → page -->
+  <!-- ✅ 顺序必须：cart → renderer → Normal -->
   <script src="/user/assets/js/cart.js?v=10"></script>
   <script src="/user/assets/js/product_card_renderer.js?v=2"></script>
   <script src="/user/assets/js/Normal.js?v=2"></script>
 
-  <!-- ✅ 滚动时顶栏加轻微阴影（更 App 感） -->
+  <!-- ✅ 顶栏阴影 + 计算购物车抽屉 top 偏移（不被顶栏盖住） -->
   <script>
     (function () {
       const topNav = document.getElementById("topNav");
+
+      function applyTopOffset(){
+        if (!topNav) return;
+        const h = Math.ceil(topNav.getBoundingClientRect().height || 0);
+        document.documentElement.style.setProperty("--cart-top-offset", h + "px");
+      }
+
       function onScroll(){
         if (!topNav) return;
         if (window.scrollY > 4) topNav.classList.add("is-scrolled");
         else topNav.classList.remove("is-scrolled");
       }
+
+      applyTopOffset();
       onScroll();
-      window.addEventListener("scroll", onScroll, { passive: true });
+      window.addEventListener("resize", applyTopOffset, { passive:true });
+      window.addEventListener("orientationchange", applyTopOffset, { passive:true });
+      window.addEventListener("scroll", onScroll, { passive:true });
     })();
   </script>
 </body>
