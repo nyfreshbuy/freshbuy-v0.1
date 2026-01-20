@@ -7,16 +7,8 @@
   <link rel="stylesheet" href="./assets/css/main.css?v=10" />
 
   <style>
-    /* =========================================================
-       ✅ 最终方案：分类条（pills+排序）永远固定在屏幕顶部
-       - 用 fixed（不是 sticky）
-       - 自动计算高度给内容让位
-       - 滚动加阴影（App 感）
-       - iOS/微信：避免 transform 让 fixed 失效
-       ========================================================= */
-
     :root{
-      --filterbar-h: 62px; /* JS 动态覆盖 */
+      --sticky-h: 120px; /* JS 动态覆盖 */
       --app-shadow: 0 4px 12px rgba(15,23,42,.10);
     }
 
@@ -28,12 +20,32 @@
       contain: none !important;
     }
 
+    /* ===============================
+       ✅ 顶部固定壳：标题栏 + 分类条
+       =============================== */
+    .daily-sticky{
+      position: fixed !important;
+      top: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      z-index: 9000 !important; /* 顶部固定栏（低于购物车抽屉） */
+      background: #fff !important;
+
+      /* iPhone 刘海安全区 */
+      padding-top: env(safe-area-inset-top) !important;
+
+      transition: box-shadow .2s ease;
+      border-bottom: 1px solid #eef2f7;
+    }
+    .daily-sticky.is-scrolled{
+      box-shadow: var(--app-shadow);
+    }
+
     /* ======================
-       顶部区域（标题那块）
+       顶部标题栏（含购物车）
        ====================== */
     .top-title{
       background:#fff;
-      border-bottom:1px solid #eef2f7;
     }
     .top-title-inner{
       max-width:1400px;
@@ -100,27 +112,13 @@
       box-shadow: 0 6px 14px rgba(239,68,68,.25);
     }
 
-    /* ==========================================
-       ✅ 分类条：固定在屏幕顶部（永远不跑）
-       ========================================== */
+    /* ======================
+       分类条（pills + 排序）
+       ====================== */
     .filter-wrap{
-      position: fixed !important;
-      top: 0 !important;
-      left: 0 !important;
-      right: 0 !important;
-      z-index: 999999 !important;
-      background:#fff !important;
-      border-bottom: 1px solid #eef2f7 !important;
-
-      /* iPhone 刘海安全区 */
-      padding-top: env(safe-area-inset-top) !important;
-
-      transition: box-shadow .2s ease;
+      background:#fff;
+      border-top:1px solid #f3f4f6;
     }
-    .filter-wrap.is-scrolled{
-      box-shadow: var(--app-shadow);
-    }
-
     .filter-wrap-inner{
       max-width:1400px;
       margin:0 auto;
@@ -180,11 +178,11 @@
     }
 
     /* ======================
-       Toast
+       Toast（在固定栏下方）
        ====================== */
     .add-cart-toast{
       position:fixed;
-      top: calc(env(safe-area-inset-top) + 72px);
+      top: calc(env(safe-area-inset-top) + var(--sticky-h) + 10px);
       left:50%;
       transform:translateX(-50%) translateY(-16px);
       background:#111827;
@@ -196,19 +194,19 @@
       opacity:0;
       pointer-events:none;
       transition: opacity .25s ease, transform .25s ease;
-      z-index:999999;
+      z-index: 12000; /* 比顶部栏高，避免被遮 */
       white-space:nowrap;
     }
     .add-cart-toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
 
     /* ======================
-       页面主体：给 fixed 分类条让位（JS 写 --filterbar-h）
+       页面主体：给顶部固定栏让位
        ====================== */
     main.page{
       max-width:1400px;
       margin:0 auto;
       padding: 14px 14px 30px;
-      padding-top: calc(var(--filterbar-h) + 12px) !important;
+      padding-top: calc(env(safe-area-inset-top) + var(--sticky-h) + 12px) !important;
     }
 
     .page-title{
@@ -240,13 +238,13 @@
     .overlay-btn.add:disabled{opacity:.55 !important;}
 
     /* ======================
-       购物车抽屉（兜底）
+       ✅ 购物车抽屉：永远盖过顶部固定栏
        ====================== */
     .cart-backdrop{
       position:fixed; inset:0;
       background:rgba(15,23,42,.45);
       display:none;
-      z-index: 999998;
+      z-index: 20000; /* > 9000 */
     }
     .cart-backdrop.active{display:block;}
 
@@ -261,7 +259,7 @@
       box-shadow:-12px 0 30px rgba(15,23,42,.18);
       transform:translateX(110%);
       transition:transform .25s ease;
-      z-index: 999999;
+      z-index: 20001; /* > backdrop */
       display:flex;
       flex-direction:column;
       border-left:1px solid #eef2f7;
@@ -309,42 +307,43 @@
 
 <body class="page-daily">
 
-  <!-- 标题区（不固定，正常在文档流里） -->
-  <div class="top-title">
-    <div class="top-title-inner">
-      <div class="logo-area" onclick="location.href='/user/index.html'">
-        <div class="logo-badge">鲜</div>
-        <div>
-          <div class="logo-text-main">家庭必备专区</div>
-          <div class="logo-sub">常备清单 · 高频复购 · 一站补齐</div>
+  <!-- ✅ 顶部固定栏：标题 + 分类条 -->
+  <div class="daily-sticky" id="dailySticky">
+    <div class="top-title">
+      <div class="top-title-inner">
+        <div class="logo-area" onclick="location.href='/user/index.html'">
+          <div class="logo-badge">鲜</div>
+          <div>
+            <div class="logo-text-main">家庭必备专区</div>
+            <div class="logo-sub">常备清单 · 高频复购 · 一站补齐</div>
+          </div>
         </div>
-      </div>
 
-      <div class="right-actions">
-        <button type="button" class="back-home-btn" onclick="location.href='/user/index.html'">
-          ← 返回首页
-        </button>
+        <div class="right-actions">
+          <button type="button" class="back-home-btn" onclick="location.href='/user/index.html'">
+            ← 返回首页
+          </button>
 
-        <div class="cart-icon" id="cartIcon" title="打开购物车">
-          🛒
-          <span class="cart-count-badge" id="cartCount">0</span>
+          <div class="cart-icon" id="cartIcon" title="打开购物车">
+            🛒
+            <span class="cart-count-badge" id="cartCount">0</span>
+          </div>
         </div>
       </div>
     </div>
-  </div>
 
-  <!-- ✅ 分类条（固定在屏幕顶部） -->
-  <div class="filter-wrap" id="filterWrap">
-    <div class="filter-wrap-inner">
-      <div class="filter-bar" id="filterBar"></div>
+    <div class="filter-wrap" id="filterWrap">
+      <div class="filter-wrap-inner">
+        <div class="filter-bar" id="filterBar"></div>
 
-      <div class="sort-box">
-        <span>排序</span>
-        <select class="sort-select" id="sortSelect">
-          <option value="sales_desc">销量高 → 低</option>
-          <option value="price_asc">价格低 → 高</option>
-          <option value="price_desc">价格高 → 低</option>
-        </select>
+        <div class="sort-box">
+          <span>排序</span>
+          <select class="sort-select" id="sortSelect">
+            <option value="sales_desc">销量高 → 低</option>
+            <option value="price_asc">价格低 → 高</option>
+            <option value="price_desc">价格高 → 低</option>
+          </select>
+        </div>
       </div>
     </div>
   </div>
@@ -393,20 +392,20 @@
   <script src="/user/assets/js/product_card_renderer.js?v=2"></script>
   <script src="/user/assets/js/DailySpecial.js?v=3"></script>
 
-  <!-- ✅ 自动计算 fixed 分类条高度，给 main.page 让位 + 滚动阴影 -->
+  <!-- ✅ 自动计算“顶部固定栏”高度，给 main.page 让位 + 滚动阴影 -->
   <script>
     (function () {
-      const bar = document.getElementById("filterWrap");
-      if (!bar) return;
+      const sticky = document.getElementById("dailySticky");
+      if (!sticky) return;
 
       function applyHeight() {
-        const h = Math.ceil(bar.getBoundingClientRect().height || 0);
-        document.documentElement.style.setProperty("--filterbar-h", h + "px");
+        const h = Math.ceil(sticky.getBoundingClientRect().height || 0);
+        document.documentElement.style.setProperty("--sticky-h", h + "px");
       }
 
       function onScroll() {
-        if (window.scrollY > 4) bar.classList.add("is-scrolled");
-        else bar.classList.remove("is-scrolled");
+        if (window.scrollY > 4) sticky.classList.add("is-scrolled");
+        else sticky.classList.remove("is-scrolled");
       }
 
       applyHeight();
@@ -416,7 +415,6 @@
       window.addEventListener("orientationchange", applyHeight, { passive: true });
       window.addEventListener("scroll", onScroll, { passive: true });
 
-      /* ✅ 额外兜底：部分手机初次渲染高度会变化，延迟再算一次 */
       setTimeout(applyHeight, 60);
       setTimeout(applyHeight, 240);
     })();
