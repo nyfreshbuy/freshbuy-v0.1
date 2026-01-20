@@ -1,5 +1,5 @@
 // frontend/user/assets/js/DailySpecial.js
-console.log("✅ DailySpecial.js loaded (renderer-driven + sticky category pills FINAL)");
+console.log("✅ DailySpecial.js loaded (renderer-driven + sticky category pills FINAL + exclude HOT)");
 
 // =========================
 // Auth helpers（跟 category.js 一致）
@@ -63,9 +63,9 @@ function ensureEmptyTip() {
 // =========================
 // State
 // =========================
-let productsRaw = [];       // 原始商品（不拆卡）
-let productsViewAll = [];   // 拆卡后的全量视图（单卖/整箱两张）
-let currentFilter = "all";  // pills 选中值
+let productsRaw = []; // 原始商品（不拆卡）
+let productsViewAll = []; // 拆卡后的全量视图（单卖/整箱两张）
+let currentFilter = "all"; // pills 选中值
 
 // ============================
 // 特价判定（DailySpecial=所有特价）
@@ -86,6 +86,8 @@ function hasKeywordSimple(p, keyword) {
     p.mainCategory,
     p.subcategory,
     p.section,
+    p.name,
+    p.desc,
   ];
   if (fields.some((f) => norm(f).includes(kw))) return true;
   if (Array.isArray(p.tags) && p.tags.some((t) => norm(t).includes(kw))) return true;
@@ -107,6 +109,22 @@ function isDailySpecialProduct(p) {
     hasKeywordSimple(p, "特价") ||
     hasKeywordSimple(p, "家庭必备") ||
     hasKeywordSimple(p, "daily")
+  );
+}
+
+// ============================
+// ✅ 爆品识别（DailySpecial 需要排除爆品）
+// 跟 New/Best 统一：字段 + 关键词
+// ============================
+function isHotProduct(p) {
+  return (
+    isTrueFlag(p?.isHot) ||
+    isTrueFlag(p?.isHotDeal) ||
+    isTrueFlag(p?.hotDeal) ||
+    isTrueFlag(p?.hot) ||
+    hasKeywordSimple(p, "爆品") ||
+    hasKeywordSimple(p, "爆品日") ||
+    hasKeywordSimple(p, "hot")
   );
 }
 
@@ -245,7 +263,7 @@ function applyFilterAndRender() {
 }
 
 // ============================
-// 加载商品（只拿数据 -> 特价过滤 -> expand -> pills -> render）
+// 加载商品（只拿数据 -> 特价过滤 -> 排除爆品 -> expand -> pills -> render）
 // ============================
 async function loadDailySpecialProducts() {
   if (!gridEl) return;
@@ -271,11 +289,12 @@ async function loadDailySpecialProducts() {
 
     if (!res.ok) throw new Error(data?.message || data?.msg || "加载失败");
 
-    const list = window.FBCard.extractList(data);
+    const list = window.FBCard.extractList(data) || [];
     const cleaned = list.filter((p) => !p.isDeleted && p.deleted !== true && p.status !== "deleted");
 
-    // ✅ 只保留特价
-    productsRaw = cleaned.filter((p) => isDailySpecialProduct(p));
+    // ✅ 只保留特价，并且 ✅ 排除爆品
+    // 关键改动在这里：
+    productsRaw = cleaned.filter((p) => isDailySpecialProduct(p) && !isHotProduct(p));
 
     // ✅ 拆卡：单卖/整箱两张
     productsViewAll = window.FBCard.expand(productsRaw);
