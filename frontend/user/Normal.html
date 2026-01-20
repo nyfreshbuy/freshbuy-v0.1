@@ -2,132 +2,72 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <title>所有商品 - 在鲜购</title>
+  <title>精选好物 - 在鲜购</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <!-- ✅ 用绝对路径 + 版本号，避免缓存 -->
-  <link rel="stylesheet" href="/user/assets/css/main.css?v=10" />
+  <link rel="stylesheet" href="/user/assets/css/main.css?v=11" />
 
   <style>
-    .top-nav{
-      position: sticky; top:0; z-index: 50;
-      background:#fff; border-bottom:1px solid #eef2f7;
-    }
-    .top-nav-inner{
-      max-width: 1400px; margin:0 auto; padding:10px 14px;
-      display:flex; align-items:center; gap:12px; justify-content:space-between;
-    }
-    .logo-area{display:flex; align-items:center; gap:8px;}
-    .logo-badge{
-      width:32px;height:32px;border-radius:999px;
-      background: radial-gradient(circle at 30% 30%, #22c55e, #16a34a);
-      display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;
-    }
+    /* ===== 顶部两排：按 New 页面 ===== */
+    .top-nav{position:sticky;top:0;z-index:50;background:#fff;border-bottom:1px solid #eef2f7;}
+    .top-nav-inner{max-width:1400px;margin:0 auto;padding:10px 14px;display:flex;align-items:center;gap:12px;justify-content:space-between;}
+    .logo-area{display:flex;align-items:center;gap:8px;}
+    .logo-badge{width:32px;height:32px;border-radius:999px;background:radial-gradient(circle at 30% 30%, #22c55e, #16a34a);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;}
     .logo-text-main{font-weight:800;}
-    .right-actions{display:flex; align-items:center; gap:10px;}
-    .cart-icon{
-      position:relative; width:38px;height:38px;border-radius:999px;
-      background:#0f172a; display:flex;align-items:center;justify-content:center;
-      color:#e5e7eb; cursor:pointer;
-    }
-    .cart-count-badge{
-      position:absolute; top:-4px; right:-4px;
-      background:#ef4444; color:#fff; font-size:10px; padding:0 6px;
-      border-radius:999px; min-width:20px; text-align:center; display:none;
-    }
+    .right-actions{display:flex;align-items:center;gap:10px;}
+    .cart-icon{position:relative;width:38px;height:38px;border-radius:999px;background:#0f172a;display:flex;align-items:center;justify-content:center;color:#e5e7eb;cursor:pointer;}
+    .cart-count-badge{position:absolute;top:-4px;right:-4px;background:#ef4444;color:#fff;font-size:10px;padding:0 6px;border-radius:999px;min-width:20px;text-align:center;display:none;}
 
-    /* ✅ 筛选条 */
-    .filter-wrap{
-      max-width:1400px; margin:0 auto; padding:8px 14px 10px;
-      display:flex; gap:10px; align-items:center; justify-content:space-between;
-      border-top:1px solid #f3f4f6;
-    }
-    .filter-bar{
-      display:flex; gap:8px; overflow-x:auto; padding-bottom:2px;
-      -webkit-overflow-scrolling: touch;
-    }
+    .filter-wrap{max-width:1400px;margin:0 auto;padding:8px 14px 10px;display:flex;gap:10px;align-items:center;justify-content:space-between;border-top:1px solid #f3f4f6;}
+    .filter-bar{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px;-webkit-overflow-scrolling:touch;}
     .filter-bar::-webkit-scrollbar{display:none;}
-    .filter-pill{
-      flex:0 0 auto;
-      padding:8px 12px;
-      border-radius:999px;
-      border:1px solid #e5e7eb;
-      background:#fff;
-      font-size:13px;
-      cursor:pointer;
-      white-space:nowrap;
-    }
-    .filter-pill.active{
-      border-color:rgba(34,197,94,.9);
-      background:linear-gradient(135deg,#ecfdf3,#dcfce7);
-      color:#15803d;
-      font-weight:800;
-    }
+    .filter-pill{flex:0 0 auto;padding:8px 12px;border-radius:999px;border:1px solid #e5e7eb;background:#fff;font-size:13px;cursor:pointer;white-space:nowrap;}
+    .filter-pill.active{border-color:rgba(34,197,94,.9);background:linear-gradient(135deg,#ecfdf3,#dcfce7);color:#15803d;font-weight:800;}
 
-    .sort-box{
-      flex:0 0 auto;
-      display:flex; align-items:center; gap:6px;
-      font-size:12px; color:#6b7280;
-    }
-    .sort-select{
-      padding:8px 10px; border-radius:10px; border:1px solid #e5e7eb;
-      background:#fff; font-size:13px; outline:none;
-    }
+    .sort-box{flex:0 0 auto;display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;}
+    .sort-select{padding:8px 10px;border-radius:10px;border:1px solid #e5e7eb;background:#fff;font-size:13px;outline:none;}
 
-    .page{max-width:1400px; margin:0 auto; padding:14px 14px 30px;}
-    .page-title{display:flex; align-items:flex-end; justify-content:space-between; gap:10px; margin:6px 0 10px;}
-    .page-title h2{margin:0; font-size:18px;}
-    .page-title .sub{color:#6b7280; font-size:12px;}
+    .page{max-width:1400px;margin:0 auto;padding:14px 14px 30px;}
+    .page-title{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;margin:6px 0 10px;}
+    .page-title h2{margin:0;font-size:18px;}
+    .page-title .sub{color:#6b7280;font-size:12px;}
 
-    .add-cart-toast{
-      position:fixed; top:70px; left:50%;
-      transform:translateX(-50%) translateY(-16px);
-      background:#111827; color:#f9fafb;
-      padding:6px 14px; border-radius:999px; font-size:12px;
-      box-shadow:0 8px 20px rgba(15,23,42,.4);
-      opacity:0; pointer-events:none;
-      transition: opacity .25s ease, transform .25s ease;
-      z-index:9999; white-space:nowrap;
+    .add-cart-toast{position:fixed;top:70px;left:50%;transform:translateX(-50%) translateY(-16px);background:#111827;color:#f9fafb;padding:6px 14px;border-radius:999px;font-size:12px;box-shadow:0 8px 20px rgba(15,23,42,.4);opacity:0;pointer-events:none;transition:opacity .25s ease, transform .25s ease;z-index:9999;white-space:nowrap;}
+    .add-cart-toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+    /* ✅ 兜底：强制 renderer 的加入购物车按钮绿色（防止被别的 CSS 覆盖） */
+    #normalGrid .product-add-fixed,
+    #normalGrid .overlay-btn.add,
+    #normalGrid button[data-action="add-to-cart"],
+    #normalGrid button[data-action="add"]{
+      background:#22c55e !important;
+      color:#fff !important;
+      border:none !important;
+      font-weight:900 !important;
     }
-    .add-cart-toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
   </style>
 </head>
 
 <body>
-
   <header class="top-nav">
     <div class="top-nav-inner">
       <div class="logo-area" onclick="location.href='/user/index.html'" style="cursor:pointer;">
         <div class="logo-badge">鲜</div>
         <div>
-          <div class="logo-text-main">所有商品</div>
-          <div style="font-size:11px;color:#6b7280;">免费配送 · 无门槛 · 0元起送</div>
+          <div class="logo-text-main">精选好物专区</div>
+          <div style="font-size:11px;color:#6b7280;">NORMAL · 日常必买 · 全部精选</div>
         </div>
       </div>
 
       <div class="right-actions">
-  <!-- ✅ 返回首页按钮（新增） -->
-  <button
-    type="button"
-    onclick="location.href='/user/index.html'"
-    style="
-      padding:8px 12px;
-      border-radius:999px;
-      border:1px solid #e5e7eb;
-      background:#fff;
-      font-size:13px;
-      font-weight:600;
-      cursor:pointer;
-    "
-  >
-    ← 返回首页
-  </button>
+        <button type="button" onclick="location.href='/user/index.html'"
+          style="padding:8px 12px;border-radius:999px;border:1px solid #e5e7eb;background:#fff;font-size:13px;font-weight:600;cursor:pointer;">
+          ← 返回首页
+        </button>
 
-  <!-- 原来的购物车（不动） -->
-  <div class="cart-icon" id="cartIcon">
-    🛒
-    <span class="cart-count-badge" id="cartCount">0</span>
-  </div>
-</div>
+        <div class="cart-icon" id="cartIcon">
+          🛒 <span class="cart-count-badge" id="cartCount">0</span>
+        </div>
+      </div>
     </div>
 
     <div class="filter-wrap">
@@ -148,15 +88,36 @@
   <main class="page">
     <div class="page-title">
       <div>
-        <h2>🔥 所有商品</h2>
-        <div class="sub">所有商品</div>
+        <h2>✅ 精选好物</h2>
+        <div class="sub">Normal = 排除 爆品/特价/新品/畅销 后的全部普通商品</div>
       </div>
     </div>
 
-    <div id="normal-list" class="product-grid"></div>
+    <div class="product-grid" id="normalGrid"></div>
   </main>
 
+  <!-- ✅ 必须：购物车抽屉 DOM（否则点右上角没反应） -->
+  <div class="cart-backdrop" id="cartBackdrop"></div>
+  <aside class="cart-drawer" id="cartDrawer">
+    <div class="cart-drawer-header">
+      <div style="font-weight:900;">购物车</div>
+      <button type="button" class="cart-close-btn" id="cartCloseBtn">✕</button>
+    </div>
+    <div class="cart-drawer-body">
+      <div style="font-size:12px;color:#6b7280;margin-bottom:10px;">
+        共 <span id="cartTotalItems">0</span> 件
+      </div>
+      <div class="cart-empty" id="cartEmptyText" style="display:none;">购物车还是空的，快去挑点好东西～</div>
+      <div class="cart-items" id="cartItemsList"></div>
+    </div>
+    <div class="cart-drawer-footer">
+      <button type="button" class="cart-go-btn" id="goCartBtn">去购物车结算</button>
+    </div>
+  </aside>
+
+  <!-- ✅ 脚本顺序：cart → renderer → normal -->
   <script src="/user/assets/js/cart.js?v=10"></script>
-  <script src="/user/assets/js/Normal.js?v=10"></script>
+  <script src="/user/assets/js/product_card_renderer.js?v=2"></script>
+  <script src="/user/assets/js/Normal.js?v=1"></script>
 </body>
 </html>
