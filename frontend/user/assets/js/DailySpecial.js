@@ -228,6 +228,26 @@ document.addEventListener("DOMContentLoaded", () => {
   if (window.FBCard && typeof window.FBCard.startStockPolling === "function") {
     window.FBCard.startStockPolling(); // 默认 15s，可传 ms
   }
+  // ===== 自检：购物车抽屉为什么没反应（缺 DOM / 缺 cart.js）=====
+const needIds = [
+  "cartIcon","cartBackdrop","cartDrawer","cartCloseBtn",
+  "cartCount","cartTotalItems","cartEmptyText","cartItemsList",
+  "addCartToast","goCartBtn"
+];
+const missing = needIds.filter(id => !document.getElementById(id));
+if (missing.length) {
+  console.error("❌ DailySpecial 缺少购物车 DOM（所以点购物车没反应）:", missing);
+} else {
+  console.log("✅ DailySpecial 购物车 DOM 齐全");
+}
+
+if (!window.FreshCart) {
+  console.error("❌ window.FreshCart 不存在：cart.js 没加载（检查 script 路径/顺序）");
+} else if (!window.FreshCart.initCartUI) {
+  console.error("❌ FreshCart.initCartUI 不存在：cart.js 版本不对或未暴露该方法");
+} else {
+  console.log("✅ FreshCart.initCartUI 存在");
+}
 
   // ✅ 先初始化购物车抽屉（点购物车图标才会弹）
   if (window.FreshCart && window.FreshCart.initCartUI) {
