@@ -8,17 +8,19 @@
 
   <style>
     /* =========================================================
-       ✅ 终极方案：分类条（pills+排序）永远固定在屏幕顶部
-       兼容 iPhone/微信 fixed 被 transform 影响的坑
+       ✅ 最终方案：分类条（pills+排序）永远固定在屏幕顶部
+       - 用 fixed（不是 sticky）
+       - 自动计算高度给内容让位
+       - 滚动加阴影（App 感）
+       - iOS/微信：避免 transform 让 fixed 失效
        ========================================================= */
 
     :root{
-      --filterbar-h: 62px; /* JS 会动态覆盖 */
+      --filterbar-h: 62px; /* JS 动态覆盖 */
       --app-shadow: 0 4px 12px rgba(15,23,42,.10);
     }
 
-    /* 1) iOS/微信：若祖先有 transform，会导致 fixed 失效（跟着滚）
-          这里强制解除（只影响本页） */
+    /* iOS/微信：祖先 transform/filter/perspective 可能让 fixed 变“跟随滚动” */
     html, body{
       transform: none !important;
       filter: none !important;
@@ -136,6 +138,7 @@
       -webkit-overflow-scrolling: touch;
       padding-bottom:2px;
       flex: 1 1 auto;
+      min-width: 0;
     }
     .filter-bar::-webkit-scrollbar{display:none;}
 
@@ -205,7 +208,7 @@
       max-width:1400px;
       margin:0 auto;
       padding: 14px 14px 30px;
-      padding-top: calc(var(--filterbar-h) + 12px) !important; /* ✅ 让位 */
+      padding-top: calc(var(--filterbar-h) + 12px) !important;
     }
 
     .page-title{
@@ -304,7 +307,7 @@
   </style>
 </head>
 
-<body>
+<body class="page-daily">
 
   <!-- 标题区（不固定，正常在文档流里） -->
   <div class="top-title">
@@ -412,6 +415,10 @@
       window.addEventListener("resize", applyHeight, { passive: true });
       window.addEventListener("orientationchange", applyHeight, { passive: true });
       window.addEventListener("scroll", onScroll, { passive: true });
+
+      /* ✅ 额外兜底：部分手机初次渲染高度会变化，延迟再算一次 */
+      setTimeout(applyHeight, 60);
+      setTimeout(applyHeight, 240);
     })();
   </script>
 
