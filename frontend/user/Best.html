@@ -12,7 +12,6 @@
       --app-shadow: 0 6px 16px rgba(15,23,42,.10);
     }
 
-    /* ✅ iOS/微信：祖先 transform 会导致 sticky/fixed 异常，这里兜底 */
     html, body{
       transform: none !important;
       filter: none !important;
@@ -22,9 +21,6 @@
       max-width: 100%;
     }
 
-    /* =========================
-       ✅ 顶部整块：购物车+分类条 永远置顶
-       ========================= */
     header.sticky-shell{
       position: sticky;
       top: 0;
@@ -34,9 +30,7 @@
       transition: box-shadow .2s ease;
       padding-top: env(safe-area-inset-top);
     }
-    header.sticky-shell.is-scrolled{
-      box-shadow: var(--app-shadow);
-    }
+    header.sticky-shell.is-scrolled{ box-shadow: var(--app-shadow); }
 
     .top-nav-inner{
       max-width: 1400px;
@@ -91,9 +85,6 @@
       box-shadow: 0 6px 14px rgba(239,68,68,.25);
     }
 
-    /* =========================
-       ✅ pills + 排序（同属置顶块）
-       ========================= */
     .filter-wrap{
       max-width:1400px;
       margin:0 auto;
@@ -159,9 +150,6 @@
       font-weight:900;
     }
 
-    /* =========================
-       ✅ 主体：给置顶块让位（关键）
-       ========================= */
     main.page{
       max-width:1400px;
       margin:0 auto;
@@ -172,7 +160,6 @@
     .page-title h2{margin:0; font-size:18px;}
     .page-title .sub{color:#6b7280; font-size:12px;}
 
-    /* Toast */
     .add-cart-toast{
       position:fixed;
       top: calc(env(safe-area-inset-top) + 72px);
@@ -188,59 +175,31 @@
     }
     .add-cart-toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
 
-    /* ✅ 购物车抽屉（必须高于 header） */
-    .cart-backdrop{
-      position:fixed; inset:0;
-      background:rgba(15,23,42,.45);
-      display:none;
-      z-index:200000;
-    }
+    /* ✅ 抽屉必须高于 header */
+    .cart-backdrop{position:fixed; inset:0; background:rgba(15,23,42,.45); display:none; z-index:200000;}
     .cart-backdrop.active{display:block;}
     .cart-drawer{
-      position:fixed;
-      right:0; top:0;
-      height:100vh;
-      width:360px;
-      max-width:92vw;
-      background:#fff;
-      box-shadow:-12px 0 30px rgba(15,23,42,.18);
-      transform:translateX(110%);
-      transition:transform .25s ease;
-      z-index:200001;
-      display:flex;
-      flex-direction:column;
-      border-left:1px solid #eef2f7;
+      position:fixed; right:0; top:0; height:100vh; width:360px; max-width:92vw;
+      background:#fff; box-shadow:-12px 0 30px rgba(15,23,42,.18);
+      transform:translateX(110%); transition:transform .25s ease;
+      z-index:200001; display:flex; flex-direction:column; border-left:1px solid #eef2f7;
     }
     .cart-drawer.active{transform:translateX(0);}
     .cart-drawer-header{
-      padding:12px;
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      border-bottom:1px solid #eef2f7;
-      font-weight:900;
+      padding:12px; display:flex; align-items:center; justify-content:space-between;
+      border-bottom:1px solid #eef2f7; font-weight:900;
     }
     .cart-close-btn{
-      width:36px;height:36px;
-      border-radius:12px;
-      border:1px solid #e5e7eb;
-      background:#fff;
-      cursor:pointer;
-      font-weight:900;
+      width:36px;height:36px;border-radius:12px;border:1px solid #e5e7eb;background:#fff;
+      cursor:pointer;font-weight:900;
     }
     .cart-drawer-body{padding:12px; overflow:auto; flex:1;}
     .cart-empty{padding:12px; color:#6b7280; font-size:13px;}
     .cart-items{display:flex; flex-direction:column; gap:10px;}
     .cart-drawer-footer{padding:12px; border-top:1px solid #eef2f7;}
     .cart-go-btn{
-      width:100%;
-      height:46px;
-      border:none;
-      border-radius:14px;
-      background:#0f172a;
-      color:#fff;
-      font-weight:900;
-      cursor:pointer;
+      width:100%; height:46px; border:none; border-radius:14px;
+      background:#0f172a; color:#fff; font-weight:900; cursor:pointer;
     }
 
     @media (max-width:520px){
@@ -252,7 +211,6 @@
 </head>
 
 <body class="page-best">
-  <!-- ✅ 顶部置顶块：购物车行 + 分类 pills + 排序（全部一直置顶） -->
   <header class="sticky-shell" id="stickyShell">
     <div class="top-nav-inner">
       <div class="logo-area" onclick="location.href='/user/index.html'">
@@ -300,7 +258,7 @@
     <div class="product-grid" id="bestGrid"></div>
   </main>
 
-  <!-- ✅ 购物车抽屉 DOM（Best.js 会用 initCartUI 的话，也能直接用） -->
+  <!-- 抽屉 DOM -->
   <div class="cart-backdrop" id="cartBackdrop"></div>
   <aside class="cart-drawer" id="cartDrawer" aria-hidden="true">
     <div class="cart-drawer-header">
@@ -325,11 +283,12 @@
     </div>
   </aside>
 
-  <!-- ✅ 脚本顺序：cart → Best -->
+  <!-- ✅ 脚本顺序：cart → renderer → Best -->
   <script src="/user/assets/js/cart.js?v=10"></script>
+  <script src="/user/assets/js/product_card_renderer.js?v=2"></script>
   <script src="/user/assets/js/Best.js?v=1"></script>
 
-  <!-- ✅ 自动计算置顶块高度 + 滚动阴影（关键） -->
+  <!-- ✅ 置顶高度 + 滚动阴影 -->
   <script>
     (function(){
       const shell = document.getElementById("stickyShell");
@@ -346,14 +305,13 @@
 
       applyHeight();
       onScroll();
-
       window.addEventListener("resize", applyHeight, { passive:true });
       window.addEventListener("orientationchange", applyHeight, { passive:true });
       window.addEventListener("scroll", onScroll, { passive:true });
     })();
   </script>
 
-  <!-- ✅ 初始化购物车抽屉（如果你的 cart.js 提供 FreshCart.initCartUI） -->
+  <!-- ✅ 初始化购物车抽屉 -->
   <script>
     (function(){
       if (window.FreshCart && typeof window.FreshCart.initCartUI === "function") {
@@ -370,6 +328,12 @@
           goCartBtnId: "goCartBtn",
           cartPageUrl: "/user/cart.html",
         });
+      }
+      if (window.FBCard && typeof window.FBCard.ensureGlobalBindings === "function") {
+        window.FBCard.ensureGlobalBindings();
+      }
+      if (window.FBCard && typeof window.FBCard.startStockPolling === "function") {
+        window.FBCard.startStockPolling();
       }
     })();
   </script>
