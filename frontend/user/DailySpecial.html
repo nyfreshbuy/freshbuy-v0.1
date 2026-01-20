@@ -247,18 +247,20 @@
       </div>
 
       <!-- 分类 pills + 排序（JS 会往 #filterBar 塞按钮） -->
-      <div class="filter-wrap">
-        <div class="filter-bar" id="filterBar"></div>
+      <div class="filter-wrap" id="filterWrap">
+  <div class="filter-wrap-inner">
+    <div class="filter-bar" id="filterBar"></div>
 
-        <div class="sort-box">
-          <span>排序</span>
-          <select class="sort-select" id="sortSelect">
-            <option value="sales_desc">销量高 → 低</option>
-            <option value="price_asc">价格低 → 高</option>
-            <option value="price_desc">价格高 → 低</option>
-          </select>
-        </div>
-      </div>
+    <div class="sort-box amalgam-sort-box">
+      <span>排序</span>
+      <select class="sort-select" id="sortSelect">
+        <option value="sales_desc">销量高 → 低</option>
+        <option value="price_asc">价格低 → 高</option>
+        <option value="price_desc">价格高 → 低</option>
+      </select>
+    </div>
+  </div>
+</div>
     </header>
   </div>
 
