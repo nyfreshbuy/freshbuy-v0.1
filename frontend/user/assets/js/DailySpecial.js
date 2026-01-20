@@ -1,345 +1,252 @@
 // frontend/user/assets/js/DailySpecial.js
-// 家庭必备 = 所有特价商品（Special Deals）
-// ✅ 已加入：商品卡片数量徽章（购物车数量）统一逻辑（含 pid 兜底）
+console.log("DailySpecial page script loaded (renderer-driven)");
 
-console.log("✅ DailySpecial.js loaded (Family = Special)");
+// =========================
+// Auth helpers（跟 category.js 一样，保证接口需要 token 时也能用）
+// =========================
+const AUTH_TOKEN_KEY = "freshbuy_token";
 
-(() => {
-  const GRID_ID = "dailyGrid";
-  const API_CANDIDATES = [
-    "/api/products-simple", // 你首页正在用的
-    "/api/products/public",
-    "/api/products",
+function getToken() {
+  return localStorage.getItem(AUTH_TOKEN_KEY) || "";
+}
+function clearToken() {
+  localStorage.removeItem(AUTH_TOKEN_KEY);
+}
+
+async function apiFetch(url, options = {}) {
+  const headers = Object.assign({}, options.headers || {});
+  headers["Content-Type"] = headers["Content-Type"] || "application/json";
+
+  const tk = getToken();
+  if (tk) headers.Authorization = "Bearer " + tk;
+
+  const res = await fetch(url, { ...options, headers });
+
+  let data = null;
+  try {
+    data = await res.json();
+  } catch {
+    data = null;
+  }
+
+  if (res.status === 401) clearToken();
+  return { res, data };
+}
+
+// =========================
+// DOM refs（有就用，没有也不报错）
+// =========================
+const gridEl = document.getElementById("dailyGrid");
+const emptyTipEl = document.getElementById("emptyTip");
+
+const sortSelectEl = document.getElementById("sortSelect");
+const searchInputEl = document.getElementById("searchInput");
+const globalSearchInput = document.getElementById("globalSearchInput");
+
+let productsRaw = [];   // 原始商品（不拆卡）
+let productsView = [];  // 拆卡后的视图（单卖/整箱两张）
+
+// ============================
+// Special deal 判定（按你项目字段做“尽量兼容”）
+// ============================
+function isTrueFlag(v) {
+  return v === true || v === "true" || v === 1 || v === "1";
+}
+
+function hasKeywordSimple(p, keyword) {
+  if (!p) return false;
+  const kw = String(keyword).toLowerCase();
+  const norm = (v) => (v ? String(v).toLowerCase() : "");
+  const fields = [
+    p.tag,
+    p.type,
+    p.category,
+    p.subCategory,
+    p.mainCategory,
+    p.subcategory,
+    p.section,
   ];
+  if (fields.some((f) => norm(f).includes(kw))) return true;
+  if (Array.isArray(p.tags) && p.tags.some((t) => norm(t).includes(kw))) return true;
+  if (Array.isArray(p.labels) && p.labels.some((t) => norm(t).includes(kw))) return true;
+  return false;
+}
 
-  const CART_KEYS = ["freshbuy_cart", "freshbuyCart", "cart", "cart_items"];
+function isSpecialDeal(p) {
+  return (
+    isTrueFlag(p?.hasSpecial) ||
+    isTrueFlag(p?.isSpecial) ||
+    isTrueFlag(p?.isSpecialDeal) ||
+    isTrueFlag(p?.specialDeal) ||
+    Number(p?.specialPrice || 0) > 0 ||
+    Number(p?.specialQty || 0) > 0 ||
+    Number(p?.specialTotalPrice || 0) > 0 ||
+    hasKeywordSimple(p, "special") ||
+    hasKeywordSimple(p, "deal") ||
+    hasKeywordSimple(p, "特价") ||
+    hasKeywordSimple(p, "家庭必备") ||
+    hasKeywordSimple(p, "daily")
+  );
+}
 
-  function $(id) {
-    return document.getElementById(id);
-  }
-
-  function toNum(v) {
+// ============================
+// 排序/搜索（跟 category.js 一致思想：最后 renderGrid）
+// ============================
+function getNum(p, keys, def = 0) {
+  for (const k of keys) {
+    const v = p?.[k];
     const n = Number(v);
-    return Number.isFinite(n) ? n : 0;
+    if (!Number.isNaN(n) && Number.isFinite(n) && n !== 0) return n;
+  }
+  return def;
+}
+
+function getPriceForSort(p) {
+  // ✅ 拆卡视图：整箱卡优先 __displayPrice
+  const vPrice = p?.__displayPrice;
+  if (vPrice != null && Number.isFinite(Number(vPrice))) return Number(vPrice);
+  return getNum(p, ["price", "flashPrice", "specialPrice", "originPrice"], 0);
+}
+
+function applyFilterAndRender() {
+  if (!gridEl || !window.FBCard) return;
+
+  let list = [...productsView];
+
+  // 搜索
+  const kw =
+    (searchInputEl && searchInputEl.value.trim()) ||
+    (globalSearchInput && globalSearchInput.value.trim()) ||
+    "";
+
+  if (kw) {
+    const lower = kw.toLowerCase();
+    list = list.filter(
+      (p) =>
+        (p.name || "").toLowerCase().includes(lower) ||
+        (p.__displayName || "").toLowerCase().includes(lower) ||
+        (p.desc || "").toLowerCase().includes(lower)
+    );
   }
 
-  function isTrueFlag(v) {
-    return v === true || v === "true" || v === 1 || v === "1" || v === "yes";
-  }
-
-  // =========================
-  // ✅ 数量徽章：统一主键 + 读取购物车 + 显示徽章
-  // =========================
-  function fbPid(p) {
-    return String(p?._id || p?.id || p?.sku || p?.code || p?.productId || "").trim();
-  }
-
-  function fbGetCartRaw() {
-    for (const k of CART_KEYS) {
-      const s = localStorage.getItem(k);
-      if (s && String(s).trim()) {
-        try {
-          return JSON.parse(s);
-        } catch (e) {}
-      }
-    }
-    return null;
-  }
-
-  function fbBuildQtyMap() {
-    const raw = fbGetCartRaw();
-    const map = Object.create(null);
-    if (!raw) return map;
-
-    // 情况1：数组 [{id, qty}...]
-    if (Array.isArray(raw)) {
-      for (const it of raw) {
-        const pid = String(
-          it?._id || it?.id || it?.sku || it?.code || it?.productId || ""
-        ).trim();
-        const qty = Number(it?.qty ?? it?.count ?? it?.quantity ?? 0) || 0;
-        if (pid && qty > 0) map[pid] = (map[pid] || 0) + qty;
-      }
-      return map;
-    }
-
-    // 情况2：对象 { items: [...] }
-    if (raw && Array.isArray(raw.items)) {
-      for (const it of raw.items) {
-        const pid = String(
-          it?._id || it?.id || it?.sku || it?.code || it?.productId || ""
-        ).trim();
-        const qty = Number(it?.qty ?? it?.count ?? it?.quantity ?? 0) || 0;
-        if (pid && qty > 0) map[pid] = (map[pid] || 0) + qty;
-      }
-      return map;
-    }
-
-    // 情况3：对象本身就是 { pid: qty }
-    for (const [k, v] of Object.entries(raw)) {
-      const qty = Number(v) || 0;
-      if (k && qty > 0) map[k] = qty;
-    }
-    return map;
-  }
-
-  function fbRenderQtyBadge(cardEl, pid, qtyMap) {
-    const badge = cardEl.querySelector(".product-qty-badge");
-    if (!badge) return;
-    const q = Number(qtyMap[pid] || 0) || 0;
-    if (q > 0) {
-      badge.textContent = String(q);
-      badge.style.display = "flex";
-    } else {
-      badge.style.display = "none";
-    }
-  }
-
-  function fbRefreshAllBadges() {
-    const grid = $(GRID_ID);
-    if (!grid) return;
-    const qtyMap = fbBuildQtyMap();
-    grid.querySelectorAll(".product-card[data-pid]").forEach((card) => {
-      const pid = String(card.getAttribute("data-pid") || "").trim();
-      if (pid) fbRenderQtyBadge(card, pid, qtyMap);
+  // 排序
+  const sortVal = sortSelectEl?.value || "default";
+  if (sortVal === "priceAsc" || sortVal === "priceDesc") {
+    list.sort((a, b) => {
+      const pa = getPriceForSort(a);
+      const pb = getPriceForSort(b);
+      return sortVal === "priceAsc" ? pa - pb : pb - pa;
     });
   }
 
-  // =========================
-  // ✅ 特价判定（跟你 index.js 的价格逻辑一致）
-  // =========================
-  function isSpecialDeal(p) {
-    // 1) 后台开关
-    if (
-      isTrueFlag(p.isSpecial) ||
-      isTrueFlag(p.onSale) ||
-      isTrueFlag(p.isSale) ||
-      isTrueFlag(p.isDailySpecial)
-    )
-      return true;
-
-    // 2) sale/special/flash < basePrice
-    const basePrice = toNum(p.price ?? p.regularPrice ?? p.originPrice ?? 0);
-    const salePrice = toNum(
-      p.salePrice ?? p.specialPrice ?? p.discountPrice ?? p.flashPrice ?? 0
-    );
-    if (basePrice > 0 && salePrice > 0 && salePrice < basePrice) return true;
-
-    // 3) 划线价：originPrice > price
-    const origin = toNum(p.originPrice ?? p.originalPrice ?? 0);
-    const price = toNum(p.price ?? 0);
-    if (origin > 0 && price > 0 && origin > price) return true;
-
-    // 4) 折扣字段
-    const discount = toNum(p.discount ?? p.discountPercent ?? 0);
-    if (discount > 0) return true;
-
-    return false;
-  }
-
-  // ❌ 爆品判定（用于从家庭必备中排除）
-  function isHotProduct(p) {
-    if (isTrueFlag(p.isHot) || isTrueFlag(p.isHotDeal) || isTrueFlag(p.hotDeal)) return true;
-
-    const kw = (v) => (v ? String(v).toLowerCase() : "");
-    const fields = [p.tag, p.type, p.category, p.section];
-
-    if (fields.some((f) => kw(f).includes("爆品") || kw(f).includes("hot"))) return true;
-    if (Array.isArray(p.tags) && p.tags.some((t) => kw(t).includes("爆品"))) return true;
-
-    return false;
-  }
-
-  function getFinalPrice(p) {
-    const basePrice = toNum(p.price ?? p.originPrice ?? p.regularPrice ?? 0);
-    const salePrice = toNum(
-      p.salePrice ?? p.specialPrice ?? p.discountPrice ?? p.flashPrice ?? 0
-    );
-    if (basePrice > 0 && salePrice > 0 && salePrice < basePrice) return salePrice;
-    return basePrice || salePrice || 0;
-  }
-
-  function getOriginPrice(p) {
-    const basePrice = toNum(p.price ?? p.regularPrice ?? 0);
-    const salePrice = toNum(
-      p.salePrice ?? p.specialPrice ?? p.discountPrice ?? p.flashPrice ?? 0
-    );
-    if (basePrice > 0 && salePrice > 0 && salePrice < basePrice) return basePrice;
-    return toNum(p.originPrice ?? 0);
-  }
-
-  function normalizeList(data) {
-    if (Array.isArray(data)) return data;
-    if (Array.isArray(data?.items)) return data.items;
-    if (Array.isArray(data?.list)) return data.list;
-    if (Array.isArray(data?.products)) return data.products;
-    if (Array.isArray(data?.data)) return data.data;
-    return [];
-  }
-
-  async function fetchProducts() {
-    let lastErr = null;
-    for (const url of API_CANDIDATES) {
-      try {
-        const res = await fetch(url + "?v=" + Date.now(), { cache: "no-store" });
-        if (!res.ok) throw new Error(`HTTP ${res.status} @ ${url}`);
-        const json = await res.json().catch(() => ({}));
-        const list = normalizeList(json);
-        console.log("📦 fetched from", url, "count:", list.length);
-        if (list.length) return list;
-      } catch (e) {
-        lastErr = e;
-        console.warn("⚠️ fetch failed:", e?.message || e);
-      }
+  if (!list.length) {
+    gridEl.innerHTML = "";
+    if (emptyTipEl) {
+      emptyTipEl.style.display = "block";
+      emptyTipEl.textContent = "当前没有特价商品。";
     }
-    throw lastErr || new Error("No product API available");
+    return;
   }
 
-  function createCard(p, qtyMap) {
-    const name = String(p.name || p.title || "未命名商品").trim();
+  if (emptyTipEl) emptyTipEl.style.display = "none";
 
-    // ✅ pid 必须统一且不能空：空就用 name 兜底
-    const pid = fbPid(p) || name;
+  // ✅ 关键：统一用 FBCard 输出卡片
+  window.FBCard.renderGrid(gridEl, list, { badgeText: "" });
+}
 
-    const img =
-      String(p.image || p.img || p.cover || "").trim() ||
-      `https://picsum.photos/seed/${encodeURIComponent(pid || name)}/600/450`;
+// ============================
+// 加载特价商品（只拿数据，不自己拼卡）
+// ============================
+async function loadDailySpecialProducts() {
+  if (!gridEl) return;
 
-    const finalPrice = getFinalPrice(p);
-    const originPrice = getOriginPrice(p);
-    const hasOrigin = originPrice > 0 && originPrice > finalPrice;
+  gridEl.innerHTML = "";
+  if (emptyTipEl) emptyTipEl.style.display = "none";
 
-    const card = document.createElement("article");
-    card.className = "product-card";
-    card.setAttribute("data-pid", pid);
+  // ✅ 必须有渲染器
+  if (!window.FBCard) {
+    console.error("❌ FBCard 不存在：请检查是否引入 product_card_renderer.js");
+    if (emptyTipEl) {
+      emptyTipEl.style.display = "block";
+      emptyTipEl.textContent = "页面缺少商品卡渲染器（product_card_renderer.js）。";
+    }
+    return;
+  }
 
-    card.innerHTML = `
-      <div class="product-image-wrap">
-        <span class="special-badge">家庭必备</span>
-        <img src="${img}" class="product-image" alt="${name}" loading="lazy" />
-
-        <!-- ✅ 数量徽章（右下角） -->
-        <span class="product-qty-badge"></span>
-
-        <div class="product-overlay">
-          <div class="overlay-btn-row">
-            <button type="button" class="overlay-btn add" data-add-pid="${pid}">加入购物车</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="product-name">${name}</div>
-      <div class="product-desc">${String(p.desc || "")}</div>
-
-      <div class="product-price-row">
-        <span class="product-price">$${finalPrice.toFixed(2)}</span>
-        ${hasOrigin ? `<span class="product-origin">$${originPrice.toFixed(2)}</span>` : ""}
-      </div>
-    `;
-
-    // ✅ 初次渲染徽章
-    fbRenderQtyBadge(card, pid, qtyMap);
-
-    // 点击卡片去详情
-    card.addEventListener("click", () => {
-      if (!pid) return;
-      window.location.href = "/user/product_detail.html?id=" + encodeURIComponent(pid);
+  try {
+    const { res, data } = await apiFetch(`/api/products-simple?ts=${Date.now()}`, {
+      method: "GET",
+      cache: "no-store",
     });
+    if (!res.ok) throw new Error(data?.message || data?.msg || "加载失败");
 
-    // 加购（兼容你现有 cart.js）
-    const addBtn = card.querySelector(".overlay-btn.add");
-    if (addBtn) {
-      addBtn.addEventListener("click", (ev) => {
-        ev.stopPropagation();
+    const list = window.FBCard.extractList(data);
 
-        const cartApi =
-          (window.FreshCart && typeof window.FreshCart.addItem === "function" && window.FreshCart) ||
-          (window.Cart && typeof window.Cart.addItem === "function" && window.Cart) ||
-          null;
+    // 清理删除态
+    const cleaned = list.filter((p) => !p.isDeleted && p.deleted !== true && p.status !== "deleted");
 
-        if (!cartApi) return alert("购物车模块未启用（请确认 cart.js 已加载）");
+    // ✅ DailySpecial：只保留特价（Special Deals）
+    productsRaw = cleaned.filter((p) => isSpecialDeal(p));
 
-        // ✅ 关键：用同一个 pid 字段存入购物车，避免跨页面不一致
-        cartApi.addItem(
-          {
-            id: pid,
-            _id: pid,
-            sku: p.sku || "",
-            code: p.code || "",
-            productId: p.productId || "",
-            name,
-            price: finalPrice,
-            priceNum: finalPrice,
-            image: img,
-            tag: p.tag || "",
-          },
-          1
-        );
+    // ✅ 拆卡：单卖/整箱两张卡（跟分类页一致）
+    productsView = window.FBCard.expand(productsRaw);
 
-        // ✅ 加购后立刻刷新徽章
-        fbRefreshAllBadges();
-        window.dispatchEvent(new Event("freshbuy:cart_updated"));
-
-        const toast = document.getElementById("addCartToast");
-        if (toast) {
-          toast.classList.add("show");
-          setTimeout(() => toast.classList.remove("show"), 900);
-        }
-      });
-    }
-
-    return card;
-  }
-
-  function renderEmpty(msg) {
-    const grid = $(GRID_ID);
-    if (!grid) return;
-    grid.innerHTML = `
-      <div style="padding:12px;font-size:13px;color:#6b7280;background:#fff;border-radius:12px;">
-        ${msg}
-      </div>
-    `;
-  }
-
-  async function main() {
-    const grid = $(GRID_ID);
-    if (!grid) {
-      console.warn("❌ 找不到容器 #dailyGrid");
-      return;
-    }
-
-    try {
-      const all = await fetchProducts();
-      const specialList = all.filter((p) => isSpecialDeal(p) && !isHotProduct(p));
-      console.log("🧮 total:", all.length, "special=>family:", specialList.length);
-
-      grid.innerHTML = "";
-      if (!specialList.length) {
-        renderEmpty(
-          "已获取商品，但没有任何商品满足“特价”判定（请确认后台 salePrice/flashPrice/isSpecial 等字段）。"
-        );
-        return;
-      }
-
-      // ✅ 先生成 qtyMap（一次性），渲染卡片时同步显示徽章
-      const qtyMap = fbBuildQtyMap();
-      specialList.forEach((p) => grid.appendChild(createCard(p, qtyMap)));
-
-      // ✅ 兜底刷新一次
-      fbRefreshAllBadges();
-    } catch (e) {
-      console.error("❌ DailySpecial load failed:", e);
-      renderEmpty("加载失败：无法获取商品列表（请检查 API 是否正常返回）。");
+    applyFilterAndRender();
+  } catch (err) {
+    console.error("加载 DailySpecial 商品失败:", err);
+    if (emptyTipEl) {
+      emptyTipEl.style.display = "block";
+      emptyTipEl.textContent = "加载商品失败（请检查商品接口是否为 DB 版）。";
     }
   }
+}
 
-  // ✅ 购物车在其他页面/标签页变化时，也刷新徽章
-  window.addEventListener("storage", (e) => {
-    if (!e) return;
-    if (CART_KEYS.includes(e.key)) fbRefreshAllBadges();
-  });
+// ============================
+// DOMContentLoaded 初始化（对齐 category.js）
+// ============================
+document.addEventListener("DOMContentLoaded", () => {
+  // ✅ 统一商品卡：全局绑定（只做一次，会自动去重）
+  if (window.FBCard && typeof window.FBCard.ensureGlobalBindings === "function") {
+    window.FBCard.ensureGlobalBindings();
+  }
 
-  window.addEventListener("freshbuy:cart_updated", fbRefreshAllBadges);
+  // ✅ 开启库存轮询（跟分类页一样）
+  if (window.FBCard && typeof window.FBCard.startStockPolling === "function") {
+    window.FBCard.startStockPolling();
+  }
 
-  window.addEventListener("DOMContentLoaded", main);
-})();
+  loadDailySpecialProducts();
+
+  if (sortSelectEl) sortSelectEl.addEventListener("change", applyFilterAndRender);
+
+  if (searchInputEl) {
+    searchInputEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") applyFilterAndRender();
+    });
+  }
+
+  if (globalSearchInput) {
+    globalSearchInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") applyFilterAndRender();
+    });
+  }
+
+  // 购物车 UI（抽屉）—— 跟分类页同款
+  if (window.FreshCart && window.FreshCart.initCartUI) {
+    window.FreshCart.initCartUI({
+      cartIconId: "cartIcon",
+      cartBackdropId: "cartBackdrop",
+      cartDrawerId: "cartDrawer",
+      cartCloseBtnId: "cartCloseBtn",
+      cartCountId: "cartCount",
+      cartTotalItemsId: "cartTotalItems",
+      cartEmptyTextId: "cartEmptyText",
+      cartItemsListId: "cartItemsList",
+      toastId: "addCartToast",
+      goCartBtnId: "goCartBtn",
+      cartPageUrl: "/user/cart.html",
+    });
+  } else {
+    console.warn("FreshCart.initCartUI 不存在，请确认已经引入 cart.js");
+  }
+});
