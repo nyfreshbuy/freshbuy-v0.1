@@ -1,34 +1,22 @@
 // frontend/user/assets/js/auth_client.js
-
-// ===============================
-// ✅ Auth：token + 清缓存（解决：没登录却显示地址/钱包）
-// ===============================
 (function () {
   const KEY = "token";
 
-  // ✅ 统一要清理的缓存 key（解决：没登录却显示地址/钱包）
   const CLEAR_KEYS = [
-    // token 相关（兼容旧代码/其它模块）
     "token",
     "freshbuy_token",
     "jwt",
     "auth_token",
     "access_token",
-
-    // 登录态/用户信息
     "freshbuy_is_logged_in",
     "freshbuy_login_phone",
     "freshbuy_login_nickname",
     "freshbuy_user",
     "user",
-
-    // 地址/钱包缓存
     "freshbuy_default_address",
     "default_address",
     "freshbuy_wallet_balance",
     "wallet_balance",
-
-    // 购物车/其它缓存
     "fresh_cart",
     "cart",
   ];
@@ -41,19 +29,15 @@
     getToken() {
       return localStorage.getItem(KEY) || "";
     },
-
     setToken(t) {
       if (t) localStorage.setItem(KEY, t);
     },
-
-    // ✅ 退出：硬清理所有相关缓存
     clear() {
       clearLocalStorageKeys();
       try {
         sessionStorage.clear();
       } catch (e) {}
     },
-
     clearAll() {
       this.clear();
     },
@@ -66,7 +50,6 @@
         headers: { Authorization: "Bearer " + token },
       });
 
-      // ✅ token 失效：清理，避免“假登录”
       if (!res.ok) {
         this.clear();
         return null;
@@ -100,155 +83,180 @@
       const data = await res.json();
       if (!data.success) throw new Error(data.msg || "注册失败");
 
-      // ✅ 如果后端注册会返回 token，可开启：
-      if (data.token) this.setToken(data.token);
-
       return data.user;
     },
   };
 })();
 
-// ===============================
-// ✅ iOS Safari：登录弹窗输入框 focus 不再把弹窗顶走/拖动（终极锁屏）
-// 放在 auth_client.js 里统一接管（不要再在 index.html 里写另一套锁屏）
-// ===============================
+/* =========================================================
+ * ✅ iOS Safari：弹窗打开时锁背景 + 键盘弹出不让页面滚
+ *   - 背景永远不滚动
+ *   - 只滚动 auth-card 内部
+ * ========================================================= */
 (function () {
-  function initIOSModalLock() {
-    const backdrop = document.getElementById("authBackdrop");
-    if (!backdrop) return;
+  const backdrop = document.getElementById("authBackdrop");
+  if (!backdrop) return;
 
-    let locked = false;
-    let savedY = 0;
+  const card = backdrop.querySelector(".auth-card") || backdrop.firstElementChild;
 
-    function lockPage() {
-      if (locked) return;
-      locked = true;
+  let locked = false;
+  let savedY = 0;
 
-      savedY = window.scrollY || window.pageYOffset || 0;
-
-      // 锁住根滚动
-      document.documentElement.style.overflow = "hidden";
-      document.documentElement.style.height = "100%";
-
-      // 锁住 body（iOS 最稳）
-      document.body.style.position = "fixed";
-      document.body.style.top = `-${savedY}px`;
-      document.body.style.left = "0";
-      document.body.style.right = "0";
-      document.body.style.width = "100%";
-    }
-
-    function unlockPage() {
-      if (!locked) return;
-      locked = false;
-
-      document.documentElement.style.overflow = "";
-      document.documentElement.style.height = "";
-
-      const top = document.body.style.top;
-
-      document.body.style.position = "";
-      document.body.style.top = "";
-      document.body.style.left = "";
-      document.body.style.right = "";
-      document.body.style.width = "";
-
-      const y = top ? Math.abs(parseInt(top, 10) || 0) : savedY;
-      window.scrollTo(0, y);
-    }
-
-    function isOpen() {
-      return backdrop.classList.contains("active");
-    }
-
-    // ✅ 1) 弹窗打开/关闭时锁/解锁
-    const mo = new MutationObserver(() => {
-      if (isOpen()) lockPage();
-      else unlockPage();
-    });
-    mo.observe(backdrop, { attributes: true, attributeFilter: ["class"] });
-
-    // ✅ 2) 关键：在 focus 发生前（touchstart/pointerdown）提前锁住
-    function preLockBeforeFocus(e) {
-      if (!isOpen()) return;
-      const t = e.target;
-      if (!t) return;
-
-      if (
-        t.tagName === "INPUT" ||
-        t.tagName === "TEXTAREA" ||
-        t.isContentEditable
-      ) {
-        lockPage();
-        // 防止 iOS 已经偷偷滚了一点点
-        requestAnimationFrame(() => window.scrollTo(0, 0));
-      }
-    }
-
-    backdrop.addEventListener("touchstart", preLockBeforeFocus, {
-      passive: true,
-      capture: true,
-    });
-    backdrop.addEventListener("pointerdown", preLockBeforeFocus, {
-      passive: true,
-      capture: true,
-    });
-
-    // ✅ 3) 再兜底：focusin 时强拉回顶部（有些机型还是会动一下）
-    backdrop.addEventListener(
-      "focusin",
-      (e) => {
-        if (!isOpen()) return;
-        const t = e.target;
-        if (!t) return;
-
-        if (t.tagName === "INPUT" || t.tagName === "TEXTAREA") {
-          lockPage();
-          requestAnimationFrame(() => window.scrollTo(0, 0));
-        }
-      },
-      true
-    );
-
-    // ✅ 4) 阻止背景滚动（遮罩层 touchmove）
-    backdrop.addEventListener(
-      "touchmove",
-      (e) => {
-        if (!isOpen()) return;
-        e.preventDefault();
-      },
-      { passive: false }
-    );
-
-    // ✅ 5) 监听 visualViewport（键盘弹出时 viewport 高度变化）
-    let vvRaf = 0;
-function onVVChange() {
-  if (!isOpen()) return;
-
-  // 只更新一个 CSS 变量给弹窗算高度，别再 lock / scrollTo（否则会循环闪）
-  if (vvRaf) cancelAnimationFrame(vvRaf);
-  vvRaf = requestAnimationFrame(() => {
-    const h = (window.visualViewport && window.visualViewport.height)
-      ? window.visualViewport.height
-      : window.innerHeight;
+  // ---- 更新 vvh（只做高度变量，不做 scrollTo，不做 lock）
+  function setVVH() {
+    const h =
+      window.visualViewport && window.visualViewport.height
+        ? window.visualViewport.height
+        : window.innerHeight;
     document.documentElement.style.setProperty("--vvh", Math.round(h) + "px");
+  }
+
+  // ---- 彻底阻止背景滚动：touchmove / wheel 全拦
+  function preventScroll(e) {
+    // 允许弹窗内部滚（auth-card）
+    if (card && card.contains(e.target)) return;
+    e.preventDefault();
+  }
+
+  function lockBody() {
+    if (locked) return;
+    locked = true;
+
+    setVVH();
+    savedY = window.scrollY || window.pageYOffset || 0;
+
+    // iOS 必杀：html/body 都锁
+    document.documentElement.style.height = "100%";
+    document.documentElement.style.overflow = "hidden";
+
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${savedY}px`;
+    document.body.style.left = "0";
+    document.body.style.right = "0";
+    document.body.style.width = "100%";
+    document.body.style.overflow = "hidden";
+
+    // 全局拦截滚动（关键）
+    document.addEventListener("touchmove", preventScroll, { passive: false });
+    document.addEventListener("wheel", preventScroll, { passive: false });
+  }
+
+  function unlockBody() {
+    if (!locked) return;
+    locked = false;
+
+    document.removeEventListener("touchmove", preventScroll);
+    document.removeEventListener("wheel", preventScroll);
+
+    document.documentElement.style.height = "";
+    document.documentElement.style.overflow = "";
+
+    const top = document.body.style.top;
+    document.body.style.position = "";
+    document.body.style.top = "";
+    document.body.style.left = "";
+    document.body.style.right = "";
+    document.body.style.width = "";
+    document.body.style.overflow = "";
+
+    const y = top ? Math.abs(parseInt(top, 10) || 0) : savedY;
+    window.scrollTo(0, y);
+  }
+
+  function isOpen() {
+    return backdrop.classList.contains("active");
+  }
+
+  // ---- 打开/关闭时只锁一次（不抖）
+  let lastOpen = null;
+  function syncLock() {
+    const open = isOpen();
+    if (open === lastOpen) return;
+    lastOpen = open;
+
+    if (open) lockBody();
+    else unlockBody();
+  }
+
+  new MutationObserver(syncLock).observe(backdrop, {
+    attributes: true,
+    attributeFilter: ["class"],
   });
-}
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener("resize", onVVChange, { passive: true });
-      window.visualViewport.addEventListener("scroll", onVVChange, { passive: true });
-    } else {
-      window.addEventListener("resize", onVVChange, { passive: true });
+
+  // ---- 关键：input focus 时，只滚动弹窗内部，不让页面被 Safari 拉走
+  function keepInputVisible(input) {
+    if (!card) return;
+
+    setVVH();
+
+    // 可视高度：vvh - 顶部padding - 底部留一点
+    const vvh = parseInt(
+      getComputedStyle(document.documentElement).getPropertyValue("--vvh") || "0",
+      10
+    );
+    const safeTop = 12;
+    const safeBottom = 16;
+    const avail = (vvh || window.innerHeight) - safeTop - safeBottom;
+
+    const cardRect = card.getBoundingClientRect();
+    const inputRect = input.getBoundingClientRect();
+
+    // input 在卡片里的相对位置（用 card.scrollTop 调整）
+    const topInCard = inputRect.top - cardRect.top + card.scrollTop;
+    const bottomInCard = inputRect.bottom - cardRect.top + card.scrollTop;
+
+    // 如果 input 底部超出可视区域，则向下滚 card
+    const currentTop = card.scrollTop;
+    const viewTop = currentTop;
+    const viewBottom = currentTop + Math.min(avail, card.clientHeight);
+
+    if (bottomInCard > viewBottom - 10) {
+      const delta = bottomInCard - (viewBottom - 10);
+      card.scrollTo({ top: currentTop + delta, behavior: "smooth" });
+    } else if (topInCard < viewTop + 10) {
+      const delta = (viewTop + 10) - topInCard;
+      card.scrollTo({ top: currentTop - delta, behavior: "smooth" });
     }
-
-    // ✅ 初始化同步一次
-    if (isOpen()) lockPage();
   }
 
-  // 确保 DOM 已经有 authBackdrop
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", initIOSModalLock);
+  backdrop.addEventListener(
+    "focusin",
+    (e) => {
+      const t = e.target;
+      if (!isOpen()) return;
+      if (!t) return;
+      if (t.tagName === "INPUT" || t.tagName === "TEXTAREA") {
+        // 打开状态下确保锁住（不会反复）
+        lockBody();
+
+        // 下一帧调整弹窗内部滚动
+        requestAnimationFrame(() => keepInputVisible(t));
+      }
+    },
+    true
+  );
+
+  // visualViewport 变化：只更新高度变量 + 让输入框可见（不滚页面）
+  let vvRaf = 0;
+  function onVVChange() {
+    if (!isOpen()) return;
+    if (vvRaf) cancelAnimationFrame(vvRaf);
+    vvRaf = requestAnimationFrame(() => {
+      setVVH();
+      const active = document.activeElement;
+      if (active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA")) {
+        keepInputVisible(active);
+      }
+    });
+  }
+
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", onVVChange, { passive: true });
+    window.visualViewport.addEventListener("scroll", onVVChange, { passive: true });
   } else {
-    initIOSModalLock();
+    window.addEventListener("resize", onVVChange, { passive: true });
   }
+
+  // 初始化
+  syncLock();
 })();
