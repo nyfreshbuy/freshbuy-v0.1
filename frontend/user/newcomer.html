@@ -8,20 +8,22 @@
 
   <style>
     :root{
-      --topbar-h: 0px; /* JS 自动写入顶部高度 */
-      --shadow: 0 6px 18px rgba(15,23,42,.10);
+      --topbar-h: 0px; /* JS 自动写入 */
+      --app-shadow: 0 6px 18px rgba(15,23,42,.10);
     }
 
-    /* ✅ 顶部双排：固定在屏幕内 */
+    /* ✅ 顶部双排固定 */
     .top-fixed{
       position: fixed;
-      top: 0; left: 0; right: 0;
+      top: 0;
+      left: 0;
+      right: 0;
       z-index: 99990;
-      background: #fff;
-      border-bottom: 1px solid #eef2f7;
+      background:#fff;
+      border-bottom:1px solid #eef2f7;
       padding-top: env(safe-area-inset-top);
     }
-    .top-fixed.is-scrolled{ box-shadow: var(--shadow); }
+    .top-fixed.is-scrolled{ box-shadow: var(--app-shadow); }
 
     .top-row{
       max-width: 1400px;
@@ -29,27 +31,27 @@
       padding: 10px 14px;
       display:flex;
       align-items:center;
+      gap:12px;
       justify-content:space-between;
-      gap: 12px;
     }
+
     .logo-area{display:flex; align-items:center; gap:8px; cursor:pointer;}
     .logo-badge{
       width:32px;height:32px;border-radius:999px;
       background: radial-gradient(circle at 30% 30%, #22c55e, #16a34a);
-      display:flex;align-items:center;justify-content:center;
-      color:#fff;font-weight:800;
+      display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;
       flex: 0 0 auto;
     }
     .logo-text-main{font-weight:900;}
-    .right-actions{display:flex; align-items:center; gap:10px;}
 
+    .right-actions{display:flex; align-items:center; gap:10px;}
     .back-btn{
       padding:8px 12px;
       border-radius:999px;
       border:1px solid #e5e7eb;
       background:#fff;
       font-size:13px;
-      font-weight:800;
+      font-weight:700;
       cursor:pointer;
       white-space:nowrap;
     }
@@ -59,8 +61,7 @@
       width:38px;height:38px;border-radius:999px;
       background:#0f172a;
       display:flex;align-items:center;justify-content:center;
-      color:#e5e7eb;
-      cursor:pointer;
+      color:#e5e7eb; cursor:pointer;
       user-select:none;
       flex: 0 0 auto;
     }
@@ -69,11 +70,10 @@
       background:#ef4444; color:#fff;
       font-size:10px; padding:0 6px;
       border-radius:999px; min-width:20px;
-      text-align:center;
-      display:none;
+      text-align:center; display:none;
     }
 
-    /* ✅ 第二排：分类 pills + 排序 */
+    /* ✅ 第二排：分类 + 排序 */
     .filter-row{
       max-width: 1400px;
       margin: 0 auto;
@@ -81,16 +81,14 @@
       display:flex;
       align-items:center;
       justify-content:space-between;
-      gap: 10px;
-      border-top: 1px solid #f3f4f6;
+      gap:10px;
+      border-top:1px solid #f3f4f6;
     }
-
     .filter-bar{
-      display:flex;
-      gap:8px;
+      display:flex; gap:8px;
       overflow-x:auto;
-      padding-bottom:2px;
       -webkit-overflow-scrolling: touch;
+      padding-bottom:2px;
       flex: 1 1 auto;
     }
     .filter-bar::-webkit-scrollbar{display:none;}
@@ -102,7 +100,7 @@
       border:1px solid #e5e7eb;
       background:#fff;
       font-size:13px;
-      font-weight:800;
+      font-weight:700;
       cursor:pointer;
       white-space:nowrap;
     }
@@ -125,74 +123,69 @@
       border:1px solid #e5e7eb;
       background:#fff;
       font-size:13px;
-      font-weight:900;
       outline:none;
+      font-weight:800;
     }
 
-    /* ✅ 主体给顶部 fixed 让位 */
+    /* ✅ 主体让位给顶部 fixed */
     main.page{
-      max-width: 1400px;
-      margin: 0 auto;
+      max-width:1400px;
+      margin:0 auto;
       padding: 14px 14px 30px;
       padding-top: calc(var(--topbar-h) + 12px) !important;
     }
-
     .page-title{
-      display:flex;
-      align-items:flex-end;
-      justify-content:space-between;
-      gap:10px;
-      margin: 6px 0 10px;
+      display:flex; align-items:flex-end; justify-content:space-between;
+      gap:10px; margin:6px 0 10px;
     }
     .page-title h2{margin:0; font-size:18px;}
     .page-title .sub{color:#6b7280; font-size:12px;}
 
-    /* ✅ toast 放在顶部 fixed 下方 */
+    /* ✅ toast：在顶部双排下面 */
     .add-cart-toast{
       position:fixed;
       top: calc(env(safe-area-inset-top) + var(--topbar-h) + 8px);
       left:50%;
       transform:translateX(-50%) translateY(-16px);
       background:#111827; color:#f9fafb;
-      padding:6px 14px;
-      border-radius:999px;
-      font-size:12px;
-      box-shadow:0 8px 20px rgba(15,23,42,.35);
-      opacity:0;
-      pointer-events:none;
-      transition:opacity .25s ease, transform .25s ease;
+      padding:6px 14px; border-radius:999px; font-size:12px;
+      box-shadow:0 8px 20px rgba(15,23,42,.25);
+      opacity:0; pointer-events:none;
+      transition: opacity .25s ease, transform .25s ease;
       z-index: 999999;
       white-space:nowrap;
     }
     .add-cart-toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
 
-    /* ✅ 购物车抽屉 DOM（cart.js 需要这些 id） */
+    /* ======================
+       ✅ 购物车抽屉（关键：不再“只灰屏”）
+       ====================== */
     .cart-backdrop{
       position:fixed;
       inset:0;
-      background:rgba(15,23,42,.35);
-      display:none;              /* ✅ 必须是 display none，否则会“灰屏残留” */
-      z-index: 99995;
+      background:rgba(15,23,42,.45);
+      display:none;
+      z-index:99995;
     }
     .cart-backdrop.active{display:block;}
 
     .cart-drawer{
       position:fixed;
-      top:0;
       right:0;
+      top:0;
       height:100vh;
       width:360px;
       max-width:92vw;
       background:#fff;
       border-left:1px solid #eef2f7;
       box-shadow:-12px 0 30px rgba(15,23,42,.18);
-      transform: translateX(110%);
-      transition: transform .25s ease;
-      z-index: 99996;
+      transform:translateX(110%);
+      transition:transform .25s ease;
+      z-index:99996;
       display:flex;
       flex-direction:column;
     }
-    .cart-drawer.active{transform: translateX(0);}
+    .cart-drawer.active{transform:translateX(0);}
 
     .cart-drawer-header{
       padding:12px;
@@ -275,14 +268,14 @@
     <div class="page-title">
       <div>
         <h2>🔥 爆品专区</h2>
-        <div class="sub">只展示爆品（Hot Deals / 爆品标签 / isHot 等）</div>
+        <div class="sub">只展示爆品（Hot Deals / 爆品标签 / isHot）</div>
       </div>
     </div>
 
     <div class="product-grid" id="newcomerGrid"></div>
   </main>
 
-  <!-- ✅ 购物车抽屉 DOM（cart.js 需要这些 id；没有就会“只灰屏不出抽屉”） -->
+  <!-- ✅ 购物车抽屉 DOM（必须有，否则会出现“只灰屏”） -->
   <div class="cart-backdrop" id="cartBackdrop"></div>
 
   <aside class="cart-drawer" id="cartDrawer" aria-hidden="true">
@@ -308,12 +301,12 @@
     </div>
   </aside>
 
-  <!-- ✅ 脚本顺序：cart → renderer → page（必须） -->
+  <!-- ✅ 脚本顺序：cart → renderer → page -->
   <script src="/user/assets/js/cart.js?v=10"></script>
   <script src="/user/assets/js/product_card_renderer.js?v=2"></script>
-  <script src="/user/assets/js/newcomer.js?v=11"></script>
+  <script src="/user/assets/js/newcomer.js?v=12"></script>
 
-  <!-- ✅ 顶部高度计算 + 滚动阴影 -->
+  <!-- ✅ 自动计算顶部高度 + 滚动阴影 -->
   <script>
     (function () {
       const top = document.getElementById("topFixed");
@@ -335,34 +328,6 @@
       window.addEventListener("resize", applyHeight, { passive: true });
       window.addEventListener("orientationchange", applyHeight, { passive: true });
       window.addEventListener("scroll", onScroll, { passive: true });
-    })();
-  </script>
-
-  <!-- ✅ 兜底：解决“灰屏残留 / 点购物车没反应”——不改 cart.js -->
-  <script>
-    (function () {
-      const backdrop = document.getElementById("cartBackdrop");
-      const drawer = document.getElementById("cartDrawer");
-      const closeBtn = document.getElementById("cartCloseBtn");
-
-      if (!backdrop || !drawer) return;
-
-      function closeCart() {
-        backdrop.classList.remove("active", "open", "show");
-        drawer.classList.remove("active", "open", "show");
-        drawer.setAttribute("aria-hidden", "true");
-      }
-
-      // ✅ 点灰色区域关闭
-      backdrop.addEventListener("click", closeCart);
-
-      // ✅ 点 X 关闭（双保险）
-      if (closeBtn) closeBtn.addEventListener("click", closeCart);
-
-      // ✅ Esc 关闭（PC）
-      window.addEventListener("keydown", (e) => {
-        if (e.key === "Escape") closeCart();
-      });
     })();
   </script>
 
