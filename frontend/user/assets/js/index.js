@@ -1489,7 +1489,30 @@ async function refreshStockAndCards() {
 window.addEventListener("DOMContentLoaded", () => {
   setInterval(refreshStockAndCards, STOCK_REFRESH_MS);
 });
+// =========================
+// ✅ iOS 键盘：锁定页面滚动（弹窗打开时）
+// =========================
+let __modalScrollY = 0;
 
+function lockBodyScroll() {
+  __modalScrollY = window.scrollY || 0;
+  document.body.style.position = "fixed";
+  document.body.style.top = `-${__modalScrollY}px`;
+  document.body.style.left = "0";
+  document.body.style.right = "0";
+  document.body.style.width = "100%";
+}
+
+function unlockBodyScroll() {
+  const y = __modalScrollY || 0;
+  document.body.style.position = "";
+  document.body.style.top = "";
+  document.body.style.left = "";
+  document.body.style.right = "";
+  document.body.style.width = "";
+  window.scrollTo(0, y);
+  __modalScrollY = 0;
+}
 /* ====== 下一段从：登录/注册/鉴权（AUTH_TOKEN_KEYS...）开始 ====== */
 // =========================
 // 3) 登录 / 注册弹窗 + 顶部头像（✅ Mongo 真实接口版）
@@ -1734,10 +1757,11 @@ async function initAuthUIFromStorage() {
 /* ====== 下一段从：openAuthModal / switchAuthMode / 登录注册按钮绑定 / 忘记密码开始 ====== */
 function openAuthModal(mode = "login") {
   if (!authBackdrop) return;
+  lockBodyScroll(); // ✅ 新增：打开弹窗就锁 body，防止 iOS 键盘把页面顶飞
   authBackdrop.classList.add("active");
   document.body.classList.add("modal-open");
   switchAuthMode(mode);
-
+ 
   const savedPhone = localStorage.getItem("freshbuy_login_phone") || "";
   if (savedPhone && loginPhone && loginRemember) {
     loginPhone.value = savedPhone;
@@ -1749,6 +1773,7 @@ function closeAuthModal() {
   if (!authBackdrop) return;
   authBackdrop.classList.remove("active");
   document.body.classList.remove("modal-open");
+  unlockBodyScroll(); // ✅ 新增：关闭弹窗恢复滚动位置
 }
 
 function setAuthTitle(t) {
@@ -1798,7 +1823,44 @@ if (authBackdrop) {
 }
 if (tabLogin) tabLogin.addEventListener("click", () => switchAuthMode("login"));
 if (tabRegister) tabRegister.addEventListener("click", () => switchAuthMode("register"));
+// =========================
+// ✅ iOS 键盘：保持弹窗视觉居中（visualViewport）
+// =========================
+(function bindIOSViewportFixForAuthModal() {
+  if (!window.visualViewport) return;
 
+  // 尽量兼容你 HTML 里不同的 modal 容器 class
+  const modal =
+    document.querySelector("#authBackdrop .login-modal") ||
+    document.querySelector("#authBackdrop .auth-modal") ||
+    document.querySelector("#authBackdrop .auth-card") ||
+    document.querySelector("#authBackdrop [data-auth-modal]");
+
+  if (!modal) return;
+
+  function update() {
+    // 只在弹窗打开时才处理
+    if (!authBackdrop || !authBackdrop.classList.contains("active")) return;
+
+    const vv = window.visualViewport;
+    const offsetTop = vv.offsetTop || 0;
+
+    // 让 modal 在“可视区域”居中（解决 iOS 键盘顶飞/抖动）
+    modal.style.position = "fixed";
+    modal.style.left = "50%";
+    modal.style.top = `calc(50% + ${offsetTop}px)`;
+    modal.style.transform = "translate(-50%, -50%)";
+  }
+
+  window.visualViewport.addEventListener("resize", update);
+  window.visualViewport.addEventListener("scroll", update);
+
+  // 打开弹窗瞬间也刷新一次
+  document.addEventListener("click", (e) => {
+    const hit = e.target.closest("#loginBtn,#registerBtn");
+    if (hit) setTimeout(update, 0);
+  });
+})();
 // ====== 注册发送验证码 ======
 if (regSendCodeBtn) {
   regSendCodeBtn.addEventListener("click", async () => {

@@ -1996,3 +1996,28 @@ body.modal-open{ overflow:hidden; }
   color:#334155;
   line-height:1.4;
 }
+/* 登录 / 注册遮罩 */
+.modal-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.35);
+  z-index: 9998;
+}
+
+/* 登录 / 注册弹窗本体 */
+.login-modal {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 92%;
+  max-width: 420px;
+  background: #fff;
+  border-radius: 16px;
+  z-index: 9999;
+
+  /* 关键：防止被键盘压缩 */
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
