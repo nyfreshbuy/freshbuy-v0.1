@@ -25,9 +25,15 @@
 (function () {
   "use strict";
 
+  // ✅ 全局单例锁：防止 renderer 被重复初始化 / 重复绑事件（根治 +/- 翻倍）
+  if (window.__FB_CARD_RENDERER_INITED__) {
+    console.warn("⚠️ FBCard renderer already inited, skip");
+    return;
+  }
+  window.__FB_CARD_RENDERER_INITED__ = true;
+
   const FBCard = {};
   window.FBCard = FBCard;
-
   // -----------------------
   // Config（可在页面覆盖）
   // -----------------------
@@ -720,10 +726,13 @@
   // -------------------------------------------------------
   let __bound = false;
 
-  FBCard.ensureGlobalBindings = function ensureGlobalBindings() {
-    if (__bound) return;
-    __bound = true;
+FBCard.ensureGlobalBindings = function ensureGlobalBindings() {
+  // ✅ 双保险：全局锁（哪怕多份脚本/多次调用，也绝不重复绑定）
+  if (window.__FB_CARD_BINDINGS_BOUND__) return;
+  window.__FB_CARD_BINDINGS_BOUND__ = true;
 
+  if (__bound) return;
+  __bound = true;
     // ✅ 全站购物车更新事件（兼容你可能存在的两种名字）
     function emitCartUpdated(pid, delta) {
       try {
@@ -736,6 +745,9 @@
 
     // 点击事件委托：底部加入/overlay加入/黑框+-
     document.addEventListener("click", (e) => {
+  // ✅ 点击锁：防止同一次用户点击被处理两次（极端机型/浏览器/合成事件）
+  if (e && e.__fbHandled) return;
+  try { e.__fbHandled = true; } catch {}
       const addOnlyBtn = e.target.closest(".product-add-fixed[data-add-only]");
       const overlayAddBtn = e.target.closest(".overlay-btn.add[data-add-pid]");
       const minusBtn = e.target.closest("[data-qty-minus]");
