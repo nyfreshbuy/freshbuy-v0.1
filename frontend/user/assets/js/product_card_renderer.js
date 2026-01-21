@@ -249,22 +249,27 @@
 
     // next=0
     if (next === 0) {
-      try {
-        if (typeof api.setQty === "function") {
-          api.setQty(pid, 0);
-          return true;
-        }
-      } catch {}
-      try {
-        if (typeof api.removeItem === "function") {
-          api.removeItem(pid);
-          return true;
-        }
-        if (typeof api.remove === "function") {
-          api.remove(pid);
-          return true;
-        }
-      } catch {}
+      // 已存在：优先 setQty/updateQty
+try {
+  if (typeof api.setQty === "function") {
+    api.setQty(pid, next);
+    return true;
+  }
+  if (typeof api.updateQty === "function") {
+    api.updateQty(pid, next);
+    return true;
+  }
+  // ✅ changeQty 通常是“增量”
+  if (typeof api.changeQty === "function") {
+    const delta = next - curQty;
+    if (delta !== 0) api.changeQty(pid, delta);
+    return true;
+  }
+  if (typeof api.setItemQty === "function") {
+    api.setItemQty(pid, next);
+    return true;
+  }
+} catch {}
       return true;
     }
 
@@ -370,11 +375,6 @@
   // 动作区渲染（加入购物车 ↔ 黑框）
   // -----------------------
   function renderCardAction(card) {
-    if (!card) return;
-    const pid = String(card.dataset.cartPid || "").trim();
-    if (!pid) return;
-
-    function renderCardAction(card) {
   if (!card) return;
   const pid = String(card.dataset.cartPid || "").trim();
   if (!pid) return;
@@ -396,14 +396,12 @@
 
   if (addBtn) addBtn.style.display = qty <= 0 ? "" : "none";
   if (qtyRow) qtyRow.style.display = qty > 0 ? "flex" : "none";
-
   if (qtyDisplay) qtyDisplay.textContent = String(Math.max(1, qty || 1));
 
   const minus = card.querySelector("[data-qty-minus]");
   const plus = card.querySelector("[data-qty-plus]");
   if (minus) minus.disabled = qty <= 0 || cap <= 0;
   if (plus) plus.disabled = cap <= 0 || qty >= cap;
-}
 }
   function renderAllCardsAction() {
     document.querySelectorAll(".product-card[data-cart-pid]").forEach((card) => {
