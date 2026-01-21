@@ -45,24 +45,6 @@ body.modal-open {
   left: 0;
   right: 0;
 }
-
-.auth-backdrop {
-  align-items: flex-start !important;
-  padding-top: calc(env(safe-area-inset-top, 0px) + 10px);
-  padding-left: 12px;
-  padding-right: 12px;
-  padding-bottom: 12px;
-}
-
-.auth-card {
-  width: 360px;
-  max-width: 92vw;
-  max-height: calc(var(--vvh, 100vh) - 24px);
-  overflow: auto;
-  -webkit-overflow-scrolling: touch;
-  margin: 60px auto 0;
-  border-radius: 18px;
-}
       a {
         color: inherit;
         text-decoration: none;
@@ -811,28 +793,42 @@ body.modal-open {
       }
 
       /* 登录 / 注册弹窗（只保留一套） */
-      .auth-backdrop {
-        position: fixed;
-        inset: 0;
-        background: rgba(15, 23, 42, 0.45);
-        display: none;
-        align-items: center;
-        justify-content: center;
-        z-index: 70000;
-      }
-      .auth-backdrop.active {
-        display: flex;
-      }
-      .auth-modal {
-        width: 360px;
-        max-width: 92vw;
-        background: #ffffff;
-        border-radius: 18px;
-        box-shadow: 0 24px 60px rgba(15, 23, 42, 0.6);
-        padding: 16px 18px 14px;
-        font-size: 13px;
-      }
+.auth-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: none;
 
+  /* ✅ iOS 键盘下不居中 */
+  align-items: flex-start;
+  justify-content: center;
+
+  padding-top: calc(env(safe-area-inset-top, 0px) + 12px);
+  padding-left: 12px;
+  padding-right: 12px;
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+
+  z-index: 70000;
+}
+
+.auth-backdrop.active {
+  display: flex;
+}
+
+/* ✅ 弹窗本体：限定高度 + 内部滚动 */
+.auth-card {
+  width: 360px;
+  max-width: 92vw;
+
+  /* ✅ 关键：用你 JS 写的 --vvh（visualViewport） */
+  max-height: calc(var(--vvh, 100vh) - 24px);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+
+  /* ✅ 不要 60px（会让它看起来“被顶”） */
+  margin: 12px auto 0;
+  border-radius: 18px;
+}
       /* =========================
          ✅ 关键修复：图标放在输入框外面（永不遮挡）
          ========================= */
