@@ -2,107 +2,154 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <title>新客体验专区 - 在鲜购</title>
+  <title>新客体验 - 在鲜购</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="stylesheet" href="/user/assets/css/main.css?v=10" />
+  <link rel="stylesheet" href="./assets/css/main.css?v=10" />
 
   <style>
     :root{
-      --topbar-h: 0px; /* JS 自动写入 */
-      --app-shadow: 0 6px 18px rgba(15,23,42,.10);
+      --sticky-h: 120px; /* JS 动态覆盖 */
+      --app-shadow: 0 4px 12px rgba(15,23,42,.10);
     }
 
-    /* ✅ 顶部双排固定 */
-    .top-fixed{
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      z-index: 99990;
+    /* iOS/微信：祖先 transform/filter/perspective 可能让 fixed 变“跟随滚动” */
+    html, body{
+      transform: none !important;
+      filter: none !important;
+      perspective: none !important;
+      contain: none !important;
+    }
+
+    /* ===============================
+       ✅ 顶部固定壳：标题栏 + 分类条
+       =============================== */
+    .new-sticky{
+      position: fixed !important;
+      top: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      z-index: 9000 !important; /* 顶部固定栏（低于购物车抽屉） */
+      background: #fff !important;
+
+      /* iPhone 刘海安全区 */
+      padding-top: env(safe-area-inset-top) !important;
+
+      transition: box-shadow .2s ease;
+      border-bottom: 1px solid #eef2f7;
+    }
+    .new-sticky.is-scrolled{
+      box-shadow: var(--app-shadow);
+    }
+
+    /* ======================
+       顶部标题栏（含购物车）
+       ====================== */
+    .top-title{
       background:#fff;
-      border-bottom:1px solid #eef2f7;
-      padding-top: env(safe-area-inset-top);
     }
-    .top-fixed.is-scrolled{ box-shadow: var(--app-shadow); }
+    .top-title-inner{
+      max-width:1400px;
+      margin:0 auto;
+      padding:12px 14px 10px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+    }
+    .logo-area{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      cursor:pointer;
+    }
+    .logo-badge{
+      width:40px;height:40px;border-radius:999px;
+      background: radial-gradient(circle at 30% 30%, #22c55e, #16a34a);
+      display:flex;align-items:center;justify-content:center;
+      color:#fff;font-weight:900;font-size:18px;
+      box-shadow: 0 8px 18px rgba(34,197,94,.22);
+    }
+    .logo-text-main{font-weight:900; font-size:18px; line-height:1.1;}
+    .logo-sub{font-size:12px;color:#6b7280; margin-top:3px;}
 
-    .top-row{
-      max-width: 1400px;
-      margin: 0 auto;
-      padding: 10px 14px;
+    .right-actions{
       display:flex;
       align-items:center;
       gap:12px;
-      justify-content:space-between;
     }
-
-    .logo-area{display:flex; align-items:center; gap:8px; cursor:pointer;}
-    .logo-badge{
-      width:32px;height:32px;border-radius:999px;
-      background: radial-gradient(circle at 30% 30%, #22c55e, #16a34a);
-      display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;
-      flex: 0 0 auto;
-    }
-    .logo-text-main{font-weight:900;}
-
-    .right-actions{display:flex; align-items:center; gap:10px;}
-    .back-btn{
-      padding:8px 12px;
+    .back-home-btn{
+      padding:10px 14px;
       border-radius:999px;
       border:1px solid #e5e7eb;
       background:#fff;
-      font-size:13px;
-      font-weight:700;
+      font-size:14px;
+      font-weight:800;
       cursor:pointer;
       white-space:nowrap;
     }
 
     .cart-icon{
       position:relative;
-      width:38px;height:38px;border-radius:999px;
+      width:46px;height:46px;border-radius:16px;
       background:#0f172a;
       display:flex;align-items:center;justify-content:center;
-      color:#e5e7eb; cursor:pointer;
+      color:#e5e7eb;
+      cursor:pointer;
       user-select:none;
-      flex: 0 0 auto;
+      box-shadow: 0 10px 18px rgba(15,23,42,.18);
+      font-size:18px;
     }
     .cart-count-badge{
-      position:absolute; top:-4px; right:-4px;
-      background:#ef4444; color:#fff;
-      font-size:10px; padding:0 6px;
-      border-radius:999px; min-width:20px;
-      text-align:center; display:none;
+      position:absolute; top:-6px; right:-6px;
+      background:#ef4444;
+      color:#fff;
+      font-size:11px;
+      padding:2px 7px;
+      border-radius:999px;
+      min-width:22px;
+      text-align:center;
+      display:none;
+      box-shadow: 0 6px 14px rgba(239,68,68,.25);
     }
 
-    /* ✅ 第二排：分类 + 排序 */
-    .filter-row{
-      max-width: 1400px;
-      margin: 0 auto;
-      padding: 8px 14px 10px;
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:10px;
+    /* ======================
+       分类条（pills + 排序）
+       ====================== */
+    .filter-wrap{
+      background:#fff;
       border-top:1px solid #f3f4f6;
     }
+    .filter-wrap-inner{
+      max-width:1400px;
+      margin:0 auto;
+      padding:10px 14px 12px;
+      display:flex;
+      gap:12px;
+      align-items:center;
+      justify-content:space-between;
+    }
+
     .filter-bar{
-      display:flex; gap:8px;
+      display:flex;
+      gap:10px;
       overflow-x:auto;
       -webkit-overflow-scrolling: touch;
       padding-bottom:2px;
       flex: 1 1 auto;
+      min-width: 0;
     }
     .filter-bar::-webkit-scrollbar{display:none;}
 
     .filter-pill{
       flex:0 0 auto;
-      padding:8px 12px;
+      padding:10px 14px;
       border-radius:999px;
       border:1px solid #e5e7eb;
       background:#fff;
-      font-size:13px;
-      font-weight:700;
+      font-size:14px;
       cursor:pointer;
       white-space:nowrap;
+      font-weight:800;
     }
     .filter-pill.active{
       border-color:rgba(34,197,94,.9);
@@ -113,59 +160,91 @@
 
     .sort-box{
       flex:0 0 auto;
-      display:flex; align-items:center; gap:6px;
-      font-size:12px; color:#6b7280;
+      display:flex;
+      align-items:center;
+      gap:8px;
+      font-size:13px;
+      color:#6b7280;
       white-space:nowrap;
     }
     .sort-select{
-      padding:8px 10px;
-      border-radius:10px;
+      padding:10px 12px;
+      border-radius:14px;
       border:1px solid #e5e7eb;
       background:#fff;
-      font-size:13px;
+      font-size:14px;
       outline:none;
-      font-weight:800;
+      font-weight:900;
     }
 
-    /* ✅ 主体让位给顶部 fixed */
-    main.page{
-      max-width:1400px;
-      margin:0 auto;
-      padding: 14px 14px 30px;
-      padding-top: calc(var(--topbar-h) + 12px) !important;
-    }
-    .page-title{
-      display:flex; align-items:flex-end; justify-content:space-between;
-      gap:10px; margin:6px 0 10px;
-    }
-    .page-title h2{margin:0; font-size:18px;}
-    .page-title .sub{color:#6b7280; font-size:12px;}
-
-    /* ✅ toast：在顶部双排下面 */
+    /* ======================
+       Toast（在固定栏下方）
+       ====================== */
     .add-cart-toast{
       position:fixed;
-      top: calc(env(safe-area-inset-top) + var(--topbar-h) + 8px);
+      top: calc(env(safe-area-inset-top) + var(--sticky-h) + 10px);
       left:50%;
       transform:translateX(-50%) translateY(-16px);
-      background:#111827; color:#f9fafb;
-      padding:6px 14px; border-radius:999px; font-size:12px;
-      box-shadow:0 8px 20px rgba(15,23,42,.25);
-      opacity:0; pointer-events:none;
+      background:#111827;
+      color:#f9fafb;
+      padding:7px 14px;
+      border-radius:999px;
+      font-size:12px;
+      box-shadow:0 10px 22px rgba(15,23,42,.35);
+      opacity:0;
+      pointer-events:none;
       transition: opacity .25s ease, transform .25s ease;
-      z-index: 999999;
+      z-index: 12000;
       white-space:nowrap;
     }
     .add-cart-toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
 
     /* ======================
-       ✅ 购物车抽屉（关键：不再“只灰屏”）
+       页面主体：给顶部固定栏让位
+       ====================== */
+    main.page{
+      max-width:1400px;
+      margin:0 auto;
+      padding: 14px 14px 30px;
+      padding-top: calc(env(safe-area-inset-top) + var(--sticky-h) + 12px) !important;
+    }
+
+    .page-title{
+      display:flex;
+      align-items:flex-end;
+      justify-content:space-between;
+      gap:10px;
+      margin:8px 0 12px;
+    }
+    .page-title h2{margin:0; font-size:18px;}
+    .page-title .sub{color:#6b7280; font-size:12px;}
+
+    /* ✅ 本页兜底：renderer 的加入购物车按钮强制绿色（跟你模板一致） */
+    .product-add-fixed{
+      background:#22c55e !important;
+      color:#fff !important;
+      border:none !important;
+      border-radius:14px !important;
+      font-weight:900 !important;
+      height:46px !important;
+    }
+    .product-add-fixed:disabled{opacity:.55 !important;}
+    .overlay-btn.add{
+      background:#22c55e !important;
+      color:#fff !important;
+      border:none !important;
+      font-weight:900 !important;
+    }
+    .overlay-btn.add:disabled{opacity:.55 !important;}
+
+    /* ======================
+       ✅ 购物车抽屉：永远盖过顶部固定栏
        ====================== */
     .cart-backdrop{
-      position:fixed;
-      inset:0;
+      position:fixed; inset:0;
       background:rgba(15,23,42,.45);
       display:none;
-      z-index:99995;
+      z-index: 20000;
     }
     .cart-backdrop.active{display:block;}
 
@@ -177,13 +256,13 @@
       width:360px;
       max-width:92vw;
       background:#fff;
-      border-left:1px solid #eef2f7;
       box-shadow:-12px 0 30px rgba(15,23,42,.18);
       transform:translateX(110%);
       transition:transform .25s ease;
-      z-index:99996;
+      z-index: 20001;
       display:flex;
       flex-direction:column;
+      border-left:1px solid #eef2f7;
     }
     .cart-drawer.active{transform:translateX(0);}
 
@@ -193,7 +272,6 @@
       align-items:center;
       justify-content:space-between;
       border-bottom:1px solid #eef2f7;
-      font-weight:900;
     }
     .cart-close-btn{
       width:36px;height:36px;
@@ -203,6 +281,7 @@
       cursor:pointer;
       font-weight:900;
     }
+
     .cart-drawer-body{padding:12px; overflow:auto; flex:1;}
     .cart-empty{padding:12px; color:#6b7280; font-size:13px;}
     .cart-items{display:flex; flex-direction:column; gap:10px;}
@@ -219,62 +298,52 @@
     }
 
     @media (max-width: 520px){
-      .top-row{padding:10px 12px;}
-      .filter-row{padding:8px 12px 10px;}
+      .top-title-inner{padding:12px 12px 10px;}
+      .filter-wrap-inner{padding:10px 12px 12px;}
       main.page{padding-left:12px; padding-right:12px;}
     }
-    /* ✅ 强行兜底：避免 main.css 把抽屉隐藏或层级盖住 */
-#cartBackdrop{
-  display:none !important;
-  z-index:99995 !important;
-}
-#cartBackdrop.active{
-  display:block !important;
-}
-
-#cartDrawer{
-  display:flex !important;              /* 避免被 main.css display:none */
-  z-index:99996 !important;
-  transform:translateX(110%) !important;/* 默认在屏幕外 */
-}
-#cartDrawer.active{
-  transform:translateX(0) !important;   /* 打开时滑入 */
-}
   </style>
 </head>
 
-<body>
+<body class="page-newcomer">
 
-  <!-- ✅ 固定顶部双排 -->
-  <div class="top-fixed" id="topFixed">
-    <div class="top-row">
-      <div class="logo-area" onclick="location.href='/user/index.html'">
-        <div class="logo-badge">鲜</div>
-        <div>
-          <div class="logo-text-main">新客体验专区</div>
-          <div style="font-size:11px;color:#6b7280;">免费配送 · 无门槛 · 0元起送</div>
+  <!-- ✅ 顶部固定栏：标题 + 分类条 -->
+  <div class="new-sticky" id="newSticky">
+    <div class="top-title">
+      <div class="top-title-inner">
+        <div class="logo-area" onclick="location.href='/user/index.html'">
+          <div class="logo-badge">鲜</div>
+          <div>
+            <div class="logo-text-main">新客体验专区</div>
+            <div class="logo-sub">爆品专享 · 口碑热卖 · 新人必买</div>
+          </div>
         </div>
-      </div>
 
-      <div class="right-actions">
-        <button type="button" class="back-btn" onclick="location.href='/user/index.html'">← 返回首页</button>
+        <div class="right-actions">
+          <button type="button" class="back-home-btn" onclick="location.href='/user/index.html'">
+            ← 返回首页
+          </button>
 
-        <div class="cart-icon" id="cartIcon" title="打开购物车">
-          🛒
-          <span class="cart-count-badge" id="cartCount">0</span>
+          <div class="cart-icon" id="cartIcon" title="打开购物车">
+            🛒
+            <span class="cart-count-badge" id="cartCount">0</span>
+          </div>
         </div>
       </div>
     </div>
 
-    <div class="filter-row">
-      <div class="filter-bar" id="filterBar"></div>
-      <div class="sort-box">
-        <span>排序</span>
-        <select class="sort-select" id="sortSelect">
-          <option value="sales_desc">销量高 → 低</option>
-          <option value="price_asc">价格低 → 高</option>
-          <option value="price_desc">价格高 → 低</option>
-        </select>
+    <div class="filter-wrap" id="filterWrap">
+      <div class="filter-wrap-inner">
+        <div class="filter-bar" id="filterBar"></div>
+
+        <div class="sort-box">
+          <span>排序</span>
+          <select class="sort-select" id="sortSelect">
+            <option value="sales_desc">销量高 → 低</option>
+            <option value="price_asc">价格低 → 高</option>
+            <option value="price_desc">价格高 → 低</option>
+          </select>
+        </div>
       </div>
     </div>
   </div>
@@ -285,19 +354,19 @@
     <div class="page-title">
       <div>
         <h2>🔥 爆品专区</h2>
-        <div class="sub">只展示爆品（Hot Deals / 爆品标签 / isHot）</div>
+        <div class="sub">新客页面：只展示爆品（Hot Deals）</div>
       </div>
     </div>
 
     <div class="product-grid" id="newcomerGrid"></div>
   </main>
 
-  <!-- ✅ 购物车抽屉 DOM（必须有，否则会出现“只灰屏”） -->
+  <!-- ✅ 购物车抽屉 DOM（必须有，否则只会灰屏） -->
   <div class="cart-backdrop" id="cartBackdrop"></div>
 
   <aside class="cart-drawer" id="cartDrawer" aria-hidden="true">
     <div class="cart-drawer-header">
-      <div>购物车</div>
+      <div style="font-weight:900;">购物车</div>
       <button type="button" class="cart-close-btn" id="cartCloseBtn">✕</button>
     </div>
 
@@ -321,22 +390,22 @@
   <!-- ✅ 脚本顺序：cart → renderer → page -->
   <script src="/user/assets/js/cart.js?v=10"></script>
   <script src="/user/assets/js/product_card_renderer.js?v=2"></script>
-  <script src="/user/assets/js/newcomer.js?v=12"></script>
+  <script src="/user/assets/js/newcomer.js?v=99"></script>
 
-  <!-- ✅ 自动计算顶部高度 + 滚动阴影 -->
+  <!-- ✅ 自动计算“顶部固定栏”高度，给 main.page 让位 + 滚动阴影 -->
   <script>
     (function () {
-      const top = document.getElementById("topFixed");
-      if (!top) return;
+      const sticky = document.getElementById("newSticky");
+      if (!sticky) return;
 
       function applyHeight() {
-        const h = Math.ceil(top.getBoundingClientRect().height || 0);
-        document.documentElement.style.setProperty("--topbar-h", h + "px");
+        const h = Math.ceil(sticky.getBoundingClientRect().height || 0);
+        document.documentElement.style.setProperty("--sticky-h", h + "px");
       }
 
       function onScroll() {
-        if (window.scrollY > 4) top.classList.add("is-scrolled");
-        else top.classList.remove("is-scrolled");
+        if (window.scrollY > 4) sticky.classList.add("is-scrolled");
+        else sticky.classList.remove("is-scrolled");
       }
 
       applyHeight();
@@ -345,67 +414,11 @@
       window.addEventListener("resize", applyHeight, { passive: true });
       window.addEventListener("orientationchange", applyHeight, { passive: true });
       window.addEventListener("scroll", onScroll, { passive: true });
+
+      setTimeout(applyHeight, 60);
+      setTimeout(applyHeight, 240);
     })();
-    
   </script>
-  <script>
-  // ✅ 本页兜底：如果出现“只灰屏，抽屉不出”，就强制打开抽屉
-  (function () {
-    const $ = (id) => document.getElementById(id);
 
-    function openCart() {
-      const bd = $("cartBackdrop");
-      const dr = $("cartDrawer");
-      if (bd) bd.classList.add("active");
-      if (dr) dr.classList.add("active");
-      if (dr) dr.setAttribute("aria-hidden", "false");
-    }
-
-    function closeCart() {
-      const bd = $("cartBackdrop");
-      const dr = $("cartDrawer");
-      if (bd) bd.classList.remove("active");
-      if (dr) dr.classList.remove("active");
-      if (dr) dr.setAttribute("aria-hidden", "true");
-    }
-
-    function toggleCart() {
-      const bd = $("cartBackdrop");
-      const dr = $("cartDrawer");
-      const bdOn = bd && bd.classList.contains("active");
-      const drOn = dr && dr.classList.contains("active");
-
-      // ✅ 只灰屏（bdOn=true 但 drOn=false）=> 直接修复为打开抽屉
-      if (bdOn && !drOn) {
-        openCart();
-        return;
-      }
-
-      if (bdOn || drOn) closeCart();
-      else openCart();
-    }
-
-    document.addEventListener("DOMContentLoaded", () => {
-      const icon = $("cartIcon");
-      const bd = $("cartBackdrop");
-      const closeBtn = $("cartCloseBtn");
-
-      if (icon) {
-        icon.addEventListener("click", (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          toggleCart();
-        });
-      }
-
-      if (bd) bd.addEventListener("click", closeCart);
-      if (closeBtn) closeBtn.addEventListener("click", closeCart);
-
-      window.addEventListener("keydown", (e) => {
-        if (e.key === "Escape") closeCart();
-      });
-    });
-  })();
-</script>
 </body>
 </html>
