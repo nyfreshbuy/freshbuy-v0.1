@@ -12,7 +12,15 @@
       --app-shadow: 0 4px 12px rgba(15,23,42,.10);
     }
 
-    /* ✅ 终极：固定顶部双排（不再用 sticky） */
+    /* ✅ iOS/微信 fixed 跟 transform 冲突兜底 */
+    html, body{
+      transform:none !important;
+      filter:none !important;
+      perspective:none !important;
+      contain:none !important;
+    }
+
+    /* ✅ 固定顶部双排 */
     .top-fixed{
       position: fixed;
       top: 0;
@@ -24,9 +32,7 @@
       padding-top: env(safe-area-inset-top);
       transition: box-shadow .2s ease;
     }
-    .top-fixed.is-scrolled{
-      box-shadow: var(--app-shadow);
-    }
+    .top-fixed.is-scrolled{ box-shadow: var(--app-shadow); }
 
     .top-row{
       max-width: 1400px;
@@ -161,14 +167,14 @@
     .add-cart-toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
 
     /* ======================
-       ✅ 购物车抽屉（必须有 DOM）
+       ✅ 购物车抽屉（不灰屏）
        ====================== */
     .cart-backdrop{
       position:fixed;
       inset:0;
-      background:rgba(15,23,42,.45);
+      background:rgba(15,23,42,.35);
       display:none;
-      z-index: 99995;  /* 低于抽屉，高于页面 */
+      z-index: 99995;  /* ✅ 低于抽屉 */
     }
     .cart-backdrop.active{display:block;}
 
@@ -183,7 +189,7 @@
       box-shadow:-12px 0 30px rgba(15,23,42,.18);
       transform:translateX(110%);
       transition:transform .25s ease;
-      z-index: 99996;
+      z-index: 99996;  /* ✅ 高于遮罩 */
       display:flex;
       flex-direction:column;
       border-left:1px solid #eef2f7;
@@ -230,7 +236,6 @@
 </head>
 
 <body>
-
   <!-- ✅ 固定顶部双排 -->
   <div class="top-fixed" id="topFixed">
     <div class="top-row">
@@ -278,7 +283,7 @@
     <div class="product-grid" id="newcomerGrid"></div>
   </main>
 
-  <!-- ✅ 购物车抽屉 DOM（必须有，否则点购物车没反应） -->
+  <!-- ✅ 购物车抽屉 DOM（必须有，否则只会灰屏） -->
   <div class="cart-backdrop" id="cartBackdrop"></div>
 
   <aside class="cart-drawer" id="cartDrawer" aria-hidden="true">
@@ -333,6 +338,5 @@
       window.addEventListener("scroll", onScroll, { passive: true });
     })();
   </script>
-
 </body>
 </html>
