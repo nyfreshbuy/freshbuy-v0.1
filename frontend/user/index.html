@@ -32,6 +32,7 @@
           "Helvetica Neue", Arial, "Noto Sans", sans-serif;
         background: var(--bg);
         color: var(--text-main);
+       padding-top: var(--top-nav-h, 0px);
       }
 
       a {
@@ -40,15 +41,16 @@
       }
 
       /* 顶部导航 + 分类整体置顶 */
-      .top-nav {
-        position: sticky;
-        top: 0;
-        z-index: 50000; /* ✅ 必须高于遮罩/抽屉 */
-        background: #ffffff;
-        box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08);
-          will-change: transform;
-      }
-
+      /* ✅ 顶部导航：用 fixed 真固定，iOS 最稳 */
+.top-nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 50000; /* ✅ 必须高于遮罩/抽屉 */
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08);
+}
       .top-nav-inner {
         max-width: 1400px;
         margin: 0 auto;
@@ -1711,7 +1713,35 @@
         }
       })();
     </script>
+    <!-- ✅ fixed 顶部：动态计算 header 高度，给 body 让位 -->
+<script>
+  (function () {
+    function setTopNavHeight() {
+      var header = document.querySelector(".top-nav");
+      if (!header) return;
+      var h = Math.ceil(header.getBoundingClientRect().height);
+      document.documentElement.style.setProperty("--top-nav-h", h + "px");
+    }
 
+    function rafSet() {
+      requestAnimationFrame(setTopNavHeight);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", rafSet);
+    } else {
+      rafSet();
+    }
+
+    window.addEventListener("resize", rafSet, { passive: true });
+    window.addEventListener("orientationchange", rafSet, { passive: true });
+
+    if (window.ResizeObserver) {
+      var header = document.querySelector(".top-nav");
+      if (header) new ResizeObserver(rafSet).observe(header);
+    }
+  })();
+</script>
     <!-- 公共购物车脚本 + 首页逻辑 -->
     <script src="assets/js/cart.js"></script>
     <script src="assets/js/index.js"></script>
