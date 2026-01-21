@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <title>在鲜购拼好货 - 首页</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <link rel="stylesheet" href="./assets/css/main.css" />
     <style>
       :root {
@@ -34,7 +34,35 @@
         color: var(--text-main);
        padding-top: var(--top-nav-h, 0px);
       }
+      html, body {
+  height: 100%;
+}
 
+body.modal-open {
+  position: fixed;
+  width: 100%;
+  overflow: hidden;
+  left: 0;
+  right: 0;
+}
+
+.auth-backdrop {
+  align-items: flex-start !important;
+  padding-top: calc(env(safe-area-inset-top, 0px) + 10px);
+  padding-left: 12px;
+  padding-right: 12px;
+  padding-bottom: 12px;
+}
+
+.auth-card {
+  width: 360px;
+  max-width: 92vw;
+  max-height: calc(var(--vvh, 100vh) - 24px);
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 60px auto 0;
+  border-radius: 18px;
+}
       a {
         color: inherit;
         text-decoration: none;
@@ -1749,7 +1777,64 @@
     <!-- footer / auth -->
     <script src="/user/components/footer.js"></script>
     <script src="/assets/js/auth_client.js"></script>
+    <script>
+  (function () {
+    var backdrop = document.getElementById("authBackdrop");
+    if (!backdrop) return;
 
+    function setVVH() {
+      var h = (window.visualViewport && window.visualViewport.height)
+        ? window.visualViewport.height
+        : window.innerHeight;
+      document.documentElement.style.setProperty("--vvh", Math.round(h) + "px");
+    }
+    setVVH();
+
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("resize", setVVH, { passive: true });
+      window.visualViewport.addEventListener("scroll", setVVH, { passive: true });
+    } else {
+      window.addEventListener("resize", setVVH, { passive: true });
+    }
+
+    var savedY = 0;
+
+    function lockBody() {
+      savedY = window.scrollY || window.pageYOffset || 0;
+      document.body.classList.add("modal-open");
+      document.body.style.top = (-savedY) + "px";
+    }
+
+    function unlockBody() {
+      document.body.classList.remove("modal-open");
+      var top = document.body.style.top;
+      document.body.style.top = "";
+      var y = top ? Math.abs(parseInt(top, 10) || 0) : savedY;
+      window.scrollTo(0, y);
+    }
+
+    function isOpen() {
+      return backdrop.classList.contains("active");
+    }
+
+    var last = null;
+    function sync() {
+      var open = isOpen();
+      if (open === last) return;
+      last = open;
+      setVVH();
+      if (open) lockBody();
+      else unlockBody();
+    }
+
+    new MutationObserver(sync).observe(backdrop, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+
+    sync();
+  })();
+</script>
     <!--Start of Tawk.to Script-->
     <script type="text/javascript">
       var Tawk_API = Tawk_API || {},
