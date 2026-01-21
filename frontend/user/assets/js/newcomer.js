@@ -1,42 +1,54 @@
 // frontend/user/assets/js/newcomer.js
-console.log("✅ newcomer.js loaded (HOT ONLY + renderer-driven)");
+console.log("✅ newcomer.js loaded (HOT ONLY + homepage-render + cart fix)");
 
 (() => {
   // -------------------------
-  // DOM refs（必须存在）
+  // DOM refs
   // -------------------------
   const gridEl = document.getElementById("newcomerGrid");
   const filterBarEl = document.getElementById("filterBar");
   const sortSelectEl = document.getElementById("sortSelect");
 
+  const ids = {
+    cartIconId: "cartIcon",
+    cartBackdropId: "cartBackdrop",
+    cartDrawerId: "cartDrawer",
+    cartCloseBtnId: "cartCloseBtn",
+    cartCountId: "cartCount",
+    cartTotalItemsId: "cartTotalItems",
+    cartEmptyTextId: "cartEmptyText",
+    cartItemsListId: "cartItemsList",
+    toastId: "addCartToast",
+    goCartBtnId: "goCartBtn",
+  };
+
   function showInline(msg, color = "#6b7280") {
     if (!gridEl) return;
-    gridEl.innerHTML = `<div style="padding:12px;font-size:13px;color:${color};line-height:1.5;">${msg}</div>`;
+    gridEl.innerHTML = `<div style="padding:12px;font-size:13px;color:${color};line-height:1.6;">${msg}</div>`;
   }
 
-  // ✅ grid 必须有
   if (!gridEl) {
     console.error("❌ newcomerGrid 不存在：检查 newcomer.html 里 <div id='newcomerGrid'>");
     return;
   }
 
-  // ✅ 必须先有 renderer
-  if (!window.FBCard) {
-    console.error("❌ FBCard 不存在：newcomer.html 必须先引入 product_card_renderer.js（在 newcomer.js 之前）");
-    showInline("❌ 缺少商品卡渲染器 product_card_renderer.js（script 顺序不对或文件不存在）", "#b91c1c");
-    return;
+  // -------------------------
+  // Renderer API detection
+  // 目标：用“首页同款渲染”
+  // 1) window.renderProductCard  (你 renderer 警告里提到的函数名)
+  // 2) window.FBCard.renderGrid  (我之前给你的封装)
+  // -------------------------
+  function hasHomepageRenderer() {
+    return typeof window.renderProductCard === "function" || !!window.FBCard?.renderGrid;
   }
 
   // -------------------------
-  // Auth helpers（跟你其它页一致）
+  // Auth helpers
   // -------------------------
   const AUTH_TOKEN_KEY = "freshbuy_token";
-  function getToken() {
-    return localStorage.getItem(AUTH_TOKEN_KEY) || "";
-  }
-  function clearToken() {
-    localStorage.removeItem(AUTH_TOKEN_KEY);
-  }
+  const getToken = () => localStorage.getItem(AUTH_TOKEN_KEY) || "";
+  const clearToken = () => localStorage.removeItem(AUTH_TOKEN_KEY);
+
   async function apiFetch(url, options = {}) {
     const headers = Object.assign({}, options.headers || {});
     headers["Content-Type"] = headers["Content-Type"] || "application/json";
@@ -57,43 +69,17 @@ console.log("✅ newcomer.js loaded (HOT ONLY + renderer-driven)");
   // -------------------------
   // Helpers
   // -------------------------
-  function isTrueFlag(v) {
-    return v === true || v === "true" || v === 1 || v === "1" || v === "yes";
-  }
-  function norm(v) {
-    return v ? String(v).toLowerCase() : "";
-  }
+  const isTrueFlag = (v) => v === true || v === "true" || v === 1 || v === "1" || v === "yes";
+  const norm = (v) => (v ? String(v).toLowerCase() : "");
+
   function hasKeyword(p, keyword) {
     if (!p) return false;
     const kw = String(keyword).toLowerCase();
-    const fields = [
-      p.tag,
-      p.type,
-      p.category,
-      p.subCategory,
-      p.mainCategory,
-      p.subcategory,
-      p.section,
-      p.name,
-      p.desc,
-    ];
+    const fields = [p.tag, p.type, p.category, p.subCategory, p.mainCategory, p.subcategory, p.section, p.name, p.desc];
     if (fields.some((f) => norm(f).includes(kw))) return true;
     if (Array.isArray(p.tags) && p.tags.some((t) => norm(t).includes(kw))) return true;
     if (Array.isArray(p.labels) && p.labels.some((t) => norm(t).includes(kw))) return true;
     return false;
-  }
-
-  function getCreatedAt(p) {
-    const t =
-      p?.createdAt ||
-      p?.created_at ||
-      p?.updatedAt ||
-      p?.updated_at ||
-      p?.publishAt ||
-      p?.publish_at ||
-      null;
-    const ts = t ? Date.parse(t) : NaN;
-    return Number.isNaN(ts) ? 0 : ts;
   }
 
   function getNum(p, keys, def = 0) {
@@ -104,18 +90,19 @@ console.log("✅ newcomer.js loaded (HOT ONLY + renderer-driven)");
     }
     return def;
   }
+
   function getPriceForSort(p) {
-    // ✅ renderer 拆卡后可能有 __displayPrice（整箱卡）
     const vPrice = p?.__displayPrice;
     if (vPrice != null && Number.isFinite(Number(vPrice))) return Number(vPrice);
     return getNum(p, ["price", "flashPrice", "specialPrice", "originPrice"], 0);
   }
+
   function getSalesForSort(p) {
     return getNum(p, ["sales", "sold", "soldCount", "monthlySales", "salesCount", "orderCount"], 0);
   }
 
   // -------------------------
-  // ✅ Hot Only（爆品）识别
+  // HOT ONLY
   // -------------------------
   function isHotProduct(p) {
     return (
@@ -130,10 +117,10 @@ console.log("✅ newcomer.js loaded (HOT ONLY + renderer-driven)");
   }
 
   // -------------------------
-  // ✅ 分类 pills（优先 subCategory；没有用 category）
+  // Pills
   // -------------------------
-  let productsRaw = [];       // 原始（不拆卡）
-  let productsViewAll = [];   // expand 后（拆卡）
+  let productsRaw = [];
+  let productsViewAll = [];
   let currentFilter = "all";
 
   function pickCategoryLabel(p) {
@@ -160,12 +147,12 @@ console.log("✅ newcomer.js loaded (HOT ONLY + renderer-driven)");
       btn.type = "button";
       btn.textContent = label;
       btn.dataset.filter = val;
+
       btn.addEventListener("click", () => {
         filterBarEl.querySelectorAll(".filter-pill").forEach((b) => b.classList.remove("active"));
         btn.classList.add("active");
         currentFilter = val;
         applyFilterAndRender();
-        try { filterBarEl.scrollIntoView({ block: "nearest", behavior: "smooth" }); } catch {}
       });
       return btn;
     };
@@ -175,11 +162,51 @@ console.log("✅ newcomer.js loaded (HOT ONLY + renderer-driven)");
   }
 
   // -------------------------
-  // ✅ 过滤 + 排序 + 渲染（核心：FBCard.renderGrid）
+  // ✅ 使用“首页同款渲染”渲染网格
+  // 优先：window.renderProductCard
+  // 兜底：window.FBCard.renderGrid
   // -------------------------
-  function applyFilterAndRender() {
-    if (!gridEl || !window.FBCard) return;
+  function renderWithHomepageRenderer(list) {
+    // 方式1：renderProductCard 一张一张拼（最兼容你当前 renderer 警告）
+    if (typeof window.renderProductCard === "function") {
+      gridEl.innerHTML = "";
+      const frag = document.createDocumentFragment();
 
+      for (const p of list) {
+        // renderProductCard 返回 HTML 字符串 / 或 DOM 节点（做两种兼容）
+        const out = window.renderProductCard(p);
+        if (!out) continue;
+
+        if (typeof out === "string") {
+          const tmp = document.createElement("div");
+          tmp.innerHTML = out;
+          // 通常 card 会是第一个元素
+          const node = tmp.firstElementChild || tmp;
+          frag.appendChild(node);
+        } else if (out instanceof HTMLElement) {
+          frag.appendChild(out);
+        } else {
+          // 其它类型，忽略
+        }
+      }
+
+      gridEl.appendChild(frag);
+
+      // ✅ 如果首页渲染器需要绑定事件（有的写在 ensureGlobalBindings）
+      if (window.FBCard?.ensureGlobalBindings) window.FBCard.ensureGlobalBindings();
+      return true;
+    }
+
+    // 方式2：FBCard.renderGrid
+    if (window.FBCard?.renderGrid) {
+      window.FBCard.renderGrid(gridEl, list, { badgeText: "" });
+      return true;
+    }
+
+    return false;
+  }
+
+  function applyFilterAndRender() {
     let list = [...productsViewAll];
 
     // 分类过滤
@@ -199,12 +226,9 @@ console.log("✅ newcomer.js loaded (HOT ONLY + renderer-driven)");
         const pb = getPriceForSort(b);
         return sortVal === "price_asc" ? pa - pb : pb - pa;
       });
-    } else if (sortVal === "sales_desc") {
+    } else {
       const hasAnySales = list.some((p) => getSalesForSort(p) > 0);
       if (hasAnySales) list.sort((a, b) => getSalesForSort(b) - getSalesForSort(a));
-    } else {
-      // newest_desc（如果你以后加这个 option）
-      list.sort((a, b) => getCreatedAt(b) - getCreatedAt(a));
     }
 
     if (!list.length) {
@@ -212,21 +236,24 @@ console.log("✅ newcomer.js loaded (HOT ONLY + renderer-driven)");
       return;
     }
 
-    // ✅ 关键：用首页同款 renderer 渲染
-    // badgeText 传空：让 renderer 自己决定 badge（或你想强制“爆品”也行）
-    window.FBCard.renderGrid(gridEl, list, { badgeText: "" });
+    // ✅ 渲染
+    const ok = renderWithHomepageRenderer(list);
+    if (!ok) {
+      console.error("❌ 找不到首页渲染器：需要 window.renderProductCard 或 window.FBCard.renderGrid");
+      showInline(
+        "❌ 商品卡渲染器接口不匹配：<br>请确认 product_card_renderer.js 是否与首页同版本，并且首页确实定义了 renderProductCard 或 FBCard.renderGrid。",
+        "#b91c1c"
+      );
+    }
   }
 
   // -------------------------
-  // ✅ Load Hot Only products
+  // Load HOT products
   // -------------------------
   async function loadHotProducts() {
     showInline("加载中…");
 
-    const { res, data } = await apiFetch(`/api/products-simple?ts=${Date.now()}`, {
-      method: "GET",
-      cache: "no-store",
-    });
+    const { res, data } = await apiFetch(`/api/products-simple?ts=${Date.now()}`, { method: "GET", cache: "no-store" });
 
     if (!res.ok) {
       console.error("❌ /api/products-simple 失败:", res.status, data);
@@ -234,18 +261,20 @@ console.log("✅ newcomer.js loaded (HOT ONLY + renderer-driven)");
       return;
     }
 
-    const list = window.FBCard.extractList(data) || [];
-    const cleaned = list.filter((p) => !p.isDeleted && p.deleted !== true && p.status !== "deleted");
+    const list = window.FBCard?.extractList ? window.FBCard.extractList(data) : (
+      Array.isArray(data) ? data :
+      Array.isArray(data?.items) ? data.items :
+      Array.isArray(data?.products) ? data.products :
+      Array.isArray(data?.list) ? data.list : []
+    );
 
-    // ✅ 只保留爆品
-    productsRaw = cleaned.filter((p) => isHotProduct(p));
+    const cleaned = (list || []).filter((p) => !p?.isDeleted && p?.deleted !== true && p?.status !== "deleted");
+    productsRaw = cleaned.filter(isHotProduct);
 
-    // ✅ 兜底：如果爆品字段没打，但你希望页面不空，就按销量取前 60（仍然算爆品页兜底）
+    // ✅ 兜底：爆品为空就按销量 top 60（避免空页）
     if (!productsRaw.length && cleaned.length) {
       console.warn("[Newcomer] hot empty -> fallback top sales 60");
-      productsRaw = [...cleaned]
-        .sort((a, b) => getSalesForSort(b) - getSalesForSort(a))
-        .slice(0, 60);
+      productsRaw = [...cleaned].sort((a, b) => getSalesForSort(b) - getSalesForSort(a)).slice(0, 60);
     }
 
     if (!productsRaw.length) {
@@ -253,45 +282,93 @@ console.log("✅ newcomer.js loaded (HOT ONLY + renderer-driven)");
       return;
     }
 
-    // ✅ 拆卡：单卖/整箱两张（首页同款）
-    productsViewAll = window.FBCard.expand(productsRaw);
+    // ✅ expand：如果 FBCard.expand 存在就拆卡，否则不拆（也能渲染）
+    productsViewAll = window.FBCard?.expand ? window.FBCard.expand(productsRaw) : [...productsRaw];
 
     currentFilter = "all";
     rebuildCategoryPills();
     applyFilterAndRender();
 
-    console.log("[Newcomer] raw:", list.length, "cleaned:", cleaned.length, "hotRaw:", productsRaw.length, "view:", productsViewAll.length);
+    console.log(
+      "[Newcomer] raw:", (list || []).length,
+      "cleaned:", cleaned.length,
+      "hotRaw:", productsRaw.length,
+      "view:", productsViewAll.length,
+      "hasHomepageRenderer:", hasHomepageRenderer()
+    );
+  }
+
+  // -------------------------
+  // ✅ 购物车：修复“只灰屏/抽屉不出/点购物车没反应”
+  // 不改 cart.js，只在本页兜底
+  // -------------------------
+  function ensureCartLayerOnTop() {
+    const topFixed = document.getElementById("topFixed");
+    const backdrop = document.getElementById(ids.cartBackdropId);
+    const drawer = document.getElementById(ids.cartDrawerId);
+
+    // 关键：让抽屉层级高于顶部固定栏
+    if (topFixed) topFixed.style.zIndex = "99990";
+    if (backdrop) backdrop.style.zIndex = "99995";
+    if (drawer) drawer.style.zIndex = "99996";
+  }
+
+  function cartFallbackCloseWiring() {
+    const backdrop = document.getElementById(ids.cartBackdropId);
+    const drawer = document.getElementById(ids.cartDrawerId);
+    const closeBtn = document.getElementById(ids.cartCloseBtnId);
+
+    if (!backdrop || !drawer) return;
+
+    const closeCart = () => {
+      backdrop.classList.remove("active", "open", "show");
+      drawer.classList.remove("active", "open", "show");
+      drawer.setAttribute("aria-hidden", "true");
+    };
+
+    backdrop.addEventListener("click", closeCart);
+    if (closeBtn) closeBtn.addEventListener("click", closeCart);
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") closeCart();
+    });
   }
 
   // -------------------------
   // Init
   // -------------------------
   document.addEventListener("DOMContentLoaded", () => {
-    // ✅ renderer bindings（加购黑框 +/- / 徽章等）
+    // ✅ 层级修复
+    ensureCartLayerOnTop();
+
+    // ✅ renderer bindings（如果你 FBCard 版本支持）
     if (window.FBCard?.ensureGlobalBindings) window.FBCard.ensureGlobalBindings();
     if (window.FBCard?.startStockPolling) window.FBCard.startStockPolling();
 
-    // ✅ 购物车抽屉 UI（点击右上角购物车必须有反应）
+    // ✅ cart init（必须有，否则右上角不会打开抽屉）
     if (window.FreshCart?.initCartUI) {
       window.FreshCart.initCartUI({
-        cartIconId: "cartIcon",
-        cartBackdropId: "cartBackdrop",
-        cartDrawerId: "cartDrawer",
-        cartCloseBtnId: "cartCloseBtn",
-        cartCountId: "cartCount",
-        cartTotalItemsId: "cartTotalItems",
-        cartEmptyTextId: "cartEmptyText",
-        cartItemsListId: "cartItemsList",
-        toastId: "addCartToast",
-        goCartBtnId: "goCartBtn",
+        cartIconId: ids.cartIconId,
+        cartBackdropId: ids.cartBackdropId,
+        cartDrawerId: ids.cartDrawerId,
+        cartCloseBtnId: ids.cartCloseBtnId,
+        cartCountId: ids.cartCountId,
+        cartTotalItemsId: ids.cartTotalItemsId,
+        cartEmptyTextId: ids.cartEmptyTextId,
+        cartItemsListId: ids.cartItemsListId,
+        toastId: ids.toastId,
+        goCartBtnId: ids.goCartBtnId,
         cartPageUrl: "/user/cart.html",
       });
     } else {
-      console.warn("❌ FreshCart.initCartUI 不存在：cart.js 没加载成功或报错");
+      console.warn("❌ FreshCart.initCartUI 不存在：但你说其它页面没问题，说明 newcomer.html 的 script 顺序/路径可能不对");
     }
+
+    // ✅ 本页兜底：避免“只灰屏不出抽屉/关不掉”
+    cartFallbackCloseWiring();
 
     if (sortSelectEl) sortSelectEl.addEventListener("change", applyFilterAndRender);
 
+    // ✅ 最后加载数据
     loadHotProducts().catch((e) => {
       console.error("❌ loadHotProducts error:", e);
       showInline("加载失败：请打开控制台查看报错。", "#b91c1c");
