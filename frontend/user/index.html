@@ -37,14 +37,6 @@
       html, body {
   height: 100%;
 }
-
-body.modal-open {
-  position: fixed;
-  width: 100%;
-  overflow: hidden;
-  left: 0;
-  right: 0;
-}
       a {
         color: inherit;
         text-decoration: none;
@@ -1778,57 +1770,6 @@ body.modal-open {
     <!-- footer / auth -->
     <script src="/user/components/footer.js"></script>
     <script src="/assets/js/auth_client.js"></script>
-    <script>
-  (function () {
-    var backdrop = document.getElementById("authBackdrop");
-    if (!backdrop) return;
-
-    function setVVH() {
-  var vv = window.visualViewport;
-  var h = vv && vv.height ? vv.height : window.innerHeight;
-  var top = vv && typeof vv.offsetTop === "number" ? vv.offsetTop : 0;
-
-  document.documentElement.style.setProperty("--vvh", Math.round(h) + "px");
-  document.documentElement.style.setProperty("--vvTop", Math.round(top) + "px");
-
-  // ✅ 让弹窗永远贴着“可视窗口”顶部（不是页面顶部）
-  var bd = document.getElementById("authBackdrop");
-  if (bd) bd.style.top = Math.round(top) + "px";
-}
-    function lockBody() {
-      savedY = window.scrollY || window.pageYOffset || 0;
-    }
-
-    function unlockBody() {
-      document.body.classList.remove("modal-open");
-      var top = document.body.style.top;
-      document.body.style.top = "";
-      var y = top ? Math.abs(parseInt(top, 10) || 0) : savedY;
-      window.scrollTo(0, y);
-    }
-
-    function isOpen() {
-      return backdrop.classList.contains("active");
-    }
-
-    var last = null;
-    function sync() {
-      var open = isOpen();
-      if (open === last) return;
-      last = open;
-      setVVH();
-      if (open) lockBody();
-      else unlockBody();
-    }
-
-    new MutationObserver(sync).observe(backdrop, {
-      attributes: true,
-      attributeFilter: ["class"],
-    });
-
-    sync();
-  })();
-</script>
     <!--Start of Tawk.to Script-->
     <script type="text/javascript">
       var Tawk_API = Tawk_API || {},

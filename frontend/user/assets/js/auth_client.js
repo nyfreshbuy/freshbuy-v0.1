@@ -221,13 +221,19 @@
     );
 
     // ✅ 5) 监听 visualViewport（键盘弹出时 viewport 高度变化）
-    function onVVChange() {
-      if (!isOpen()) return;
-      // 保持锁定状态 + 防止抖动
-      lockPage();
-      requestAnimationFrame(() => window.scrollTo(0, 0));
-    }
+    let vvRaf = 0;
+function onVVChange() {
+  if (!isOpen()) return;
 
+  // 只更新一个 CSS 变量给弹窗算高度，别再 lock / scrollTo（否则会循环闪）
+  if (vvRaf) cancelAnimationFrame(vvRaf);
+  vvRaf = requestAnimationFrame(() => {
+    const h = (window.visualViewport && window.visualViewport.height)
+      ? window.visualViewport.height
+      : window.innerHeight;
+    document.documentElement.style.setProperty("--vvh", Math.round(h) + "px");
+  });
+}
     if (window.visualViewport) {
       window.visualViewport.addEventListener("resize", onVVChange, { passive: true });
       window.visualViewport.addEventListener("scroll", onVVChange, { passive: true });
