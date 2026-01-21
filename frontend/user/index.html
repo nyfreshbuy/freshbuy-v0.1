@@ -807,7 +807,11 @@ body.modal-open {
   padding-left: 12px;
   padding-right: 12px;
   padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
-
+    /* ✅ 关键：用 visualViewport 的高度，不让键盘挤 layout */
+  height: var(--vvh, 100vh);
+  bottom: auto;
+  overflow: hidden;
+  -webkit-overflow-scrolling: touch;
   z-index: 70000;
 }
 
@@ -828,6 +832,7 @@ body.modal-open {
   /* ✅ 不要 60px（会让它看起来“被顶”） */
   margin: 12px auto 0;
   border-radius: 18px;
+  transform: translateZ(0);
 }
       /* =========================
          ✅ 关键修复：图标放在输入框外面（永不遮挡）
@@ -1779,22 +1784,17 @@ body.modal-open {
     if (!backdrop) return;
 
     function setVVH() {
-      var h = (window.visualViewport && window.visualViewport.height)
-        ? window.visualViewport.height
-        : window.innerHeight;
-      document.documentElement.style.setProperty("--vvh", Math.round(h) + "px");
-    }
-    setVVH();
+  var vv = window.visualViewport;
+  var h = vv && vv.height ? vv.height : window.innerHeight;
+  var top = vv && typeof vv.offsetTop === "number" ? vv.offsetTop : 0;
 
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener("resize", setVVH, { passive: true });
-      window.visualViewport.addEventListener("scroll", setVVH, { passive: true });
-    } else {
-      window.addEventListener("resize", setVVH, { passive: true });
-    }
+  document.documentElement.style.setProperty("--vvh", Math.round(h) + "px");
+  document.documentElement.style.setProperty("--vvTop", Math.round(top) + "px");
 
-    var savedY = 0;
-
+  // ✅ 让弹窗永远贴着“可视窗口”顶部（不是页面顶部）
+  var bd = document.getElementById("authBackdrop");
+  if (bd) bd.style.top = Math.round(top) + "px";
+}
     function lockBody() {
       savedY = window.scrollY || window.pageYOffset || 0;
       document.body.classList.add("modal-open");
