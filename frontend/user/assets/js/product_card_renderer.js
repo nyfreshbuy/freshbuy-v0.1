@@ -1,6 +1,6 @@
 // frontend/user/assets/js/product_card_renderer.js
 // =======================================================
-// Freshbuy 全站统一商品卡渲染器（对齐首页逻辑）- ✅ 防重复加载/防翻倍版
+// Freshbuy 全站统一商品卡渲染器（对齐首页逻辑）
 // -------------------------------------------------------
 // ✅ 全部封装：
 // 1) 首页卡片 HTML 模板（图片+overlay+徽章+价格+动作区）
@@ -13,31 +13,28 @@
 // 8) 全站同步：freshbuy:cartUpdated + storage
 // 9) 库存轮询：/api/products-simple -> 更新卡片库存UI + clamp + 徽章兜底
 //
-// ✅ 本版额外修复：
-// A) 防止 renderer 被重复加载导致：+/- 翻倍、轮询多开、事件重复绑定
+// ✅ 其它页面用法：
+//   FBCard.ensureGlobalBindings();         // 只需一次（建议每页都调用也行，会去重）
+//   const view = FBCard.expand(rawList);   // rawList=后端原始商品数组
+//   FBCard.renderGrid(gridEl, view, { badgeText: "" });
+//   FBCard.startStockPolling();            // 需要库存轮询就开
+//
+// window 上挂：window.FBCard
 // =======================================================
 
 (function () {
   "use strict";
 
-  // ✅ 0) 防重复加载：如果这个文件被执行第二次，直接退出（避免重复绑事件、重复轮询）
-  if (window.__FB_PRODUCT_CARD_RENDERER_LOADED__) {
-    console.warn("⚠️ product_card_renderer.js duplicated load blocked.");
-    return;
-  }
-  window.__FB_PRODUCT_CARD_RENDERER_LOADED__ = true;
-
-  // ✅ 1) 复用已存在的 FBCard（更稳），避免覆盖导致旧监听残留 + 新监听又来一套
-  const FBCard = (window.FBCard && typeof window.FBCard === "object") ? window.FBCard : {};
+  const FBCard = {};
   window.FBCard = FBCard;
 
   // -----------------------
   // Config（可在页面覆盖）
   // -----------------------
-  FBCard.config = FBCard.config || {
+  FBCard.config = {
     apiProductsSimple: "/api/products-simple",
     stockRefreshMs: 15000,
-    detailPage: "product_detail.html",
+    detailPage: "product_detail.html", // 详情页路径
   };
 
   // -----------------------
@@ -47,38 +44,46 @@
     const v = Number(n || 0);
     return v % 1 === 0 ? String(v.toFixed(0)) : String(v.toFixed(2));
   }
+
   function isTrueFlag(v) {
     return v === true || v === "true" || v === 1 || v === "1";
   }
+
   function hasKeyword(p, keyword) {
     if (!p) return false;
     const kw = String(keyword).toLowerCase();
     const norm = (v) => (v ? String(v).toLowerCase() : "");
+
     const fields = [p.tag, p.type, p.category, p.subCategory, p.mainCategory, p.subcategory, p.section];
     if (fields.some((f) => norm(f).includes(kw))) return true;
+
     if (Array.isArray(p.tags) && p.tags.some((t) => norm(t).includes(kw))) return true;
     if (Array.isArray(p.labels) && p.labels.some((t) => norm(t).includes(kw))) return true;
+
     return false;
   }
+
   function isHotProduct(p) {
     return (
-      isTrueFlag(p?.isHot) ||
-      isTrueFlag(p?.isHotDeal) ||
-      isTrueFlag(p?.hotDeal) ||
+      isTrueFlag(p.isHot) ||
+      isTrueFlag(p.isHotDeal) ||
+      isTrueFlag(p.hotDeal) ||
       hasKeyword(p, "爆品") ||
       hasKeyword(p, "爆品日") ||
       hasKeyword(p, "hot")
     );
   }
+
   function getStockUnits(p) {
-    return Math.max(0, Math.floor(Number(p?.stock ?? p?.inventory ?? 0) || 0));
+    return Math.max(0, Math.floor(Number(p.stock ?? p.inventory ?? 0) || 0));
   }
+
   function getLimitQty(p) {
-    return Number(p?.limitQty || p?.limitPerUser || p?.maxQty || p?.purchaseLimit || 0) || 0;
+    return Number(p.limitQty || p.limitPerUser || p.maxQty || p.purchaseLimit || 0) || 0;
   }
 
   // -----------------------
-  // Cart API
+  // Cart snapshot / qty map（与首页思想一致）
   // -----------------------
   function getCartApi() {
     return (window.FreshCart && window.FreshCart) || (window.Cart && window.Cart) || null;
@@ -144,6 +149,7 @@
       if (Array.isArray(obj.data?.items)) return obj.data.items;
       if (Array.isArray(obj.payload?.items)) return obj.payload.items;
 
+      // map 形式
       if (obj.itemsById) return obj.itemsById;
       if (obj.cartItems) return obj.cartItems;
       if (obj.lines) return obj.lines;
@@ -158,7 +164,7 @@
 
     const items = findItems(cart);
 
-    // map
+    // items 是对象映射
     if (items && typeof items === "object" && !Array.isArray(items)) {
       for (const k of Object.keys(items)) {
         const it = items[k];
@@ -184,7 +190,7 @@
       return map;
     }
 
-    // array
+    // items 是数组
     if (Array.isArray(items)) {
       items.forEach((it) => {
         const id = String(
@@ -206,7 +212,7 @@
       return map;
     }
 
-    // fallback: obj key->qty
+    // 兜底：对象 key->qty
     if (typeof cart === "object") {
       for (const k of Object.keys(cart)) {
         if (!k) continue;
@@ -219,23 +225,17 @@
         if (id && Number.isFinite(qty)) map[id] = (map[id] || 0) + qty;
       }
     }
+
     return map;
   }
 
   function getCartQty(pid) {
-    const api = getCartApi();
-    try {
-      if (api && typeof api.getQty === "function") {
-        const n = Number(api.getQty(pid) || 0);
-        return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
-      }
-    } catch {}
     const snap = getCartSnapshot();
     const map = normalizeCartToQtyMap(snap);
     return Math.max(0, Math.floor(Number(map[pid] || 0) || 0));
   }
 
-  // ✅ setCartQty：保证“创建/更新”都只走一条路径，避免某些 cart.js 内部又叠加
+  // ✅ 重要：第一次加购必须走 addItem（setQty 不会凭空创建）
   function setCartQty(pid, targetQty, normalizedItem) {
     const next = Math.max(0, Math.floor(Number(targetQty || 0) || 0));
     const api = getCartApi();
@@ -244,7 +244,8 @@
       return false;
     }
 
-    const curQty = getCartQty(pid);
+    const curQty =
+      (typeof api.getQty === "function" ? Number(api.getQty(pid) || 0) : getCartQty(pid)) || 0;
 
     // next=0
     if (next === 0) {
@@ -255,13 +256,19 @@
         }
       } catch {}
       try {
-        if (typeof api.removeItem === "function") return (api.removeItem(pid), true);
-        if (typeof api.remove === "function") return (api.remove(pid), true);
+        if (typeof api.removeItem === "function") {
+          api.removeItem(pid);
+          return true;
+        }
+        if (typeof api.remove === "function") {
+          api.remove(pid);
+          return true;
+        }
       } catch {}
       return true;
     }
 
-    // 不存在 -> addItem（一次）
+    // next>0 且当前不存在：必须 addItem
     if (curQty <= 0) {
       if (typeof api.addItem === "function") {
         try {
@@ -272,29 +279,54 @@
       return false;
     }
 
-    // 已存在 -> setQty（优先）
+    // 已存在：优先 setQty/updateQty
     try {
-      if (typeof api.setQty === "function") return (api.setQty(pid, next), true);
-      if (typeof api.updateQty === "function") return (api.updateQty(pid, next), true);
-      if (typeof api.changeQty === "function") return (api.changeQty(pid, next), true);
-      if (typeof api.setItemQty === "function") return (api.setItemQty(pid, next), true);
+      if (typeof api.setQty === "function") {
+        api.setQty(pid, next);
+        return true;
+      }
+      if (typeof api.updateQty === "function") {
+        api.updateQty(pid, next);
+        return true;
+      }
+      if (typeof api.changeQty === "function") {
+        api.changeQty(pid, next);
+        return true;
+      }
+      if (typeof api.setItemQty === "function") {
+        api.setItemQty(pid, next);
+        return true;
+      }
     } catch {}
 
-    // fallback：差量
+    // 兜底差量
     const delta = next - curQty;
     if (delta === 0) return true;
 
-    if (typeof api.addItem === "function") {
+    if (delta > 0) {
+      if (typeof api.addItem === "function") {
+        try {
+          api.addItem(normalizedItem || { id: pid }, delta);
+          return true;
+        } catch {}
+      }
+      return false;
+    }
+
+    // 减少：尽量 removeOne/decrease
+    const steps = Math.abs(delta);
+    for (let i = 0; i < steps; i++) {
       try {
-        api.addItem(normalizedItem || { id: pid }, delta);
-        return true;
+        if (typeof api.decreaseItem === "function") api.decreaseItem(pid, 1);
+        else if (typeof api.removeOne === "function") api.removeOne(pid);
+        else if (typeof api.addItem === "function") api.addItem({ id: pid }, -1);
       } catch {}
     }
-    return false;
+    return true;
   }
 
   // -----------------------
-  // Badge
+  // Badge（与首页一致：min(cartQty, card.__maxQty)）
   // -----------------------
   function setProductBadge(pid, cartQty) {
     const els = document.querySelectorAll(`.product-qty-badge[data-pid="${pid}"]`);
@@ -306,6 +338,7 @@
       const card = el.closest(".product-card");
       const cap0 = Number(card?.__maxQty);
       const cap = Number.isFinite(cap0) ? Math.max(0, Math.floor(cap0)) : Infinity;
+
       const showQty = Math.min(raw, cap);
 
       if (showQty > 0) {
@@ -333,7 +366,7 @@
   }
 
   // -----------------------
-  // 动作区渲染
+  // 动作区渲染（加入购物车 ↔ 黑框）
   // -----------------------
   function renderCardAction(card) {
     if (!card) return;
@@ -351,6 +384,7 @@
 
     if (addBtn) addBtn.style.display = qty <= 0 ? "" : "none";
     if (qtyRow) qtyRow.style.display = qty > 0 ? "flex" : "none";
+
     if (qtyDisplay) qtyDisplay.textContent = String(Math.max(1, qty || 1));
 
     const minus = card.querySelector("[data-qty-minus]");
@@ -360,11 +394,13 @@
   }
 
   function renderAllCardsAction() {
-    document.querySelectorAll(".product-card[data-cart-pid]").forEach((card) => renderCardAction(card));
+    document.querySelectorAll(".product-card[data-cart-pid]").forEach((card) => {
+      renderCardAction(card);
+    });
   }
 
   // -------------------------------------------------------
-  // 3) expand：单卖/整箱拆卡
+  // 3) 单卖/整箱拆卡（公共）
   // -------------------------------------------------------
   FBCard.expand = function expandProductsWithVariants(list) {
     const out = [];
@@ -374,7 +410,7 @@
       const productId = String(p?._id || p?.id || "").trim();
       const variants = Array.isArray(p?.variants) ? p.variants : [];
 
-      const pushSingle = () => {
+      if (!variants.length) {
         const vKey = "single";
         out.push({
           ...p,
@@ -386,22 +422,29 @@
           __displayPrice: null,
           __cartKey: productId ? `${productId}::${vKey}` : String(p?.sku || p?.id || ""),
         });
-      };
-
-      if (!variants.length) {
-        pushSingle();
         continue;
       }
 
       const enabledVars = variants.filter((v) => v && v.enabled !== false);
       if (!enabledVars.length) {
-        pushSingle();
+        const vKey = "single";
+        out.push({
+          ...p,
+          __productId: productId,
+          __variantKey: vKey,
+          __variantLabel: "单个",
+          __unitCount: 1,
+          __displayName: p?.name || "",
+          __displayPrice: null,
+          __cartKey: productId ? `${productId}::${vKey}` : String(p?.sku || p?.id || ""),
+        });
         continue;
       }
 
       for (const v of enabledVars) {
         const vKey = String(v.key || "single").trim() || "single";
         const unitCount = Math.max(1, Math.floor(Number(v.unitCount || 1)));
+
         const vLabel = String(v.label || "").trim() || (unitCount > 1 ? `整箱(${unitCount}个)` : "单个");
         const vPrice = v.price != null && Number.isFinite(Number(v.price)) ? Number(v.price) : null;
 
@@ -417,11 +460,12 @@
         });
       }
     }
+
     return out;
   };
 
   // -------------------------------------------------------
-  // 4) createCard：卡片模板
+  // 4) 卡片 HTML 模板（与首页结构一致）
   // -------------------------------------------------------
   FBCard.createCard = function createProductCard(p, extraBadgeText) {
     const article = document.createElement("article");
@@ -481,6 +525,7 @@
     const tagline = (p.tag || p.category || "").slice(0, 18);
     const limitQty = getLimitQty(p);
 
+    // ✅ 库存 maxQty（唯一口径）
     const stockUnits = getStockUnits(p);
     let maxQty = variantKey === "single" ? stockUnits : Math.floor(stockUnits / unitCount);
     if (Number(limitQty) > 0) {
@@ -493,8 +538,9 @@
 
     const maxText = unitCount > 1 ? `仅剩 ${Math.max(0, maxQty)} 箱` : `仅剩 ${Math.max(0, maxQty)}`;
 
+    // ✅ normalizedItem（给统一 setCartQty / addItem 用）
     const normalized = {
-      id: pid,
+      id: pid, // cartKey（productId::variantKey）
       productId,
       variantKey,
       name: displayName || "商品",
@@ -508,6 +554,7 @@
     };
     article.__normalizedItem = normalized;
 
+    // ✅ 卡片 HTML（结构与首页一致）
     article.innerHTML = `
       <div class="product-image-wrap" data-go-detail>
         ${badgeText ? `<span class="special-badge">${badgeText}</span>` : ""}
@@ -576,6 +623,7 @@
       </div>
     `;
 
+    // ✅ 只允许图片&名字跳详情
     function goDetail(e) {
       e.preventDefault();
       e.stopPropagation();
@@ -594,6 +642,7 @@
       el.addEventListener("click", goDetail);
     });
 
+    // ✅ overlay 收藏占位（保持与首页一致）
     const favBtn = article.querySelector(".overlay-btn.fav");
     if (favBtn) {
       favBtn.addEventListener("click", (ev) => {
@@ -603,6 +652,7 @@
       });
     }
 
+    // ✅ 卡片提供刷新库存入口（供轮询调用）
     article.__refreshStockUI = function (newStockUnits) {
       const su = Math.max(0, Math.floor(Number(newStockUnits || 0) || 0));
       article.__stockUnits = su;
@@ -614,6 +664,7 @@
       }
       article.__maxQty = newMax;
 
+      // 更新 hint & 按钮禁用
       const hint = article.querySelector("[data-qty-hint]");
       if (hint) {
         const txt = unitCount > 1 ? `仅剩 ${Math.max(0, newMax)} 箱` : `仅剩 ${Math.max(0, newMax)}`;
@@ -625,16 +676,19 @@
       if (overlayAdd) overlayAdd.disabled = newMax <= 0;
       if (fixedAdd) fixedAdd.disabled = newMax <= 0;
 
+      // 动作区 & 徽章兜底
       renderCardAction(article);
       scheduleBadgeSync();
     };
 
+    // 初次渲染：根据购物车数量决定显示
     renderCardAction(article);
+
     return article;
   };
 
   // -------------------------------------------------------
-  // 5) renderGrid
+  // 5) renderGrid：其它页面直接调用
   // -------------------------------------------------------
   FBCard.renderGrid = function renderGrid(gridEl, viewList, options = {}) {
     if (!gridEl) return;
@@ -648,8 +702,11 @@
       return;
     }
 
-    arr.forEach((p) => gridEl.appendChild(FBCard.createCard(p, badgeText)));
+    arr.forEach((p) => {
+      gridEl.appendChild(FBCard.createCard(p, badgeText));
+    });
 
+    // 初次兜底同步
     setTimeout(() => {
       try {
         scheduleBadgeSync();
@@ -659,13 +716,15 @@
   };
 
   // -------------------------------------------------------
-  // 6) ensureGlobalBindings（✅ 全局只允许绑定一次）
+  // 6) 全局事件委托（加购/黑框 +/- / overlay 加购）
   // -------------------------------------------------------
-  FBCard.ensureGlobalBindings = function ensureGlobalBindings() {
-    // ✅ 用 window 全局标记，避免重复加载导致 __bound 重新变 false
-    if (window.__FB_CARD_BINDINGS_BOUND__) return;
-    window.__FB_CARD_BINDINGS_BOUND__ = true;
+  let __bound = false;
 
+  FBCard.ensureGlobalBindings = function ensureGlobalBindings() {
+    if (__bound) return;
+    __bound = true;
+
+    // ✅ 全站购物车更新事件（兼容你可能存在的两种名字）
     function emitCartUpdated(pid, delta) {
       try {
         window.dispatchEvent(new CustomEvent("freshbuy:cartUpdated", { detail: { pid, delta } }));
@@ -675,16 +734,19 @@
       } catch {}
     }
 
+    // 点击事件委托：底部加入/overlay加入/黑框+-
     document.addEventListener("click", (e) => {
       const addOnlyBtn = e.target.closest(".product-add-fixed[data-add-only]");
       const overlayAddBtn = e.target.closest(".overlay-btn.add[data-add-pid]");
       const minusBtn = e.target.closest("[data-qty-minus]");
       const plusBtn = e.target.closest("[data-qty-plus]");
+
       if (!addOnlyBtn && !overlayAddBtn && !minusBtn && !plusBtn) return;
 
       const card = e.target.closest(".product-card");
       if (!card) return;
 
+      // 阻止触发详情跳转
       e.preventDefault();
       e.stopPropagation();
 
@@ -692,6 +754,7 @@
       if (!pid) return;
 
       const normalizedItem = card.__normalizedItem || { id: pid };
+
       const cap0 = Number(card.__maxQty);
       const cap = Number.isFinite(cap0) ? Math.max(0, Math.floor(cap0)) : 0;
 
@@ -709,6 +772,7 @@
         setProductBadge(pid, nextQty);
       }
 
+      // 加入购物车（底部）=> 变成 1
       if (addOnlyBtn) {
         if (cap <= 0) return;
         const ok = setCartQty(pid, 1, normalizedItem);
@@ -720,6 +784,7 @@
         return;
       }
 
+      // overlay 加购 => +1
       if (overlayAddBtn) {
         if (cap <= 0) return;
         const next = Math.min(cap, cur + 1);
@@ -731,6 +796,7 @@
         return;
       }
 
+      // -
       if (minusBtn) {
         const next = Math.max(0, cur - 1);
         setCartQty(pid, next, normalizedItem);
@@ -741,6 +807,7 @@
         return;
       }
 
+      // +
       if (plusBtn) {
         if (cap <= 0) return;
         const next = Math.min(cap, cur + 1);
@@ -753,6 +820,7 @@
       }
     });
 
+    // 购物车更新：刷新徽章 + 动作区
     window.addEventListener("freshbuy:cartUpdated", () => {
       scheduleBadgeSync();
       renderAllCardsAction();
@@ -762,6 +830,7 @@
       renderAllCardsAction();
     });
 
+    // 多标签页同步
     window.addEventListener("storage", (e) => {
       if (!e || !e.key) return;
       if (String(e.key).toLowerCase().includes("cart")) {
@@ -772,13 +841,13 @@
   };
 
   // -------------------------------------------------------
-  // 7) 库存轮询（✅ 全局只允许一份）
+  // 7) 库存轮询刷新（全站统一）
   // -------------------------------------------------------
+  let __pollTimer = null;
+
   FBCard.startStockPolling = function startStockPolling(ms) {
     const interval = Math.max(3000, Number(ms || FBCard.config.stockRefreshMs || 15000) || 15000);
-
-    // ✅ 用 window 保存 timer，避免多份 renderer 各自开定时器
-    if (window.__FB_CARD_STOCK_POLL_TIMER__) return;
+    if (__pollTimer) return; // 已开启
 
     async function refreshStockAndCards() {
       try {
@@ -811,8 +880,12 @@
           const su = stockMap[pid];
           if (!Number.isFinite(su)) return;
 
-          if (typeof card.__refreshStockUI === "function") card.__refreshStockUI(su);
-          else card.__stockUnits = su;
+          if (typeof card.__refreshStockUI === "function") {
+            card.__refreshStockUI(su);
+          } else {
+            // 极端兜底
+            card.__stockUnits = su;
+          }
         });
 
         scheduleBadgeSync();
@@ -821,17 +894,18 @@
       }
     }
 
+    // 立即跑一次
     refreshStockAndCards();
-    window.__FB_CARD_STOCK_POLL_TIMER__ = setInterval(refreshStockAndCards, interval);
+    __pollTimer = setInterval(refreshStockAndCards, interval);
   };
 
   FBCard.stopStockPolling = function stopStockPolling() {
-    if (window.__FB_CARD_STOCK_POLL_TIMER__) clearInterval(window.__FB_CARD_STOCK_POLL_TIMER__);
-    window.__FB_CARD_STOCK_POLL_TIMER__ = null;
+    if (__pollTimer) clearInterval(__pollTimer);
+    __pollTimer = null;
   };
 
   // -------------------------------------------------------
-  // 8) extractList
+  // 8) 小助手：从接口数据里取数组（方便页面直接用）
   // -------------------------------------------------------
   FBCard.extractList = function extractList(data) {
     return Array.isArray(data)
@@ -844,4 +918,24 @@
       ? data.products
       : [];
   };
+
+  // 默认：不自动绑定/不自动轮询（由页面决定）
 })();
+// ✅ expose to window for all pages (DailySpecial / others)
+try {
+  // 你渲染函数如果叫别的名，把 renderProductCardFn 换成你真实函数名
+  const renderProductCardFn =
+    typeof renderProductCard === "function"
+      ? renderProductCard
+      : (typeof window.renderProductCard === "function" ? window.renderProductCard : null);
+
+  if (renderProductCardFn) {
+    window.renderProductCard = renderProductCardFn;
+    window.ProductCardRenderer = window.ProductCardRenderer || {};
+    window.ProductCardRenderer.render = renderProductCardFn;
+  } else {
+    console.warn("⚠️ product_card_renderer.js loaded but no renderProductCard function found");
+  }
+} catch (e) {
+  console.warn("⚠️ expose renderProductCard failed:", e);
+}
