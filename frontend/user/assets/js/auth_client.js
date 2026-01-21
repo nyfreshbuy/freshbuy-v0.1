@@ -106,3 +106,69 @@
     },
   };
 })();
+// ===============================
+// ✅ iOS 输入框 focus 防止页面滚动（终极方案）
+// ===============================
+(function () {
+  const backdrop = document.getElementById("authBackdrop");
+  if (!backdrop) return;
+
+  let locked = false;
+  let scrollY = 0;
+
+  function lockPage() {
+    if (locked) return;
+    locked = true;
+
+    scrollY = window.scrollY || window.pageYOffset || 0;
+
+    document.documentElement.style.height = "100%";
+    document.documentElement.style.overflow = "hidden";
+
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.left = "0";
+    document.body.style.right = "0";
+    document.body.style.width = "100%";
+  }
+
+  function unlockPage() {
+    if (!locked) return;
+    locked = false;
+
+    document.documentElement.style.height = "";
+    document.documentElement.style.overflow = "";
+
+    document.body.style.position = "";
+    document.body.style.top = "";
+    document.body.style.left = "";
+    document.body.style.right = "";
+    document.body.style.width = "";
+
+    window.scrollTo(0, scrollY);
+  }
+
+  // ✅ 弹窗打开 / 关闭时锁页面
+  new MutationObserver(() => {
+    if (backdrop.classList.contains("active")) {
+      lockPage();
+    } else {
+      unlockPage();
+    }
+  }).observe(backdrop, { attributes: true, attributeFilter: ["class"] });
+
+  // ✅ 核心：input focus 时，强制阻止 Safari 滚动
+  backdrop.addEventListener(
+    "focusin",
+    (e) => {
+      if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") {
+        lockPage();
+        // ❗关键：把滚动强行拉回 0
+        requestAnimationFrame(() => {
+          window.scrollTo(0, 0);
+        });
+      }
+    },
+    true
+  );
+})();

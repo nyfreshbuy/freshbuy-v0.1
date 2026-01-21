@@ -1797,8 +1797,6 @@ body.modal-open {
 }
     function lockBody() {
       savedY = window.scrollY || window.pageYOffset || 0;
-      document.body.classList.add("modal-open");
-      document.body.style.top = (-savedY) + "px";
     }
 
     function unlockBody() {
