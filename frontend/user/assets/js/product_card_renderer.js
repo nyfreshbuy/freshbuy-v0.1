@@ -374,33 +374,37 @@
     const pid = String(card.dataset.cartPid || "").trim();
     if (!pid) return;
 
-    const api = getCartApi();
-const cur = Math.max(
-  0,
-  Math.floor(
-    Number(
-      (api && typeof api.getQty === "function" ? api.getQty(pid) : getCartQty(pid)) || 0
+    function renderCardAction(card) {
+  if (!card) return;
+  const pid = String(card.dataset.cartPid || "").trim();
+  if (!pid) return;
+
+  const api = getCartApi();
+  const qty = Math.max(
+    0,
+    Math.floor(
+      Number((api && typeof api.getQty === "function" ? api.getQty(pid) : getCartQty(pid)) || 0)
     )
-  )
-);
-    const qtyRow = card.querySelector("[data-qty-row]");
-    const addBtn = card.querySelector(".product-add-fixed[data-add-only]");
-    const qtyDisplay = card.querySelector("[data-qty-display]");
+  );
 
-    const cap0 = Number(card.__maxQty);
-    const cap = Number.isFinite(cap0) ? Math.max(0, Math.floor(cap0)) : 0;
+  const qtyRow = card.querySelector("[data-qty-row]");
+  const addBtn = card.querySelector(".product-add-fixed[data-add-only]");
+  const qtyDisplay = card.querySelector("[data-qty-display]");
 
-    if (addBtn) addBtn.style.display = qty <= 0 ? "" : "none";
-    if (qtyRow) qtyRow.style.display = qty > 0 ? "flex" : "none";
+  const cap0 = Number(card.__maxQty);
+  const cap = Number.isFinite(cap0) ? Math.max(0, Math.floor(cap0)) : 0;
 
-    if (qtyDisplay) qtyDisplay.textContent = String(Math.max(1, qty || 1));
+  if (addBtn) addBtn.style.display = qty <= 0 ? "" : "none";
+  if (qtyRow) qtyRow.style.display = qty > 0 ? "flex" : "none";
 
-    const minus = card.querySelector("[data-qty-minus]");
-    const plus = card.querySelector("[data-qty-plus]");
-    if (minus) minus.disabled = qty <= 0 || cap <= 0;
-    if (plus) plus.disabled = cap <= 0 || qty >= cap;
-  }
+  if (qtyDisplay) qtyDisplay.textContent = String(Math.max(1, qty || 1));
 
+  const minus = card.querySelector("[data-qty-minus]");
+  const plus = card.querySelector("[data-qty-plus]");
+  if (minus) minus.disabled = qty <= 0 || cap <= 0;
+  if (plus) plus.disabled = cap <= 0 || qty >= cap;
+}
+}
   function renderAllCardsAction() {
     document.querySelectorAll(".product-card[data-cart-pid]").forEach((card) => {
       renderCardAction(card);
