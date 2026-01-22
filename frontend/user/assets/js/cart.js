@@ -1285,7 +1285,7 @@ specialTotalPrice: safeNum(product.specialTotalPrice, 0),
 
     addToCartWithLimit(payload) {
       if (!payload || !payload.id) return;
-
+      console.log("🧪 ADD payload:", payload);
       const priceNum = safeNum(payload.priceNum ?? payload.price, 0);
 
       const product = {
