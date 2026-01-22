@@ -1233,23 +1233,54 @@
               <div class="auth-label">邀请码（选填）</div>
               <input id="regInvite" type="text" class="auth-input" placeholder="有好友邀请可填写，没有可留空" />
             </label>
-            <label class="auth-check" style="margin:10px 0 6px; display:flex; align-items:flex-start; gap:8px;">
+            <label
+  class="auth-check"
+  style="margin:10px 0 6px; display:flex; align-items:flex-start; gap:8px;"
+>
   <input type="checkbox" id="regAgree" />
   <span style="font-size:12px; color:#6b7280; line-height:1.4;">
     我已阅读并同意
-    <span class="auth-footnote-link" style="cursor:pointer;">服务条款</span>
+    <a
+      href="/user/terms.html"
+      target="_blank"
+      rel="noopener noreferrer"
+      class="auth-footnote-link"
+    >
+      服务条款
+    </a>
     与
-    <span class="auth-footnote-link" style="cursor:pointer;">隐私政策</span>
+    <a
+      href="https://nyfreshbuy.com/user/privacy.html"
+      target="_blank"
+      rel="noopener noreferrer"
+      class="auth-footnote-link"
+    >
+      隐私政策
+    </a>
   </span>
 </label>
             <button id="registerSubmitBtn" class="auth-primary" type="button">注册并登录</button>
 
             <div class="auth-footnote">
-              注册即表示你同意我们的 <span class="auth-footnote-link">服务条款</span> 与
-              <span class="auth-footnote-link">隐私政策</span>
-            </div>
-          </div>
-
+  登录即表示你同意我们的
+  <a
+    href="/user/terms.html"
+    target="_blank"
+    rel="noopener noreferrer"
+    class="auth-footnote-link"
+  >
+    服务条款
+  </a>
+  与
+  <a
+    href="https://nyfreshbuy.com/user/privacy.html"
+    target="_blank"
+    rel="noopener noreferrer"
+    class="auth-footnote-link"
+  >
+    隐私政策
+  </a>
+</div>
           <!-- ===================== -->
           <!-- ✅ Forgot Password -->
           <!-- ===================== -->
