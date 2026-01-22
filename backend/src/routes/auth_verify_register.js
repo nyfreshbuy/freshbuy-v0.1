@@ -46,7 +46,9 @@ function signToken(user) {
 router.post("/verify-register", async (req, res) => {
   try {
     if (!client) return res.status(500).json({ success: false, message: "Twilio 未配置" });
-
+    console.log("TWILIO_ACCOUNT_SID tail:", (process.env.TWILIO_ACCOUNT_SID || "").slice(-6));
+console.log("TWILIO_VERIFY_SERVICE_SID tail:", (process.env.TWILIO_VERIFY_SERVICE_SID || "").slice(-6));
+console.log("HAS TWILIO AUTH TOKEN?", !!process.env.TWILIO_AUTH_TOKEN);
     const phone = normUSPhone(req.body.phone);
     const code = String(req.body.code || "").trim();
     const name = String(req.body.name || "").trim();
