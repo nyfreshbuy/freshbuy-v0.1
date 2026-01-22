@@ -2,27 +2,109 @@
 (function () {
   const KEY = "token";
 
+  // ✅ 统一要清理的缓存 key（解决：没登录却显示地址/钱包）
   const CLEAR_KEYS = [
+    // token 相关
     "token",
     "freshbuy_token",
     "jwt",
     "auth_token",
     "access_token",
+
+    // 登录态/用户信息
     "freshbuy_is_logged_in",
     "freshbuy_login_phone",
     "freshbuy_login_nickname",
     "freshbuy_user",
     "user",
+
+    // 地址/钱包缓存
     "freshbuy_default_address",
     "default_address",
     "freshbuy_wallet_balance",
     "wallet_balance",
+
+    // 购物车/其它可能影响 UI 的缓存
     "fresh_cart",
     "cart",
   ];
 
   function clearLocalStorageKeys() {
     for (const k of CLEAR_KEYS) localStorage.removeItem(k);
+  }
+
+  // =========================================================
+  // ✅ 注册必勾选：服务条款/隐私政策
+  // - 1) Auth.register 内强校验（就算别的 JS 忘记校验也挡住）
+  // - 2) 自动绑定 UI：未勾选时注册按钮 disabled
+  // =========================================================
+  function getAgreeEl() {
+    return document.getElementById("agreeTerms");
+  }
+
+  function mustAgreeOrThrow() {
+    const agreeEl = getAgreeEl();
+    // 如果页面没有该 checkbox（比如某些页面没有注册），就不拦
+    if (!agreeEl) return true;
+
+    if (!agreeEl.checked) {
+      throw new Error("请先勾选同意《服务条款》和《隐私政策》后再注册");
+    }
+    return true;
+  }
+
+  function bindAgreementUI() {
+    const agreeEl = getAgreeEl();
+    if (!agreeEl) return;
+
+    // 尝试找到“注册”按钮（多种写法兜底，不会报错）
+    const btn =
+      document.getElementById("btnRegister") ||
+      document.querySelector('[data-action="register"]') ||
+      document.querySelector(".btn-register") ||
+      document.querySelector("#registerBtn") ||
+      document.querySelector("#btnAuthRegister") ||
+      null;
+
+    if (!btn) return;
+
+    const sync = () => {
+      const disabled = !agreeEl.checked;
+      btn.disabled = disabled;
+      btn.classList.toggle("is-disabled", disabled);
+      // 有些按钮不是 <button> 也可能用 aria-disabled
+      try {
+        btn.setAttribute("aria-disabled", disabled ? "true" : "false");
+      } catch (e) {}
+    };
+
+    // 初始状态同步
+    sync();
+
+    // 勾选变化同步
+    agreeEl.addEventListener("change", sync);
+
+    // ✅ 额外防绕过：点击时仍校验一次（捕获阶段）
+    btn.addEventListener(
+      "click",
+      (e) => {
+        try {
+          mustAgreeOrThrow();
+        } catch (err) {
+          e.preventDefault();
+          e.stopPropagation();
+          alert(err.message || "请先同意服务条款与隐私政策");
+        }
+      },
+      true
+    );
+  }
+
+  // DOM ready 后再绑定（避免元素还没渲染）
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", bindAgreementUI);
+  } else {
+    bindAgreementUI();
   }
 
   window.Auth = {
@@ -74,6 +156,9 @@
     },
 
     async register(name, phone, password) {
+      // ✅ 注册前强校验：必须勾选条款
+      mustAgreeOrThrow();
+
       const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -214,7 +299,7 @@
       const delta = bottomInCard - (viewBottom - 10);
       card.scrollTo({ top: currentTop + delta, behavior: "smooth" });
     } else if (topInCard < viewTop + 10) {
-      const delta = (viewTop + 10) - topInCard;
+      const delta = viewTop + 10 - topInCard;
       card.scrollTo({ top: currentTop - delta, behavior: "smooth" });
     }
   }
