@@ -1,3 +1,4 @@
+// backend/src/routes/auth_verify_register.js
 import express from "express";
 import twilio from "twilio";
 import jwt from "jsonwebtoken";
@@ -19,6 +20,7 @@ const client =
     ? twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
     : null;
 
+// 至少 8 位，必须包含字母 + 数字（你原来的规则）
 const PW_RE = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,}$/;
 
 function normUSPhone(phone) {
@@ -40,43 +42,93 @@ function signToken(user) {
 }
 
 /**
- * 注册：POST /api/auth/verify-register
+ * ✅ 一体化接口（兼容前端）
+ *
+ * POST /api/auth/verify-register
+ *
+ * A) 发送验证码（前端点击“获取验证码”时只传 phone）
+ * body: { phone }
+ *
+ * B) 校验验证码并注册（你原有逻辑）
  * body: { phone, code, name, password, autoLogin? }
  */
 router.post("/verify-register", async (req, res) => {
   try {
-    if (!client) return res.status(500).json({ success: false, message: "Twilio 未配置" });
-    console.log("TWILIO_ACCOUNT_SID tail:", (process.env.TWILIO_ACCOUNT_SID || "").slice(-6));
-console.log("TWILIO_VERIFY_SERVICE_SID tail:", (process.env.TWILIO_VERIFY_SERVICE_SID || "").slice(-6));
-console.log("HAS TWILIO AUTH TOKEN?", !!process.env.TWILIO_AUTH_TOKEN);
+    if (!client || !TWILIO_VERIFY_SERVICE_SID) {
+      return res.status(500).json({ success: false, msg: "Twilio 未配置" });
+    }
+
+    // ✅ 只打印后 6 位，不泄露敏感信息
+    console.log(
+      "TWILIO_ACCOUNT_SID tail:",
+      (process.env.TWILIO_ACCOUNT_SID || "").slice(-6)
+    );
+    console.log(
+      "TWILIO_VERIFY_SERVICE_SID tail:",
+      (process.env.TWILIO_VERIFY_SERVICE_SID || "").slice(-6)
+    );
+    console.log("HAS TWILIO AUTH TOKEN?", !!process.env.TWILIO_AUTH_TOKEN);
+    console.log(
+      "VERIFY SID raw:",
+      JSON.stringify(process.env.TWILIO_VERIFY_SERVICE_SID || "")
+    );
+
     const phone = normUSPhone(req.body.phone);
     const code = String(req.body.code || "").trim();
     const name = String(req.body.name || "").trim();
     const password = String(req.body.password || "");
 
-    if (!phone) return res.status(400).json({ success: false, message: "手机号不正确" });
-    if (!/^\d{3,10}$/.test(code)) return res.status(400).json({ success: false, message: "验证码格式不正确" });
-    if (!name) return res.status(400).json({ success: false, message: "请填写姓名" });
-    if (!PW_RE.test(password)) {
-      return res.status(400).json({ success: false, message: "密码至少8位且必须包含字母和数字" });
+    if (!phone) {
+      return res.status(400).json({ success: false, msg: "手机号不正确" });
     }
 
-    // 验码
+    // =====================================================
+    // ✅ A) 没有 code：当作“发送验证码”
+    // =====================================================
+    if (!code) {
+      // 可选：如果手机号已注册，你可以提示“已注册请登录”
+      // const exists = await User.findOne({ phone });
+      // if (exists) return res.status(409).json({ success:false, msg:"该手机号已注册，请直接登录" });
+
+      await client.verify.v2
+        .services(TWILIO_VERIFY_SERVICE_SID)
+        .verifications.create({ to: phone, channel: "sms" });
+
+      return res.json({ success: true, msg: "验证码已发送" });
+    }
+
+    // =====================================================
+    // ✅ B) 有 code：当作“校验验证码并注册”
+    // =====================================================
+    if (!/^\d{3,10}$/.test(code)) {
+      return res.status(400).json({ success: false, msg: "验证码格式不正确" });
+    }
+    if (!name) {
+      return res.status(400).json({ success: false, msg: "请填写姓名" });
+    }
+    if (!PW_RE.test(password)) {
+      return res.status(400).json({ success: false, msg: "密码至少8位且必须包含字母和数字" });
+    }
+
+    // ✅ 验证验证码（重点：明确使用 verificationChecks 复数）
     const check = await client.verify.v2
       .services(TWILIO_VERIFY_SERVICE_SID)
       .verificationChecks.create({ to: phone, code });
 
-    if (check.status !== "approved") {
-      return res.status(401).json({ success: false, message: "验证码错误或已过期", status: check.status });
+    if (check?.status !== "approved") {
+      return res.status(401).json({
+        success: false,
+        msg: "验证码错误或已过期",
+        status: check?.status || "unknown",
+      });
     }
 
     // 已注册则提示登录
     const existing = await User.findOne({ phone });
     if (existing) {
-      return res.status(409).json({ success: false, message: "该手机号已注册，请直接登录" });
+      return res.status(409).json({ success: false, msg: "该手机号已注册，请直接登录" });
     }
 
-    // 创建用户（满足你模型 required：name/password）
     const hashed = await bcrypt.hash(password, 10);
     const user = await User.create({
       phone,
@@ -90,13 +142,22 @@ console.log("HAS TWILIO AUTH TOKEN?", !!process.env.TWILIO_AUTH_TOKEN);
 
     return res.json({
       success: true,
-      message: "注册成功",
+      msg: "注册成功",
       token,
-      user: { id: String(user._id), phone: user.phone, role: user.role, name: user.name },
+      user: {
+        id: String(user._id),
+        phone: user.phone,
+        role: user.role,
+        name: user.name,
+      },
     });
   } catch (e) {
     console.error("verify-register error:", e?.message || e);
-    return res.status(500).json({ success: false, message: "注册失败", detail: e?.message || String(e) });
+    return res.status(500).json({
+      success: false,
+      msg: "注册/发送验证码失败",
+      detail: e?.message || String(e),
+    });
   }
 });
 
