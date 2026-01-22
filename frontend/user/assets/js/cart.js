@@ -23,7 +23,7 @@
 // ======================================================
 
 console.log("✅ cart.js loaded on", location.pathname);
-
+console.log("🧪 SPECIAL-PATCH v20260122-AAA");
 (function () {
   console.log("✅ Freshbuy cart.js loaded (db-zones + pref-mode)");
 
