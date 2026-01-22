@@ -39,74 +39,73 @@
   // - 2) 自动绑定 UI：未勾选时注册按钮 disabled
   // =========================================================
   function getAgreeEl() {
-    return document.getElementById("agreeTerms");
+  const backdrop = document.getElementById("authBackdrop");
+  if (!backdrop) return null; // 首页如果没有弹窗 DOM，就完全不做任何事
+  return backdrop.querySelector("#agreeTerms");
+}
+
+function mustAgreeOrThrow() {
+  const agreeEl = getAgreeEl();
+  // 没有 checkbox（比如某些页面没有注册），就不拦
+  if (!agreeEl) return true;
+
+  if (!agreeEl.checked) {
+    throw new Error("请先勾选同意《服务条款》和《隐私政策》后再注册");
   }
+  return true;
+}
 
-  function mustAgreeOrThrow() {
-    const agreeEl = getAgreeEl();
-    // 如果页面没有该 checkbox（比如某些页面没有注册），就不拦
-    if (!agreeEl) return true;
+function bindAgreementUI() {
+  const backdrop = document.getElementById("authBackdrop");
+  if (!backdrop) return;
 
-    if (!agreeEl.checked) {
-      throw new Error("请先勾选同意《服务条款》和《隐私政策》后再注册");
-    }
-    return true;
-  }
+  const agreeEl = backdrop.querySelector("#agreeTerms");
+  if (!agreeEl) return;
 
-  function bindAgreementUI() {
-    const agreeEl = getAgreeEl();
-    if (!agreeEl) return;
+  // ✅ 只在弹窗里找注册按钮，绝不全局 query（避免误伤首页任何按钮）
+  const btn =
+    backdrop.querySelector("#btnRegister") ||
+    backdrop.querySelector('[data-action="register"]') ||
+    backdrop.querySelector(".btn-register") ||
+    backdrop.querySelector("#registerBtn") ||
+    backdrop.querySelector("#btnAuthRegister") ||
+    null;
 
-    // 尝试找到“注册”按钮（多种写法兜底，不会报错）
-    const btn =
-      document.getElementById("btnRegister") ||
-      document.querySelector('[data-action="register"]') ||
-      document.querySelector(".btn-register") ||
-      document.querySelector("#registerBtn") ||
-      document.querySelector("#btnAuthRegister") ||
-      null;
+  if (!btn) return;
 
-    if (!btn) return;
+  const sync = () => {
+    const disabled = !agreeEl.checked;
+    btn.disabled = disabled;
+    btn.classList.toggle("is-disabled", disabled);
+    try {
+      btn.setAttribute("aria-disabled", disabled ? "true" : "false");
+    } catch (e) {}
+  };
 
-    const sync = () => {
-      const disabled = !agreeEl.checked;
-      btn.disabled = disabled;
-      btn.classList.toggle("is-disabled", disabled);
-      // 有些按钮不是 <button> 也可能用 aria-disabled
+  sync();
+  agreeEl.addEventListener("change", sync);
+
+  btn.addEventListener(
+    "click",
+    (e) => {
       try {
-        btn.setAttribute("aria-disabled", disabled ? "true" : "false");
-      } catch (e) {}
-    };
+        mustAgreeOrThrow();
+      } catch (err) {
+        e.preventDefault();
+        e.stopPropagation();
+        alert(err.message || "请先同意服务条款与隐私政策");
+      }
+    },
+    true
+  );
+}
 
-    // 初始状态同步
-    sync();
-
-    // 勾选变化同步
-    agreeEl.addEventListener("change", sync);
-
-    // ✅ 额外防绕过：点击时仍校验一次（捕获阶段）
-    btn.addEventListener(
-      "click",
-      (e) => {
-        try {
-          mustAgreeOrThrow();
-        } catch (err) {
-          e.preventDefault();
-          e.stopPropagation();
-          alert(err.message || "请先同意服务条款与隐私政策");
-        }
-      },
-      true
-    );
-  }
-
-  // DOM ready 后再绑定（避免元素还没渲染）
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", bindAgreementUI);
-  } else {
-    bindAgreementUI();
-  }
-
+// DOM ready 后再绑定（避免元素还没渲染）
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", bindAgreementUI);
+} else {
+  bindAgreementUI();
+}
   window.Auth = {
     getToken() {
       return localStorage.getItem(KEY) || "";
