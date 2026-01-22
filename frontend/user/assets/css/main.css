@@ -1058,3 +1058,172 @@ body.modal-open{
     word-break: break-word !important;
   }
 }
+/* =========================================================
+   ✅ Freshbuy Global Patch Layer（全站通用兜底层）
+   文件：frontend/user/assets/css/main.css
+   位置：粘贴到最底部（最后一行）
+   作用：不同页面 DOM 命名不一致也能生效
+   ========================================================= */
+
+/* ---------------------------
+   1) 商品卡 hover overlay 兼容
+   兼容：.product-image-wrap / .product-img-wrapper / .img-wrap
+---------------------------- */
+.product-image-wrap:hover .product-overlay,
+.product-img-wrapper:hover .product-overlay,
+.img-wrap:hover .product-overlay {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+
+/* overlay 默认状态兜底（防止某页没写） */
+.product-overlay{
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ---------------------------
+   2) 商品网格 2列兜底（手机）
+   兼容各种 grid 容器命名：.product-grid / .grid / #dailyGrid / #categoryGrid
+---------------------------- */
+@media (max-width: 768px){
+  .product-grid,
+  .products-grid,
+  .grid-products,
+  #dailyGrid,
+  #categoryGrid,
+  #productGrid,
+  #productListGrid{
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .product-grid .product-card,
+  .products-grid .product-card,
+  .grid-products .product-card,
+  #dailyGrid .product-card,
+  #categoryGrid .product-card,
+  #productGrid .product-card,
+  #productListGrid .product-card{
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+}
+
+/* ---------------------------
+   3) 购物车抽屉层级/点击兜底
+   兼容：#cartBackdrop/#cartDrawer 或 .cart-drawer-backdrop/.cart-drawer
+---------------------------- */
+#cartBackdrop,
+.cart-drawer-backdrop{
+  z-index: 25000 !important;
+}
+#cartDrawer,
+.cart-drawer{
+  z-index: 26000 !important;
+}
+#cartDrawer *,
+.cart-drawer *{
+  pointer-events: auto !important;
+}
+
+/* ---------------------------
+   4) 登录/注册弹窗（全站兜底）
+   兼容：#authBackdrop、#loginModal、#authModal、.modal-mask、.auth-modal
+---------------------------- */
+#authBackdrop,
+#loginModal,
+#authModal,
+.login-modal,
+.auth-modal,
+.modal-mask,
+.modal-backdrop,
+.auth-overlay,
+.modal-overlay{
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 10000 !important;
+}
+
+/* 这些弹窗容器如果加 active 才显示（兼容你不同页面写法） */
+#authBackdrop.active,
+#loginModal.active,
+#authModal.active,
+.login-modal.active,
+.auth-modal.active,
+.modal-mask.active,
+.modal-backdrop.active{
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+/* 弹窗卡片兜底（不同页面常见命名） */
+#authBackdrop .auth-card,
+#authBackdrop .login-modal,
+#loginModal .card,
+#authModal .card,
+.login-box,
+.login-card,
+.modal-card,
+.auth-card{
+  width: min(92vw, 460px) !important;
+  max-height: calc(var(--vvh, 100vh) - 24px) !important;
+  overflow: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  border-radius: 18px !important;
+  background: #fff !important;
+  box-shadow: 0 18px 60px rgba(15,23,42,.35) !important;
+}
+
+/* iOS 输入框字体>=16，避免自动放大导致布局抖/溢出 */
+#authBackdrop input,
+#loginModal input,
+#authModal input,
+.login-modal input,
+.auth-modal input{
+  font-size: 16px !important;
+}
+
+/* 打开弹窗锁滚动（你 JS 只要加 body.classList.add('modal-open')） */
+html.modal-open,
+body.modal-open{
+  overflow: hidden !important;
+  height: 100% !important;
+}
+body.modal-open{
+  position: fixed !important;
+  left: 0; right: 0;
+  width: 100%;
+}
+
+/* ---------------------------
+   5) 横向溢出终极兜底（多页面共用）
+---------------------------- */
+html, body, #app{
+  overflow-x: hidden !important;
+  max-width: 100% !important;
+}
+*{
+  max-width: 100%;
+}
+
+/* ---------------------------
+   6) footer 超宽兜底（多页面）
+---------------------------- */
+@media (max-width: 768px){
+  footer, .footer, .footer-inner, .footer-wrap{
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    box-sizing: border-box !important;
+  }
+  .footer-text, .footer-text.footer-en{
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+  }
+}
