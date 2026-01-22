@@ -177,7 +177,7 @@ console.log("✅ coupons 已挂载到 /api/coupons");
 app.use("/api/auth", authMongoRouter);
 console.log("✅ auth_mongo 已挂载到 /api/auth");
 app.use("/api/auth-otp", authOtpRouter);
-
+app.use("/api/auth", authVerifyRegister);
 // ---- 用户 ----
 app.use("/api/users", userProfileRouter);
 app.use("/api/users", usersRouter);
