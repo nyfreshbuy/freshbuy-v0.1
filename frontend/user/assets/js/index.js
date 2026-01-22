@@ -1490,29 +1490,59 @@ window.addEventListener("DOMContentLoaded", () => {
   setInterval(refreshStockAndCards, STOCK_REFRESH_MS);
 });
 // =========================
-// ✅ iOS 键盘：锁定页面滚动（弹窗打开时）
+// ✅ iOS 键盘：弹窗不溢出屏幕（锁滚动 + visualViewport 高度变量）
 // =========================
 let __modalScrollY = 0;
 
+function setVvhVar() {
+  const vv = window.visualViewport;
+  const h = vv ? vv.height : window.innerHeight;
+  document.documentElement.style.setProperty("--vvh", `${h}px`);
+}
+
 function lockBodyScroll() {
   __modalScrollY = window.scrollY || 0;
+
+  // ✅ 锁住页面（防止 iOS 把页面整体顶来顶去）
+  document.documentElement.classList.add("modal-open");
+  document.body.classList.add("modal-open");
+
   document.body.style.position = "fixed";
   document.body.style.top = `-${__modalScrollY}px`;
   document.body.style.left = "0";
   document.body.style.right = "0";
   document.body.style.width = "100%";
+
+  setVvhVar();
 }
 
 function unlockBodyScroll() {
+  // ✅ 解锁
+  document.documentElement.classList.remove("modal-open");
+  document.body.classList.remove("modal-open");
+
   const y = __modalScrollY || 0;
   document.body.style.position = "";
   document.body.style.top = "";
   document.body.style.left = "";
   document.body.style.right = "";
   document.body.style.width = "";
+
+  // ✅ 恢复滚动位置
   window.scrollTo(0, y);
   __modalScrollY = 0;
+
+  document.documentElement.style.removeProperty("--vvh");
 }
+
+// ✅ 键盘弹出/收起时，实时更新可见视口高度变量（给 CSS 用）
+(function bindVisualViewportVar() {
+  setVvhVar();
+  const vv = window.visualViewport;
+  if (!vv) return;
+  vv.addEventListener("resize", setVvhVar);
+  vv.addEventListener("scroll", setVvhVar);
+})();
 /* ====== 下一段从：登录/注册/鉴权（AUTH_TOKEN_KEYS...）开始 ====== */
 // =========================
 // 3) 登录 / 注册弹窗 + 顶部头像（✅ Mongo 真实接口版）
@@ -1824,42 +1854,76 @@ if (authBackdrop) {
 if (tabLogin) tabLogin.addEventListener("click", () => switchAuthMode("login"));
 if (tabRegister) tabRegister.addEventListener("click", () => switchAuthMode("register"));
 // =========================
-// ✅ iOS 键盘：保持弹窗视觉居中（visualViewport）
+// ✅ iOS 键盘：弹窗不溢出（不改 top，只更新高度 + 让输入框在弹窗内可见）
 // =========================
-(function bindIOSViewportFixForAuthModal() {
-  if (!window.visualViewport) return;
+(function bindAuthModalNoOverflowFix() {
+  const vv = window.visualViewport;
+  if (!vv) return;
 
-  // 尽量兼容你 HTML 里不同的 modal 容器 class
-  const modal =
-    document.querySelector("#authBackdrop .login-modal") ||
-    document.querySelector("#authBackdrop .auth-modal") ||
-    document.querySelector("#authBackdrop .auth-card") ||
-    document.querySelector("#authBackdrop [data-auth-modal]");
-
-  if (!modal) return;
-
-  function update() {
-    // 只在弹窗打开时才处理
-    if (!authBackdrop || !authBackdrop.classList.contains("active")) return;
-
-    const vv = window.visualViewport;
-    const offsetTop = vv.offsetTop || 0;
-
-    // 让 modal 在“可视区域”居中（解决 iOS 键盘顶飞/抖动）
-    modal.style.position = "fixed";
-    modal.style.left = "50%";
-    modal.style.top = `calc(50% + ${offsetTop}px)`;
-    modal.style.transform = "translate(-50%, -50%)";
+  function getAuthModalEl() {
+    return (
+      document.querySelector("#authBackdrop .login-modal") ||
+      document.querySelector("#authBackdrop .auth-modal") ||
+      document.querySelector("#authBackdrop .auth-card") ||
+      document.querySelector("#authBackdrop [data-auth-modal]")
+    );
   }
 
-  window.visualViewport.addEventListener("resize", update);
-  window.visualViewport.addEventListener("scroll", update);
+  function isAuthOpen() {
+    return authBackdrop && authBackdrop.classList.contains("active");
+  }
 
-  // 打开弹窗瞬间也刷新一次
+  function updateModalMaxHeight() {
+    if (!isAuthOpen()) return;
+    // 只更新变量，CSS 决定 max-height，不再改 modal.style.top
+    const h = vv.height || window.innerHeight;
+    document.documentElement.style.setProperty("--vvh", `${h}px`);
+  }
+
+  vv.addEventListener("resize", updateModalMaxHeight);
+  vv.addEventListener("scroll", updateModalMaxHeight);
+
+  // 弹窗打开瞬间刷新一次
   document.addEventListener("click", (e) => {
     const hit = e.target.closest("#loginBtn,#registerBtn");
-    if (hit) setTimeout(update, 0);
+    if (hit) setTimeout(updateModalMaxHeight, 0);
   });
+
+  // ✅ 输入框聚焦时：只滚动弹窗内部，不滚页面
+  document.addEventListener(
+    "focusin",
+    (e) => {
+      if (!isAuthOpen()) return;
+      const t = e.target;
+      if (!t || (t.tagName !== "INPUT" && t.tagName !== "TEXTAREA")) return;
+
+      const modal = getAuthModalEl();
+      if (!modal) return;
+
+      // 找弹窗内部可滚动容器（你没有 modal-body 就退化到 modal 自己）
+      const scroller =
+        modal.querySelector(".modal-body") ||
+        modal.querySelector(".content") ||
+        modal.querySelector(".body") ||
+        modal;
+
+      // 给 iOS 一点时间更新 viewport，再滚到中间
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          try {
+            t.scrollIntoView({ block: "center", behavior: "smooth" });
+          } catch {}
+          try {
+            const r1 = t.getBoundingClientRect();
+            const r2 = scroller.getBoundingClientRect();
+            if (r1.bottom > r2.bottom - 12) scroller.scrollTop += r1.bottom - (r2.bottom - 12);
+            if (r1.top < r2.top + 12) scroller.scrollTop -= (r2.top + 12) - r1.top;
+          } catch {}
+        });
+      });
+    },
+    true
+  );
 })();
 // ====== 注册发送验证码 ======
 if (regSendCodeBtn) {
