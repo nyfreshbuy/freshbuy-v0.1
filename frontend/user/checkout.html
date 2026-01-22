@@ -1194,7 +1194,9 @@
       let elements = null;
       let paymentElement = null;
       let stripeReady = false;
-
+      // ✅ NEW：保存本次 Stripe 订单信息（用于支付成功后 confirm）
+let lastStripeOrderId = "";
+let lastStripePaymentIntentId = "";
       async function initStripeUI() {
         try {
           const res = await fetch("/api/pay/stripe/publishable-key", { cache: "no-store" });
@@ -1371,7 +1373,9 @@
           }
 
           lastIntentKey = intentKey;
-
+          // ✅ NEW：保存给支付成功后 confirm 用
+lastStripeOrderId = String(data.orderId || "");
+lastStripePaymentIntentId = String(data.paymentIntentId || data.paymentIntentId || "");
           if (data.clientSecret !== lastClientSecret) {
             lastClientSecret = data.clientSecret;
             await mountStripeElements(data.clientSecret);
@@ -1563,13 +1567,42 @@
               }
 
               document.getElementById("cardErrors").textContent = "";
-              showAlert("支付成功 ✅ 正在清空购物车并跳转…", true);
 
-              try {
-                localStorage.setItem(CART_LS_KEY, JSON.stringify({ items: [], mode: "groupDay" }));
-              } catch {}
-              setTimeout(() => (window.location.href = "/user/user_center.html"), 600);
-              return;
+// ✅ NEW：支付成功后立刻让后端把订单标记为 paid（不要只等 webhook）
+if (!lastStripeOrderId || !lastStripePaymentIntentId) {
+  // 兜底：至少不要静默成功
+  showAlert("支付成功，但缺少订单确认信息（orderId/paymentIntentId）。请联系管理员核对订单。", false);
+  btn.disabled = false;
+  return;
+}
+
+showAlert("支付成功 ✅ 正在确认订单…", true);
+
+const confirmRes = await fetch("/api/pay/stripe/confirm", {
+  method: "POST",
+  headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+  body: JSON.stringify({
+    orderId: lastStripeOrderId,
+    paymentIntentId: lastStripePaymentIntentId,
+  }),
+});
+
+const confirmData = await confirmRes.json().catch(() => ({}));
+if (!confirmRes.ok || !confirmData.success) {
+  // 不要清空购物车，避免“钱付了但订单没确认”
+  btn.disabled = false;
+  return showAlert(confirmData.message || "支付已成功，但订单确认失败（请刷新/查看我的订单）", false);
+}
+
+// ✅ confirm 成功才清空购物车 & 跳转
+showAlert("订单确认成功 ✅ 正在跳转…", true);
+
+try {
+  localStorage.setItem(CART_LS_KEY, JSON.stringify({ items: [], mode: "groupDay" }));
+} catch {}
+
+setTimeout(() => (window.location.href = "/user/user_center.html"), 600);
+return;
             } catch (e) {
               console.error(e);
               btn.disabled = false;

@@ -66,13 +66,17 @@ router.post("/wallet/pay-order", requireLogin, async (req, res) => {
       }
 
       // ✅ 幂等：同一个 key 重复请求直接返回
-      if (idempotencyKey && order.payment?.idempotencyKey === idempotencyKey) {
-        resultOrder = order;
-        const u0 = await User.findById(userId).select("walletBalance").session(session);
-        newBalance = Number(u0?.walletBalance || 0);
-        return;
-      }
-
+      // ✅ 幂等：同一个 key 只有在订单已支付时才直接返回（避免误跳过扣款）
+if (idempotencyKey && order.payment?.idempotencyKey === idempotencyKey) {
+  const payStatus2 = order.payment?.status || "unpaid";
+  if (payStatus2 === "paid") {
+    resultOrder = order;
+    const u0 = await User.findById(userId).select("walletBalance").session(session);
+    newBalance = Number(u0?.walletBalance || 0);
+    return;
+  }
+  // 未支付则继续走扣款流程
+}
       // ✅ 计算应付金额（优先 payment.amountTotal，否则用 totalAmount）
       const amountTotal =
         Number(order.payment?.amountTotal ?? order.totalAmount ?? 0) || 0;
@@ -102,11 +106,17 @@ router.post("/wallet/pay-order", requireLogin, async (req, res) => {
 
       order.payment = order.payment || {};
       order.payment.status = "paid";
-      order.payment.method = "wallet";
-      order.payment.paidAt = now;
-      order.payment.paidTotal = amountTotal;
-      order.payment.walletPaid = amountTotal;
-      order.payment.stripePaid = 0;
+order.payment.method = "wallet";
+order.payment.paidTotal = amountTotal;
+
+// ✅ 对齐 orders.js / Order Model：使用 payment.wallet.paid 与 payment.stripe.paid
+order.payment.wallet = order.payment.wallet || {};
+order.payment.wallet.paid = amountTotal;
+
+order.payment.stripe = order.payment.stripe || {};
+order.payment.stripe.paid = 0;
+order.payment.stripe.intentId = order.payment.stripe.intentId || "";
+
       order.payment.idempotencyKey = idempotencyKey || order.payment.idempotencyKey || "";
 
       // ✅ 金额快照（如果还没写过）
