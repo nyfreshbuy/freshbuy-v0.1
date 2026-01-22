@@ -519,12 +519,7 @@ const cartConfig = {
   goCartBtnId: "goCartBtn",
   cartPageUrl: "/user/cart.html",
 };
-
-// 小工具：后端勾选框可能是 true/"true"/1/"1"
-function isTrueFlag(v) {
-  return v === true || v === "true" || v === 1 || v === "1";
-}
-
+return v === true || v === "tru"
 // 小工具：在各种字段里找关键字（支持 tags/labels/type/category/tag）
 function hasKeyword(p, keyword) {
   if (!p) return false;
@@ -1580,6 +1575,103 @@ function unlockBodyScroll() {
   vv.addEventListener("resize", setVvhVar);
   vv.addEventListener("scroll", setVvhVar);
 })();
+// =====================================================
+// ✅ iOS：搜索栏 & ZIP 输入框 —— 键盘打开不撑破页面
+// =====================================================
+let __kbScrollY = 0;
+let __kbLocked = false;
+
+function kbSetVvh() {
+  const vv = window.visualViewport;
+  const h = vv ? vv.height : window.innerHeight;
+  document.documentElement.style.setProperty("--vvh", `${h}px`);
+}
+
+function kbLockForInput() {
+  // 如果登录弹窗已经锁了，不重复锁
+  if (document.body.classList.contains("modal-open")) return;
+  if (__kbLocked) return;
+
+  __kbLocked = true;
+  __kbScrollY = window.scrollY || 0;
+
+  document.body.classList.add("kb-open");
+  document.body.style.position = "fixed";
+  document.body.style.top = `-${__kbScrollY}px`;
+  document.body.style.left = "0";
+  document.body.style.right = "0";
+  document.body.style.width = "100%";
+  document.body.style.overflow = "hidden";
+
+  kbSetVvh();
+}
+
+function kbUnlockForInput() {
+  if (!__kbLocked) return;
+  __kbLocked = false;
+
+  document.body.classList.remove("kb-open");
+  document.body.style.position = "";
+  document.body.style.top = "";
+  document.body.style.left = "";
+  document.body.style.right = "";
+  document.body.style.width = "";
+  document.body.style.overflow = "";
+
+  window.scrollTo(0, __kbScrollY || 0);
+  __kbScrollY = 0;
+}
+
+// 绑定到指定 input
+function bindKbSafeInput(selector) {
+  const el = document.querySelector(selector);
+  if (!el) return;
+
+  el.addEventListener("focus", () => {
+    kbLockForInput();
+    // 保证输入框在可视区
+    setTimeout(() => {
+      try {
+        el.scrollIntoView({ block: "center", behavior: "smooth" });
+      } catch {}
+    }, 0);
+  });
+
+  el.addEventListener("blur", () => {
+    setTimeout(kbUnlockForInput, 80);
+  });
+
+  el.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") setTimeout(kbUnlockForInput, 80);
+  });
+}
+
+// 初始化绑定（✅ 必须 DOMReady 后再绑，避免输入框还没渲染导致没绑定上）
+function bindKbInputs() {
+  // 🔍 顶部搜索
+  bindKbSafeInput("#globalSearchInput");
+
+  // 📦 ZIP（左 / 右）
+  bindKbSafeInput("#zipInput");
+  bindKbSafeInput("#zipInputRight");
+
+  // 键盘高度变化时实时更新
+  const vv = window.visualViewport;
+  if (vv) {
+    vv.addEventListener("resize", () => {
+      if (__kbLocked) kbSetVvh();
+    });
+    vv.addEventListener("scroll", () => {
+      if (__kbLocked) kbSetVvh();
+    });
+  }
+}
+
+// ✅ DOM 完成后再绑定（最关键）
+window.addEventListener("DOMContentLoaded", bindKbInputs);
+
+// ✅ 兜底：如果脚本本来就在 body 最后加载，也允许立刻绑定一次
+try { bindKbInputs(); } catch {}
 /* ====== 下一段从：登录/注册/鉴权（AUTH_TOKEN_KEYS...）开始 ====== */
 // =========================
 // 3) 登录 / 注册弹窗 + 顶部头像（✅ Mongo 真实接口版）
@@ -1826,7 +1918,6 @@ function openAuthModal(mode = "login") {
   if (!authBackdrop) return;
   lockBodyScroll(); // ✅ 新增：打开弹窗就锁 body，防止 iOS 键盘把页面顶飞
   authBackdrop.classList.add("active");
-  document.body.classList.add("modal-open");
   switchAuthMode(mode);
  
   const savedPhone = localStorage.getItem("freshbuy_login_phone") || "";
@@ -2554,9 +2645,10 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   // ✅ FIX：只用 window.FreshCart，避免 ReferenceError: FreshCart is not defined
   if (window.FreshCart && typeof window.FreshCart.initCartUI === "function") {
-    window.FreshCart.initCartUI(cartConfig);
-  }
-
+  window.FreshCart.initCartUI(cartConfig);
+} else {
+  console.warn("❌ FreshCart 未就绪：请确认 index.html 先加载 cart.js 再加载 index.js");
+}
   await initZipAutoZone();
 
   // ✅ 恢复用户选择的配送偏好
