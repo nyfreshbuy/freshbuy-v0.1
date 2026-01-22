@@ -9,7 +9,7 @@ router.use(express.json());
 
 console.log("🔐 auth_reset_password.js loaded");
 
-// 你的 Verify 参数（和你 verify-register 一样的风格）
+// Twilio Verify 参数
 const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID || "";
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN || "";
 const TWILIO_VERIFY_SERVICE_SID = process.env.TWILIO_VERIFY_SERVICE_SID || "";
@@ -19,15 +19,23 @@ const tw =
     ? twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
     : null;
 
-function normPhone(p) {
-  return String(p || "").trim();
+// ✅ 统一把手机号转成 Twilio 需要的 E.164（美国）
+function normalizeToE164US(input) {
+  let p = String(input || "").trim();
+  p = p.replace(/[^\d+]/g, "");
+
+  if (p.startsWith("+")) return p;
+  if (/^\d{10}$/.test(p)) return `+1${p}`;
+  if (/^1\d{10}$/.test(p)) return `+${p}`;
+
+  return p;
 }
 
 // ✅ POST /api/auth/reset-password
 // body: { phone, code, newPassword }
 router.post("/reset-password", async (req, res) => {
   try {
-    const phone = normPhone(req.body?.phone);
+    const phone = normalizeToE164US(req.body?.phone);
     const code = String(req.body?.code || "").trim();
     const newPassword = String(req.body?.newPassword || "").trim();
 
@@ -35,6 +43,11 @@ router.post("/reset-password", async (req, res) => {
     if (!code) return res.status(400).json({ success: false, message: "缺少验证码" });
     if (!newPassword || newPassword.length < 6) {
       return res.status(400).json({ success: false, message: "新密码至少 6 位" });
+    }
+    if (!phone.startsWith("+")) {
+      return res
+        .status(400)
+        .json({ success: false, message: "手机号格式错误，请输入美国手机号（10位或+1开头）" });
     }
 
     // 1) 校验验证码
@@ -53,9 +66,15 @@ router.post("/reset-password", async (req, res) => {
       return res.status(400).json({ success: false, message: "验证码不正确或已过期" });
     }
 
-    // 2) 找用户（按 phone）
-    // 你项目里 phone 字段就是登录手机号
-    const u = await User.findOne({ phone }).select("+password +passwordHash _id phone");
+    // 2) 找用户（兼容 DB 里 phone 可能不带 +1）
+    const digits = phone.replace(/[^\d]/g, ""); // 17184195531
+    const last10 = digits.length >= 10 ? digits.slice(-10) : digits; // 7184195531
+    const candidates = Array.from(new Set([phone, digits, last10, `1${last10}`, `+1${last10}`]));
+
+    const u = await User.findOne({ phone: { $in: candidates } }).select(
+      "+password +passwordHash _id phone"
+    );
+
     if (!u) {
       return res.status(404).json({ success: false, message: "该手机号未注册" });
     }
