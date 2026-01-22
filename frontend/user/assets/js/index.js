@@ -519,10 +519,6 @@ const cartConfig = {
   goCartBtnId: "goCartBtn",
   cartPageUrl: "/user/cart.html",
 };
-// ✅ 统一布尔判定（修复：isTrueFlag is not defined）
-function isTrueFlag(v) {
-  return v === true || v === "true" || v === 1 || v === "1" || v === "yes";
-}
 // 小工具：在各种字段里找关键字（支持 tags/labels/type/category/tag）
 function hasKeyword(p, keyword) {
   if (!p) return false;
@@ -537,7 +533,10 @@ function hasKeyword(p, keyword) {
 
   return false;
 }
-
+// ✅ 统一布尔判定（修复：isTrueFlag is not defined）
+function isTrueFlag(v) {
+  return v === true || v === "true" || v === 1 || v === "1" || v === "yes";
+}
 // 是否爆品
 function isHotProduct(p) {
   return (
