@@ -519,7 +519,6 @@ const cartConfig = {
   goCartBtnId: "goCartBtn",
   cartPageUrl: "/user/cart.html",
 };
-return v === true || v === "tru"
 // 小工具：在各种字段里找关键字（支持 tags/labels/type/category/tag）
 function hasKeyword(p, keyword) {
   if (!p) return false;
