@@ -709,7 +709,15 @@ router.post("/checkout", requireLogin, async (req, res) => {
         walletUsed = round2(Math.min(balance0, finalTotal));
         remaining = round2(finalTotal - walletUsed);
       }
-
+      console.log("💰 [checkout] wallet calc", {
+  userId: String(userId),
+  balance0,
+  baseTotal,
+  platformFee,
+  finalTotal,
+  walletUsed,
+  remaining,
+});
       // 4) 创建订单（✅ 创建时一律 unpaid，避免“假paid/错归类”）
       const docToCreate = {
         ...orderDoc,
@@ -740,51 +748,69 @@ router.post("/checkout", requireLogin, async (req, res) => {
       if (!created) throw new Error("创建订单失败");
 
       // 5) 钱包扣款（✅ 判断必须是 modifiedCount===1 才算成功）
-      if (walletUsed > 0) {
-        const upd = await User.updateOne(
-          { _id: userId, walletBalance: { $gte: walletUsed } },
-          { $inc: { walletBalance: -walletUsed } },
-          { session }
-        );
+if (walletUsed > 0) {
+  console.log("💰 [checkout] before wallet deduct", {
+    userId: String(userId),
+    walletUsed,
+  });
 
-        if (upd.modifiedCount === 1) {
-          walletDeducted = true;
+  const upd = await User.updateOne(
+    { _id: userId, walletBalance: { $gte: walletUsed } },
+    { $inc: { walletBalance: -walletUsed } },
+    { session }
+  );
 
-          // ✅ 写回订单：钱包已付金额
-          await Order.updateOne(
-            { _id: created._id },
-            {
-              $set: {
-                "payment.wallet.paid": Number(walletUsed || 0),
-                "payment.paidTotal": Number(walletUsed || 0),
-              },
-            },
-            { session }
-          );
-        } else {
-          // 扣款失败：不扣钱包，全部走 Stripe
-          walletDeducted = false;
-          walletUsed = 0;
-          remaining = round2(finalTotal);
+  console.log("💰 [checkout] wallet updateOne result", upd);
 
-          await Order.updateOne(
-            { _id: created._id },
-            {
-              $set: {
-                "payment.status": "unpaid",
-                "payment.method": "stripe",
-                "payment.paidTotal": 0,
-                "payment.wallet.paid": 0,
-              },
-            },
-            { session }
-          );
-        }
-      }
+  if (upd.modifiedCount === 1) {
+    walletDeducted = true;
 
+    await Order.updateOne(
+      { _id: created._id },
+      {
+        $set: {
+          "payment.wallet.paid": Number(walletUsed || 0),
+          "payment.paidTotal": Number(walletUsed || 0),
+        },
+      },
+      { session }
+    );
+
+    console.log("💰 [checkout] wallet deducted OK", { walletUsed });
+  } else {
+    // 扣款失败：不扣钱包，全部走 Stripe
+    walletDeducted = false;
+    walletUsed = 0;
+    remaining = round2(finalTotal);
+
+    await Order.updateOne(
+      { _id: created._id },
+      {
+        $set: {
+          "payment.status": "unpaid",
+          "payment.method": "stripe",
+          "payment.paidTotal": 0,
+          "payment.wallet.paid": 0,
+        },
+      },
+      { session }
+    );
+
+    console.log("💰 [checkout] wallet deduct FAILED -> fallback stripe", {
+      finalTotal,
+      remaining,
+    });
+  }
+}
       const u1 = await User.findById(userId).select("walletBalance").session(session);
       newBalance = Number(u1?.walletBalance || 0);
-
+      console.log("💰 [checkout] wallet after", { newBalance });
+      // ✅ 保护：如果理论上应为“纯钱包支付”(remaining<=0)，但钱包没扣成功，直接报错回滚
+if (remaining <= 0 && walletUsed > 0 && walletDeducted !== true) {
+  const e = new Error("钱包扣款失败（未实际扣款），请重试");
+  e.status = 400;
+  throw e; // 会触发事务回滚：库存也会回滚
+}
       // 6) 如果 remaining==0 且 钱包确实扣成功 => 标记已支付
       if (remaining <= 0 && walletDeducted === true) {
         const now = new Date();

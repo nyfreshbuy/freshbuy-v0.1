@@ -158,7 +158,116 @@ router.get("/publishable-key", (req, res) => {
   }
   return res.json({ success: true, key: STRIPE_PUBLISHABLE_KEY });
 });
+// =========================
+// ✅ 2.5 给【已有订单】创建 PaymentIntent（用于 orders/checkout 的 remaining 部分）
+// POST /api/pay/stripe/intent-for-order
+// body: { orderId }
+// 规则：
+// - 订单必须存在且未支付
+// - PI 金额 = order.totalAmount - (wallet.paid + stripe.paid)
+// - 不再创建新订单（避免钱包扣款丢失）
+// =========================
+router.post("/intent-for-order", requireLogin, express.json(), async (req, res) => {
+  try {
+    if (!stripe) {
+      return res.status(500).json({ success: false, message: "Stripe 未初始化（缺少 STRIPE_SECRET_KEY）" });
+    }
 
+    const orderId = String(req.body?.orderId || "").trim();
+    if (!mongoose.Types.ObjectId.isValid(orderId)) {
+      return res.status(400).json({ success: false, message: "orderId 无效" });
+    }
+
+    const doc = await Order.findById(orderId);
+    if (!doc) return res.status(404).json({ success: false, message: "订单不存在" });
+
+    // ✅ 权限：只能操作自己的订单（或 admin）
+    const uid = String(req.user?._id || req.user?.id || "");
+    if (doc.userId && String(doc.userId) !== uid && req.user.role !== "admin") {
+      return res.status(403).json({ success: false, message: "无权限" });
+    }
+
+    // 已支付幂等
+    if (doc.status === "paid" || doc.payment?.status === "paid") {
+      return res.json({ success: true, message: "already paid", orderNo: doc.orderNo });
+    }
+
+    const total = Number(doc.totalAmount || 0);
+    const walletPaid = Number(doc.payment?.wallet?.paid || 0);
+    const stripePaid = Number(doc.payment?.stripe?.paid || 0);
+    const remaining = round2(total - walletPaid - stripePaid);
+
+    if (!Number.isFinite(remaining) || remaining <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: `无需 Stripe（remaining=${remaining}）`,
+      });
+    }
+
+    // Stripe 最低 $0.50
+    if (remaining < 0.5) {
+      return res.status(400).json({
+        success: false,
+        message: "Stripe 最低 $0.50，请改用纯钱包或增加金额",
+      });
+    }
+
+    // ✅ 幂等：如果已有 intentId，直接复用
+    const existingIntentId = String(doc.payment?.stripe?.intentId || "").trim();
+    if (existingIntentId) {
+      return res.json({
+        success: true,
+        reused: true,
+        orderId: String(doc._id),
+        orderNo: doc.orderNo,
+        paymentIntentId: existingIntentId,
+        clientSecret: "",
+        remaining,
+      });
+    }
+
+    const cents = moneyToCents(remaining);
+    const intentKey = String(doc.payment?.idempotencyKey || doc.orderNo || doc._id);
+
+    const intent = await stripe.paymentIntents.create(
+      {
+        amount: cents,
+        currency: "usd",
+        automatic_payment_methods: { enabled: true },
+        metadata: {
+          orderId: String(doc._id),
+          orderNo: String(doc.orderNo),
+          userId: String(doc.userId || ""),
+          intentKey,
+          amountCents: String(cents),
+          source: "intent-for-order",
+        },
+      },
+      { idempotencyKey: `fb_exist_${intentKey}__${cents}` }
+    );
+
+    // 写回订单
+    doc.payment = doc.payment || {};
+    doc.payment.method = "stripe";
+    doc.payment.status = "unpaid";
+    doc.payment.stripe = doc.payment.stripe || {};
+    doc.payment.stripe.intentId = intent.id;
+    await doc.save();
+
+    return res.json({
+      success: true,
+      reused: false,
+      orderId: String(doc._id),
+      orderNo: doc.orderNo,
+      clientSecret: intent.client_secret,
+      paymentIntentId: intent.id,
+      remaining,
+    });
+  } catch (err) {
+    console.error("POST /api/pay/stripe/intent-for-order error:", err);
+    return res.status(500).json({ success: false, message: err?.message || "创建 intent 失败" });
+  }
+});
 // =========================
 // 2) 创建/复用订单 + PaymentIntent
 // POST /api/pay/stripe/order-intent
@@ -171,7 +280,13 @@ router.post("/order-intent", requireLogin, express.json(), async (req, res) => {
 
     const user = req.user;
     const payload = req.body || {};
-
+    // ✅ 防止钱包/混合支付误走 Stripe 创建订单接口
+if (payload?.useWallet === true || payload?.payMethod === "wallet" || payload?.paymentMethod === "wallet") {
+  return res.status(400).json({
+    success: false,
+    message: "钱包/混合支付请先调用 /api/orders/checkout，然后用 /api/pay/stripe/intent-for-order 创建剩余款的 Stripe intent",
+  });
+}
     const intentKey = String(payload.intentKey || "").trim();
     if (!intentKey) return res.status(400).json({ success: false, message: "缺少 intentKey（前端幂等键）" });
 

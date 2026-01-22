@@ -3,6 +3,86 @@
 
 (function () {
   console.log("Checkout script loaded");
+  // =========================
+  // ✅ API 工具
+  // =========================
+  function getToken() {
+    return getAnyToken();
+  }
+
+  async function apiFetch(url, opts = {}) {
+    const token = getToken();
+    const headers = Object.assign(
+      { "Content-Type": "application/json" },
+      opts.headers || {},
+      token ? { Authorization: "Bearer " + token } : {}
+    );
+
+    const res = await fetch(url, { ...opts, headers });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg = data?.message || ("HTTP " + res.status);
+      throw new Error(msg);
+    }
+    return data;
+  }
+
+  function readPayMethod() {
+    const el =
+      document.querySelector('input[name="payMethod"]:checked') ||
+      document.querySelector('input[name="paymentMethod"]:checked');
+    return el ? String(el.value || "").trim() : "stripe";
+  }
+
+  function mapDeliveryMode(uiVal) {
+    // 你的 UI 值：next-day / area-group
+    // 后端需要：normal / groupDay / dealsDay / friendGroup
+    if (uiVal === "area-group") return "groupDay";
+    return "normal"; // next-day
+  }
+
+  function readTip() {
+    const el = document.getElementById("tipAmount") || document.getElementById("tip") || document.querySelector('[name="tip"]');
+    const v = el ? Number(el.value || 0) : 0;
+    return Number.isFinite(v) ? v : 0;
+  }
+
+  function buildShippingPayload() {
+    // ⚠️ 你的 id 可能不同，这里按你常见写法先取
+    const firstName = (document.getElementById("firstName")?.value || "").trim();
+    const lastName = (document.getElementById("lastName")?.value || "").trim();
+    const phone = (document.getElementById("phone")?.value || "").trim();
+
+    const street1 =
+      (document.getElementById("street")?.value || document.getElementById("street1")?.value || "").trim();
+    const apt = (document.getElementById("apt")?.value || "").trim();
+    const city = (document.getElementById("city")?.value || "").trim();
+    const state = (document.getElementById("state")?.value || "NY").trim();
+    const zip = (document.getElementById("zip")?.value || "").trim();
+
+    // 如果你页面是 Places 下拉，会有 lat/lng
+    const lat = Number(document.getElementById("lat")?.value);
+    const lng = Number(document.getElementById("lng")?.value);
+
+    const fullText =
+      (document.getElementById("addressText")?.value || "").trim() ||
+      [street1, apt, city, state, zip].filter(Boolean).join(", ");
+
+    return {
+      firstName,
+      lastName,
+      phone,
+      street1,
+      apt,
+      city,
+      state,
+      zip,
+      fullText,
+      lat: Number.isFinite(lat) ? lat : undefined,
+      lng: Number.isFinite(lng) ? lng : undefined,
+      note: (document.getElementById("orderNote")?.value || "").trim(),
+    };
+  }
 
   // =========================
   // Auth guard（游客/已登录判断）
@@ -166,5 +246,93 @@
     if (e.target && e.target.id === "deliveryMode") {
       updateCheckoutUI();
     }
+  });
+    // =========================
+  // ✅ 提交订单（钱包优先，剩余走 Stripe）
+  // =========================
+  async function submitCheckout() {
+    const token = getToken();
+    if (!token) {
+      alert("请先登录再下单");
+      return;
+    }
+
+    const s = getSummary();
+    if (!s || !Array.isArray(s.items) || s.items.length === 0) {
+      alert("购物车为空");
+      return;
+    }
+
+    const deliveryModeUI = document.getElementById("deliveryMode")?.value || "next-day";
+    const mode = mapDeliveryMode(deliveryModeUI);
+
+    const shipping = buildShippingPayload();
+    const tipAmount = readTip();
+    const payMethod = readPayMethod(); // wallet 或 stripe（你页面 radio）
+
+    // ✅ 关键：orders.js 的 buildOrderPayload 需要 items + shipping/receiver + mode + tip
+    const payload = {
+      mode,
+      deliveryMode: mode,
+      items: s.items,          // FreshCart 的 items（应含 productId/qty/variantKey）
+      shipping,
+      receiver: shipping,
+      tipAmount,
+      payMethod,
+      paymentMethod: payMethod,
+      deliveryDate: document.getElementById("deliveryDate")?.value || undefined,
+      deliveryType: "home",
+    };
+
+    // 1) 先走后端 checkout（这里才会扣钱包）
+    const out = await apiFetch("/api/orders/checkout", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+
+    // out: { orderId, walletUsed, remaining, paid, payment, ... }
+    if (out.paid === true || out.remaining <= 0) {
+      alert("支付成功（钱包）");
+      // ✅ 清空购物车（按你项目 cart.js 的实现可能不同）
+      try { window.FreshCart?.clear?.(); } catch (e) {}
+      location.href = "./orderSuccess.html?orderId=" + encodeURIComponent(out.orderId);
+      return;
+    }
+
+    // 2) 如果还有剩余金额，创建 Stripe intent（给已有订单创建，不再新建订单）
+    const pi = await apiFetch("/api/pay/stripe/intent-for-order", {
+      method: "POST",
+      body: JSON.stringify({ orderId: out.orderId }),
+    });
+
+    // 3) 交给你现有的 Stripe 前端支付逻辑
+    // ⚠️ 你项目里可能已有 Stripe.confirmPayment 封装，这里只把 clientSecret 暴露出去
+    window.__FB_STRIPE_PAY__ = {
+      orderId: out.orderId,
+      clientSecret: pi.clientSecret,
+      paymentIntentId: pi.paymentIntentId,
+      remaining: pi.remaining,
+    };
+
+    alert("钱包已抵扣部分金额，将跳转信用卡支付剩余部分");
+    // 你可以在这里打开 Stripe 支付弹窗/页面
+    // location.href = "./stripePay.html?orderId=" + encodeURIComponent(out.orderId);
+  }
+
+  // =========================
+  // ✅ 绑定“下单/支付”按钮
+  // =========================
+  document.addEventListener("click", (e) => {
+    const btn =
+      e.target.closest("#placeOrderBtn") ||
+      e.target.closest("#payBtn") ||
+      e.target.closest('[data-action="place-order"]');
+
+    if (!btn) return;
+    e.preventDefault();
+    submitCheckout().catch((err) => {
+      console.error("submitCheckout error:", err);
+      alert(err?.message || "下单失败");
+    });
   });
 })();

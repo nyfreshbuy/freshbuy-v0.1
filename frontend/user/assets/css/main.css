@@ -319,7 +319,6 @@ body.use-vvh #app {
   max-width: 1400px;
   margin: 0 auto;
   padding: 14px 16px 32px;
-  min-height: var(--vvh, 100vh); /* ✅ 防止键盘弹起时“溢出” */
 }
 
 /* side-rail */
@@ -1663,10 +1662,13 @@ body,
   max-width: 100% !important;
 }
 
-* {
+img,
+svg,
+video,
+canvas,
+iframe {
   max-width: 100%;
 }
-
 /* ---------------------------
    6) footer 超宽兜底（多页面）
 ---------------------------- */
@@ -1699,11 +1701,4 @@ body,
 html, body {
   overflow-x: hidden;
   max-width: 100%;
-}
-
-/* 你 JS 用到的 class：键盘锁屏 */
-body.kb-open {
-  position: fixed;
-  width: 100%;
-  overflow: hidden;
 }
