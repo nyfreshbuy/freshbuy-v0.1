@@ -1318,9 +1318,39 @@ specialTotalPrice: safeNum(
     },
 
     addItem(product, qty) {
-      Cart.addItem(product, qty || 1);
-    },
+  const p = { ...(product || {}) };
 
+  // ✅ 把后台的特价字段兼容进来（不管字段名叫啥）
+  const spQty =
+    p.specialQty ??
+    p.special_qty ??
+    p.specialCount ??
+    p.special_count ??
+    p.specialN ??
+    p.nFor ??
+    p.n_for ??
+    p.dealQty ??
+    p.deal_qty ??
+    0;
+
+  const spTotal =
+    p.specialTotalPrice ??
+    p.special_total_price ??
+    p.specialTotal ??
+    p.special_total ??
+    p.dealTotalPrice ??
+    p.deal_total_price ??
+    p.specialPrice ??
+    p.special_price ??
+    p.dealPrice ??
+    p.deal_price ??
+    0;
+
+  p.specialQty = Number(spQty) || 0;
+  p.specialTotalPrice = Number(spTotal) || 0;
+
+  Cart.addItem(p, qty || 1);
+},
     changeQty: Cart.changeQty,
     removeItem: Cart.removeItem,
     clear: Cart.clear,
