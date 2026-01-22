@@ -810,105 +810,142 @@ function getCartQty(pid) {
 
 // 2) 把购物车里某个 pid 的数量设置为 targetQty
 // normalizedItem：当需要 addItem 时用（你 createProductCard 里已经有 normalized）
+// 2) 把购物车里某个 pid 的数量设置为 targetQty
+// normalizedItem：当需要 addItem 时用（createProductCard 里已挂 card.__normalizedItem）
 function setCartQty(pid, targetQty, normalizedItem) {
   const next = Math.max(0, Math.floor(Number(targetQty || 0) || 0));
 
-  const cartApi =
-    (window.FreshCart && window.FreshCart) ||
-    (window.Cart && window.Cart) ||
-    null;
-
+  const cartApi = (window.FreshCart && window.FreshCart) || (window.Cart && window.Cart) || null;
   if (!cartApi) {
     alert("购物车模块暂未启用（请确认 cart.js 已加载）");
     return false;
   }
 
-  // 优先走 setQty / updateQty 一类（最干净）
-  // ✅ 先判断当前是否已存在（因为 cart.js 的 setQty 不会“凭空创建 item”）
-const curQty = getCartQty(pid); // ✅ 统一口径：从快照取真实数量
-// 目标为 0：优先走 setQty/remove（都可以）
-if (next === 0) {
-  try {
-    if (typeof cartApi.setQty === "function") { cartApi.setQty(pid, 0); return true; }
-  } catch {}
-  try {
-    if (typeof cartApi.removeItem === "function") { cartApi.removeItem(pid); return true; }
-    if (typeof cartApi.remove === "function") { cartApi.remove(pid); return true; }
-  } catch {}
-  return true;
-}
+  const curQty = getCartQty(pid);
 
-// ✅ next > 0 且当前不存在：必须用 addItem（不能用 setQty）
-if (curQty <= 0) {
-  if (next > 0 && typeof cartApi.addItem === "function") {
-    cartApi.addItem(normalizedItem || { id: pid }, next);
+  // =========================
+  // 目标为 0：优先 remove / setQty(0)
+  // =========================
+  if (next === 0) {
+    try {
+      if (typeof cartApi.setQty === "function") {
+        cartApi.setQty(pid, 0);
+        return true;
+      }
+    } catch {}
+    try {
+      if (typeof cartApi.removeItem === "function") {
+        cartApi.removeItem(pid);
+        return true;
+      }
+      if (typeof cartApi.remove === "function") {
+        cartApi.remove(pid);
+        return true;
+      }
+    } catch {}
+    // 即使没有 remove，也视为成功（UI 会隐藏）
     return true;
   }
-  return true;
-}
-// ✅ 已存在才用 setQty / updateQty（这时不会被 cart.js 直接 return）
-try {
-  if (typeof cartApi.setQty === "function") { cartApi.setQty(pid, next); return true; }
-  if (typeof cartApi.updateQty === "function") { cartApi.updateQty(pid, next); return true; }
-  if (typeof cartApi.changeQty === "function") {
-  const delta = next - curQty;          // ✅ changeQty 需要增量
-  cartApi.changeQty(pid, delta);
-  return true;
-}
-  if (typeof cartApi.setItemQty === "function") { cartApi.setItemQty(pid, next); return true; }
-} catch {}
 
-return false;
-  // 兜底：用 addItem/removeItem 做差量
-  const cur = getCartQty(pid);
-  const delta = next - cur;
-  if (delta === 0) return;
-
-  // 需要增加（✅ 兼容不同 addItem 签名）
-if (delta > 0) {
-  if (typeof cartApi.addItem === "function") {
-    const item = normalizedItem || { id: pid };
-
-    // 有些实现是 addItem(item, qty)
-    try {
-      cartApi.addItem(item, delta);
-      return true;
-    } catch {}
-
-    // 有些实现是 addItem(pid, qty)
-    try {
-      cartApi.addItem(pid, delta);
-      return true;
-    } catch {}
-
-    // 有些实现是 addItem({ ...item, qty })
-    try {
-      cartApi.addItem({ ...item, qty: delta, quantity: delta, count: delta });
-      return true;
-    } catch {}
-
-    // 都不行就失败
+  // =========================
+  // next > 0 且当前不存在：必须 addItem 创建
+  // =========================
+  if (curQty <= 0) {
+    if (typeof cartApi.addItem === "function") {
+      const item = normalizedItem || { id: pid };
+      try {
+        cartApi.addItem(item, next); // addItem(item, qty)
+        return true;
+      } catch {}
+      try {
+        cartApi.addItem(pid, next); // addItem(pid, qty)
+        return true;
+      } catch {}
+      try {
+        cartApi.addItem({ ...item, qty: next, quantity: next, count: next }); // addItem({.., qty})
+        return true;
+      } catch {}
+    }
     return false;
   }
-  return false;
-}
-  // 需要减少到 0：优先 removeItem/remove
-  if (next === 0) {
-    if (next === 0) {
-  if (typeof cartApi.removeItem === "function") { cartApi.removeItem(pid); return true; }
-  if (typeof cartApi.remove === "function") { cartApi.remove(pid); return true; }
-}
+
+  // =========================
+  // 当前已存在：优先 setQty / updateQty / changeQty
+  // =========================
+  try {
+    if (typeof cartApi.setQty === "function") {
+      cartApi.setQty(pid, next);
+      return true;
+    }
+    if (typeof cartApi.updateQty === "function") {
+      cartApi.updateQty(pid, next);
+      return true;
+    }
+    if (typeof cartApi.setItemQty === "function") {
+      cartApi.setItemQty(pid, next);
+      return true;
+    }
+    if (typeof cartApi.changeQty === "function") {
+      const delta = next - curQty; // changeQty 用增量
+      cartApi.changeQty(pid, delta);
+      return true;
+    }
+  } catch {}
+
+  // =========================
+  // ✅ 兜底：差量逻辑（你原来这段被 return false 卡死了）
+  // =========================
+  const delta = next - curQty;
+  if (delta === 0) return true;
+
+  // 需要增加：用 addItem 增量
+  if (delta > 0) {
+    if (typeof cartApi.addItem === "function") {
+      const item = normalizedItem || { id: pid };
+      try {
+        cartApi.addItem(item, delta);
+        return true;
+      } catch {}
+      try {
+        cartApi.addItem(pid, delta);
+        return true;
+      } catch {}
+      try {
+        cartApi.addItem({ ...item, qty: delta, quantity: delta, count: delta });
+        return true;
+      } catch {}
+    }
+    return false;
   }
 
-  // 再兜底：逐个减少
+  // 需要减少：优先 removeOne / decreaseItem；否则循环减
   const steps = Math.abs(delta);
   for (let i = 0; i < steps; i++) {
-    if (typeof cartApi.decreaseItem === "function") cartApi.decreaseItem(pid, 1);
-    else if (typeof cartApi.removeOne === "function") cartApi.removeOne(pid);
+    try {
+      if (typeof cartApi.decreaseItem === "function") {
+        cartApi.decreaseItem(pid, 1);
+        continue;
+      }
+      if (typeof cartApi.removeOne === "function") {
+        cartApi.removeOne(pid);
+        continue;
+      }
+      // 没有逐个减少方法，就退化：如果目标是 0，直接 remove
+      if (i === steps - 1 && next === 0) {
+        if (typeof cartApi.removeItem === "function") {
+          cartApi.removeItem(pid);
+          return true;
+        }
+        if (typeof cartApi.remove === "function") {
+          cartApi.remove(pid);
+          return true;
+        }
+      }
+    } catch {}
   }
+
   return true;
 }
-
 // 3) 根据购物车数量切换某张卡的显示（qty=0 显示加入购物车；qty>=1 显示黑框）
 function renderCardAction(card) {
   if (!card) return;

@@ -40,8 +40,8 @@ img, svg, video, canvas { max-width: 100%; height: auto; }
   width: 100%;
   max-width: 100%;
   overflow-x: hidden;
+  min-height: var(--vvh, 100vh); /* ✅ iOS 键盘：真实可视高度 */
 }
-
 /* =========================
    顶部导航 + 分类条置顶
    ========================= */
@@ -102,8 +102,16 @@ img, svg, video, canvas { max-width: 100%; height: auto; }
 }
 .search-icon { font-size: 14px; color: var(--text-sub); }
 .search-input {
-  border: none; background: transparent; outline: none;
-  font-size: 13px; width: 100%;
+  border: none;
+  background: transparent;
+  outline: none;
+  width: 100%;
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+@media (max-width: 768px){
+  .search-input{ font-size: 16px; } /* ✅ iOS 不自动缩放 */
 }
 .search-input::placeholder { color: #9ca3af; }
 
@@ -217,8 +225,8 @@ img, svg, video, canvas { max-width: 100%; height: auto; }
   max-width: 1400px;
   margin: 0 auto;
   padding: 14px 16px 32px;
+  min-height: var(--vvh, 100vh); /* ✅ 防止键盘弹起时“溢出” */
 }
-
 /* side-rail */
 .side-rail{
   position: fixed;
