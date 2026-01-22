@@ -18,6 +18,7 @@ router.use(express.urlencoded({ extended: true }));
 router.get("/ping", (req, res) => {
   res.json({ ok: true, name: "auth_mongo", time: new Date().toISOString() });
 });
+
 // =========================
 // JWT 工具
 // =========================
@@ -64,17 +65,37 @@ function verifySignupToken(signupToken, phone) {
 }
 
 // =========================
+// Phone normalize（US）
+// 统一成：11位且以 1 开头（你数据库当前是这种：1718xxxxxxx）
+// =========================
+function normalizeUSPhone(input) {
+  const digits = String(input || "").replace(/\D/g, "");
+  if (!digits) return "";
+
+  // 10位 -> 补1
+  if (digits.length === 10) return "1" + digits;
+
+  // 11位且以1开头 -> 原样
+  if (digits.length === 11 && digits.startsWith("1")) return digits;
+
+  // 其他情况：先原样返回（你也可以改成 return "" 直接拒绝）
+  return digits;
+}
+
+// =========================
 // 注册（POST /api/auth/register）
 // =========================
 router.post("/register", async (req, res) => {
   try {
     const body =
-      typeof req.body === "string"
-        ? JSON.parse(req.body || "{}")
-        : (req.body || {});
+      typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
 
     const name = String(body.name || "").trim();
-    const phone = String(body.phone || "").replace(/[^\d]/g, "");
+
+    // ✅ 改：统一手机号格式（10位->补1，11位以1开头->原样）
+    const phoneRaw = String(body.phone || "");
+    const phone = normalizeUSPhone(phoneRaw);
+
     const password = String(body.password || "");
     const signupToken = body.signupToken;
 
@@ -84,16 +105,18 @@ router.post("/register", async (req, res) => {
         message: "缺少参数",
       });
     }
-    // ✅ 方案A：上线期先不强制短信（用环境变量开关控制）
-const REQUIRE_SMS = process.env.REQUIRE_SMS_SIGNUP === "1";
 
-if (REQUIRE_SMS) {
-  const v = verifySignupToken(signupToken, phone);
-  if (!v.ok) {
-    // 语义上更像参数/验证未完成，用 400 更直观
-    return res.status(400).json({ success: false, message: v.message });
-  }
-}
+    // ✅ 方案A：上线期先不强制短信（用环境变量开关控制）
+    const REQUIRE_SMS = process.env.REQUIRE_SMS_SIGNUP === "1";
+
+    if (REQUIRE_SMS) {
+      const v = verifySignupToken(signupToken, phone);
+      if (!v.ok) {
+        // 语义上更像参数/验证未完成，用 400 更直观
+        return res.status(400).json({ success: false, message: v.message });
+      }
+    }
+
     const exists = await User.findOne({ phone });
     if (exists) {
       return res.status(400).json({
@@ -136,11 +159,12 @@ if (REQUIRE_SMS) {
 router.post("/login", async (req, res) => {
   try {
     const body =
-      typeof req.body === "string"
-        ? JSON.parse(req.body || "{}")
-        : (req.body || {});
+      typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
 
-    const phone = String(body.phone || "").replace(/[^\d]/g, "");
+    // ✅ 改：统一手机号格式（10位->补1，11位以1开头->原样）
+    const phoneRaw = String(body.phone || "");
+    const phone = normalizeUSPhone(phoneRaw);
+
     const password = String(body.password || "");
 
     if (!phone || !password) {
@@ -193,11 +217,12 @@ router.post("/login", async (req, res) => {
 router.post("/admin-login", async (req, res) => {
   try {
     const body =
-      typeof req.body === "string"
-        ? JSON.parse(req.body || "{}")
-        : (req.body || {});
+      typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
 
-    const phone = String(body.phone || "").replace(/[^\d]/g, "");
+    // ✅ 改：统一手机号格式（10位->补1，11位以1开头->原样）
+    const phoneRaw = String(body.phone || "");
+    const phone = normalizeUSPhone(phoneRaw);
+
     const password = String(body.password || "");
 
     if (!phone || !password) {
