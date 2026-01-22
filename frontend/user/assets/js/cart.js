@@ -1,4 +1,4 @@
-// assets/js/cart.js
+// /assets/js/cart.js
 // ======================================================
 // 通用购物车逻辑（DB zones + 配送模式偏好版）
 //
@@ -14,16 +14,14 @@
 // 2) Cart.clear() 改为走 handleCartChange() → 会触发 freshcart:updated(qtyMap) 让步进器归零
 // 3) FreshCart 同步暴露 getQty
 //
-// 说明：
-// - 购物车页：用 data-cart-subtotal / data-cart-shipping / data-cart-total
-// - 顶部抽屉：用 FreshCart.initCartUI(config) 的 id
-// - 结算页：支持以下任意一种：
-//   A) 继续用 data-cart-*（同购物车页）
-//   B) 或者用 id：checkoutSubtotal / checkoutShipping / checkoutTotal（如果你有这几个 id 会自动更新）
+// ✅ 本次新增（修特价对不上的核心）：
+// 4) 支持购物车 id 带 ::single/::case：用 baseId 对齐商品接口
+// 5) 初始化/加购后自动从 /api/products-simple 拉取 specialQty/specialTotalPrice 回填
 // ======================================================
 
 console.log("✅ cart.js loaded on", location.pathname);
 console.log("🧪 SPECIAL-PATCH v20260122-AAA");
+
 (function () {
   console.log("✅ Freshbuy cart.js loaded (db-zones + pref-mode)");
 
@@ -76,6 +74,9 @@ console.log("🧪 SPECIAL-PATCH v20260122-AAA");
   const ZONE_LS_KEY = "freshbuy_zone";
   const PREF_MODE_KEY = "freshbuy_pref_mode";
 
+  // ✅ 商品接口候选（用于回填特价字段）
+  const PRODUCT_API_CANDIDATES = ["/api/products-simple", "/api/products/public", "/api/products"];
+
   // ==============================
   // 2. 状态
   // ==============================
@@ -97,28 +98,43 @@ console.log("🧪 SPECIAL-PATCH v20260122-AAA");
     const n = Number(v);
     return Number.isFinite(n) ? n : fallback;
   }
-  // ✅ 特价：N for $X 计算
-function calcSpecialSubtotal(product, qty) {
-  const q = Number(qty || 0);
-  if (!product || q <= 0) return 0;
 
-  const price = safeNum(product.price ?? product.priceNum, 0);
-
-  // 允许多个字段名兜底（你后台常见：specialQty / specialTotalPrice）
-  const specialQty = safeNum(product.specialQty ?? product.specialN ?? product.specialCount, 0);
-  const specialTotalPrice = safeNum(
-    product.specialTotalPrice ?? product.specialTotal ?? product.specialPrice,
-    0
-  );
-
-  if (specialQty > 0 && specialTotalPrice > 0 && q >= specialQty) {
-    const groups = Math.floor(q / specialQty);
-    const remainder = q % specialQty;
-    return groups * specialTotalPrice + remainder * price;
+  // ✅ 关键：把 6970...::single -> 6970...
+  function getBaseId(id) {
+    return String(id || "").split("::")[0];
   }
 
-  return q * price;
-}
+  // ✅ 特价：N for $X 计算
+  function calcSpecialSubtotal(product, qty) {
+    const q = Number(qty || 0);
+    if (!product || q <= 0) return 0;
+
+    const price = safeNum(product.price ?? product.priceNum, 0);
+
+    // 允许多个字段名兜底
+    const specialQty = safeNum(
+      product.specialQty ?? product.specialN ?? product.specialCount ?? product.special_qty,
+      0
+    );
+    const specialTotalPrice = safeNum(
+      product.specialTotalPrice ??
+        product.specialTotal ??
+        product.specialPrice ??
+        product.special_total_price ??
+        product.special_total ??
+        product.special_price,
+      0
+    );
+
+    if (specialQty > 0 && specialTotalPrice > 0 && q >= specialQty) {
+      const groups = Math.floor(q / specialQty);
+      const remainder = q % specialQty;
+      return groups * specialTotalPrice + remainder * price;
+    }
+
+    return q * price;
+  }
+
   function isDealProduct(product) {
     if (!product) return false;
 
@@ -156,12 +172,14 @@ function calcSpecialSubtotal(product, qty) {
 
     return { hasDeal, hasNonDeal };
   }
-function calcCartSubtotal(items) {
-  return items.reduce((sum, { product, qty }) => {
-    if (!product) return sum;
-    return sum + calcSpecialSubtotal(product, qty); // ✅ 走特价
-  }, 0);
-}
+
+  function calcCartSubtotal(items) {
+    return items.reduce((sum, { product, qty }) => {
+      if (!product) return sum;
+      return sum + calcSpecialSubtotal(product, qty);
+    }, 0);
+  }
+
   function getCartItemCount() {
     return cartState.items.reduce((sum, it) => sum + (it.qty || 0), 0);
   }
@@ -268,6 +286,99 @@ function calcCartSubtotal(items) {
   }
 
   // ==============================
+  // ✅ 3.5 关键：从商品接口回填特价字段（解决所有特价价格对不上）
+  // ==============================
+
+  let _hydrateTimer = null;
+  function hydrateCartProductsFromAPI() {
+    if (_hydrateTimer) clearTimeout(_hydrateTimer);
+    _hydrateTimer = setTimeout(async () => {
+      try {
+        if (!cartState.items.length) return;
+
+        // cart baseId 集合
+        const baseIds = new Set(cartState.items.map((it) => getBaseId(it?.product?.id)).filter(Boolean));
+        if (!baseIds.size) return;
+
+        let list = null;
+
+        for (const api of PRODUCT_API_CANDIDATES) {
+          try {
+            const r = await fetch(api, { cache: "no-store" });
+            if (!r.ok) continue;
+            const j = await r.json().catch(() => null);
+            const arr = Array.isArray(j) ? j : j?.products || j?.items || j?.data || null;
+            if (Array.isArray(arr) && arr.length) {
+              list = arr;
+              console.log("🧪 hydrateCartProductsFromAPI using:", api, "count:", arr.length);
+              break;
+            }
+          } catch (e) {}
+        }
+
+        if (!Array.isArray(list) || !list.length) return;
+
+        // 用 baseId 建 map（支持 id / _id）
+        const map = new Map();
+        list.forEach((p) => {
+          const pid = String(p?.id || p?._id || "");
+          if (!pid) return;
+          map.set(getBaseId(pid), p);
+        });
+
+        let changed = false;
+
+        cartState.items.forEach((it) => {
+          const cartId = it?.product?.id;
+          const baseId = getBaseId(cartId);
+          if (!baseId) return;
+
+          const p = map.get(baseId);
+          if (!p) return;
+
+          // 回填单价（防止购物车里存的是旧价）
+          const newPrice = safeNum(p.price ?? p.priceNum, safeNum(it.product.price ?? it.product.priceNum, 0));
+          if (Number(it.product.price) !== newPrice) {
+            it.product.price = newPrice;
+            it.product.priceNum = newPrice;
+            changed = true;
+          }
+
+          // 回填特价字段（各种字段名兜底）
+          const sQty = safeNum(p.specialQty ?? p.specialN ?? p.specialCount ?? p.special_qty, 0);
+          const sTot = safeNum(
+            p.specialTotalPrice ?? p.specialTotal ?? p.specialPrice ?? p.special_total_price ?? p.special_total ?? p.special_price,
+            0
+          );
+
+          if (Number(it.product.specialQty || 0) !== sQty) {
+            it.product.specialQty = sQty;
+            changed = true;
+          }
+          if (Number(it.product.specialTotalPrice || 0) !== sTot) {
+            it.product.specialTotalPrice = sTot;
+            changed = true;
+          }
+
+          // 保底同步 tag/type/taxable（可选）
+          if (typeof p.tag === "string") it.product.tag = p.tag;
+          if (typeof p.type === "string") it.product.type = p.type;
+          if (p.taxable != null) it.product.taxable = !!p.taxable;
+
+          it.product.isDeal = isDealProduct(it.product);
+        });
+
+        if (changed) {
+          console.log("🧪 hydrateCartProductsFromAPI applied -> recalcing");
+          handleCartChange({ fromAdd: false });
+        }
+      } catch (e) {
+        console.warn("hydrateCartProductsFromAPI failed:", e);
+      }
+    }, 250);
+  }
+
+  // ==============================
   // 4. localStorage（购物车）
   // ==============================
 
@@ -282,12 +393,13 @@ function calcCartSubtotal(items) {
       cartState.items = data.items.map((it) => {
         const p = { ...(it.product || {}) };
 
-        // ✅ 关键：这里加 taxable / isDeal 归一
         p.taxable = !!p.taxable;
         p.isDeal = isDealProduct(p);
+
         // ✅ 恢复特价字段（如果存过）
-p.specialQty = safeNum(p.specialQty, 0);
-p.specialTotalPrice = safeNum(p.specialTotalPrice, 0);
+        p.specialQty = safeNum(p.specialQty, 0);
+        p.specialTotalPrice = safeNum(p.specialTotalPrice, 0);
+
         return { product: p, qty: Number(it.qty) || 1 };
       });
 
@@ -311,7 +423,7 @@ p.specialTotalPrice = safeNum(p.specialTotalPrice, 0);
             specialTotalPrice: product.specialTotalPrice,
             tag: product.tag,
             type: product.type,
-            taxable: !!product.taxable, // ✅ 保存 taxable
+            taxable: !!product.taxable,
             isDeal: isDealProduct(product),
             isSpecial: product.isSpecial,
             imageUrl: product.imageUrl || product.image || product.img || "",
@@ -341,7 +453,6 @@ p.specialTotalPrice = safeNum(p.specialTotalPrice, 0);
 
     const { hasDeal, hasNonDeal } = analyzeCartItems(cartState.items);
 
-    // 1) 纯爆品 → 强制区域团（但免运费）
     if (hasDeal && !hasNonDeal && zone.groupDay?.enabled) {
       cartState.mode = "groupDay";
 
@@ -363,7 +474,6 @@ p.specialTotalPrice = safeNum(p.specialTotalPrice, 0);
       return { rule, subtotal, shippingFee, meetMin: true };
     }
 
-    // 2) 含爆品（混合） → 强制区域团
     if (hasDeal && hasNonDeal && zone.groupDay?.enabled) {
       cartState.mode = "groupDay";
 
@@ -387,7 +497,6 @@ p.specialTotalPrice = safeNum(p.specialTotalPrice, 0);
       return { rule, subtotal, shippingFee, meetMin: true };
     }
 
-    // 3) 只有非爆品 → 默认区域团，但可按偏好切 normal / friendGroup
     const pref = getPreferredMode();
     const targetMode = pref || "groupDay";
 
@@ -417,7 +526,6 @@ p.specialTotalPrice = safeNum(p.specialTotalPrice, 0);
       return { rule, subtotal, shippingFee, meetMin };
     }
 
-    // fallback：区域团
     if (zone.groupDay?.enabled) {
       cartState.mode = "groupDay";
 
@@ -669,7 +777,7 @@ p.specialTotalPrice = safeNum(p.specialTotalPrice, 0);
   function getAuthToken() {
     return (
       localStorage.getItem("freshbuy_token") ||
-      localStorage.getItem("jwt") || // ✅ 补上
+      localStorage.getItem("jwt") ||
       localStorage.getItem("token") ||
       localStorage.getItem("auth_token") ||
       ""
@@ -765,12 +873,12 @@ p.specialTotalPrice = safeNum(p.specialTotalPrice, 0);
       name: product.name,
       price: safeNum(product.price ?? product.priceNum, 0),
       specialQty: safeNum(product.specialQty, 0),
-specialTotalPrice: safeNum(product.specialTotalPrice, 0),
+      specialTotalPrice: safeNum(product.specialTotalPrice, 0),
       qty: Number(qty) || 1,
       tag: product.tag || "",
       type: product.type || "",
       isDeal: isDealProduct(product),
-      taxable: !!product.taxable, // ✅ 订单里也带上（后续算税用）
+      taxable: !!product.taxable,
     }));
   }
 
@@ -890,7 +998,7 @@ specialTotalPrice: safeNum(product.specialTotalPrice, 0),
 
       const detail = {
         items: cartState.items,
-        qtyMap, // ✅ 给分类页/首页用（无需自己遍历 items）
+        qtyMap,
         mode: cartState.mode,
         zone: cartState.zone,
         count: getCartItemCount(),
@@ -904,7 +1012,6 @@ specialTotalPrice: safeNum(product.specialTotalPrice, 0),
   // 11. 绑定购物车页事件
   // ==============================
   function bindCartDOMEventsPage() {
-    // 1) 列表 +/- 删除
     const listEl = document.querySelector("[data-cart-items]");
     if (listEl) {
       listEl.addEventListener("click", (e) => {
@@ -922,27 +1029,19 @@ specialTotalPrice: safeNum(product.specialTotalPrice, 0),
       });
     }
 
-    // 2) ✅ 去结算按钮
     const checkoutBtn =
       document.querySelector("[data-cart-checkout-btn]") || document.getElementById("btnCheckout");
 
     if (checkoutBtn) {
       checkoutBtn.addEventListener("click", (e) => {
         e.preventDefault();
-
-        // 如果按钮被逻辑禁用，就不处理
         if (checkoutBtn.disabled) return;
 
-        // cart.html -> 跳到 checkout.html
         const path = String(location.pathname || "");
         const isCheckoutPage = path.includes("checkout");
 
-        if (isCheckoutPage) {
-          // 如果你结算页也复用这个按钮：直接下单
-          quickCheckout();
-        } else {
-          window.location.href = "/user/checkout.html";
-        }
+        if (isCheckoutPage) quickCheckout();
+        else window.location.href = "/user/checkout.html";
       });
     }
   }
@@ -1050,14 +1149,12 @@ specialTotalPrice: safeNum(product.specialTotalPrice, 0),
     const closeBtn = cartCloseBtnId && document.getElementById(cartCloseBtnId);
 
     function openDrawer() {
-      // ✅ 先触发一次 offset 计算（你的 __fb_setCartTopOffset 是 rAF 版本）
       try {
         if (typeof window.__fb_setCartTopOffset === "function") {
           window.__fb_setCartTopOffset();
         }
       } catch (e) {}
 
-      // ✅ 关键：等下一帧 offset 写入 CSS 变量后，再打开抽屉
       requestAnimationFrame(() => {
         if (drawer) drawer.classList.add("active");
         if (backdrop) backdrop.classList.add("active");
@@ -1148,13 +1245,17 @@ specialTotalPrice: safeNum(product.specialTotalPrice, 0),
   // ==============================
 
   const Cart = {
-    init(options = {}) {
+    async init(options = {}) {
       loadZoneFromStorage();
       if (options.zone) cartState.zone = normalizeZone(options.zone);
 
       loadCartFromStorage();
 
+      // ✅ 初始化先渲染一次（不存）
       handleCartChange({ fromAdd: false, skipSave: true });
+
+      // ✅ 然后从接口回填特价/单价（解决“特价价格对不上”）
+      hydrateCartProductsFromAPI();
 
       bindCartDOMEventsPage();
     },
@@ -1181,8 +1282,23 @@ specialTotalPrice: safeNum(product.specialTotalPrice, 0),
       if (!product || !product.id) return;
 
       const normalized = { ...product };
-      normalized.taxable = !!normalized.taxable; // ✅ 保证 boolean
+      normalized.taxable = !!normalized.taxable;
       normalized.isDeal = isDealProduct(normalized);
+
+      // ✅ 保底：把特价字段也带进来（如果 payload 有）
+      normalized.specialQty = safeNum(
+        normalized.specialQty ?? normalized.specialN ?? normalized.specialCount ?? normalized.special_qty,
+        0
+      );
+      normalized.specialTotalPrice = safeNum(
+        normalized.specialTotalPrice ??
+          normalized.specialTotal ??
+          normalized.specialPrice ??
+          normalized.special_total_price ??
+          normalized.special_total ??
+          normalized.special_price,
+        0
+      );
 
       const wasPureDealsBefore = isPureDeals(cartState.items);
 
@@ -1195,6 +1311,9 @@ specialTotalPrice: safeNum(product.specialTotalPrice, 0),
         addedProduct: normalized,
         wasPureDeals: wasPureDealsBefore,
       });
+
+      // ✅ 加购后也触发一次回填（防止 payload 没带特价字段）
+      hydrateCartProductsFromAPI();
     },
 
     changeQty(productId, delta) {
@@ -1217,13 +1336,10 @@ specialTotalPrice: safeNum(product.specialTotalPrice, 0),
       }
     },
 
-    // ✅ 修复：清空购物车也必须触发 freshcart:updated(qtyMap) 让首页/分类页归零
     clear() {
       cartState.items = [];
       cartState.mode = "groupDay";
       cartState.mixedTipShown = false;
-
-      // 走统一入口：会 render + save + dispatch
       handleCartChange({ fromAdd: false });
     },
 
@@ -1249,12 +1365,11 @@ specialTotalPrice: safeNum(product.specialTotalPrice, 0),
       return calcCartSubtotal(cartState.items);
     },
 
-    // ✅ 新增：给首页/分类页步进器用
     getQty(productId) {
       const id = String(productId || "");
       if (!id) return 0;
       const it = cartState.items.find((x) => x?.product?.id === id);
-      return it ? (Number(it.qty) || 0) : 0;
+      return it ? Number(it.qty) || 0 : 0;
     },
   };
 
@@ -1285,8 +1400,7 @@ specialTotalPrice: safeNum(product.specialTotalPrice, 0),
 
     addToCartWithLimit(payload) {
       if (!payload || !payload.id) return;
-      console.log("🧪 ADD payload keys:", Object.keys(payload || {}));
-      console.log("🧪 ADD payload:", payload);
+
       const priceNum = safeNum(payload.priceNum ?? payload.price, 0);
 
       const product = {
@@ -1294,15 +1408,22 @@ specialTotalPrice: safeNum(product.specialTotalPrice, 0),
         name: payload.name || "商品",
         price: priceNum,
         priceNum: priceNum,
-        // ✅ 特价字段（来自商品接口）
-specialQty: safeNum(payload.specialQty ?? payload.specialN ?? payload.specialCount, 0),
-specialTotalPrice: safeNum(
-  payload.specialTotalPrice ?? payload.specialTotal ?? payload.specialPrice,
-  0
-),
+
+        // ✅ 特价字段（来自商品接口，字段名可能不同）
+        specialQty: safeNum(payload.specialQty ?? payload.specialN ?? payload.specialCount ?? payload.special_qty, 0),
+        specialTotalPrice: safeNum(
+          payload.specialTotalPrice ??
+            payload.specialTotal ??
+            payload.specialPrice ??
+            payload.special_total_price ??
+            payload.special_total ??
+            payload.special_price,
+          0
+        ),
+
         tag: payload.tag || "",
         type: payload.type || "",
-        taxable: !!payload.taxable, // ✅ 从后端商品管理传过来
+        taxable: !!payload.taxable,
         isSpecial: !!payload.isSpecial,
         isDeal: !!payload.isSpecial,
         imageUrl:
@@ -1318,39 +1439,9 @@ specialTotalPrice: safeNum(
     },
 
     addItem(product, qty) {
-  const p = { ...(product || {}) };
+      Cart.addItem(product, qty || 1);
+    },
 
-  // ✅ 把后台的特价字段兼容进来（不管字段名叫啥）
-  const spQty =
-    p.specialQty ??
-    p.special_qty ??
-    p.specialCount ??
-    p.special_count ??
-    p.specialN ??
-    p.nFor ??
-    p.n_for ??
-    p.dealQty ??
-    p.deal_qty ??
-    0;
-
-  const spTotal =
-    p.specialTotalPrice ??
-    p.special_total_price ??
-    p.specialTotal ??
-    p.special_total ??
-    p.dealTotalPrice ??
-    p.deal_total_price ??
-    p.specialPrice ??
-    p.special_price ??
-    p.dealPrice ??
-    p.deal_price ??
-    0;
-
-  p.specialQty = Number(spQty) || 0;
-  p.specialTotalPrice = Number(spTotal) || 0;
-
-  Cart.addItem(p, qty || 1);
-},
     changeQty: Cart.changeQty,
     removeItem: Cart.removeItem,
     clear: Cart.clear,
@@ -1359,8 +1450,6 @@ specialTotalPrice: safeNum(
     getState: Cart.getState,
     getCount: Cart.getCount,
     getSubtotal: Cart.getSubtotal,
-
-    // ✅ 同步暴露
     getQty: Cart.getQty,
   };
 
@@ -1699,9 +1788,7 @@ specialTotalPrice: safeNum(
 
         localStorage.setItem("freshbuy_pref_mode", v);
         try {
-          window.dispatchEvent(
-            new CustomEvent("freshbuy:deliveryModeChanged", { detail: { mode: v } })
-          );
+          window.dispatchEvent(new CustomEvent("freshbuy:deliveryModeChanged", { detail: { mode: v } }));
         } catch {}
 
         if (window.Cart && typeof window.Cart.recalc === "function") window.Cart.recalc();
