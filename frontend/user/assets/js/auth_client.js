@@ -82,7 +82,23 @@
       if (agreeEl && !agreeEl.checked) {
         throw new Error("请先勾选并同意服务条款与隐私政策");
       }
+            // =========================================================
+      // ✅ 新增：确认密码校验（前端）
+      // 依赖 index.html 注册面板存在：
+      // - <input id="regPassword" ...>
+      // - <input id="regPasswordConfirm" ...>
+      // =========================================================
+      const pwEl = document.getElementById("regPassword");
+      const pw2El = document.getElementById("regPasswordConfirm");
 
+      const pw1 = (pwEl ? pwEl.value : password) ? String(pwEl ? pwEl.value : password).trim() : "";
+      const pw2 = pw2El ? String(pw2El.value || "").trim() : "";
+
+      // 如果页面有确认密码框，就必须一致
+      if (pw2El) {
+        if (!pw2) throw new Error("请再次输入确认密码");
+        if (pw1 !== pw2) throw new Error("两次输入的密码不一致");
+      }
       const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -298,6 +314,95 @@
 
     agree.addEventListener("change", sync);
     sync();
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
+})();
+/* =========================================================
+ * ✅ 注册密码增强：
+ * 1) 小眼睛显示/隐藏（使用 .auth-eye[data-eye-for]）
+ * 2) 实时提示：两次密码一致/不一致（#regPwMatchHint）
+ * ========================================================= */
+(function () {
+  function $(id) {
+    return document.getElementById(id);
+  }
+
+  // ✅ 小眼睛：兼容你 HTML 的 data-eye-for
+  function bindEyes() {
+    document.addEventListener("click", (e) => {
+      const btn = e.target && e.target.closest ? e.target.closest(".auth-eye") : null;
+      if (!btn) return;
+
+      const targetId = btn.getAttribute("data-eye-for");
+      if (!targetId) return;
+
+      const input = document.getElementById(targetId);
+      if (!input) return;
+
+      const isPwd = input.type === "password";
+      input.type = isPwd ? "text" : "password";
+      btn.textContent = isPwd ? "🙈" : "👁";
+    });
+  }
+
+  function setHint(text, ok) {
+    const hint = $("regPwMatchHint");
+    if (!hint) return;
+
+    hint.textContent = text || "";
+    if (ok === true) hint.style.color = "#16a34a";
+    else if (ok === false) hint.style.color = "#ef4444";
+    else hint.style.color = "#6b7280";
+  }
+
+  function syncMatchUI() {
+    const pw1El = $("regPassword");
+    const pw2El = $("regPasswordConfirm");
+    if (!pw1El || !pw2El) return;
+
+    const pw1 = String(pw1El.value || "");
+    const pw2 = String(pw2El.value || "");
+
+    if (!pw1 && !pw2) {
+      setHint("", null);
+      pw2El.style.borderColor = "";
+      return;
+    }
+
+    if (!pw2) {
+      setHint("请再次输入确认密码", null);
+      pw2El.style.borderColor = "";
+      return;
+    }
+
+    if (pw1 === pw2) {
+      setHint("✅ 两次密码一致", true);
+      pw2El.style.borderColor = "#16a34a";
+    } else {
+      setHint("❌ 两次密码不一致", false);
+      pw2El.style.borderColor = "#ef4444";
+    }
+  }
+
+  function init() {
+    bindEyes();
+
+    const pw1El = $("regPassword");
+    const pw2El = $("regPasswordConfirm");
+    if (!pw1El || !pw2El) return;
+
+    // 输入时实时刷新
+    pw1El.addEventListener("input", syncMatchUI);
+    pw2El.addEventListener("input", syncMatchUI);
+    pw1El.addEventListener("change", syncMatchUI);
+    pw2El.addEventListener("change", syncMatchUI);
+
+    syncMatchUI();
   }
 
   if (document.readyState === "loading") {

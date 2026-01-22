@@ -1217,18 +1217,55 @@
                 </div>
               </div>
             </label>
+<!-- ✅ 设置登录密码 -->
+<label class="auth-field">
+  <div class="auth-label">设置登录密码</div>
+  <div class="auth-input-row">
+    <span class="auth-ico-out">🔒</span>
+    <div class="auth-input-wrap">
+      <input
+        id="regPassword"
+        type="password"
+        class="auth-input"
+        placeholder="至少 6 位，建议字母 + 数字"
+      />
+      <button
+        type="button"
+        class="auth-eye"
+        data-eye-for="regPassword"
+        aria-label="显示/隐藏密码"
+      >👁</button>
+    </div>
+  </div>
+</label>
 
-            <label class="auth-field">
-              <div class="auth-label">设置登录密码</div>
-              <div class="auth-input-row">
-                <span class="auth-ico-out">🔒</span>
-                <div class="auth-input-wrap">
-                  <input id="regPassword" type="password" class="auth-input" placeholder="至少 6 位，建议字母 + 数字" />
-                  <button type="button" class="auth-eye" data-eye-for="regPassword" aria-label="显示/隐藏密码">👁</button>
-                </div>
-              </div>
-            </label>
+<!-- ✅ 确认登录密码（新增 + 同样的小眼睛） -->
+<label class="auth-field">
+  <div class="auth-label">确认登录密码</div>
+  <div class="auth-input-row">
+    <span class="auth-ico-out">🔒</span>
+    <div class="auth-input-wrap">
+      <input
+        id="regPasswordConfirm"
+        type="password"
+        class="auth-input"
+        placeholder="请再次输入登录密码"
+      />
+      <button
+        type="button"
+        class="auth-eye"
+        data-eye-for="regPasswordConfirm"
+        aria-label="显示/隐藏确认密码"
+      >👁</button>
+    </div>
+  </div>
 
+  <!-- ✅ 实时一致性提示（新增） -->
+  <div
+    id="regPwMatchHint"
+    style="margin-top:6px; font-size:12px; color:#6b7280; min-height:16px;"
+  ></div>
+</label>
             <label class="auth-field">
               <div class="auth-label">邀请码（选填）</div>
               <input id="regInvite" type="text" class="auth-input" placeholder="有好友邀请可填写，没有可留空" />
