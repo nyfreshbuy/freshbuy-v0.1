@@ -97,7 +97,28 @@ console.log("✅ cart.js loaded on", location.pathname);
     const n = Number(v);
     return Number.isFinite(n) ? n : fallback;
   }
+  // ✅ 特价：N for $X 计算
+function calcSpecialSubtotal(product, qty) {
+  const q = Number(qty || 0);
+  if (!product || q <= 0) return 0;
 
+  const price = safeNum(product.price ?? product.priceNum, 0);
+
+  // 允许多个字段名兜底（你后台常见：specialQty / specialTotalPrice）
+  const specialQty = safeNum(product.specialQty ?? product.specialN ?? product.specialCount, 0);
+  const specialTotalPrice = safeNum(
+    product.specialTotalPrice ?? product.specialTotal ?? product.specialPrice,
+    0
+  );
+
+  if (specialQty > 0 && specialTotalPrice > 0 && q >= specialQty) {
+    const groups = Math.floor(q / specialQty);
+    const remainder = q % specialQty;
+    return groups * specialTotalPrice + remainder * price;
+  }
+
+  return q * price;
+}
   function isDealProduct(product) {
     if (!product) return false;
 
@@ -135,15 +156,12 @@ console.log("✅ cart.js loaded on", location.pathname);
 
     return { hasDeal, hasNonDeal };
   }
-
-  function calcCartSubtotal(items) {
-    return items.reduce((sum, { product, qty }) => {
-      if (!product) return sum;
-      const price = Number(product.price ?? product.priceNum ?? 0);
-      return sum + price * qty;
-    }, 0);
-  }
-
+function calcCartSubtotal(items) {
+  return items.reduce((sum, { product, qty }) => {
+    if (!product) return sum;
+    return sum + calcSpecialSubtotal(product, qty); // ✅ 走特价
+  }, 0);
+}
   function getCartItemCount() {
     return cartState.items.reduce((sum, it) => sum + (it.qty || 0), 0);
   }
@@ -267,7 +285,9 @@ console.log("✅ cart.js loaded on", location.pathname);
         // ✅ 关键：这里加 taxable / isDeal 归一
         p.taxable = !!p.taxable;
         p.isDeal = isDealProduct(p);
-
+        // ✅ 恢复特价字段（如果存过）
+p.specialQty = safeNum(p.specialQty, 0);
+p.specialTotalPrice = safeNum(p.specialTotalPrice, 0);
         return { product: p, qty: Number(it.qty) || 1 };
       });
 
@@ -287,6 +307,8 @@ console.log("✅ cart.js loaded on", location.pathname);
             name: product.name,
             price: product.price,
             priceNum: product.priceNum,
+            specialQty: product.specialQty,
+            specialTotalPrice: product.specialTotalPrice,
             tag: product.tag,
             type: product.type,
             taxable: !!product.taxable, // ✅ 保存 taxable
@@ -742,6 +764,8 @@ console.log("✅ cart.js loaded on", location.pathname);
       productId: product.id,
       name: product.name,
       price: safeNum(product.price ?? product.priceNum, 0),
+      specialQty: safeNum(product.specialQty, 0),
+specialTotalPrice: safeNum(product.specialTotalPrice, 0),
       qty: Number(qty) || 1,
       tag: product.tag || "",
       type: product.type || "",
@@ -1269,6 +1293,12 @@ console.log("✅ cart.js loaded on", location.pathname);
         name: payload.name || "商品",
         price: priceNum,
         priceNum: priceNum,
+        // ✅ 特价字段（来自商品接口）
+specialQty: safeNum(payload.specialQty ?? payload.specialN ?? payload.specialCount, 0),
+specialTotalPrice: safeNum(
+  payload.specialTotalPrice ?? payload.specialTotal ?? payload.specialPrice,
+  0
+),
         tag: payload.tag || "",
         type: payload.type || "",
         taxable: !!payload.taxable, // ✅ 从后端商品管理传过来
