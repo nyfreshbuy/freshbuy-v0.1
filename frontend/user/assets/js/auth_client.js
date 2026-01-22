@@ -74,10 +74,26 @@
     },
 
     async register(name, phone, password) {
+      // =========================================================
+      // ✅ 必选框未勾选：禁止注册（前端最终兜底）
+      // 依赖 index.html 中注册面板存在：<input type="checkbox" id="regAgree" />
+      // =========================================================
+      const agreeEl = document.getElementById("regAgree");
+      if (agreeEl && !agreeEl.checked) {
+        throw new Error("请先勾选并同意服务条款与隐私政策");
+      }
+
       const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, phone, password }),
+
+        // ✅（推荐）把 agreeTerms 带到后端，后端也能拦截绕过
+        body: JSON.stringify({
+          name,
+          phone,
+          password,
+          agreeTerms: !!(agreeEl && agreeEl.checked),
+        }),
       });
 
       const data = await res.json();
@@ -214,7 +230,7 @@
       const delta = bottomInCard - (viewBottom - 10);
       card.scrollTo({ top: currentTop + delta, behavior: "smooth" });
     } else if (topInCard < viewTop + 10) {
-      const delta = (viewTop + 10) - topInCard;
+      const delta = viewTop + 10 - topInCard;
       card.scrollTo({ top: currentTop - delta, behavior: "smooth" });
     }
   }
@@ -259,4 +275,34 @@
 
   // 初始化
   syncLock();
+})();
+
+/* =========================================================
+ * ✅ 注册必选框：未勾选不能点“注册并登录”（UI 体验更稳）
+ * 依赖 index.html 存在：
+ * - <input type="checkbox" id="regAgree" />
+ * - <button id="registerSubmitBtn" ...>
+ * ========================================================= */
+(function () {
+  function init() {
+    const agree = document.getElementById("regAgree");
+    const btn = document.getElementById("registerSubmitBtn");
+    if (!agree || !btn) return;
+
+    const sync = () => {
+      const ok = !!agree.checked;
+      btn.disabled = !ok;
+      btn.style.opacity = ok ? "1" : "0.55";
+      btn.style.cursor = ok ? "pointer" : "not-allowed";
+    };
+
+    agree.addEventListener("change", sync);
+    sync();
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
 })();
