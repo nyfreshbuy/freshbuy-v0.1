@@ -699,7 +699,22 @@ if (spTotal > 0 && spTotal !== safeNum(p.specialTotalPrice, 0)) {
     listEl.innerHTML = cartState.items
       .map(({ product, qty }, index) => {
        const price = safeNum(product.regularPrice ?? product.price ?? product.priceNum, 0).toFixed(2);
-        const imgUrl = getProductImageUrl(product, index);
+       const unit = safeNum(product.regularPrice ?? product.price ?? product.priceNum, 0);
+const originalLineTotal = unit * Number(qty || 0);
+
+const specialQty = safeNum(product.specialQty, 0);
+const specialTotalPrice = safeNum(product.specialTotalPrice, 0);
+
+// 特价小计（你已经有 calcSpecialSubtotal）
+const specialLineTotal = calcSpecialSubtotal(product, qty);
+
+// 是否真的触发特价（必须：有特价配置 + qty达标 + 特价小计 < 原价小计）
+const hitSpecial =
+  specialQty > 0 &&
+  specialTotalPrice > 0 &&
+  Number(qty || 0) >= specialQty &&
+  specialLineTotal + 0.0001 < originalLineTotal; 
+       const imgUrl = getProductImageUrl(product, index);
         const fallback =
           "https://picsum.photos/seed/" +
           encodeURIComponent(product?.id || product?._id || ("x" + index)) +
@@ -1164,6 +1179,40 @@ if (spTotal > 0 && spTotal !== safeNum(p.specialTotalPrice, 0)) {
           listEl.innerHTML = cartState.items
             .map(({ product, qty }) => {
               const price = safeNum(product.price ?? product.priceNum, 0).toFixed(2);
+              // ===== 行小计（原价 / 特价）计算 =====
+const unitPrice = safeNum(product.price ?? product.priceNum, 0);
+const originalLineTotal = unitPrice * Number(qty || 0);
+
+const specialQty = safeNum(product.specialQty, 0);
+const specialTotalPrice = safeNum(product.specialTotalPrice, 0);
+
+// 特价小计（你已经有这个函数）
+const specialLineTotal = calcSpecialSubtotal(product, qty);
+
+// 是否真正命中特价（必须 qty 达标，且特价确实更便宜）
+const hitSpecial =
+  specialQty > 0 &&
+  specialTotalPrice > 0 &&
+  Number(qty || 0) >= specialQty &&
+  specialLineTotal + 0.0001 < originalLineTotal;
+
+// 小计 HTML（特价 or 原价）
+const lineTotalHtml = hitSpecial
+  ? `
+    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
+      <div style="font-weight:900;color:#16a34a;">
+        小计：$${specialLineTotal.toFixed(2)}
+      </div>
+      <div style="font-size:12px;color:#9ca3af;text-decoration:line-through;">
+        原价：$${originalLineTotal.toFixed(2)}
+      </div>
+    </div>
+  `
+  : `
+    <div style="font-weight:900;">
+      小计：$${originalLineTotal.toFixed(2)}
+    </div>
+  `;
               const tag = isDealProduct(product)
                 ? '<span class="cart-tag cart-tag-deal">爆品</span>'
                 : "";

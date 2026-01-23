@@ -294,7 +294,31 @@
         const n = Number(v);
         return Number.isFinite(n) ? n : fallback;
       }
+      // ✅ 特价：N for $X 行小计计算（和 cart.js 同逻辑）
+function calcSpecialLineTotal(p, qty) {
+  const q = Number(qty || 0);
+  if (!p || q <= 0) return 0;
 
+  const price = safeNum(p.priceNum ?? p.price, 0);
+
+  const specialQty = safeNum(
+    p.specialQty ?? p.specialN ?? p.specialCount ?? p.dealQty,
+    0
+  );
+
+  const specialTotalPrice = safeNum(
+    p.specialTotalPrice ?? p.specialTotal ?? p.specialPrice ?? p.dealTotalPrice ?? p.dealPrice,
+    0
+  );
+
+  if (specialQty > 0 && specialTotalPrice > 0 && q >= specialQty) {
+    const groups = Math.floor(q / specialQty);
+    const remainder = q % specialQty;
+    return groups * specialTotalPrice + remainder * price;
+  }
+
+  return q * price;
+}
       function getImgUrl(p, index) {
         const raw =
           (p?.imageUrl && String(p.imageUrl).trim()) ||
@@ -362,7 +386,17 @@
           const qty = Number(it.qty || 1);
           const price = safeNum(p.priceNum ?? p.price, 0);
           const imgUrl = getImgUrl(p, index);
+          const originalLineTotal = price * qty;
+const specialLineTotal = calcSpecialLineTotal(p, qty);
 
+const specialQty = safeNum(p.specialQty, 0);
+const specialTotalPrice = safeNum(p.specialTotalPrice, 0);
+
+const hitSpecial =
+  specialQty > 0 &&
+  specialTotalPrice > 0 &&
+  qty >= specialQty &&
+  specialLineTotal + 0.0001 < originalLineTotal;
           const row = document.createElement("div");
           row.className = "cart-item";
           row.innerHTML = `
@@ -385,9 +419,20 @@
             </div>
 
             <div class="cart-item-actions">
-              <span>小计：$${(price * qty).toFixed(2)}</span>
-              <button class="remove-btn" data-remove="${p.id}">删除</button>
-            </div>
+  ${
+    hitSpecial
+      ? `
+        <div style="text-align:right;line-height:1.2;">
+          <div style="font-weight:800;color:#16a34a;">小计：$${specialLineTotal.toFixed(2)}</div>
+          <div style="font-size:12px;color:#9ca3af;text-decoration:line-through;">
+            原价：$${originalLineTotal.toFixed(2)}
+          </div>
+        </div>
+      `
+      : `<span>小计：$${originalLineTotal.toFixed(2)}</span>`
+  }
+  <button class="remove-btn" data-remove="${p.id}">删除</button>
+</div>
           `;
           listEl.appendChild(row);
         });
@@ -444,8 +489,7 @@
           const qty = Number(it.qty || 1);
           const price = safeNum(p.priceNum ?? p.price, 0);
           totalQty += qty;
-          subtotal += price * qty;
-
+          subtotal += calcSpecialLineTotal(p, qty);
           return {
             id: p.id,
             name: p.name,
