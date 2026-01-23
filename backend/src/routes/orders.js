@@ -758,7 +758,9 @@ router.post("/checkout", requireLogin, async (req, res) => {
       finalTotal = round2(baseTotal);
 
       // 1) 钱包余额（兼容多个字段名）
-      const u0 = await User.findById(userId).select("walletBalance balance wallet wallet.balance").session(session);
+      const u0 = await User.findById(userId)
+  .select("walletBalance balance wallet")
+  .session(session);
       const walletMeta = detectWalletField(u0);
       const balance0 = getWalletBalance(u0);
 
@@ -840,7 +842,10 @@ router.post("/checkout", requireLogin, async (req, res) => {
         }
       }
 
-      const u1 = await User.findById(userId).select("walletBalance balance wallet wallet.balance").session(session);
+      const u1 = await User.findById(userId)
+  .select("walletBalance balance wallet")
+  .session(session);
+
       newBalance = round2(getWalletBalance(u1));
 
       // ✅ 保护：如果理论上应为纯钱包，但钱包没扣成功 => 回滚
