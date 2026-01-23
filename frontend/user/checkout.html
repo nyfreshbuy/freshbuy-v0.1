@@ -1526,6 +1526,8 @@ lastStripePaymentIntentId = String(data.paymentIntentId || data.paymentIntentId 
         const zoneKey = snapshot.zone?.zoneKey || snapshot.zone?.key || snapshot.zone?.id || "";
 
         const payload = {
+          checkoutKey: buildIntentKey(snapshot, extra), // ✅ 钱包也用同一套 key 做幂等
+          payMethod: getPayMethod(),
           mode: snapshot.mode,
           deliveryType,
           deliveryDate,

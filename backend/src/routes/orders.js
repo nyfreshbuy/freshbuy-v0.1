@@ -668,6 +668,7 @@ router.post("/", requireLogin, async (req, res) => {
 router.post("/checkout", requireLogin, async (req, res) => {
   const session = await mongoose.startSession();
   try {
+        const idemKey = String(req.body?.checkoutKey || req.body?.intentKey || "").trim();
     const userId = toObjectIdMaybe(req.user?.id || req.user?._id);
     if (!userId) return res.status(401).json({ success: false, message: "未登录" });
 
@@ -679,7 +680,21 @@ router.post("/checkout", requireLogin, async (req, res) => {
     let finalTotal = 0;
     let platformFee = 0;
     let walletDeducted = false;
-
+    if (idemKey) {
+      const existed = await Order.findOne({ "payment.idempotencyKey": idemKey }).select("_id orderNo status payment totalAmount").lean();
+      if (existed) {
+        return res.json({
+          success: true,
+          reused: true,
+          orderId: String(existed._id),
+          orderNo: existed.orderNo,
+          status: existed.status,
+          payment: existed.payment,
+          totalAmount: existed.totalAmount,
+        });
+      }
+    }
+    
     await session.withTransaction(async () => {
       // ✅ 先在事务里构建订单 + 预扣库存 + 写 stockReserve
       const { orderDoc, baseTotalAmount } = await buildOrderPayload(req, session);
@@ -709,6 +724,7 @@ router.post("/checkout", requireLogin, async (req, res) => {
         walletUsed = round2(Math.min(balance0, finalTotal));
         remaining = round2(finalTotal - walletUsed);
       }
+
       console.log("💰 [checkout] wallet calc", {
   userId: String(userId),
   balance0,
@@ -718,6 +734,14 @@ router.post("/checkout", requireLogin, async (req, res) => {
   walletUsed,
   remaining,
 });
+      // ✅ 结算页：如果前端选择的是钱包支付，则必须钱包全额覆盖
+      // （你现在的前端 wallet 流程不支持“剩余走 Stripe”，所以必须拦住）
+      const clientPayMethod = String(req.body?.payMethod || req.body?.paymentMethod || req.body?.payment?.method || "").trim();
+      if (clientPayMethod === "wallet" && remaining > 0) {
+        const e = new Error(`钱包余额不足：需要 $${finalTotal.toFixed(2)}，当前 $${balance0.toFixed(2)}`);
+        e.status = 400;
+        throw e; // ✅ 直接回滚：不会创建 pending，更不会扣库存
+      }
       // 4) 创建订单（✅ 创建时一律 unpaid，避免“假paid/错归类”）
       const docToCreate = {
         ...orderDoc,
@@ -727,7 +751,7 @@ router.post("/checkout", requireLogin, async (req, res) => {
         paidAt: null,
         payment: {
           ...(orderDoc.payment || {}),
-
+            idempotencyKey: idemKey || "",
           // 金额快照
           amountPlatformFee: Number(platformFee || 0),
           amountTotal: Number(finalTotal || 0),
