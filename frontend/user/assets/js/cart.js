@@ -1,39 +1,32 @@
-// /assets/js/cart.js
+// assets/js/cart.js
 // ======================================================
 // 通用购物车逻辑（DB zones + 配送模式偏好版）
 //
-// ✅ 修复：点选“次日配送”后运费不刷新（全站监听 deliveryMode radio + Cart.recalc）
-// ✅ 规则：只要购物车含【爆品】(含爆品/混合) → 强制【区域团 groupDay】；不允许选 次日配送/好友拼单（UI 禁用）
-// ✅ 运费：纯爆品 groupDay 且免运费；爆品+正常 按区域团门槛（>=49.99免，否则4.99）
-// ✅ 修复：结算一直提示“请先保存默认收货地址” —— 优先从 /api/addresses/my 找 isDefault 地址
-// ✅ 修复：结算页金额区（配送费/总计）不更新 —— 新增 checkout 金额 DOM 同步（支持 id + data-cart-*）
-// ✅ 新增：taxable 字段写入/读取（用于后续 NY 税计算）
+// ✅ 特价修复：
+// - 购物车本地缓存里的 product.specialQty / specialTotalPrice 很多是 0（旧数据/加购payload没带齐）
+// - 导致 calcSpecialSubtotal 走了原价，所有特价价格对不上
+// ✅ 本版新增：hydrateCartProductsFromAPI()：启动时从 /api/products-simple 拉商品数据，把购物车里的字段补齐再计算
 //
-// ✅ 本次修复（你要求的）：
-// 1) 增加 Cart.getQty(productId) → 首页/分类页步进器可稳定读取数量
-// 2) Cart.clear() 改为走 handleCartChange() → 会触发 freshcart:updated(qtyMap) 让步进器归零
-// 3) FreshCart 同步暴露 getQty
-//
-// ✅ 本次新增（修特价对不上的核心）：
-// 4) 支持购物车 id 带 ::single/::case：用 baseId 对齐商品接口
-// 5) 初始化/加购后自动从 /api/products-simple 拉取 specialQty/specialTotalPrice 回填
+// 说明：
+// - 购物车页：用 data-cart-subtotal / data-cart-shipping / data-cart-total
+// - 顶部抽屉：用 FreshCart.initCartUI(config) 的 id
+// - 结算页：支持 data-cart-* 或 checkoutSubtotal/checkoutShipping/checkoutTotal
 // ======================================================
 
 console.log("✅ cart.js loaded on", location.pathname);
-console.log("🧪 SPECIAL-PATCH v20260122-AAA");
+console.log("🧪 SPECIAL-PATCH v20260122-FIXSPECIAL");
 
 (function () {
   console.log("✅ Freshbuy cart.js loaded (db-zones + pref-mode)");
 
   // ==============================
-  // 1. 默认 Zone & 常量
+  // 1) 默认 Zone & 常量
   // ==============================
 
   const DEFAULT_ZONE = {
     id: "zone_freshmeadows",
     name: "Fresh Meadows",
     enabled: true,
-
     normal: {
       enabled: true,
       deliveryTime: "次日 17:00-21:00",
@@ -41,7 +34,6 @@ console.log("🧪 SPECIAL-PATCH v20260122-AAA");
       minAmount: 49.99,
       note: "次日配送需满 $49.99，运费 $4.99",
     },
-
     dealsDay: {
       enabled: true,
       weekday: 5,
@@ -50,7 +42,6 @@ console.log("🧪 SPECIAL-PATCH v20260122-AAA");
       minAmount: 0,
       note: "仅限爆品商品，本单免运费",
     },
-
     groupDay: {
       enabled: true,
       weekday: 5,
@@ -59,7 +50,6 @@ console.log("🧪 SPECIAL-PATCH v20260122-AAA");
       shippingFee: 4.99,
       note: "区域团购：满 $49.99 免运费，未满收取 $4.99 运费",
     },
-
     friendGroup: {
       enabled: true,
       minAmount: 29,
@@ -74,11 +64,15 @@ console.log("🧪 SPECIAL-PATCH v20260122-AAA");
   const ZONE_LS_KEY = "freshbuy_zone";
   const PREF_MODE_KEY = "freshbuy_pref_mode";
 
-  // ✅ 商品接口候选（用于回填特价字段）
-  const PRODUCT_API_CANDIDATES = ["/api/products-simple", "/api/products/public", "/api/products"];
+  // 商品API（用于补齐特价字段）
+  const PRODUCT_API_CANDIDATES = [
+    "/api/products-simple",
+    "/api/products/public",
+    "/api/products",
+  ];
 
   // ==============================
-  // 2. 状态
+  // 2) 状态
   // ==============================
 
   const cartState = {
@@ -91,7 +85,7 @@ console.log("🧪 SPECIAL-PATCH v20260122-AAA");
   let headerUIConfig = null;
 
   // ==============================
-  // 3. 小工具
+  // 3) 小工具
   // ==============================
 
   function safeNum(v, fallback = 0) {
@@ -99,9 +93,17 @@ console.log("🧪 SPECIAL-PATCH v20260122-AAA");
     return Number.isFinite(n) ? n : fallback;
   }
 
-  // ✅ 关键：把 6970...::single -> 6970...
-  function getBaseId(id) {
-    return String(id || "").split("::")[0];
+  function normStr(v) {
+    return String(v == null ? "" : v).trim();
+  }
+
+  function getBaseIdFromAny(p) {
+    // 购物车里 id 形如 6970...::single
+    const id = normStr(p?.baseId || "");
+    if (id) return id;
+    const pid = normStr(p?.id || p?._id || "");
+    if (!pid) return "";
+    return pid.includes("::") ? pid.split("::")[0] : pid;
   }
 
   // ✅ 特价：N for $X 计算
@@ -111,18 +113,28 @@ console.log("🧪 SPECIAL-PATCH v20260122-AAA");
 
     const price = safeNum(product.price ?? product.priceNum, 0);
 
-    // 允许多个字段名兜底
     const specialQty = safeNum(
-      product.specialQty ?? product.specialN ?? product.specialCount ?? product.special_qty,
+      product.specialQty ??
+        product.specialN ??
+        product.specialCount ??
+        product.special_qty ??
+        product.special_count ??
+        product.dealQty ??
+        product.deal_qty,
       0
     );
+
     const specialTotalPrice = safeNum(
       product.specialTotalPrice ??
         product.specialTotal ??
         product.specialPrice ??
         product.special_total_price ??
         product.special_total ??
-        product.special_price,
+        product.special_price ??
+        product.dealTotalPrice ??
+        product.deal_total_price ??
+        product.dealPrice ??
+        product.deal_price,
       0
     );
 
@@ -215,7 +227,6 @@ console.log("🧪 SPECIAL-PATCH v20260122-AAA");
 
     return raw;
   }
-
   // ---------- ✅ mode 归一 ----------
   function normalizeModeInput(v) {
     const s = String(v || "").trim();
@@ -286,100 +297,7 @@ console.log("🧪 SPECIAL-PATCH v20260122-AAA");
   }
 
   // ==============================
-  // ✅ 3.5 关键：从商品接口回填特价字段（解决所有特价价格对不上）
-  // ==============================
-
-  let _hydrateTimer = null;
-  function hydrateCartProductsFromAPI() {
-    if (_hydrateTimer) clearTimeout(_hydrateTimer);
-    _hydrateTimer = setTimeout(async () => {
-      try {
-        if (!cartState.items.length) return;
-
-        // cart baseId 集合
-        const baseIds = new Set(cartState.items.map((it) => getBaseId(it?.product?.id)).filter(Boolean));
-        if (!baseIds.size) return;
-
-        let list = null;
-
-        for (const api of PRODUCT_API_CANDIDATES) {
-          try {
-            const r = await fetch(api, { cache: "no-store" });
-            if (!r.ok) continue;
-            const j = await r.json().catch(() => null);
-            const arr = Array.isArray(j) ? j : j?.products || j?.items || j?.data || null;
-            if (Array.isArray(arr) && arr.length) {
-              list = arr;
-              console.log("🧪 hydrateCartProductsFromAPI using:", api, "count:", arr.length);
-              break;
-            }
-          } catch (e) {}
-        }
-
-        if (!Array.isArray(list) || !list.length) return;
-
-        // 用 baseId 建 map（支持 id / _id）
-        const map = new Map();
-        list.forEach((p) => {
-          const pid = String(p?.id || p?._id || "");
-          if (!pid) return;
-          map.set(getBaseId(pid), p);
-        });
-
-        let changed = false;
-
-        cartState.items.forEach((it) => {
-          const cartId = it?.product?.id;
-          const baseId = getBaseId(cartId);
-          if (!baseId) return;
-
-          const p = map.get(baseId);
-          if (!p) return;
-
-          // 回填单价（防止购物车里存的是旧价）
-          const newPrice = safeNum(p.price ?? p.priceNum, safeNum(it.product.price ?? it.product.priceNum, 0));
-          if (Number(it.product.price) !== newPrice) {
-            it.product.price = newPrice;
-            it.product.priceNum = newPrice;
-            changed = true;
-          }
-
-          // 回填特价字段（各种字段名兜底）
-          const sQty = safeNum(p.specialQty ?? p.specialN ?? p.specialCount ?? p.special_qty, 0);
-          const sTot = safeNum(
-            p.specialTotalPrice ?? p.specialTotal ?? p.specialPrice ?? p.special_total_price ?? p.special_total ?? p.special_price,
-            0
-          );
-
-          if (Number(it.product.specialQty || 0) !== sQty) {
-            it.product.specialQty = sQty;
-            changed = true;
-          }
-          if (Number(it.product.specialTotalPrice || 0) !== sTot) {
-            it.product.specialTotalPrice = sTot;
-            changed = true;
-          }
-
-          // 保底同步 tag/type/taxable（可选）
-          if (typeof p.tag === "string") it.product.tag = p.tag;
-          if (typeof p.type === "string") it.product.type = p.type;
-          if (p.taxable != null) it.product.taxable = !!p.taxable;
-
-          it.product.isDeal = isDealProduct(it.product);
-        });
-
-        if (changed) {
-          console.log("🧪 hydrateCartProductsFromAPI applied -> recalcing");
-          handleCartChange({ fromAdd: false });
-        }
-      } catch (e) {
-        console.warn("hydrateCartProductsFromAPI failed:", e);
-      }
-    }, 250);
-  }
-
-  // ==============================
-  // 4. localStorage（购物车）
+  // 4) localStorage（购物车）
   // ==============================
 
   function loadCartFromStorage() {
@@ -396,9 +314,12 @@ console.log("🧪 SPECIAL-PATCH v20260122-AAA");
         p.taxable = !!p.taxable;
         p.isDeal = isDealProduct(p);
 
-        // ✅ 恢复特价字段（如果存过）
+        // ✅ 关键：这里很多旧数据 specialQty / specialTotalPrice = 0（后面会 hydrate）
         p.specialQty = safeNum(p.specialQty, 0);
         p.specialTotalPrice = safeNum(p.specialTotalPrice, 0);
+
+        // ✅ baseId 给 hydrate 用
+        p.baseId = getBaseIdFromAny(p);
 
         return { product: p, qty: Number(it.qty) || 1 };
       });
@@ -416,6 +337,7 @@ console.log("🧪 SPECIAL-PATCH v20260122-AAA");
         items: cartState.items.map(({ product, qty }) => ({
           product: {
             id: product.id,
+            baseId: getBaseIdFromAny(product),
             name: product.name,
             price: product.price,
             priceNum: product.priceNum,
@@ -440,7 +362,130 @@ console.log("🧪 SPECIAL-PATCH v20260122-AAA");
   }
 
   // ==============================
-  // 5. 运费规则（核心）
+  // ✅ 4.5) 核心修复：从商品API补齐特价字段
+  // ==============================
+
+  async function fetchProductsFromCandidates() {
+    for (const url of PRODUCT_API_CANDIDATES) {
+      try {
+        const r = await fetch(url, { cache: "no-store" });
+        if (!r.ok) continue;
+        const j = await r.json().catch(() => null);
+        if (!j) continue;
+
+        const list = Array.isArray(j)
+          ? j
+          : j.products || j.items || j.data || j.list || [];
+
+        if (Array.isArray(list) && list.length) {
+          console.log("🧪 hydrateCartProductsFromAPI using:", url, "count:", list.length);
+          return list;
+        }
+      } catch (e) {}
+    }
+    return [];
+  }
+
+  function readSpecialFieldsFromApiProduct(apiP) {
+    const spQty = safeNum(
+      apiP?.specialQty ??
+        apiP?.specialN ??
+        apiP?.specialCount ??
+        apiP?.special_qty ??
+        apiP?.special_count ??
+        apiP?.dealQty ??
+        apiP?.deal_qty,
+      0
+    );
+
+    const spTotal = safeNum(
+      apiP?.specialTotalPrice ??
+        apiP?.specialTotal ??
+        apiP?.specialPrice ??
+        apiP?.special_total_price ??
+        apiP?.special_total ??
+        apiP?.special_price ??
+        apiP?.dealTotalPrice ??
+        apiP?.deal_total_price ??
+        apiP?.dealPrice ??
+        apiP?.deal_price,
+      0
+    );
+
+    return { spQty, spTotal };
+  }
+
+  async function hydrateCartProductsFromAPI() {
+    try {
+      if (!cartState.items.length) return;
+
+      const list = await fetchProductsFromCandidates();
+      if (!list.length) return;
+
+      // 建索引：baseId => product
+      const map = new Map();
+      for (const p of list) {
+        const base = getBaseIdFromAny(p);
+        if (base) map.set(base, p);
+      }
+
+      let changed = false;
+
+      cartState.items.forEach((it) => {
+        const p = it?.product || {};
+        const baseId = getBaseIdFromAny(p);
+        if (!baseId) return;
+
+        const apiP = map.get(baseId);
+        if (!apiP) return;
+
+        const apiPrice = safeNum(apiP.price ?? apiP.priceNum, safeNum(p.price ?? p.priceNum, 0));
+        const { spQty, spTotal } = readSpecialFieldsFromApiProduct(apiP);
+
+        // ✅ 用 API 覆盖/补齐（只要 API 给了值就更新）
+        if (apiPrice > 0 && Math.abs(apiPrice - safeNum(p.price, 0)) > 0.0001) {
+          p.price = apiPrice;
+          p.priceNum = apiPrice;
+          changed = true;
+        }
+
+        if (spQty > 0 && spQty !== safeNum(p.specialQty, 0)) {
+          p.specialQty = spQty;
+          changed = true;
+        }
+
+        if (spTotal > 0 && spTotal !== safeNum(p.specialTotalPrice, 0)) {
+          p.specialTotalPrice = spTotal;
+          changed = true;
+        }
+
+        // tag/type/isSpecial 也补一下，方便爆品逻辑稳定
+        if (apiP.tag != null && apiP.tag !== p.tag) {
+          p.tag = apiP.tag;
+          changed = true;
+        }
+        if (apiP.type != null && apiP.type !== p.type) {
+          p.type = apiP.type;
+          changed = true;
+        }
+        if (apiP.isSpecial != null && apiP.isSpecial !== p.isSpecial) {
+          p.isSpecial = apiP.isSpecial;
+          changed = true;
+        }
+
+        p.isDeal = isDealProduct(p);
+      });
+
+      if (changed) {
+        console.log("🧪 hydrateCartProductsFromAPI applied -> recalcing");
+        handleCartChange({ fromAdd: false, skipSave: false });
+      }
+    } catch (e) {
+      console.warn("hydrateCartProductsFromAPI failed:", e);
+    }
+  }
+  // ==============================
+  // 5) 运费规则（核心）
   // ==============================
 
   function getCurrentShippingRule() {
@@ -453,12 +498,12 @@ console.log("🧪 SPECIAL-PATCH v20260122-AAA");
 
     const { hasDeal, hasNonDeal } = analyzeCartItems(cartState.items);
 
+    // 1) 纯爆品 → 强制区域团（免运费）
     if (hasDeal && !hasNonDeal && zone.groupDay?.enabled) {
       cartState.mode = "groupDay";
 
       const freeTh = safeNum(zone.groupDay?.freeThreshold, 49.99);
       const baseFee = safeNum(zone.groupDay?.shippingFee, 4.99);
-
       const shippingFee = 0;
 
       const rule = {
@@ -474,6 +519,7 @@ console.log("🧪 SPECIAL-PATCH v20260122-AAA");
       return { rule, subtotal, shippingFee, meetMin: true };
     }
 
+    // 2) 含爆品（混合） → 强制区域团
     if (hasDeal && hasNonDeal && zone.groupDay?.enabled) {
       cartState.mode = "groupDay";
 
@@ -497,6 +543,7 @@ console.log("🧪 SPECIAL-PATCH v20260122-AAA");
       return { rule, subtotal, shippingFee, meetMin: true };
     }
 
+    // 3) 只有非爆品 → 默认区域团，但可按偏好切 normal / friendGroup
     const pref = getPreferredMode();
     const targetMode = pref || "groupDay";
 
@@ -526,6 +573,7 @@ console.log("🧪 SPECIAL-PATCH v20260122-AAA");
       return { rule, subtotal, shippingFee, meetMin };
     }
 
+    // fallback：区域团
     if (zone.groupDay?.enabled) {
       cartState.mode = "groupDay";
 
@@ -553,7 +601,7 @@ console.log("🧪 SPECIAL-PATCH v20260122-AAA");
   }
 
   // ==============================
-  // 6. 混合弹窗提示
+  // 6) 混合弹窗提示
   // ==============================
 
   function showMixedTipModal(currentAmount, freeThreshold, baseFee) {
@@ -577,7 +625,7 @@ console.log("🧪 SPECIAL-PATCH v20260122-AAA");
   }
 
   // ==============================
-  // 7. 角标/抖动
+  // 7) 角标/抖动
   // ==============================
 
   function updateCartBadge() {
@@ -606,7 +654,7 @@ console.log("🧪 SPECIAL-PATCH v20260122-AAA");
   }
 
   // ==============================
-  // 8. 购物车页渲染（data-cart-*）
+  // 8) 购物车页渲染（data-cart-*）
   // ==============================
 
   function renderCartItemsPage() {
@@ -631,6 +679,15 @@ console.log("🧪 SPECIAL-PATCH v20260122-AAA");
           ? `<span class="cart-tag cart-tag-deal">爆品</span>`
           : "";
 
+        const spQty = safeNum(product.specialQty, 0);
+        const spTotal = safeNum(product.specialTotalPrice, 0);
+        const specialLine =
+          spQty > 0 && spTotal > 0
+            ? `<div style="font-size:12px;color:#f97316;font-weight:800;margin-top:4px;">特价：${spQty} 件 $${spTotal.toFixed(
+                2
+              )}</div>`
+            : "";
+
         return `
           <div class="cart-item" data-id="${product.id}">
             <div class="cart-item-left" style="display:flex;gap:12px;align-items:center;">
@@ -650,6 +707,7 @@ console.log("🧪 SPECIAL-PATCH v20260122-AAA");
                 <div class="cart-item-price" style="color:#16a34a;font-weight:800;margin-top:4px;">
                   $${price}
                 </div>
+                ${specialLine}
                 <div class="cart-item-sku" style="color:#6b7280;font-size:12px;margin-top:4px;">
                   商品编号：${product.id || "--"}
                 </div>
@@ -745,7 +803,7 @@ console.log("🧪 SPECIAL-PATCH v20260122-AAA");
   }
 
   // ==============================
-  // ✅ 8.5 结算页金额区同步
+  // ✅ 8.5) 结算页金额区同步
   // ==============================
 
   function setTextBySelector(sel, text) {
@@ -769,9 +827,8 @@ console.log("🧪 SPECIAL-PATCH v20260122-AAA");
     setTextBySelector("#payShipping", rule ? `$${shippingFee.toFixed(2)}` : "--");
     setTextBySelector("#payTotal", `$${total.toFixed(2)}`);
   }
-
   // ==============================
-  // 9. 结算（下单）
+  // 9) 结算（下单）
   // ==============================
 
   function getAuthToken() {
@@ -870,6 +927,7 @@ console.log("🧪 SPECIAL-PATCH v20260122-AAA");
   function buildOrderItemsFromCart() {
     return cartState.items.map(({ product, qty }) => ({
       productId: product.id,
+      baseId: getBaseIdFromAny(product),
       name: product.name,
       price: safeNum(product.price ?? product.priceNum, 0),
       specialQty: safeNum(product.specialQty, 0),
@@ -933,7 +991,7 @@ console.log("🧪 SPECIAL-PATCH v20260122-AAA");
   }
 
   // ==============================
-  // 10. 混合规则 + 统一更新入口
+  // 10) 混合规则 + 统一更新入口
   // ==============================
 
   function enforceModeByRules(options = {}) {
@@ -1009,8 +1067,9 @@ console.log("🧪 SPECIAL-PATCH v20260122-AAA");
   }
 
   // ==============================
-  // 11. 绑定购物车页事件
+  // 11) 绑定购物车页事件
   // ==============================
+
   function bindCartDOMEventsPage() {
     const listEl = document.querySelector("[data-cart-items]");
     if (listEl) {
@@ -1045,9 +1104,8 @@ console.log("🧪 SPECIAL-PATCH v20260122-AAA");
       });
     }
   }
-
   // ==============================
-  // 12. 顶部抽屉渲染（header UI）
+  // 12) 顶部抽屉渲染（header UI）
   // ==============================
 
   function renderHeaderCart() {
@@ -1241,21 +1299,17 @@ console.log("🧪 SPECIAL-PATCH v20260122-AAA");
   }
 
   // ==============================
-  // 13. Cart / FreshCart 对外
+  // 13) Cart / FreshCart 对外
   // ==============================
 
   const Cart = {
-    async init(options = {}) {
+    init(options = {}) {
       loadZoneFromStorage();
       if (options.zone) cartState.zone = normalizeZone(options.zone);
 
       loadCartFromStorage();
 
-      // ✅ 初始化先渲染一次（不存）
       handleCartChange({ fromAdd: false, skipSave: true });
-
-      // ✅ 然后从接口回填特价/单价（解决“特价价格对不上”）
-      hydrateCartProductsFromAPI();
 
       bindCartDOMEventsPage();
     },
@@ -1282,23 +1336,15 @@ console.log("🧪 SPECIAL-PATCH v20260122-AAA");
       if (!product || !product.id) return;
 
       const normalized = { ...product };
+      normalized.baseId = getBaseIdFromAny(normalized);
       normalized.taxable = !!normalized.taxable;
-      normalized.isDeal = isDealProduct(normalized);
 
-      // ✅ 保底：把特价字段也带进来（如果 payload 有）
-      normalized.specialQty = safeNum(
-        normalized.specialQty ?? normalized.specialN ?? normalized.specialCount ?? normalized.special_qty,
-        0
-      );
-      normalized.specialTotalPrice = safeNum(
-        normalized.specialTotalPrice ??
-          normalized.specialTotal ??
-          normalized.specialPrice ??
-          normalized.special_total_price ??
-          normalized.special_total ??
-          normalized.special_price,
-        0
-      );
+      // ✅ 特价字段归一（即使 payload 字段名不同）
+      const { spQty, spTotal } = readSpecialFieldsFromApiProduct(normalized);
+      normalized.specialQty = safeNum(spQty, safeNum(normalized.specialQty, 0));
+      normalized.specialTotalPrice = safeNum(spTotal, safeNum(normalized.specialTotalPrice, 0));
+
+      normalized.isDeal = isDealProduct(normalized);
 
       const wasPureDealsBefore = isPureDeals(cartState.items);
 
@@ -1312,8 +1358,10 @@ console.log("🧪 SPECIAL-PATCH v20260122-AAA");
         wasPureDeals: wasPureDealsBefore,
       });
 
-      // ✅ 加购后也触发一次回填（防止 payload 没带特价字段）
-      hydrateCartProductsFromAPI();
+      // ✅ 加购后也尝试 hydrate（补齐特价）
+      setTimeout(() => {
+        hydrateCartProductsFromAPI();
+      }, 0);
     },
 
     changeQty(productId, delta) {
@@ -1398,34 +1446,28 @@ console.log("🧪 SPECIAL-PATCH v20260122-AAA");
       bindHeaderEvents();
     },
 
+    // ✅ 修正：isDeal 不再用 payload.isSpecial 瞎判；特价字段也用同一套兼容读取
     addToCartWithLimit(payload) {
       if (!payload || !payload.id) return;
 
       const priceNum = safeNum(payload.priceNum ?? payload.price, 0);
 
+      const base = getBaseIdFromAny(payload);
+
+      const { spQty, spTotal } = readSpecialFieldsFromApiProduct(payload);
+
       const product = {
         id: payload.id,
+        baseId: base,
         name: payload.name || "商品",
         price: priceNum,
         priceNum: priceNum,
-
-        // ✅ 特价字段（来自商品接口，字段名可能不同）
-        specialQty: safeNum(payload.specialQty ?? payload.specialN ?? payload.specialCount ?? payload.special_qty, 0),
-        specialTotalPrice: safeNum(
-          payload.specialTotalPrice ??
-            payload.specialTotal ??
-            payload.specialPrice ??
-            payload.special_total_price ??
-            payload.special_total ??
-            payload.special_price,
-          0
-        ),
-
+        specialQty: safeNum(spQty, 0),
+        specialTotalPrice: safeNum(spTotal, 0),
         tag: payload.tag || "",
         type: payload.type || "",
         taxable: !!payload.taxable,
         isSpecial: !!payload.isSpecial,
-        isDeal: !!payload.isSpecial,
         imageUrl:
           payload.imageUrl ||
           payload.image ||
@@ -1434,12 +1476,23 @@ console.log("🧪 SPECIAL-PATCH v20260122-AAA");
           "",
       };
 
+      product.isDeal = isDealProduct(product);
+
       Cart.addItem(product, 1);
       showAddToast();
     },
 
     addItem(product, qty) {
-      Cart.addItem(product, qty || 1);
+      const p = { ...(product || {}) };
+      p.baseId = getBaseIdFromAny(p);
+
+      const { spQty, spTotal } = readSpecialFieldsFromApiProduct(p);
+      p.specialQty = safeNum(spQty, safeNum(p.specialQty, 0));
+      p.specialTotalPrice = safeNum(spTotal, safeNum(p.specialTotalPrice, 0));
+
+      p.isDeal = isDealProduct(p);
+
+      Cart.addItem(p, qty || 1);
     },
 
     changeQty: Cart.changeQty,
@@ -1460,7 +1513,7 @@ console.log("🧪 SPECIAL-PATCH v20260122-AAA");
   bindGlobalDeliveryModeRadios();
 
   // ==============================
-  // 14. 监听 index.js 的 zone / mode 事件
+  // 14) 监听 index.js 的 zone / mode 事件
   // ==============================
 
   window.addEventListener("freshbuy:zoneChanged", (e) => {
@@ -1491,313 +1544,18 @@ console.log("🧪 SPECIAL-PATCH v20260122-AAA");
   });
 
   // ==============================
-  // 15. 页面加载自动 init
+  // 15) 页面加载自动 init + ✅ 特价补齐（hydrate）
   // ==============================
 
   document.addEventListener("DOMContentLoaded", () => {
     const zone = window.__CURRENT_ZONE__ || DEFAULT_ZONE;
     Cart.init({ zone });
 
+    // ✅ 关键：初始化后马上补齐一次（解决你现在 specialQty/specialTotalPrice 全是0）
+    hydrateCartProductsFromAPI();
+
     try {
       renderCheckoutPricing();
     } catch {}
   });
-})();
-
-// ============================
-// 配送方式页：ZIP -> Zone.zipWhitelist 即时判断
-// ============================
-(function () {
-  const API = "/api/zones/by-zip";
-
-  const elZip = document.getElementById("zipInput");
-  const btnCheck = document.getElementById("btnCheckZip");
-  const elPanel = document.getElementById("zonePanel");
-  const elHint = document.getElementById("zipHint");
-
-  const btnNormal = document.getElementById("btnNormal");
-  const btnFriend = document.getElementById("btnFriendGroup");
-  const btnGroup = document.getElementById("btnGroupDay");
-
-  if (!elZip || !elPanel) return;
-
-  function normZip(v) {
-    const z = String(v || "").trim();
-    return /^\d{5}$/.test(z) ? z : "";
-  }
-
-  function setHint(html, ok) {
-    if (!elHint) return;
-    elHint.innerHTML = html;
-    elHint.style.color = ok ? "#0a7a2f" : "#b00020";
-  }
-
-  function setPanel(html) {
-    elPanel.innerHTML = html;
-  }
-
-  function setActiveMode(mode) {
-    const v = mode === "normal" || mode === "friendGroup" || mode === "groupDay" ? mode : "groupDay";
-
-    localStorage.setItem("freshbuy_pref_mode", v);
-    window.dispatchEvent(new CustomEvent("freshbuy:deliveryModeChanged", { detail: { mode: v } }));
-
-    const on = (b) => b && (b.style.outline = "2px solid #16a34a");
-    const off = (b) => b && (b.style.outline = "none");
-    off(btnNormal);
-    off(btnFriend);
-    off(btnGroup);
-    if (v === "normal") on(btnNormal);
-    if (v === "friendGroup") on(btnFriend);
-    if (v === "groupDay") on(btnGroup);
-
-    if (window.Cart && typeof window.Cart.recalc === "function") window.Cart.recalc();
-  }
-
-  async function queryZone(zip) {
-    const res = await fetch(`${API}?zip=${encodeURIComponent(zip)}`);
-    return res.json();
-  }
-
-  function renderNotDeliverable(zip, reason) {
-    setHint(`暂不支持 ZIP: <b>${zip}</b>（请换一个或先联系客服）`, false);
-    setPanel(`
-      <div style="font-weight:900;font-size:16px;margin-bottom:8px;">当前 ZIP 暂未开通配送</div>
-      <div style="line-height:1.7;">
-        你输入的 ZIP：<b>${zip}</b><br/>
-        原因：${reason || "暂不支持配送"}<br/><br/>
-        如需查询你所在区域什么时候开通：<br/>
-        ✅ 加微信：<b>nyfreshbuy</b> 咨询
-      </div>
-    `);
-
-    localStorage.setItem("freshbuy_zone_ok", "0");
-    localStorage.removeItem("freshbuy_zone");
-    localStorage.setItem("freshbuy_zip", zip);
-  }
-
-  function renderDeliverable(zip, zone) {
-    const zoneName = zone?.name || "覆盖区域";
-
-    setActiveMode("groupDay");
-
-    localStorage.setItem("freshbuy_zone_ok", "1");
-    localStorage.setItem("freshbuy_zip", zip);
-    localStorage.setItem("freshbuy_zone", JSON.stringify(zone || {}));
-
-    setHint(`✅ ZIP: <b>${zip}</b> 可配送（匹配区域：<b>${zoneName}</b>）`, true);
-
-    setPanel(`
-      <div style="font-weight:900;font-size:16px;margin-bottom:8px;">
-        区域团拼单配送 · ${zoneName}
-      </div>
-      <ul style="margin:0;padding-left:18px;line-height:1.9;">
-        <li>匹配 ZIP：<b>${zip}</b></li>
-        <li>所属区域：<b>${zoneName}</b></li>
-        <li style="color:#64748b;">默认已选择：区域团拼单配送（可在左侧切换）</li>
-      </ul>
-    `);
-  }
-
-  let timer = null;
-  async function checkZip(silent) {
-    const zip = normZip(elZip.value);
-    if (!zip) {
-      if (!silent) {
-        setHint("请输入 5 位 ZIP（例如 11357）", false);
-        setPanel(`<div style="color:#64748b;">请输入 ZIP 后将自动判断是否可配送。</div>`);
-      }
-      return;
-    }
-
-    let r;
-    try {
-      r = await queryZone(zip);
-    } catch (e) {
-      setHint("查询失败：网络错误", false);
-      setPanel(`<div style="color:#b00020;">查询失败，请稍后再试。</div>`);
-      return;
-    }
-
-    if (r?.ok !== true) {
-      renderNotDeliverable(zip, r?.message || r?.reason || "查询失败");
-      return;
-    }
-
-    if (r?.deliverable) renderDeliverable(zip, r.zone);
-    else renderNotDeliverable(zip, r?.reason || "该邮编暂不支持配送");
-  }
-
-  elZip.addEventListener("input", () => {
-    if (timer) clearTimeout(timer);
-    timer = setTimeout(() => checkZip(true), 250);
-  });
-
-  elZip.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      if (timer) clearTimeout(timer);
-      checkZip(false);
-    }
-  });
-
-  if (btnCheck) btnCheck.addEventListener("click", () => checkZip(false));
-
-  if (btnNormal) btnNormal.onclick = () => setActiveMode("normal");
-  if (btnFriend) btnFriend.onclick = () => setActiveMode("friendGroup");
-  if (btnGroup) btnGroup.onclick = () => setActiveMode("groupDay");
-
-  const lastZip = localStorage.getItem("freshbuy_zip") || "";
-  if (lastZip) elZip.value = lastZip;
-  checkZip(true);
-
-  setActiveMode(localStorage.getItem("freshbuy_pref_mode") || "groupDay");
-})();
-
-// ============================
-// 结算页：显示配送模式 + 可修改
-// ✅ 只要含爆品：禁用 次日配送/好友拼单，并强制 groupDay
-// ============================
-(function () {
-  const el = document.getElementById("checkoutDeliveryModeBox");
-  if (!el) return;
-
-  function normalizeMode(v) {
-    const s = String(v || "").trim();
-    if (s === "area-group") return "groupDay";
-    if (s === "next-day") return "normal";
-    if (s === "friend-group") return "friendGroup";
-    if (s === "groupDay" || s === "friendGroup" || s === "normal") return s;
-    return "groupDay";
-  }
-
-  function getMode() {
-    return normalizeMode(localStorage.getItem("freshbuy_pref_mode") || "groupDay");
-  }
-
-  function modeLabel(m) {
-    if (m === "groupDay") return "区域团拼单配送";
-    if (m === "friendGroup") return "好友拼单配送";
-    if (m === "normal") return "次日配送";
-    return m;
-  }
-
-  function getZoneName() {
-    try {
-      const z = JSON.parse(localStorage.getItem("freshbuy_zone") || "null");
-      return z?.name || "";
-    } catch {
-      return "";
-    }
-  }
-
-  function cartHasDealFromStorage() {
-    try {
-      if (window.Cart && typeof window.Cart.getState === "function") {
-        const st = window.Cart.getState();
-        const items = Array.isArray(st?.items) ? st.items : [];
-        return items.some((it) => {
-          const p = it?.product || {};
-          if (p.isDeal === true || p.isSpecial === true || p.isHot === true) return true;
-          if (String(p.tag || "").includes("爆品")) return true;
-          if (String(p.type || "").toLowerCase() === "hot") return true;
-          return false;
-        });
-      }
-    } catch {}
-
-    try {
-      const raw = localStorage.getItem("fresh_cart_v1");
-      const data = raw ? JSON.parse(raw) : null;
-      const items = Array.isArray(data?.items) ? data.items : [];
-      return items.some((it) => {
-        const p = it?.product || {};
-        if (p.isDeal === true || p.isSpecial === true || p.isHot === true) return true;
-        if (String(p.tag || "").includes("爆品")) return true;
-        if (String(p.type || "").toLowerCase() === "hot") return true;
-        return false;
-      });
-    } catch {
-      return false;
-    }
-  }
-
-  function render() {
-    const hasDeal = cartHasDealFromStorage();
-
-    let mode = getMode();
-    if (hasDeal && mode !== "groupDay") {
-      localStorage.setItem("freshbuy_pref_mode", "groupDay");
-      try {
-        window.dispatchEvent(
-          new CustomEvent("freshbuy:deliveryModeChanged", { detail: { mode: "groupDay" } })
-        );
-      } catch {}
-      mode = "groupDay";
-    }
-
-    const zoneName = getZoneName();
-    const zoneText = zoneName ? `（${zoneName}）` : "";
-
-    el.innerHTML = `
-      <div style="padding:10px;border:1px solid #e5e7eb;border-radius:12px;margin-top:10px;">
-        <div style="font-weight:900;margin-bottom:8px;">
-          配送方式：<span style="color:#0a7a2f;">${modeLabel(mode)} ${zoneText}</span>
-        </div>
-        <div style="display:flex;gap:12px;flex-wrap:wrap;">
-          <label><input type="radio" name="deliveryMode" value="groupDay" ${
-            mode === "groupDay" ? "checked" : ""
-          }/> 区域团</label>
-
-          <label style="opacity:${hasDeal ? 0.55 : 1}">
-            <input type="radio" name="deliveryMode" value="friendGroup" ${
-              mode === "friendGroup" ? "checked" : ""
-            } ${hasDeal ? "disabled" : ""}/> 好友拼单
-          </label>
-
-          <label style="opacity:${hasDeal ? 0.55 : 1}">
-            <input type="radio" name="deliveryMode" value="normal" ${
-              mode === "normal" ? "checked" : ""
-            } ${hasDeal ? "disabled" : ""}/> 次日配送
-          </label>
-        </div>
-        ${
-          hasDeal
-            ? `<div style="margin-top:8px;font-size:12px;color:#64748b;">购物车包含爆品：仅支持区域团配送（纯爆免运费；爆品+正常按区域团门槛计算）。</div>`
-            : ``
-        }
-      </div>
-    `;
-
-    el.querySelectorAll('input[name="deliveryMode"]').forEach((r) => {
-      r.addEventListener("change", () => {
-        const v = normalizeMode(r.value);
-
-        const stillHasDeal = cartHasDealFromStorage();
-        if (stillHasDeal && v !== "groupDay") {
-          localStorage.setItem("freshbuy_pref_mode", "groupDay");
-          try {
-            window.dispatchEvent(
-              new CustomEvent("freshbuy:deliveryModeChanged", { detail: { mode: "groupDay" } })
-            );
-          } catch {}
-          if (window.Cart && typeof window.Cart.recalc === "function") window.Cart.recalc();
-          render();
-          return;
-        }
-
-        localStorage.setItem("freshbuy_pref_mode", v);
-        try {
-          window.dispatchEvent(new CustomEvent("freshbuy:deliveryModeChanged", { detail: { mode: v } }));
-        } catch {}
-
-        if (window.Cart && typeof window.Cart.recalc === "function") window.Cart.recalc();
-        render();
-      });
-    });
-  }
-
-  render();
-  window.addEventListener("freshbuy:deliveryModeChanged", render);
-  window.addEventListener("freshcart:updated", render);
 })();
