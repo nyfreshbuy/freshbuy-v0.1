@@ -6,7 +6,7 @@ import User from "../models/user.js";
 import Zone from "../models/Zone.js";
 import Product from "../models/product.js";
 import { requireLogin } from "../middlewares/auth.js";
-import Wallet from "../models/wallet.js";
+import Wallet from "../models/Wallet.js";
 const router = express.Router();
 router.use(express.json());
 
