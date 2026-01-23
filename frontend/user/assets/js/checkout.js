@@ -268,8 +268,23 @@
 
     const shipping = buildShippingPayload();
     const tipAmount = readTip();
-    const payMethod = readPayMethod(); // wallet 或 stripe（你页面 radio）
+    const payMethodRaw = readPayMethod(); // wallet / stripe
+        // ✅ 提交前强校验最低消费（避免后端 400）
+    if (s.hasSpecial && !s.hasNormal) {
+      // 纯爆品：只能 groupDay
+      // 这里你已经 UI 强制了，但提交时也再兜底一次
+    } else {
+      // 非纯爆品时：normalAmount 低于最低消费，禁止区域团（或禁止下单，按你规则）
+      const deliveryModeUI = document.getElementById("deliveryMode")?.value || "next-day";
 
+      if (deliveryModeUI === "area-group" && s.normalAmount < CONFIG.minAmountNormal) {
+        const remain = (CONFIG.minAmountNormal - s.normalAmount).toFixed(2);
+        alert(`区域团配送需满 $${CONFIG.minAmountNormal}，还差 $${remain}`);
+        return;
+      }
+    }
+    // ✅ wallet 表示“先用钱包能扣多少扣多少，剩下走 stripe” => 发给后端用 auto 更安全
+const payMethod = payMethodRaw === "wallet" ? "auto" : "stripe";
     // ✅ 关键：orders.js 的 buildOrderPayload 需要 items + shipping/receiver + mode + tip
     const payload = {
       mode,

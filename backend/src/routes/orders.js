@@ -6,7 +6,7 @@ import User from "../models/user.js";
 import Zone from "../models/Zone.js";
 import Product from "../models/product.js";
 import { requireLogin } from "../middlewares/auth.js";
-
+import Wallet from "../models/wallet.js";
 const router = express.Router();
 router.use(express.json());
 
@@ -757,13 +757,9 @@ router.post("/checkout", requireLogin, async (req, res) => {
 
       finalTotal = round2(baseTotal);
 
-      // 1) 钱包余额（兼容多个字段名）
-      const u0 = await User.findById(userId)
-  .select("walletBalance balance wallet")
-  .session(session);
-      const walletMeta = detectWalletField(u0);
-      const balance0 = getWalletBalance(u0);
-
+      // 1) 钱包余额：从 wallets 集合读取
+const w0 = await Wallet.findOne({ userId }).session(session);
+const balance0 = Number(w0?.balance || 0);
       // 2) 先按 baseTotal 试算
       walletUsed = round2(Math.min(balance0, finalTotal));
       remaining = round2(finalTotal - walletUsed);
@@ -779,12 +775,11 @@ router.post("/checkout", requireLogin, async (req, res) => {
 
       // ✅ 如果前端选钱包，但余额不够，直接拦住（你前端不支持混合）
       const clientPayMethod = String(req.body?.payMethod || req.body?.paymentMethod || req.body?.payment?.method || "").trim();
-      if (clientPayMethod === "wallet" && remaining > 0) {
-        const e = new Error(`钱包余额不足：需要 $${finalTotal.toFixed(2)}，当前 $${balance0.toFixed(2)}`);
-        e.status = 400;
-        throw e;
-      }
-
+      if (clientPayMethod === "wallet_only" && remaining > 0) {
+  const e = new Error(`钱包余额不足：需要 $${finalTotal.toFixed(2)}，当前 $${balance0.toFixed(2)}`);
+  e.status = 400;
+  throw e;
+}
       // 4) 创建订单（创建时一律 unpaid）
       const docToCreate = {
         ...orderDoc,
@@ -810,43 +805,50 @@ router.post("/checkout", requireLogin, async (req, res) => {
       if (!created) throw new Error("创建订单失败");
 
       // 5) 钱包扣款（只有钱包要用时）
-      if (walletUsed > 0) {
-        const incObj = { $inc: {} };
-        incObj.$inc[walletMeta.path] = -walletUsed;
+      i// 5) 钱包扣款（只有钱包要用时）—— ✅扣 wallets 集合
+if (walletUsed > 0) {
+  const w1 = await Wallet.findOneAndUpdate(
+    { userId, balance: { $gte: walletUsed } },
+    { $inc: { balance: -walletUsed } },
+    { new: true, session }
+  );
 
-        // 用对应字段做 gte 保护
-        const gteFilter = {};
-        gteFilter[walletMeta.path] = { $gte: walletUsed };
+  if (w1) {
+    walletDeducted = true;
 
-        const upd = await User.updateOne({ _id: userId, ...gteFilter }, incObj, { session });
+    await Order.updateOne(
+      { _id: created._id },
+      {
+        $set: {
+          "payment.wallet.paid": Number(walletUsed || 0),
+          "payment.paidTotal": Number(walletUsed || 0),
+        },
+      },
+      { session }
+    );
+  } else {
+    // 扣款失败：不扣钱包，全部走 Stripe
+    walletDeducted = false;
+    walletUsed = 0;
+    remaining = round2(finalTotal);
 
-        if (upd.modifiedCount === 1) {
-          walletDeducted = true;
+    await Order.updateOne(
+      { _id: created._id },
+      {
+        $set: {
+          "payment.status": "unpaid",
+          "payment.method": "stripe",
+          "payment.paidTotal": 0,
+          "payment.wallet.paid": 0,
+        },
+      },
+      { session }
+    );
+  }
+}
+     const w2 = await Wallet.findOne({ userId }).session(session);
+newBalance = round2(Number(w2?.balance || 0));
 
-          await Order.updateOne(
-            { _id: created._id },
-            { $set: { "payment.wallet.paid": Number(walletUsed || 0), "payment.paidTotal": Number(walletUsed || 0) } },
-            { session }
-          );
-        } else {
-          // 扣款失败：不扣钱包，全部走 Stripe
-          walletDeducted = false;
-          walletUsed = 0;
-          remaining = round2(finalTotal);
-
-          await Order.updateOne(
-            { _id: created._id },
-            { $set: { "payment.status": "unpaid", "payment.method": "stripe", "payment.paidTotal": 0, "payment.wallet.paid": 0 } },
-            { session }
-          );
-        }
-      }
-
-      const u1 = await User.findById(userId)
-  .select("walletBalance balance wallet")
-  .session(session);
-
-      newBalance = round2(getWalletBalance(u1));
 
       // ✅ 保护：如果理论上应为纯钱包，但钱包没扣成功 => 回滚
       if (remaining <= 0 && walletUsed > 0 && walletDeducted !== true) {
