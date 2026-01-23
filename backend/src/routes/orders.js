@@ -249,6 +249,67 @@ function getWalletBalance(userDoc) {
  * @param {object} req
  * @param {mongoose.ClientSession|null} session - 只有在 checkout 里才传，用于扣库存 + 写 stockReserve
  */
+// ✅ 如果订单当初没走 checkout 预扣库存（stockReserve 为空），在支付确认时补扣
+async function reserveStockForExistingOrder(orderDoc, session) {
+  if (!orderDoc || !Array.isArray(orderDoc.items) || orderDoc.items.length === 0) return [];
+
+  // 已有 reserve 就不重复扣
+  if (Array.isArray(orderDoc.stockReserve) && orderDoc.stockReserve.length > 0) {
+    return orderDoc.stockReserve;
+  }
+
+  const reserve = [];
+
+  for (const it of orderDoc.items) {
+    // 订单 items 里可能没有 variantKey：从 sku 里解析（你保存的是 baseSku::variantKey）
+    const sku = String(it?.sku || "");
+    const skuVariantKey = sku.includes("::") ? sku.split("::").pop() : "";
+    const variantKey = String(it?.variantKey || it?.variant || skuVariantKey || "single").trim() || "single";
+
+    const pid = it?.productId;
+    if (!pid) continue;
+
+    const pdoc = await Product.findById(pid)
+      .select("name stock allowZeroStock variants")
+      .session(session);
+
+    if (!pdoc) {
+      const e = new Error(`商品不存在（productId=${pid}）`);
+      e.status = 400;
+      throw e;
+    }
+
+    const v = getVariantFromProduct(pdoc, variantKey);
+    const unitCount = Math.max(1, Math.floor(Number(v.unitCount || 1)));
+
+    const qty = Math.max(1, Math.floor(Number(it?.qty || 1)));
+    const needUnits = qty * unitCount;
+
+    const allowZero = pdoc.allowZeroStock === true;
+
+    const upd = await Product.updateOne(
+      allowZero ? { _id: pdoc._id } : { _id: pdoc._id, stock: { $gte: needUnits } },
+      { $inc: { stock: -needUnits } },
+      { session }
+    );
+
+    if (upd.modifiedCount !== 1) {
+      const e = new Error(`库存不足：${pdoc.name}（需要 ${needUnits}）`);
+      e.status = 400;
+      throw e;
+    }
+
+    reserve.push({
+      productId: pdoc._id,
+      variantKey: v.key || "single",
+      unitCount,
+      qty,
+      needUnits,
+    });
+  }
+
+  return reserve;
+}
 async function buildOrderPayload(req, session = null) {
   const body = req.body || {};
   const mode = pickMode(body);
@@ -920,63 +981,113 @@ router.post("/:id([0-9a-fA-F]{24})/confirm-stripe", requireLogin, async (req, re
       return res.status(400).json({ success: false, message: "paid must be > 0" });
     }
 
-    const doc = await Order.findById(orderId);
-    if (!doc) return res.status(404).json({ success: false, message: "订单不存在" });
+    router.post("/:id([0-9a-fA-F]{24})/confirm-stripe", requireLogin, async (req, res) => {
+  const session = await mongoose.startSession();
+  try {
+    const orderId = req.params.id;
+    const intentId = String(req.body?.intentId || req.body?.stripePaymentIntentId || "").trim();
+    const stripePaid = Number(req.body?.paid ?? req.body?.stripePaid ?? 0);
+
+    if (!intentId) return res.status(400).json({ success: false, message: "intentId required" });
+    if (!Number.isFinite(stripePaid) || stripePaid <= 0) {
+      return res.status(400).json({ success: false, message: "paid must be > 0" });
+    }
 
     const uid = toObjectIdMaybe(req.user?.id || req.user?._id);
 
-    // ✅ 绑定 userId（修复：信用卡单可能缺 userId）
-    if (uid && !doc.userId) {
-      doc.userId = uid;
+    let outDoc = null;
 
-      let loginPhoneRaw = String(req.user?.phone || "").trim();
-      if (!loginPhoneRaw) {
-        const u = await User.findById(uid).select("phone").lean();
-        loginPhoneRaw = String(u?.phone || "").trim();
+    await session.withTransaction(async () => {
+      const doc = await Order.findById(orderId).session(session);
+      if (!doc) {
+        const e = new Error("订单不存在");
+        e.status = 404;
+        throw e;
       }
-      const p10 = normPhone(loginPhoneRaw);
-      if (p10) doc.customerPhone = p10;
-    }
 
-    // 权限检查（绑定后）
-    if (uid && doc.userId && String(doc.userId) !== String(uid) && req.user.role !== "admin") {
-      return res.status(403).json({ success: false, message: "无权限" });
-    }
+      // ✅ 绑定 userId / phone（保留你原逻辑）
+      if (uid && !doc.userId) {
+        doc.userId = uid;
 
-    // 幂等：已 paid 直接返回
-    if (doc.payment?.status === "paid" || doc.status === "paid") {
-      return res.json({ success: true, message: "already paid", orderNo: doc.orderNo });
-    }
+        let loginPhoneRaw = String(req.user?.phone || "").trim();
+        if (!loginPhoneRaw) {
+          const u = await User.findById(uid).select("phone").lean();
+          loginPhoneRaw = String(u?.phone || "").trim();
+        }
+        const p10 = normPhone(loginPhoneRaw);
+        if (p10) doc.customerPhone = p10;
+      }
 
-    const total = Number(doc.totalAmount || 0);
-    const walletPaid = Number(doc.payment?.wallet?.paid || 0);
+      // 权限检查（绑定后）
+      if (uid && doc.userId && String(doc.userId) !== String(uid) && req.user.role !== "admin") {
+        const e = new Error("无权限");
+        e.status = 403;
+        throw e;
+      }
 
-    const prevStripePaid = Number(doc.payment?.stripe?.paid || 0);
-    const newStripePaid = round2(prevStripePaid + stripePaid);
-    const paidTotal = round2(walletPaid + newStripePaid);
+      // 幂等：已 paid 直接返回
+      if (doc.payment?.status === "paid" || doc.status === "paid") {
+        outDoc = doc;
+        return;
+      }
 
-    if (paidTotal + 0.01 < total) {
-      return res.status(400).json({
-        success: false,
-        message: `stripePaid 不足以覆盖剩余金额（paidTotal=${paidTotal}, total=${total}）`,
+      // ✅ 关键：如果当初没走 checkout（stockReserve 为空），这里补扣库存
+      const reserved = await reserveStockForExistingOrder(doc, session);
+      if (reserved.length > 0 && (!doc.stockReserve || doc.stockReserve.length === 0)) {
+        doc.stockReserve = reserved;
+      }
+
+      const total = Number(doc.totalAmount || 0);
+      const walletPaid = Number(doc.payment?.wallet?.paid || 0);
+
+      const prevStripePaid = Number(doc.payment?.stripe?.paid || 0);
+      const newStripePaid = round2(prevStripePaid + stripePaid);
+      const paidTotal = round2(walletPaid + newStripePaid);
+
+      if (paidTotal + 0.01 < total) {
+        const e = new Error(`stripePaid 不足以覆盖剩余金额（paidTotal=${paidTotal}, total=${total}）`);
+        e.status = 400;
+        throw e;
+      }
+
+      const now = new Date();
+      doc.status = "paid";
+      doc.paidAt = now;
+
+      doc.payment = {
+        ...(doc.payment || {}),
+        status: "paid",
+        method: "stripe",
+        paidTotal: round2(Math.min(paidTotal, total)),
+        stripe: { intentId, paid: round2(Math.min(newStripePaid, total)) },
+        wallet: { paid: round2(Math.min(walletPaid, total)) },
+      };
+
+      await doc.save({ session });
+      outDoc = doc;
+    });
+
+    // ✅ 已 paid 的幂等返回
+    if (outDoc?.payment?.status === "paid" || outDoc?.status === "paid") {
+      return res.json({
+        success: true,
+        message: "paid",
+        orderId: outDoc._id.toString(),
+        orderNo: outDoc.orderNo,
+        totalAmount: outDoc.totalAmount,
+        payment: outDoc.payment,
+        stockReserve: outDoc.stockReserve || [],
       });
     }
 
-    const now = new Date();
-    doc.status = "paid";
-    doc.paidAt = now;
-
-    doc.payment = {
-      ...(doc.payment || {}),
-      status: "paid",
-      method: "stripe",
-      paidTotal: round2(Math.min(paidTotal, total)),
-      stripe: { intentId, paid: round2(Math.min(newStripePaid, total)) },
-      wallet: { paid: round2(Math.min(walletPaid, total)) },
-    };
-
-    await doc.save();
-
+    return res.status(500).json({ success: false, message: "confirm stripe failed" });
+  } catch (err) {
+    console.error("POST /api/orders/:id/confirm-stripe error:", err);
+    return res.status(err?.status || 500).json({ success: false, message: err?.message || "confirm stripe failed" });
+  } finally {
+    session.endSession();
+  }
+});
     return res.json({
       success: true,
       message: "paid",
