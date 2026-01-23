@@ -804,8 +804,7 @@ const balance0 = Number(w0?.balance || 0);
       created = created?.[0] || null;
       if (!created) throw new Error("创建订单失败");
 
-      // 5) 钱包扣款（只有钱包要用时）
-      i// 5) 钱包扣款（只有钱包要用时）—— ✅扣 wallets 集合
+    // 5) 钱包扣款（只有钱包要用时）—— ✅扣 wallets 集合
 if (walletUsed > 0) {
   const w1 = await Wallet.findOneAndUpdate(
     { userId, balance: { $gte: walletUsed } },
