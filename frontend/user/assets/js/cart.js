@@ -111,8 +111,7 @@ console.log("🧪 SPECIAL-PATCH v20260122-FIXSPECIAL");
     const q = Number(qty || 0);
     if (!product || q <= 0) return 0;
 
-    const price = safeNum(product.price ?? product.priceNum, 0);
-
+    const price = safeNum(product.regularPrice ?? product.price ?? product.priceNum, 0);
     const specialQty = safeNum(
       product.specialQty ??
         product.specialN ??
@@ -317,7 +316,7 @@ console.log("🧪 SPECIAL-PATCH v20260122-FIXSPECIAL");
         // ✅ 关键：这里很多旧数据 specialQty / specialTotalPrice = 0（后面会 hydrate）
         p.specialQty = safeNum(p.specialQty, 0);
         p.specialTotalPrice = safeNum(p.specialTotalPrice, 0);
-
+        p.regularPrice = safeNum(p.regularPrice ?? p.price ?? p.priceNum, 0);
         // ✅ baseId 给 hydrate 用
         p.baseId = getBaseIdFromAny(p);
 
@@ -339,6 +338,7 @@ console.log("🧪 SPECIAL-PATCH v20260122-FIXSPECIAL");
             id: product.id,
             baseId: getBaseIdFromAny(product),
             name: product.name,
+            regularPrice: product.regularPrice,
             price: product.price,
             priceNum: product.priceNum,
             specialQty: product.specialQty,
@@ -439,15 +439,45 @@ console.log("🧪 SPECIAL-PATCH v20260122-FIXSPECIAL");
         const apiP = map.get(baseId);
         if (!apiP) return;
 
-        const apiPrice = safeNum(apiP.price ?? apiP.priceNum, safeNum(p.price ?? p.priceNum, 0));
         const { spQty, spTotal } = readSpecialFieldsFromApiProduct(apiP);
 
-        // ✅ 用 API 覆盖/补齐（只要 API 给了值就更新）
-        if (apiPrice > 0 && Math.abs(apiPrice - safeNum(p.price, 0)) > 0.0001) {
-          p.price = apiPrice;
-          p.priceNum = apiPrice;
-          changed = true;
-        }
+const apiPrice = safeNum(apiP.price ?? apiP.priceNum, 0);
+const localPrice = safeNum(p.price ?? p.priceNum, 0);
+const localRegular = safeNum(p.regularPrice ?? localPrice, 0);
+
+// 识别“API price 其实是平均价”：price ≈ spTotal/spQty
+const avgPrice =
+  spQty > 0 && spTotal > 0 ? Number((spTotal / spQty).toFixed(4)) : 0;
+const apiLooksLikeAvg =
+  avgPrice > 0 && Math.abs(apiPrice - avgPrice) < 0.0002;
+
+// ✅ regularPrice：如果本地没有，就用本地 price；不要用“平均价”去覆盖
+if (localRegular <= 0) {
+  if (localPrice > 0) {
+    p.regularPrice = localPrice;
+    changed = true;
+  } else if (apiPrice > 0 && !apiLooksLikeAvg) {
+    p.regularPrice = apiPrice;
+    changed = true;
+  }
+}
+
+// ✅ price/priceNum：只在本地完全没价格时才补；也不要用平均价补
+if (localPrice <= 0 && apiPrice > 0 && !apiLooksLikeAvg) {
+  p.price = apiPrice;
+  p.priceNum = apiPrice;
+  changed = true;
+}
+
+// ✅ 特价字段补齐
+if (spQty > 0 && spQty !== safeNum(p.specialQty, 0)) {
+  p.specialQty = spQty;
+  changed = true;
+}
+if (spTotal > 0 && spTotal !== safeNum(p.specialTotalPrice, 0)) {
+  p.specialTotalPrice = spTotal;
+  changed = true;
+}
 
         if (spQty > 0 && spQty !== safeNum(p.specialQty, 0)) {
           p.specialQty = spQty;
@@ -668,7 +698,7 @@ console.log("🧪 SPECIAL-PATCH v20260122-FIXSPECIAL");
 
     listEl.innerHTML = cartState.items
       .map(({ product, qty }, index) => {
-        const price = safeNum(product.price ?? product.priceNum, 0).toFixed(2);
+       const price = safeNum(product.regularPrice ?? product.price ?? product.priceNum, 0).toFixed(2);
         const imgUrl = getProductImageUrl(product, index);
         const fallback =
           "https://picsum.photos/seed/" +
@@ -1460,6 +1490,7 @@ console.log("🧪 SPECIAL-PATCH v20260122-FIXSPECIAL");
         id: payload.id,
         baseId: base,
         name: payload.name || "商品",
+        regularPrice: safeNum(payload.regularPrice ?? payload.originalPrice ?? priceNum, priceNum),
         price: priceNum,
         priceNum: priceNum,
         specialQty: safeNum(spQty, 0),
