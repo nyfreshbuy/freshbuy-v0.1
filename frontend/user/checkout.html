@@ -672,11 +672,17 @@ function getSpecialMeta(p, qty) {
 
         // 1) taxable 小计（✅ 兼容 taxable / hasTax）
         let taxableAmount = 0;
-        for (const it of items) {
-          const qty = safeNum(it.qty, 1);
-if (taxable) taxableAmount += calcSpecialLineTotal(it, qty);
-        }
+for (const it of items) {
+  const qty = safeNum(it.qty, 1);
 
+  const taxable =
+    it.taxable === true ||
+    it.taxable === "true" ||
+    it.hasTax === true ||
+    it.hasTax === "true";
+
+  if (taxable) taxableAmount += calcSpecialLineTotal(it, qty);
+}
         // 2) 只有 NY 才算税（目前按州判断）
         const state = (document.getElementById("state")?.value || "").trim();
         const tax = state === "NY" ? taxableAmount * NY_TAX_RATE : 0;
