@@ -50,7 +50,23 @@ function safeNumber(v, def = 0) {
   const n = Number(v);
   return Number.isFinite(n) ? n : def;
 }
+// ✅ 特价：N for $X 行小计（与前端 checkout.html 同口径）
+function calcSpecialLineTotalBackend({ price, specialQty, specialTotalPrice }, qty) {
+  const q = Math.max(0, Math.floor(Number(qty || 0)));
+  const p = Number(price || 0);
+  const n = Math.floor(Number(specialQty || 0));
+  const dealTotal = Number(specialTotalPrice || 0);
 
+  if (q <= 0) return 0;
+
+  // 命中特价：每 n 个收 dealTotal
+  if (n > 0 && dealTotal > 0 && q >= n) {
+    const groups = Math.floor(q / n);
+    const remainder = q % n;
+    return round2(groups * dealTotal + remainder * p);
+  }
+  return round2(q * p);
+}
 function genOrderNo() {
   const d = new Date();
   const y = d.getFullYear();
@@ -329,7 +345,9 @@ async function buildOrderPayload(req, session = null) {
 
     // ✅ 如果有 productId：优先用后端 Product 里的价格/税/图片（防止前端乱传）
     if (productId) {
-      const q = Product.findById(productId).select("name sku price cost taxable image images stock allowZeroStock variants");
+     const q = Product.findById(productId).select(
+  "name sku price cost taxable image images stock allowZeroStock variants specialQty specialTotalPrice specialN specialTotal specialPrice dealQty dealTotalPrice dealPrice"
+);
       const pdoc = session ? await q.session(session) : await q;
       if (!pdoc) {
         const e = new Error(`商品不存在（productId=${productId}）`);
@@ -395,9 +413,18 @@ if (session) {
   });
 }
     }
-    const lineTotal = round2(price * qty);
-    subtotal += lineTotal;
+    // ✅ 后端按特价口径算行小计（与前端一致）
+const specialQty =
+  pdoc?.specialQty ?? pdoc?.specialN ?? pdoc?.dealQty ?? 0;
 
+const specialTotalPrice =
+  pdoc?.specialTotalPrice ?? pdoc?.specialTotal ?? pdoc?.dealTotalPrice ?? pdoc?.dealPrice ?? 0;
+
+const lineTotal = calcSpecialLineTotalBackend(
+  { price, specialQty, specialTotalPrice },
+  qty
+);
+subtotal += lineTotal;
     cleanItems.push({
       productId,
       legacyProductId: legacyId || "",
@@ -709,9 +736,25 @@ router.post("/checkout", requireLogin, async (req, res) => {
       finalTotal = round2(baseTotal);
 
       // 1) 钱包余额
-      const u0 = await User.findById(userId).select("walletBalance").session(session);
-      const balance0 = Number(u0?.walletBalance || 0);
+      // 1) 钱包余额（✅ 兼容不同字段名）
+const u0 = await User.findById(userId)
+  .select("walletBalance balance wallet wallet.balance")
+  .session(session);
 
+const balance0 = Number(
+  u0?.walletBalance ??
+  u0?.balance ??
+  u0?.walletBalance ?? // 再兜底一次
+  (u0?.wallet && typeof u0.wallet === "object" ? u0.wallet.balance : u0?.wallet) ??
+  0
+);
+console.log("💰 [checkout] user wallet", {
+  userId: String(userId),
+  walletBalance: u0?.walletBalance,
+  balance: u0?.balance,
+  wallet: u0?.wallet,
+  balance0,
+});
       // 2) 先按 baseTotal 试算
       walletUsed = round2(Math.min(balance0, finalTotal));
       remaining = round2(finalTotal - walletUsed);
