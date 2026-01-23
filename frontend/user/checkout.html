@@ -592,6 +592,58 @@
         const n = Number(v);
         return Number.isFinite(n) ? n : fallback;
       }
+     // ✅ 特价：N for $X 行小计计算（与 cart.js / cart.html 同口径）
+function calcSpecialLineTotal(p, qty) {
+  const q = Number(qty || 0);
+  if (!p || q <= 0) return 0;
+
+  const price = safeNum(p.priceNum ?? p.price, 0);
+
+  const specialQty = safeNum(
+    p.specialQty ?? p.specialN ?? p.specialCount ?? p.dealQty,
+    0
+  );
+
+  const specialTotalPrice = safeNum(
+    p.specialTotalPrice ?? p.specialTotal ?? p.specialPrice ?? p.dealTotalPrice ?? p.dealPrice,
+    0
+  );
+
+  if (specialQty > 0 && specialTotalPrice > 0 && q >= specialQty) {
+    const groups = Math.floor(q / specialQty);
+    const remainder = q % specialQty;
+    return groups * specialTotalPrice + remainder * price;
+  }
+
+  return q * price;
+}
+
+// ✅ 计算“是否命中特价”，用于决定显示“原价打叉”
+function getSpecialMeta(p, qty) {
+  const price = safeNum(p.priceNum ?? p.price, 0);
+  const q = Number(qty || 0);
+
+  const specialQty = safeNum(p.specialQty ?? p.specialN ?? p.specialCount ?? p.dealQty, 0);
+  const specialTotalPrice = safeNum(
+    p.specialTotalPrice ?? p.specialTotal ?? p.specialPrice ?? p.dealTotalPrice ?? p.dealPrice,
+    0
+  );
+
+  const originalLineTotal = price * q;
+  const specialLineTotal = calcSpecialLineTotal(p, q);
+
+  const hitSpecial =
+    specialQty > 0 &&
+    specialTotalPrice > 0 &&
+    q >= specialQty &&
+    specialLineTotal + 0.0001 < originalLineTotal;
+
+  // “特价单价”展示用：specialTotalPrice / specialQty
+  const specialUnitPrice =
+    specialQty > 0 && specialTotalPrice > 0 ? specialTotalPrice / specialQty : 0;
+
+  return { price, specialQty, specialTotalPrice, originalLineTotal, specialLineTotal, hitSpecial, specialUnitPrice };
+}
 
       // ========= ✅ 税/服务费/小费 =========
       const NY_TAX_RATE = 0.08875;
@@ -622,13 +674,7 @@
         let taxableAmount = 0;
         for (const it of items) {
           const qty = safeNum(it.qty, 1);
-          const price = safeNum(it.priceNum ?? it.price, 0);
-          const taxable =
-            it.taxable === true ||
-            it.taxable === "true" ||
-            it.hasTax === true ||
-            it.hasTax === "true";
-          if (taxable) taxableAmount += price * qty;
+if (taxable) taxableAmount += calcSpecialLineTotal(it, qty);
         }
 
         // 2) 只有 NY 才算税（目前按州判断）
@@ -743,13 +789,11 @@
       }
 
       function calcSubtotal(items) {
-        return items.reduce((sum, it) => {
-          const qty = Number(it.qty || 1);
-          const price = Number(it.priceNum ?? it.price ?? 0);
-          return sum + price * qty;
-        }, 0);
-      }
-
+  return items.reduce((sum, it) => {
+    const qty = Number(it.qty || 1);
+    return sum + calcSpecialLineTotal(it, qty);
+  }, 0);
+}
       function getPreferredMode() {
         const v = String(localStorage.getItem(PREF_MODE_KEY) || "groupDay").trim();
         if (v === "area-group") return "groupDay";
@@ -873,7 +917,9 @@
 
         items.forEach((item, index) => {
           const qty = Number(item.qty || 1);
-          const price = Number(item.priceNum || item.price || 0);
+          const meta = getSpecialMeta(item, qty); // ✅ 特价信息
+          const price = meta.price; // 保持你下面其它逻辑不乱
+
 
           const imgUrl = pickImageUrl(item, index);
           const fallback = "https://picsum.photos/seed/" + encodeURIComponent(item.id || item._id || "x" + index) + "/200/200";
@@ -890,7 +936,14 @@
             <div>
               <div class="name">${item.name || ""}</div>
               <div class="sub">
-                单价 <span class="price">${money(price)}</span> · 数量 ${qty}
+                单价
+${
+  meta.hitSpecial
+    ? `<span class="price" style="font-weight:800;color:#16a34a;">${money(meta.specialUnitPrice)}</span>
+       <span style="margin-left:6px;color:#9ca3af;text-decoration:line-through;">${money(price)}</span>`
+    : `<span class="price">${money(price)}</span>`
+}
+· 数量 ${qty}
                 ${isDealLike(item) ? " · 爆品" : ""}
                 ${showTax ? " · 需税" : ""}
               </div>
@@ -898,7 +951,16 @@
             </div>
             <div class="right">
               <div class="sub">小计</div>
-              <div style="font-weight:800">${money(price * qty)}</div>
+              ${
+  meta.hitSpecial
+    ? `<div style="text-align:right;line-height:1.2;">
+         <div style="font-weight:800;color:#16a34a;">${money(meta.specialLineTotal)}</div>
+         <div style="font-size:12px;color:#9ca3af;text-decoration:line-through;">
+           ${money(meta.originalLineTotal)}
+         </div>
+       </div>`
+    : `<div style="font-weight:800">${money(meta.originalLineTotal)}</div>`
+}
             </div>
           `;
           itemsList.appendChild(el);
