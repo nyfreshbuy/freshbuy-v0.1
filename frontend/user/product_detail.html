@@ -409,7 +409,7 @@
           <!-- ✅ 关键：加 id="cartIcon"，保持 onclick 不变 -->
           <div class="cart-icon" id="cartIcon" onclick="toggleCartDrawer()">
             🛒
-            <span id="cartCountBadge" class="cart-count-badge">0</span>
+            <span id="cartCount" class="cart-count-badge">0</span>
           </div>
         </div>
       </div>
@@ -466,7 +466,6 @@
           </div>
 
           <div class="detail-small-note">
-            当前为 Freshbuy v0.1 测试页面：加入购物车只会更新本地状态，不会真实扣款。
           </div>
 
           <div class="detail-back-row">
@@ -493,30 +492,31 @@
       </section>
     </main>
 
-    <!-- 购物车侧边栏（复用） -->
-    <div id="cartBackdrop" class="cart-drawer-backdrop" onclick="toggleCartDrawer(false)"></div>
-    <div id="cartDrawer" class="cart-drawer">
-      <div class="cart-header">
-        <div class="cart-title">购物车</div>
-        <button class="cart-close" onclick="toggleCartDrawer(false)">✕</button>
-      </div>
-      <div id="cartBody" class="cart-body">
-        <div class="cart-empty">购物车还是空的，去逛逛吧～</div>
-      </div>
-      <div class="cart-footer">
-        <div class="line">
-          <span>商品小计</span>
-          <span id="cartSubtotal">$0.00</span>
-        </div>
-        <div class="line">
-          <span>预估运费</span>
-          <span id="cartShipping">$0.00</span>
-        </div>
-        <div class="line line-total">
-          <span>订单总金额</span>
-          <span id="cartTotal">$0.00</span>
-        </div>
+    <!-- ✅ 购物车抽屉（对齐首页 cart.js 期望的 DOM） -->
+<div class="cart-drawer-backdrop" id="cartBackdrop" onclick="toggleCartDrawer(false)"></div>
 
+<aside class="cart-drawer" id="cartDrawer">
+  <div class="cart-header">
+    <span class="cart-title">购物车</span>
+    <button class="cart-close" id="cartCloseBtn" onclick="toggleCartDrawer(false)">✕</button>
+  </div>
+
+  <div class="cart-body">
+    <div class="cart-empty" id="cartEmptyText">购物车还是空的～</div>
+    <div class="cart-items-list" id="cartItemsList"></div>
+  </div>
+
+  <div class="cart-footer">
+    <div class="line">
+      <span>商品总数</span>
+      <span id="cartTotalItems">0 件</span>
+    </div>
+
+    <button class="btn-checkout" id="goCartBtn" type="button">
+      去结算
+    </button>
+  </div>
+</aside>
         <div class="shipping-modes">
           <div>选择配送模式：</div>
           <div class="mode-row">
