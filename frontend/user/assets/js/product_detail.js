@@ -1,25 +1,27 @@
-// /user/assets/js/product_detail.js
+// frontend/user/assets/js/product_detail.js
 // ======================================================
-// 商品详情页逻辑（依赖 /api/products-simple + /user/assets/js/cart.js）
-// ✅ 修复：主图显示
-// ✅ 修复：右上角购物车徽章同步（cartCount）
-// ✅ 修复：详情页胶囊徽章显示“购物车里该商品数量”
-// ✅ 修复：推荐区每张卡片显示数量徽章
-// ✅ 修复：+/- 直接触发加减购（逐个增减，不会一下清空）
-// ✅ 规则：点击胶囊中间也 +1，不自动打开抽屉
+// 商品详情页逻辑（依赖 /api/products-simple + assets/js/cart.js）
+// ✅ 不改 cart.js：详情页自己做兼容桥接
+// ✅ 大胶囊：中间=+1；+/- 直接加减购；不自动打开抽屉；徽章显示该商品数量
+// ✅ 推荐区：加入购物车后，推荐卡按钮也显示数量徽章（同页同步）
+// ✅ 修复：iOS 点击 -/+ 冒泡导致“越按越加”
+// ✅ 修复：- 只减 1，不会清空、不暴涨
+// ✅ 修复：右上角购物车打不开（自动兼容 toggleCartDrawer / Cart.toggleDrawer / Cart.openDrawer）
+// ✅ 主图：支持 image/images/imageUrl/imgUrl，失败显示占位文字
 // ======================================================
 
 (function () {
   let currentProduct = null;
 
   // -------------------------
-  // 工具
+  // 工具：URL 参数
   // -------------------------
   function getQueryParam(name) {
     const params = new URLSearchParams(window.location.search || "");
     return params.get(name);
   }
 
+  // ✅ 统一取商品ID（兼容 DB _id / 老 id / sku / name 兜底）
   function getPid(p) {
     return String(p?._id || p?.id || p?.sku || p?.name || "");
   }
@@ -30,275 +32,221 @@
   }
 
   // -------------------------
-  // 读取当前购物车中某商品数量（兼容多种 cart.js 结构）
+  // Cart 兼容层（不改 cart.js）
   // -------------------------
-  const CART_KEYS = ["freshbuy_cart", "freshbuyCart", "cart", "cart_items", "fresh_cart"];
+  function getCartMap() {
+    // 兼容你旧结构：window.cart[pid] = { qty }
+    if (window.cart && typeof window.cart === "object") return window.cart;
 
-  function readCartObjectFromStorage() {
-    for (const k of CART_KEYS) {
-      try {
+    // 再尝试常见 key（可选）
+    try {
+      const keys = ["freshbuy_cart", "freshbuyCart", "cart", "cart_items"];
+      for (const k of keys) {
         const raw = localStorage.getItem(k);
         if (!raw) continue;
         const obj = JSON.parse(raw);
         if (obj && typeof obj === "object") return obj;
-      } catch (e) {}
-    }
-    return null;
+      }
+    } catch (e) {}
+
+    return {};
   }
 
   function getQtyInCart(pid) {
     if (!pid) return 0;
 
-    // 1) 新 Cart（如果它提供 getQty / getState）
-    try {
-      if (window.Cart) {
-        if (typeof window.Cart.getQty === "function") return toNum(window.Cart.getQty(pid));
-        if (typeof window.Cart.getState === "function") {
-          const st = window.Cart.getState() || {};
-          const items = Array.isArray(st.items) ? st.items : [];
-          const hit = items.find((it) => String(it.id || it.pid) === String(pid));
-          if (hit) return toNum(hit.qty);
-        }
-      }
-    } catch (e) {}
-
-    // 2) 旧 window.cart 结构：cart[pid] = { qty }
-    if (window.cart && window.cart[pid]) return toNum(window.cart[pid].qty);
-
-    // 3) localStorage 兜底：常见结构
-    const obj = readCartObjectFromStorage();
-    if (obj) {
-      // a) { [pid]: { qty } }
-      if (obj[pid] && typeof obj[pid] === "object") return toNum(obj[pid].qty);
-
-      // b) { items: [...] }
-      if (Array.isArray(obj.items)) {
-        const hit = obj.items.find((it) => String(it.id || it.pid) === String(pid));
-        if (hit) return toNum(hit.qty);
-      }
-
-      // c) 直接数组
-      if (Array.isArray(obj)) {
-        const hit = obj.find((it) => String(it.id || it.pid) === String(pid));
-        if (hit) return toNum(hit.qty);
-      }
+    // 新 Cart 可能有 getQty
+    if (window.Cart && typeof window.Cart.getQty === "function") {
+      return toNum(window.Cart.getQty(pid));
     }
 
-    return 0;
+    // 旧 cart map
+    const m = getCartMap();
+    return toNum(m?.[pid]?.qty);
   }
 
-  // 统计购物车总数量（用于右上角徽章）
-  function getCartTotalCount() {
-    // 1) Cart API
-    try {
-      if (window.Cart) {
-        if (typeof window.Cart.getTotalCount === "function") return toNum(window.Cart.getTotalCount());
-        if (typeof window.Cart.getState === "function") {
-          const st = window.Cart.getState() || {};
-          const items = Array.isArray(st.items) ? st.items : [];
-          return items.reduce((s, it) => s + toNum(it.qty), 0);
-        }
-      }
-    } catch (e) {}
-
-    // 2) window.cart
-    if (window.cart && typeof window.cart === "object") {
-      return Object.keys(window.cart).reduce((s, k) => s + toNum(window.cart[k]?.qty), 0);
-    }
-
-    // 3) localStorage
-    const obj = readCartObjectFromStorage();
-    if (obj) {
-      if (obj.items && Array.isArray(obj.items)) {
-        return obj.items.reduce((s, it) => s + toNum(it.qty), 0);
-      }
-      if (Array.isArray(obj)) return obj.reduce((s, it) => s + toNum(it.qty), 0);
-      // { [pid]: { qty } }
-      return Object.keys(obj).reduce((s, k) => s + toNum(obj[k]?.qty), 0);
-    }
-
-    return 0;
-  }
-
-  // -------------------------
-  // 写入购物车（加1 / 减1 / 设定 qty）
-  // -------------------------
   function buildProductForCart(p) {
-    const pid = getPid(p);
-
-    // 统一销售价
+    // 统一计算价格：优先特价，其次 price，再次 originPrice
     let finalPrice = 0;
-    if (p.specialEnabled && typeof p.specialPrice === "number") finalPrice = toNum(p.specialPrice);
-    else if (typeof p.price === "number") finalPrice = toNum(p.price);
-    else finalPrice = toNum(p.originPrice);
+    if (p && (p.specialEnabled || p.isSpecial) && typeof p.specialPrice === "number") {
+      finalPrice = toNum(p.specialPrice);
+    } else if (p && typeof p.price === "number") {
+      finalPrice = toNum(p.price);
+    } else if (p && typeof p.originPrice === "number") {
+      finalPrice = toNum(p.originPrice);
+    }
+
+    const pid = getPid(p);
 
     return {
       id: pid,
-      name: p.name || "商品",
+      name: p?.name || "商品",
       price: finalPrice,
       priceNum: finalPrice,
-      tag: p.tag || "",
-      type: p.type || "",
-      isSpecial: !!p.isSpecial,
-      isDeal: !!(p.isDeal || p.specialEnabled || p.isSpecial || String(p.tag || "").includes("爆品")),
-      image: p.image || (Array.isArray(p.images) ? p.images[0] : "") || "",
+      isDeal: !!(
+        p?.isDeal ||
+        p?.specialEnabled ||
+        p?.isSpecial ||
+        String(p?.tag || "").includes("爆品")
+      ),
+      tag: p?.tag || "",
+      type: p?.type || "",
+      isSpecial: !!p?.isSpecial,
+      image: p?.image || "",
     };
   }
 
-  function setQty(pid, newQty, productForCart) {
-    const qty = Math.max(0, Math.floor(toNum(newQty)));
-
-    // ✅ 优先：能直接 setQty 的 API（最稳）
-    if (window.Cart) {
-      if (typeof window.Cart.setQty === "function") return window.Cart.setQty(pid, qty);
-      if (typeof window.Cart.updateQty === "function") return window.Cart.updateQty(pid, qty);
-      if (typeof window.Cart.changeQty === "function") return window.Cart.changeQty(pid, qty);
-
-      // 次选：有 removeItem / addItem
-      if (qty <= 0 && typeof window.Cart.removeItem === "function") return window.Cart.removeItem(pid);
-      if (typeof window.Cart.addItem === "function" && productForCart) {
-        const cur = getQtyInCart(pid);
-        const diff = qty - cur;
-        if (diff > 0) return window.Cart.addItem(productForCart, diff);
-        // diff < 0 没有减法 API 时不要乱删，避免“一下清空”
-      }
-    }
-
-    // ✅ 旧 API：addToCart(pid) / removeFromCart(pid)（如果存在）
-    if (typeof window.addToCart === "function" && qty > getQtyInCart(pid)) {
-      const diff = qty - getQtyInCart(pid);
-      for (let i = 0; i < diff; i += 1) window.addToCart(pid);
-      return;
-    }
-    if (typeof window.removeFromCart === "function" && qty < getQtyInCart(pid)) {
-      const diff = getQtyInCart(pid) - qty;
-      for (let i = 0; i < diff; i += 1) window.removeFromCart(pid);
-      return;
-    }
-
-    // ✅ window.cart 兜底（尽量不碰，如果存在就温和处理）
-    if (window.cart && typeof window.cart === "object") {
-      if (qty <= 0) delete window.cart[pid];
-      else {
-        window.cart[pid] = window.cart[pid] || {};
-        window.cart[pid].qty = qty;
-      }
-      if (typeof window.renderCart === "function") window.renderCart();
-      return;
-    }
+  function notifyCartChanged(pid) {
+    try {
+      if (typeof window.updateCartUI === "function") window.updateCartUI();
+      if (typeof window.recalcCartTotals === "function") window.recalcCartTotals();
+      window.dispatchEvent(new CustomEvent("freshbuy:cartUpdated", { detail: { pid } }));
+    } catch (e) {}
   }
 
-  function incOne(p) {
+  // ✅ 加 1：优先新 Cart.addItem，否则走旧 window.addToCart / 最后改 window.cart
+  function addOneToCart(p) {
     const pid = getPid(p);
     if (!pid) return;
-    const cur = getQtyInCart(pid);
+
     const productForCart = buildProductForCart(p);
 
-    // ✅ 最常见：Cart.addItem
+    // 新 Cart
     if (window.Cart && typeof window.Cart.addItem === "function") {
       window.Cart.addItem(productForCart, 1);
+      notifyCartChanged(pid);
       return;
     }
 
-    // ✅ 兼容：addToCart
+    // 老 addToCart（如果存在）
     if (typeof window.addToCart === "function") {
       window.addToCart(pid);
+      notifyCartChanged(pid);
       return;
     }
 
-    // ✅ 兜底：setQty
-    setQty(pid, cur + 1, productForCart);
+    // 兜底：直接改 window.cart
+    const m = getCartMap();
+    const now = toNum(m?.[pid]?.qty);
+    m[pid] = m[pid] || {};
+    m[pid].qty = now + 1;
+    m[pid].name = m[pid].name || productForCart.name;
+    m[pid].price = toNum(m[pid].price || productForCart.priceNum || productForCart.price || 0);
+    window.cart = m;
+
+    notifyCartChanged(pid);
   }
 
-  function decOne(p) {
+  // ✅ 减 1：只用 setQty/updateQty 或直接改 window.cart（避免 removeItem 签名不一致导致暴涨）
+  function removeOneFromCart(p) {
     const pid = getPid(p);
     if (!pid) return;
-    const cur = getQtyInCart(pid);
-    const next = Math.max(0, cur - 1);
 
-    // ✅ 优先：能 setQty（避免“一下清空”）
-    if (window.Cart && (typeof window.Cart.setQty === "function" || typeof window.Cart.updateQty === "function" || typeof window.Cart.changeQty === "function")) {
-      setQty(pid, next, null);
-      return;
-    }
+    const now = getQtyInCart(pid);
+    const next = Math.max(0, now - 1);
 
-    // ✅ 次选：如果有 decItem/removeOne
-    if (window.Cart && typeof window.Cart.decItem === "function") {
-      window.Cart.decItem(pid, 1);
-      return;
-    }
-    if (window.Cart && typeof window.Cart.removeOne === "function") {
-      window.Cart.removeOne(pid);
-      return;
-    }
-
-    // ✅ 再次：removeFromCart 逐个减（如果它是逐个减的实现）
-    if (typeof window.removeFromCart === "function") {
-      window.removeFromCart(pid);
-      return;
-    }
-
-    // ✅ 最后兜底：只有当 next==0 才调用 removeItem（避免“cur>1 也清空”）
-    if (next <= 0 && window.Cart && typeof window.Cart.removeItem === "function") {
-      window.Cart.removeItem(pid);
-      return;
-    }
-
-    // ✅ window.cart 兜底
-    setQty(pid, next, null);
-  }
-
-  // -------------------------
-  // UI：刷新顶部徽章/胶囊徽章/推荐卡片徽章
-  // -------------------------
-  function refreshTopCartBadge() {
-    const el = document.getElementById("cartCount") || document.getElementById("cartCountBadge");
-    if (!el) return;
-    const total = getCartTotalCount();
-    el.textContent = String(total);
-    el.style.display = total > 0 ? "inline-flex" : "none";
-  }
-
-  function refreshPillBadge() {
-    const badge = document.getElementById("detailCartBadge");
-    if (!badge || !currentProduct) return;
-    const pid = getPid(currentProduct);
-    const qty = getQtyInCart(pid);
-    badge.textContent = String(qty);
-    badge.style.display = qty > 0 ? "inline-flex" : "none";
-
-    const mainTextEl = document.getElementById("detailCartMainText");
-    const subTextEl = document.getElementById("detailCartSubText");
-    if (mainTextEl) {
-      if (qty > 0) {
-        mainTextEl.textContent = `已加入 ${qty} 件商品`;
-        if (subTextEl) subTextEl.textContent = "点击中间继续 +1；点 +/- 直接加减购";
-      } else {
-        mainTextEl.textContent = `加入 1 件商品`;
-        if (subTextEl) subTextEl.textContent = "点击中间区域加入购物车";
+    // 新 Cart：只用 setQty / updateQty
+    if (window.Cart) {
+      if (typeof window.Cart.setQty === "function") {
+        window.Cart.setQty(pid, next);
+        notifyCartChanged(pid);
+        return;
+      }
+      if (typeof window.Cart.updateQty === "function") {
+        window.Cart.updateQty(pid, next);
+        notifyCartChanged(pid);
+        return;
       }
     }
-  }
 
-  function refreshRecommendBadges() {
-    const nodes = document.querySelectorAll("[data-rec-badge]");
-    nodes.forEach((node) => {
-      const pid = node.getAttribute("data-rec-badge") || "";
-      const qty = getQtyInCart(pid);
-      node.textContent = String(qty);
-      node.style.display = qty > 0 ? "inline-flex" : "none";
-    });
-  }
+    // 老 removeOne / removeFromCart（如果存在且明确是减 1）
+    // 注意：不调用 removeItem(pid,1) 之类，避免你现在那个反向问题
+    if (typeof window.removeOneFromCart === "function") {
+      // 避免和本函数同名递归：这里只在全局老方法存在时才用
+      if (window.removeOneFromCart !== removeOneFromCart) {
+        window.removeOneFromCart(pid);
+        notifyCartChanged(pid);
+        return;
+      }
+    }
 
-  function refreshAllBadges() {
-    refreshTopCartBadge();
-    refreshPillBadge();
-    refreshRecommendBadges();
+    // 兜底：直接改 window.cart
+    const m = getCartMap();
+    if (next <= 0) {
+      delete m[pid];
+    } else {
+      m[pid] = m[pid] || {};
+      m[pid].qty = next;
+    }
+    window.cart = m;
+
+    notifyCartChanged(pid);
   }
 
   // -------------------------
-  // 渲染主信息（含主图）
+  // 购物车抽屉：详情页兜底桥接（不改 cart.js）
   // -------------------------
+  function ensureCartDrawerBridge() {
+    // 1) cart.js 已经提供 toggleCartDrawer 就不用动
+    if (typeof window.toggleCartDrawer === "function") return;
+
+    // 2) Cart API（如果存在）
+    if (window.Cart && typeof window.Cart.toggleDrawer === "function") {
+      window.toggleCartDrawer = function (open) {
+        try {
+          window.Cart.toggleDrawer(open);
+        } catch (e) {}
+      };
+      return;
+    }
+
+    if (window.Cart && typeof window.Cart.openDrawer === "function") {
+      window.toggleCartDrawer = function (open) {
+        try {
+          if (open === false) window.Cart.closeDrawer && window.Cart.closeDrawer();
+          else window.Cart.openDrawer();
+        } catch (e) {}
+      };
+      return;
+    }
+
+    // 3) 最后兜底：直接操作 DOM 显示/隐藏（只要你的 HTML 有 cartDrawer/cartBackdrop）
+    window.toggleCartDrawer = function (open) {
+      const drawer = document.getElementById("cartDrawer");
+      const backdrop = document.getElementById("cartBackdrop");
+      if (!drawer || !backdrop) return;
+
+      const shouldOpen = typeof open === "boolean" ? open : !drawer.classList.contains("open");
+      if (shouldOpen) {
+        drawer.classList.add("open");
+        backdrop.classList.add("open");
+      } else {
+        drawer.classList.remove("open");
+        backdrop.classList.remove("open");
+      }
+    };
+  }
+
+  // -------------------------
+  // 渲染顶部主信息 + 主图
+  // -------------------------
+  function pickImageUrl(p) {
+    if (!p) return "";
+    // 常见字段兜底
+    if (typeof p.image === "string" && p.image.trim()) return p.image.trim();
+    if (typeof p.imageUrl === "string" && p.imageUrl.trim()) return p.imageUrl.trim();
+    if (typeof p.imgUrl === "string" && p.imgUrl.trim()) return p.imgUrl.trim();
+
+    // images 数组兜底
+    if (Array.isArray(p.images) && p.images.length) {
+      const first = p.images[0];
+      if (typeof first === "string" && first.trim()) return first.trim();
+      if (first && typeof first.url === "string" && first.url.trim()) return first.url.trim();
+    }
+
+    return "";
+  }
+
   function renderDetailMain(p) {
     const titleEl = document.getElementById("detailTitle");
     const descEl = document.getElementById("detailDesc");
@@ -307,9 +255,8 @@
     const tagsRow = document.getElementById("detailTagRow");
     const extraNoteEl = document.getElementById("detailExtraNote");
     const crumbEl = document.getElementById("crumbProductName");
-
-    const imgEl = document.getElementById("detailImage");
     const imgTextEl = document.getElementById("detailImageText");
+    const imgEl = document.getElementById("detailImage");
 
     if (crumbEl) crumbEl.textContent = p.name || "商品详情";
     if (titleEl) titleEl.textContent = p.name || "未命名商品";
@@ -318,9 +265,9 @@
     let currPrice = 0;
     if (typeof p.price === "number") currPrice = p.price;
     else if (typeof p.specialPrice === "number") currPrice = p.specialPrice;
-    else currPrice = toNum(p.originPrice);
+    else currPrice = toNum(p.originPrice || 0);
 
-    if (priceEl) priceEl.textContent = "$" + toNum(currPrice).toFixed(2);
+    if (priceEl) priceEl.textContent = "$" + currPrice.toFixed(2);
 
     if (originEl) {
       const origin = typeof p.originPrice === "number" ? p.originPrice : null;
@@ -333,7 +280,8 @@
       const tags = [];
       if (p.tag) tags.push(p.tag);
       if (Array.isArray(p.labels)) tags.push(...p.labels);
-      Array.from(new Set(tags)).forEach((t) => {
+      const set = Array.from(new Set(tags));
+      set.forEach((t) => {
         const span = document.createElement("span");
         span.className = "detail-tag";
         span.textContent = t;
@@ -356,63 +304,107 @@
       }
     }
 
-    // ✅ 主图
-    const imgUrl =
-      (typeof p.image === "string" && p.image) ||
-      (Array.isArray(p.images) && p.images[0]) ||
-      "";
+    // ✅ 主图显示
+    const url = pickImageUrl(p);
+    if (imgEl && url) {
+      imgEl.src = url;
+      imgEl.style.display = "block";
+      if (imgTextEl) imgTextEl.style.display = "none";
 
-    if (imgEl) {
-      if (imgUrl) {
-        imgEl.src = imgUrl;
-        imgEl.style.display = "block";
-        if (imgTextEl) imgTextEl.style.display = "none";
-      } else {
+      imgEl.onerror = () => {
         imgEl.style.display = "none";
         if (imgTextEl) {
           imgTextEl.style.display = "block";
-          imgTextEl.textContent = "商品图占位 · " + (p.name || "");
+          imgTextEl.textContent = "商品图加载失败 · " + (p.name || "");
         }
+      };
+    } else {
+      if (imgEl) imgEl.style.display = "none";
+      if (imgTextEl) {
+        imgTextEl.style.display = "block";
+        imgTextEl.textContent = "商品图占位 · " + (p.name || "");
       }
     }
   }
 
   // -------------------------
-  // 绑定：胶囊点击=+1；+/- 直接加减购
+  // 大胶囊 UI：徽章 + 文案
   // -------------------------
-  function bindPillControls() {
-    const pill = document.getElementById("btnAddToCartDetail");
+  function refreshCapsuleUI() {
+    const mainTextEl = document.getElementById("detailCartMainText");
+    const subTextEl = document.getElementById("detailCartSubText");
+    const badgeEl = document.getElementById("detailCartBadge");
+
+    const pid = getPid(currentProduct);
+    const qty = pid ? getQtyInCart(pid) : 0;
+
+    if (badgeEl) {
+      if (qty > 0) {
+        badgeEl.textContent = String(qty);
+        badgeEl.style.display = "inline-flex";
+      } else {
+        badgeEl.style.display = "none";
+      }
+    }
+
+    if (mainTextEl) {
+      if (qty > 0) mainTextEl.textContent = `已加入 ${qty} 件商品`;
+      else mainTextEl.textContent = `加入 1 件商品`;
+    }
+    if (subTextEl) {
+      if (qty > 0) subTextEl.textContent = "点击中间继续加购（不会自动打开购物车）";
+      else subTextEl.textContent = "点击中间区域加入购物车";
+    }
+  }
+
+  // -------------------------
+  // 大胶囊交互：中间 +1，+/- 直接加减购
+  // -------------------------
+  function bindCapsuleControls() {
+    const capsule = document.getElementById("btnAddToCartDetail");
     const minusBtn = document.getElementById("btnQtyMinusBig");
     const plusBtn = document.getElementById("btnQtyPlusBig");
 
-    if (minusBtn) {
-      minusBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        if (!currentProduct) return;
-        decOne(currentProduct);
-        refreshAllBadges();
-      });
-    }
+    if (!capsule) return;
+
+    // ✅ 中间点一下：+1（但点到 +/- 不算中间）
+    capsule.addEventListener("click", (e) => {
+      // 关键：用 closest，避免 iOS 点到文本节点导致识别失败 + 冒泡
+      if (e.target && e.target.closest) {
+        if (e.target.closest("#btnQtyMinusBig") || e.target.closest("#btnQtyPlusBig")) return;
+      }
+      if (!currentProduct) return;
+      addOneToCart(currentProduct);
+      refreshCapsuleUI();
+      refreshRecommendBadges();
+    });
 
     if (plusBtn) {
       plusBtn.addEventListener("click", (e) => {
+        e.preventDefault();
         e.stopPropagation();
         if (!currentProduct) return;
-        incOne(currentProduct);
-        refreshAllBadges();
+        addOneToCart(currentProduct);
+        refreshCapsuleUI();
+        refreshRecommendBadges();
       });
     }
 
-    if (pill) {
-      pill.addEventListener("click", (e) => {
-        // 点击中间区域也 +1
+    if (minusBtn) {
+      minusBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
         if (!currentProduct) return;
-        incOne(currentProduct);
-        refreshAllBadges();
+        removeOneFromCart(currentProduct);
+        refreshCapsuleUI();
+        refreshRecommendBadges();
       });
     }
   }
 
+  // -------------------------
+  // 收藏按钮（占位）
+  // -------------------------
   function bindFavButton() {
     const favBtn = document.getElementById("btnDetailFav");
     if (!favBtn) return;
@@ -422,17 +414,16 @@
     });
   }
 
-  // -------------------------
-  // 推荐区：带数量徽章 + 加购按钮
-  // -------------------------
+  // ======================================================
+  // 推荐区：Weee 风格卡片 + 左右滑动 + 按钮徽章
+  // ======================================================
   function createRecommendCard(p, isTop) {
     const card = document.createElement("div");
     card.className = "detail-recommend-card";
 
     const pid = getPid(p);
     const imgUrl =
-      (typeof p.image === "string" && p.image) ||
-      (Array.isArray(p.images) && p.images[0]) ||
+      pickImageUrl(p) ||
       `https://picsum.photos/seed/${encodeURIComponent(pid || "fb")}/640/400`;
 
     const currPrice =
@@ -440,7 +431,7 @@
         ? p.price
         : typeof p.specialPrice === "number"
         ? p.specialPrice
-        : toNum(p.originPrice);
+        : toNum(p.originPrice || 0);
 
     const origin = typeof p.originPrice === "number" ? p.originPrice : null;
 
@@ -448,21 +439,12 @@
       <div class="detail-recommend-img-wrap">
         <img class="detail-recommend-img" src="${imgUrl}" alt="${p.name || ""}" />
         ${isTop ? '<div class="detail-recommend-top-badge">TOP1</div>' : ""}
-        <!-- ✅ 推荐卡数量徽章 -->
-        <span class="rec-badge" data-rec-badge="${pid}" style="
-          position:absolute; right:10px; top:10px;
-          min-width:22px; height:22px; padding:0 6px;
-          border-radius:999px; background:#ef4444; color:#fff;
-          font-size:12px; font-weight:800; display:none;
-          align-items:center; justify-content:center;
-          box-shadow:0 10px 18px rgba(15,23,42,0.25);
-        ">0</span>
       </div>
       <div class="detail-recommend-body">
         <div class="detail-recommend-name">${p.name || ""}</div>
         <div class="detail-recommend-desc">${p.desc || ""}</div>
         <div class="detail-recommend-price-row">
-          <span class="detail-recommend-price">$${toNum(currPrice).toFixed(2)}</span>
+          <span class="detail-recommend-price">$${currPrice.toFixed(2)}</span>
           ${
             origin && origin > currPrice
               ? `<span class="detail-recommend-origin">$${origin.toFixed(2)}</span>`
@@ -471,27 +453,47 @@
         </div>
         <div class="detail-recommend-bottom-row">
           <button type="button" class="detail-recommend-fav-btn">☆ 收藏</button>
+
           <button type="button" class="detail-recommend-add-btn" data-rec-add-id="${pid}">
             加入购物车
+            <span class="rec-badge" data-rec-badge="${pid}" style="
+              display:none;
+              margin-left:8px;
+              min-width:18px;
+              height:18px;
+              padding:0 6px;
+              border-radius:999px;
+              background:#ef4444;
+              color:#fff;
+              font-size:12px;
+              font-weight:800;
+              line-height:18px;
+              vertical-align:middle;
+            ">0</span>
           </button>
         </div>
       </div>
     `;
 
-    // 收藏占位
-    card.querySelector(".detail-recommend-fav-btn").addEventListener("click", (e) => {
+    // 收藏按钮（占位）
+    const favBtn = card.querySelector(".detail-recommend-fav-btn");
+    favBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       alert("收藏功能后续接入，这里先做占位提示。");
     });
 
-    // 加购（+1）
-    card.querySelector("[data-rec-add-id]").addEventListener("click", (e) => {
+    // 加入购物车
+    const addBtn = card.querySelector("[data-rec-add-id]");
+    addBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      incOne(p);
-      refreshAllBadges();
+      addOneToCart(p);
+
+      // 同页同步：当前详情胶囊 + 推荐徽章
+      refreshCapsuleUI();
+      refreshRecommendBadges();
     });
 
-    // 点击卡片跳转
+    // 整卡点击跳详情（按钮不跳）
     card.addEventListener("click", () => {
       if (!pid) return;
       window.location.href = "product_detail.html?id=" + encodeURIComponent(pid);
@@ -500,31 +502,23 @@
     return card;
   }
 
-  function bindRecommendArrows() {
-    const viewport = document.querySelector(".detail-recommend-viewport");
-    const prev = document.getElementById("recPrev");
-    const next = document.getElementById("recNext");
+  function refreshRecommendBadges() {
+    const nodes = document.querySelectorAll("[data-rec-badge]");
+    if (!nodes || !nodes.length) return;
 
-    if (!viewport || !prev || !next) return;
+    nodes.forEach((el) => {
+      const pid = el.getAttribute("data-rec-badge") || "";
+      const qty = getQtyInCart(pid);
 
-    const step = viewport.clientWidth * 0.8 || 300;
-
-    const update = () => {
-      const maxScroll = viewport.scrollWidth - viewport.clientWidth - 2;
-      prev.disabled = viewport.scrollLeft <= 0;
-      next.disabled = viewport.scrollLeft >= maxScroll;
-    };
-
-    prev.onclick = () => {
-      viewport.scrollBy({ left: -step, behavior: "smooth" });
-      setTimeout(update, 300);
-    };
-    next.onclick = () => {
-      viewport.scrollBy({ left: step, behavior: "smooth" });
-      setTimeout(update, 300);
-    };
-
-    update();
+      if (qty > 0) {
+        el.textContent = String(qty);
+        el.style.display = "inline-flex";
+        el.style.alignItems = "center";
+        el.style.justifyContent = "center";
+      } else {
+        el.style.display = "none";
+      }
+    });
   }
 
   function renderRecommendList() {
@@ -553,12 +547,41 @@
     recommend.forEach((p, idx) => track.appendChild(createRecommendCard(p, idx === 0)));
 
     bindRecommendArrows();
+
+    // 初次渲染后同步一次徽章
     refreshRecommendBadges();
   }
 
-  // -------------------------
-  // 根据 id/_id/sku/name 匹配商品
-  // -------------------------
+  function bindRecommendArrows() {
+    const viewport = document.querySelector(".detail-recommend-viewport");
+    const prev = document.getElementById("recPrev");
+    const next = document.getElementById("recNext");
+
+    if (!viewport || !prev || !next) return;
+
+    const step = viewport.clientWidth * 0.8 || 300;
+
+    const updateArrowDisabled = () => {
+      const maxScroll = viewport.scrollWidth - viewport.clientWidth - 2;
+      prev.disabled = viewport.scrollLeft <= 0;
+      next.disabled = viewport.scrollLeft >= maxScroll;
+    };
+
+    prev.onclick = () => {
+      viewport.scrollBy({ left: -step, behavior: "smooth" });
+      setTimeout(updateArrowDisabled, 280);
+    };
+    next.onclick = () => {
+      viewport.scrollBy({ left: step, behavior: "smooth" });
+      setTimeout(updateArrowDisabled, 280);
+    };
+
+    updateArrowDisabled();
+  }
+
+  // ======================================================
+  // 根据 id / _id / sku / name 匹配商品
+  // ======================================================
   function matchProductById(list, rawId) {
     if (!rawId || !Array.isArray(list)) return null;
     const idStr = String(rawId);
@@ -571,8 +594,18 @@
     );
   }
 
+  // -------- 确保 allProducts 已加载（优先 /api/products-simple） --------
   async function ensureProductsLoaded() {
     if (Array.isArray(window.allProducts) && window.allProducts.length) return;
+
+    if (typeof window.loadProducts === "function") {
+      try {
+        await window.loadProducts();
+        if (Array.isArray(window.allProducts) && window.allProducts.length) return;
+      } catch (e) {
+        console.warn("详情页：调用 loadProducts 失败：", e);
+      }
+    }
 
     try {
       const res = await fetch("/api/products-simple");
@@ -584,24 +617,59 @@
     }
   }
 
+  // -------------------------
+  // 顶部购物车 icon 修复：确保 onclick 能工作
+  // -------------------------
+  function bindCartIconFix() {
+    const icon = document.getElementById("cartIcon");
+    if (!icon) return;
+
+    // 如果 HTML 写了 onclick，也再补一个 click 监听（避免某些页面脚本覆盖）
+    icon.addEventListener("click", (e) => {
+      e.preventDefault();
+      try {
+        if (typeof window.toggleCartDrawer === "function") window.toggleCartDrawer();
+      } catch (err) {}
+    });
+  }
+
+  // -------------------------
+  // 主初始化
+  // -------------------------
   async function initDetailPage() {
+    ensureCartDrawerBridge();
+    bindCartIconFix();
+
     const idFromUrl = getQueryParam("id");
     await ensureProductsLoaded();
 
     let list = Array.isArray(window.allProducts) ? window.allProducts : [];
-    if (!list.length) {
-      const titleEl = document.getElementById("detailTitle");
-      if (titleEl) titleEl.textContent = "暂无商品数据";
-      return;
-    }
 
+    // ✅ 没有 id 就直接提示
     if (!idFromUrl) {
       const titleEl = document.getElementById("detailTitle");
       if (titleEl) titleEl.textContent = "缺少商品ID（请从商品列表点击进入）";
       return;
     }
 
-    const product = matchProductById(list, idFromUrl);
+    let product = matchProductById(list, idFromUrl);
+
+    // 如果没找到，再请求一次
+    if (!product) {
+      try {
+        const res = await fetch("/api/products-simple");
+        const data = await res.json();
+        const apiList = Array.isArray(data) ? data : Array.isArray(data.items) ? data.items : [];
+        if (apiList.length) {
+          window.allProducts = apiList;
+          list = apiList;
+          product = matchProductById(apiList, idFromUrl);
+        }
+      } catch (e) {
+        console.warn("详情页：再次请求 /api/products-simple 失败", e);
+      }
+    }
+
     if (!product) {
       const titleEl = document.getElementById("detailTitle");
       if (titleEl) titleEl.textContent = "未找到该商品（可能已下架）";
@@ -611,18 +679,21 @@
     currentProduct = product;
 
     renderDetailMain(currentProduct);
-    bindPillControls();
+    bindCapsuleControls();
     bindFavButton();
     renderRecommendList();
 
-    // 初始刷新所有徽章
-    refreshAllBadges();
+    // 初次同步胶囊徽章
+    refreshCapsuleUI();
 
-    // 监听其它地方加购导致的变化（跨组件同步）
-    window.addEventListener("storage", refreshAllBadges);
-    window.addEventListener("freshbuy:cartUpdated", refreshAllBadges);
-    document.addEventListener("freshbuy:cartUpdated", refreshAllBadges);
+    // 监听全站购物车更新（如果 cart.js 有发事件）
+    window.addEventListener("freshbuy:cartUpdated", () => {
+      refreshCapsuleUI();
+      refreshRecommendBadges();
+    });
   }
 
-  window.addEventListener("DOMContentLoaded", initDetailPage);
+  window.addEventListener("DOMContentLoaded", () => {
+    initDetailPage();
+  });
 })();
