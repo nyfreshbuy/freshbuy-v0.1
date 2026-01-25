@@ -11,44 +11,32 @@
 // - POST   /api/admin/products/:id/purchase-batches
 
 import express from "express";
-import path from "path";
-import fs from "fs";
 import multer from "multer";
-import { fileURLToPath } from "url";
 
 import Product from "../models/product.js";
 import ProductPurchaseBatch from "../models/ProductPurchaseBatch.js";
 import { toClient, toClientList } from "../utils/toClient.js";
+import { uploadBufferToCloudinary } from "../utils/cloudinary.js";
+
 const router = express.Router();
-router.use(express.json()); // ✅ 必须加：解析 JSON bod
+router.use(express.json()); // ✅ 必须加：解析 JSON body
+
 // ===================== 工具函数 =====================
 // ✅ DEBUG：确认 admin_products router 已部署并被挂载成功
 router.get("/__ping", (req, res) => {
-  res.json({ ok: true, router: "admin_products.js", time: new Date().toISOString() });
+  res.json({
+    ok: true,
+    router: "admin_products.js",
+    time: new Date().toISOString(),
+  });
 });
 
-// ESM 下的 __dirname
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// 上传目录：backend/src/uploads（你原来就是这么写的）
-const uploadDir = path.resolve(__dirname, "../../uploads");
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
-
-const storage = multer.diskStorage({
-  destination(req, file, cb) {
-    cb(null, uploadDir);
-  },
-  filename(req, file, cb) {
-    const ext = path.extname(file.originalname) || ".jpg";
-    const name = Date.now() + "-" + Math.random().toString(16).slice(2) + ext;
-    cb(null, name);
-  },
+// ✅ 改为内存上传（不落地本地磁盘）
+// 表单字段名：image
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8 * 1024 * 1024 }, // 8MB
 });
-
-const upload = multer({ storage });
 
 // 防 regex 注入
 function escapeRegex(s) {
@@ -68,6 +56,7 @@ async function findProductByAnyId(idParam) {
 
   return null;
 }
+
 // 库存保护逻辑：库存 ≤ 阈值时自动关掉特价并恢复原价
 // ✅ 同时支持：
 // - 单件特价：specialPrice
@@ -79,7 +68,12 @@ function applyAutoCancelSpecial(p) {
   const useGuard = !!p.autoCancelSpecialOnLowStock;
 
   // 低库存自动取消特价
-  if (useGuard && threshold > 0 && typeof p.stock === "number" && p.stock <= threshold) {
+  if (
+    useGuard &&
+    threshold > 0 &&
+    typeof p.stock === "number" &&
+    p.stock <= threshold
+  ) {
     p.specialEnabled = false;
     p.specialPrice = null;
     // ✅ 不强制清空 specialQty/specialTotalPrice（保留设置，方便你之后再启用）
@@ -95,11 +89,13 @@ function applyAutoCancelSpecial(p) {
 
   // ✅ 判断是否启用特价（允许两种模式）
   const qty = Math.max(1, Math.floor(Number(p.specialQty || 1)));
-  const total = p.specialTotalPrice == null ? null : Number(p.specialTotalPrice);
+  const total =
+    p.specialTotalPrice == null ? null : Number(p.specialTotalPrice);
   const unitSpecial = p.specialPrice == null ? null : Number(p.specialPrice);
 
   const hasNForTotal = qty > 1 && Number.isFinite(total) && total > 0;
-  const hasUnitSpecial = Number.isFinite(unitSpecial) && unitSpecial > 0;
+  const hasUnitSpecial =
+    Number.isFinite(unitSpecial) && unitSpecial > 0;
 
   const useSpecial = !!p.specialEnabled && okTime && (hasNForTotal || hasUnitSpecial);
 
@@ -119,6 +115,7 @@ function applyAutoCancelSpecial(p) {
     p.price = origin;
   }
 }
+
 // 自动标签（DB版）：按列表计算并尽量落库保持一致
 async function recomputeAutoTagsForList(list) {
   const now = Date.now();
@@ -161,18 +158,27 @@ async function recomputeAutoTagsForList(list) {
 // ===================== 路由：上传图片 =====================
 
 // POST /api/admin/products/upload-image
-router.post("/upload-image", upload.single("image"), (req, res) => {
+// ✅ Cloudinary 版：不再保存到本地 /uploads，直接返回云端 https 链接
+router.post("/upload-image", upload.single("image"), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ success: false, message: "未接收到文件" });
     }
 
-    // 返回给前端的访问路径（静态目录在 server.js 里要有 app.use("/uploads", express.static(...))）
-    const url = "/uploads/" + req.file.filename;
-return res.json({ success: true, url });
+    // 上传到 Cloudinary（文件夹可用 env: CLOUDINARY_FOLDER 控制）
+    const up = await uploadBufferToCloudinary(req.file.buffer, {
+      public_id: `admin_product_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+    });
+
+    // 返回给前端的永久链接
+    const url = up.secure_url;
+
+    return res.json({ success: true, url });
   } catch (err) {
     console.error("上传图片出错:", err);
-    return res.status(500).json({ success: false, message: err.message || "上传失败" });
+    return res
+      .status(500)
+      .json({ success: false, message: err.message || "上传失败" });
   }
 });
 
@@ -211,12 +217,14 @@ router.get("/", async (req, res) => {
     await recomputeAutoTagsForList(list);
 
     return res.json({
-  success: true,
-  list: toClientList(list),
-});
+      success: true,
+      list: toClientList(list),
+    });
   } catch (err) {
     console.error("获取商品列表出错:", err);
-    return res.status(500).json({ success: false, message: err.message || "服务器错误" });
+    return res
+      .status(500)
+      .json({ success: false, message: err.message || "服务器错误" });
   }
 });
 
@@ -256,34 +264,45 @@ router.post("/", async (req, res) => {
       autoCancelSpecialOnLowStock: !!body.autoCancelSpecialOnLowStock,
       isSpecial: !!body.isSpecial,
       taxable: !!body.taxable, // ✅ 新增：是否收税
+
       // 数字字段可能来自字符串
-      specialPrice: body.specialPrice !== undefined && body.specialPrice !== null ? Number(body.specialPrice) : null,
+      specialPrice:
+        body.specialPrice !== undefined && body.specialPrice !== null
+          ? Number(body.specialPrice)
+          : null,
       autoCancelSpecialThreshold: Number(body.autoCancelSpecialThreshold) || 0,
       minStock: body.minStock !== undefined ? Number(body.minStock) : undefined,
-      allowZeroStock: body.allowZeroStock !== undefined ? !!body.allowZeroStock : undefined,
+      allowZeroStock:
+        body.allowZeroStock !== undefined ? !!body.allowZeroStock : undefined,
       specialQty: body.specialQty !== undefined ? Number(body.specialQty) : 1,
-specialTotalPrice:
-  body.specialTotalPrice !== undefined && body.specialTotalPrice !== null
-    ? Number(body.specialTotalPrice)
-    : null,
-variants: Array.isArray(body.variants) ? body.variants : [],
+      specialTotalPrice:
+        body.specialTotalPrice !== undefined && body.specialTotalPrice !== null
+          ? Number(body.specialTotalPrice)
+          : null,
+      variants: Array.isArray(body.variants) ? body.variants : [],
 
       // 数组
       labels: Array.isArray(body.labels) ? body.labels : [],
-      images: Array.isArray(body.images) ? body.images : (body.images ? [body.images] : undefined),
+      images: Array.isArray(body.images)
+        ? body.images
+        : body.images
+        ? [body.images]
+        : undefined,
     });
 
     // 跑一遍库存保护（并保存 price）
     applyAutoCancelSpecial(created);
     await Product.findByIdAndUpdate(created._id, { $set: { price: created.price } });
 
-   return res.json({
-  success: true,
-  product: toClient(created),
-});
+    return res.json({
+      success: true,
+      product: toClient(created),
+    });
   } catch (err) {
     console.error("新增商品出错:", err);
-    return res.status(500).json({ success: false, message: err.message || "服务器错误" });
+    return res
+      .status(500)
+      .json({ success: false, message: err.message || "服务器错误" });
   }
 });
 
@@ -312,8 +331,8 @@ router.patch("/:id", async (req, res) => {
       "stock",
       "minStock",
       "allowZeroStock",
-      "taxable",  
-     "topCategoryKey",   // ✅ 加这一行
+      "taxable",
+      "topCategoryKey",
       "category",
       "subCategory",
       "sortOrder",
@@ -330,11 +349,11 @@ router.patch("/:id", async (req, res) => {
       "activeTo",
       "specialEnabled",
       "specialPrice",
-      "specialQty",          // ✅ 新增
-      "specialTotalPrice",   // ✅ 新增
+      "specialQty",
+      "specialTotalPrice",
       "specialFrom",
       "specialTo",
-      "variants",            // ✅ 新增（也可以放到 variants 那一段更靠前）
+      "variants",
 
       // 库存保护
       "autoCancelSpecialOnLowStock",
@@ -348,49 +367,58 @@ router.patch("/:id", async (req, res) => {
       // 特价标识
       "isSpecial",
     ];
-    // ✅ 兼容后台可能传 catKey/categoryKey
-if (body.category === undefined && body.catKey !== undefined) body.category = body.catKey;
-if (body.category === undefined && body.categoryKey !== undefined) body.category = body.categoryKey;
 
-if (body.subCategory === undefined && body.subCatKey !== undefined) body.subCategory = body.subCatKey;
-if (body.subCategory === undefined && body.subCategoryKey !== undefined) body.subCategory = body.subCategoryKey;
+    // ✅ 兼容后台可能传 catKey/categoryKey
+    if (body.category === undefined && body.catKey !== undefined)
+      body.category = body.catKey;
+    if (body.category === undefined && body.categoryKey !== undefined)
+      body.category = body.categoryKey;
+
+    if (body.subCategory === undefined && body.subCatKey !== undefined)
+      body.subCategory = body.subCatKey;
+    if (body.subCategory === undefined && body.subCategoryKey !== undefined)
+      body.subCategory = body.subCategoryKey;
+
     fields.forEach((key) => {
       if (body[key] === undefined) return;
 
       if (key === "images") {
         if (Array.isArray(body.images)) p.images = body.images;
-        else if (typeof body.images === "string" && body.images.trim()) p.images = [body.images.trim()];
+        else if (typeof body.images === "string" && body.images.trim())
+          p.images = [body.images.trim()];
         else p.images = [];
         return;
       }
+
       // ✅ variants：必须是数组
-if (key === "variants") {
-  if (Array.isArray(body.variants)) p.variants = body.variants;
-  else p.variants = [];
-  return;
-}
+      if (key === "variants") {
+        if (Array.isArray(body.variants)) p.variants = body.variants;
+        else p.variants = [];
+        return;
+      }
 
       if (key === "labels") {
         if (Array.isArray(body.labels)) p.labels = body.labels;
-        else if (typeof body.labels === "string" && body.labels.trim()) p.labels = [body.labels.trim()];
+        else if (typeof body.labels === "string" && body.labels.trim())
+          p.labels = [body.labels.trim()];
         else p.labels = [];
         return;
       }
 
       if (
         [
-  "originPrice",
-  "price",
-  "stock",
-  "minStock",
-  "sortOrder",
-  "autoCancelSpecialThreshold",
-  "specialPrice",
-  "specialQty",          // ✅ 新增
-  "specialTotalPrice",   // ✅ 新增
-  "cost",
-  "soldCount",
-].includes(key)
+          "originPrice",
+          "price",
+          "stock",
+          "minStock",
+          "sortOrder",
+          "autoCancelSpecialThreshold",
+          "specialPrice",
+          "specialQty",
+          "specialTotalPrice",
+          "cost",
+          "soldCount",
+        ].includes(key)
       ) {
         p[key] = body[key] === null ? null : Number(body[key]);
         return;
@@ -399,7 +427,7 @@ if (key === "variants") {
       if (
         [
           "allowZeroStock",
-          "taxable", // ✅ 新增：布尔字段
+          "taxable",
           "isFlashDeal",
           "isFamilyMustHave",
           "isBestSeller",
@@ -423,12 +451,14 @@ if (key === "variants") {
     await p.save();
 
     return res.json({
-  success: true,
-  product: toClient(p),
-});
+      success: true,
+      product: toClient(p),
+    });
   } catch (err) {
     console.error("更新商品出错:", err);
-    return res.status(500).json({ success: false, message: err.message || "服务器错误" });
+    return res
+      .status(500)
+      .json({ success: false, message: err.message || "服务器错误" });
   }
 });
 
@@ -444,12 +474,14 @@ router.get("/:id/purchase-batches", async (req, res) => {
       return res.status(404).json({ success: false, message: "商品不存在" });
     }
 
-    const list = await ProductPurchaseBatch.find({ productId: p._id }).sort({ createdAt: -1 });
+    await ProductPurchaseBatch.find({ productId: p._id }).sort({ createdAt: -1 });
 
     return res.json({ success: true, product: toClient(p) });
   } catch (err) {
     console.error("获取进货批次出错:", err);
-    return res.status(500).json({ success: false, message: err.message || "服务器错误" });
+    return res
+      .status(500)
+      .json({ success: false, message: err.message || "服务器错误" });
   }
 });
 
@@ -507,6 +539,7 @@ router.post("/:id/purchase-batches", async (req, res) => {
       totalCost,
       grossMarginPercent,
       retailPrice: retailPriceFixed,
+      consumptionAt: null,
       expireAt,
       remainingUnits: totalUnits,
     });
@@ -521,7 +554,9 @@ router.post("/:id/purchase-batches", async (req, res) => {
     applyAutoCancelSpecial(p);
     await p.save();
 
-    const batches = await ProductPurchaseBatch.find({ productId: p._id }).sort({ createdAt: -1 });
+    const batches = await ProductPurchaseBatch.find({ productId: p._id }).sort({
+      createdAt: -1,
+    });
 
     return res.json({
       success: true,
@@ -532,7 +567,9 @@ router.post("/:id/purchase-batches", async (req, res) => {
     });
   } catch (err) {
     console.error("保存进货批次出错:", err);
-    return res.status(500).json({ success: false, message: err.message || "服务器错误" });
+    return res
+      .status(500)
+      .json({ success: false, message: err.message || "服务器错误" });
   }
 });
 
@@ -557,7 +594,9 @@ router.delete("/:id", async (req, res) => {
     return res.json({ success: true });
   } catch (err) {
     console.error("删除商品出错:", err);
-    return res.status(500).json({ success: false, message: err.message || "服务器错误" });
+    return res
+      .status(500)
+      .json({ success: false, message: err.message || "服务器错误" });
   }
 });
 
@@ -582,7 +621,9 @@ router.patch("/:id/toggle-status", async (req, res) => {
     return res.json({ success: true, product: p });
   } catch (err) {
     console.error("切换上/下架出错:", err);
-    return res.status(500).json({ success: false, message: err.message || "服务器错误" });
+    return res
+      .status(500)
+      .json({ success: false, message: err.message || "服务器错误" });
   }
 });
 

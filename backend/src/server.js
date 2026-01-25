@@ -294,7 +294,6 @@ console.log("静态前端目录是否存在:", fs.existsSync(frontendPath));
 app.use(express.static(frontendPath));
 app.use("/assets", express.static(path.join(frontendPath, "user/assets")));
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
-app.use("/uploads", express.static(path.resolve("uploads")));
 
 // =======================
 // 测试接口
@@ -357,17 +356,10 @@ app.get("/driver/:page", (req, res) => {
 // =======================
 // 未匹配的 API 路由，统一返回 404 JSON（必须最后）
 // =======================
+// =======================
+// 未匹配的 API 路由：404（放在最后）
+// =======================
 app.use("/api", (req, res) => {
-  // ✅✅✅ 全局错误捕捉：打印具体文件 + 行号（必须放在 404 之前）
-app.use((err, req, res, next) => {
-  console.error("🔥 GLOBAL ERROR:", req.method, req.originalUrl);
-  console.error(err?.stack || err);
-
-  return res.status(500).json({
-    success: false,
-    message: err?.message || String(err) || "Server Error",
-  });
-});
   console.log("❌ API 404 捕获:", req.originalUrl);
   res.status(404).json({
     success: false,
@@ -375,6 +367,17 @@ app.use((err, req, res, next) => {
   });
 });
 
+// =======================
+// 全局错误捕捉：必须是顶层中间件（放在 404 后也行）
+// =======================
+app.use((err, req, res, next) => {
+  console.error("🔥 GLOBAL ERROR:", req.method, req.originalUrl);
+  console.error(err?.stack || err);
+  res.status(500).json({
+    success: false,
+    message: err?.message || String(err) || "Server Error",
+  });
+});
 // =======================
 // 启动服务（先连 Mongo 再启动）
 // =======================
