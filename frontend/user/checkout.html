@@ -593,7 +593,19 @@
         return Number.isFinite(n) ? n : fallback;
       }
      // ✅ 特价：N for $X 行小计计算（与 cart.js / cart.html 同口径）
-function calcSpecialLineTotal(p, qty) {
+     // ✅ 关键修复：把 "productId::variantKey" 拆开（否则后端不扣库存）
+function splitPidVariant(raw) {
+  let pid = String(raw || "").trim();
+  let variantKey = "";
+
+  if (pid.includes("::")) {
+    const parts = pid.split("::");
+    pid = String(parts[0] || "").trim();
+    variantKey = String(parts[1] || "").trim();
+  }
+  return { pid, variantKey };
+}
+     function calcSpecialLineTotal(p, qty) {
   const q = Number(qty || 0);
   if (!p || q <= 0) return 0;
 
@@ -1385,18 +1397,24 @@ let lastStripePaymentIntentId = "";
             zoneName: snapshot.zone?.name || "",
             remark: f.note || "", // ✅ 新增：订单备注（用于后台订单/贴纸）
             items: (snapshot.items || []).map((it) => {
-              const isTax = it.taxable === true || it.hasTax === true;
-              return {
-                productId: it._id || it.id,
-                name: it.name,
-                qty: Number(it.qty || 1),
-                price: Number(it.priceNum ?? it.price ?? 0),
-                image: it.image || it.imageUrl || it.cover || (Array.isArray(it.images) ? it.images[0] : "") || "",
-                isSpecial: !!isDealLike(it),
-                taxable: isTax,
-                hasTax: isTax,
-              };
-            }),
+  const isTax = it.taxable === true || it.hasTax === true;
+
+  // ✅ 拆分 id::variantKey
+  const rawId = it._id || it.id || it.productId || "";
+  const { pid, variantKey } = splitPidVariant(rawId);
+
+  return {
+    productId: pid,                 // ✅ 纯 ObjectId
+    variantKey: variantKey || it.variantKey || it.variant || "", // ✅ 单独传
+    name: it.name,
+    qty: Number(it.qty || 1),
+    price: Number(it.priceNum ?? it.price ?? 0),
+    image: it.image || it.imageUrl || it.cover || (Array.isArray(it.images) ? it.images[0] : "") || "",
+    isSpecial: !!isDealLike(it),
+    taxable: isTax,
+    hasTax: isTax,
+  };
+}),
             shipping: {
               firstName: f.firstName,
               lastName: f.lastName,
@@ -1537,23 +1555,29 @@ lastStripePaymentIntentId = String(data.paymentIntentId || data.paymentIntentId 
           zoneName: snapshot.zone?.name || "",
           remark: f.note || "", // ✅ 新增：订单备注（用于后台订单/贴纸）
           items: (snapshot.items || []).map((it) => {
-            const isTax = it.taxable === true || it.hasTax === true;
-            return {
-              productId: it._id || it.id,
-              name: it.name,
-              qty: Number(it.qty || 1),
-              price: Number(it.priceNum || it.price || 0),
-              image:
-                it.image ||
-                it.imageUrl ||
-                it.cover ||
-                (Array.isArray(it.images) ? it.images[0] : "") ||
-                "",
-              isSpecial: !!isDealLike(it),
-              taxable: isTax,
-              hasTax: isTax,
-            };
-          }),
+  const isTax = it.taxable === true || it.hasTax === true;
+
+  // ✅ 拆分 id::variantKey
+  const rawId = it._id || it.id || it.productId || "";
+  const { pid, variantKey } = splitPidVariant(rawId);
+
+  return {
+    productId: pid,                 // ✅ 纯 ObjectId
+    variantKey: variantKey || it.variantKey || it.variant || "", // ✅ 单独传
+    name: it.name,
+    qty: Number(it.qty || 1),
+    price: Number(it.priceNum || it.price || 0),
+    image:
+      it.image ||
+      it.imageUrl ||
+      it.cover ||
+      (Array.isArray(it.images) ? it.images[0] : "") ||
+      "",
+    isSpecial: !!isDealLike(it),
+    taxable: isTax,
+    hasTax: isTax,
+  };
+}),
           shipping: {
             firstName: f.firstName,
             lastName: f.lastName,
