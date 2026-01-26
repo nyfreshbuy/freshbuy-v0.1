@@ -401,16 +401,28 @@ async function buildOrderPayload(req, session = null) {
       throw e;
     }
 
-    // 尝试解析 productId
-    let productId;
-    const maybeMongoId = String(it.productId || it._id || "").trim();
-    if (maybeMongoId && mongoose.Types.ObjectId.isValid(maybeMongoId)) {
-      productId = new mongoose.Types.ObjectId(maybeMongoId);
-    }
+    // 尝试解析 productId（兼容 "productId::variantKey"）
+let productId;
 
-    const legacyId = String(it.legacyProductId || it.id || it._id || "").trim();
-    const variantKey = String(it.variantKey || it.variant || "").trim(); // ✅ 前端可传
+// 先拿原始
+let maybeMongoId = String(it.productId || it._id || "").trim();
 
+// ✅ 兼容： "6970...a268::single"
+let inferredVariantKey = "";
+if (maybeMongoId.includes("::")) {
+  const parts = maybeMongoId.split("::");
+  maybeMongoId = String(parts[0] || "").trim();
+  inferredVariantKey = String(parts[1] || "").trim();
+}
+
+if (maybeMongoId && mongoose.Types.ObjectId.isValid(maybeMongoId)) {
+  productId = new mongoose.Types.ObjectId(maybeMongoId);
+}
+
+const legacyId = String(it.legacyProductId || it.id || it._id || "").trim();
+
+// ✅ variantKey：优先用显式字段，其次用从 productId:: 推断的
+const variantKey = String(it.variantKey || it.variant || inferredVariantKey || "").trim();
     // 默认使用前端价格（兼容旧逻辑）
     let price = Number(it.priceNum ?? it.price ?? 0);
     if (!Number.isFinite(price) || price < 0) price = 0;
@@ -834,9 +846,12 @@ const balance0 = Number(w0?.balance || 0);
         remaining = round2(finalTotal - walletUsed);
       }
 
-      // ✅ 如果前端选钱包，但余额不够，直接拦住（你前端不支持混合）
-      const clientPayMethod = String(req.body?.payMethod || req.body?.paymentMethod || req.body?.payment?.method || "").trim();
-      if (clientPayMethod === "wallet_only" && remaining > 0) {
+      // ✅ 如果前端选择钱包支付（wallet），但余额不足 => 直接 400（防止“下单成功但变信用卡”）
+const clientPayMethod = String(
+  req.body?.payMethod || req.body?.paymentMethod || req.body?.payment?.method || ""
+).trim().toLowerCase();
+
+if (clientPayMethod === "wallet" && remaining > 0) {
   const e = new Error(`钱包余额不足：需要 $${finalTotal.toFixed(2)}，当前 $${balance0.toFixed(2)}`);
   e.status = 400;
   throw e;

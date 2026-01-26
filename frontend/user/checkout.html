@@ -1616,26 +1616,54 @@ lastStripePaymentIntentId = String(data.paymentIntentId || data.paymentIntentId 
           btn.disabled = true;
 
           if (method === "wallet") {
-            showAlert("钱包支付：正在提交订单…", true);
-            const res = await fetch("/api/orders/checkout", {
-              method: "POST",
-              headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
-              body: JSON.stringify(payload),
-            });
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok || !data.success) {
-              btn.disabled = false;
-              return showAlert(data.message || "下单失败", false);
-            }
+  // ✅ 前端硬拦：余额不足禁止钱包下单（防止“没付钱也成功”）
+  if (typeof lastWalletBalance === "number") {
+    const snapshot0 = computeCheckoutSnapshot();
+    const extra0 = calcFinalAmount(snapshot0);
+    const need0 = Number(extra0.grand || 0);
 
-            try {
-              localStorage.setItem(CART_LS_KEY, JSON.stringify({ items: [], mode: "groupDay" }));
-            } catch {}
-            showAlert("下单成功（钱包支付）✅ 正在跳转…", true);
-            setTimeout(() => (window.location.href = "/user/user_center.html"), 500);
-            return;
-          }
+    if (lastWalletBalance + 1e-9 < need0) {
+      btn.disabled = false;
+      // 强制切 Stripe
+      document.getElementById("payStripe").checked = true;
+      setStripeAreaVisible(true);
+      showAlert(`钱包余额不足（需要 ${money(need0)}，当前 ${money(lastWalletBalance)}），请使用信用卡支付或先充值。`, false);
+      try { await ensureStripeMounted(); } catch {}
+      refreshAll();
+      return;
+    }
+  }
 
+  showAlert("钱包支付：正在提交订单…", true);
+  const res = await fetch("/api/orders/checkout", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.success) {
+    btn.disabled = false;
+    return showAlert(data.message || "下单失败", false);
+  }
+
+  // ✅ 关键：必须确认“已支付/remaining=0”才算成功
+  const paid = data.paid === true || Number(data.remaining || 0) <= 0;
+  if (!paid) {
+    btn.disabled = false;
+    document.getElementById("payStripe").checked = true;
+    setStripeAreaVisible(true);
+    showAlert("钱包已抵扣但余额不足，需继续使用信用卡支付剩余金额。", false);
+    try { await ensureStripeMounted(); } catch {}
+    refreshAll();
+    return;
+  }
+
+  // ✅ 只有真的 paid 才清空购物车 + 跳转
+  try { localStorage.setItem(CART_LS_KEY, JSON.stringify({ items: [], mode: "groupDay" })); } catch {}
+  showAlert("下单成功（钱包支付）✅ 正在跳转…", true);
+  setTimeout(() => (window.location.href = "/user/user_center.html"), 500);
+  return;
+}
           if (method === "stripe") {
             try {
               setStripeAreaVisible(true);
