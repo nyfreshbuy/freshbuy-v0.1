@@ -353,5 +353,79 @@ router.post("/:id/reject", requireLogin, async (req, res) => {
     return res.status(500).json({ success: false, message: "拒绝失败" });
   }
 });
+// ==================================================
+// GET /api/admin/recharge/reconcile?phone=xxx 或 ?userId=xxx
+// ✅ 对账：返回 Wallet.balance + Wallet.totalRecharge + done充值合计 + 最近充值记录
+// ==================================================
+router.get("/reconcile", requireLogin, async (req, res) => {
+  try {
+    if (req.user?.role !== "admin") {
+      return res.status(403).json({ success: false, message: "无权限（仅管理员可查看）" });
+    }
 
+    const { userId, phone } = req.query;
+
+    // 1) 找用户
+    let user = null;
+    let uid = null;
+
+    if (userId) {
+      uid = toObjectIdMaybe(userId);
+      if (!uid) return res.status(400).json({ success: false, message: "非法 userId" });
+      user = await User.findById(uid).select("_id phone name").lean();
+    } else if (phone) {
+      const p0 = String(phone).trim();
+      const pn = normalizePhone(p0);
+
+      // 同手机号多 user：优先选“有 Wallet 的 userId”
+      const users = await User.find({
+        $or: [{ phone: p0 }, { phone: pn }, { phone: { $regex: pn } }],
+      }).select("_id phone name").lean();
+
+      if (!users.length) {
+        return res.json({ success: true, found: false, message: "用户不存在" });
+      }
+
+      const ids = users.map(u => u._id);
+      const w = await Wallet.findOne({ userId: { $in: ids } }).select("userId").lean();
+      uid = w?.userId || users[0]._id;
+      user = users.find(u => String(u._id) === String(uid)) || users[0];
+    } else {
+      return res.status(400).json({ success: false, message: "请提供 phone 或 userId" });
+    }
+
+    if (!user || !uid) return res.json({ success: true, found: false, message: "用户不存在" });
+
+    // 2) 取 Wallet
+    const wallet = await Wallet.findOne({ userId: uid }).select("balance totalRecharge").lean();
+    const walletBalance = Number(wallet?.balance || 0);
+    const walletTotalRecharge = Number(wallet?.totalRecharge || 0);
+
+    // 3) done 充值合计（以 Recharge 表为准）
+    const doneRows = await Recharge.find({ userId: uid, status: "done" }).select("amount").lean();
+    const doneSum = doneRows.reduce((s, r) => s + Number(r.amount || 0), 0);
+
+    // 4) 最近 50 条充值记录
+    const list = await Recharge.find({ userId: uid })
+      .sort({ createdAt: -1 })
+      .limit(50)
+      .lean();
+
+    // 5) 差额（对账重点）
+    const diff = Number((walletBalance - doneSum).toFixed(2));
+
+    return res.json({
+      success: true,
+      found: true,
+      user: { id: String(uid), phone: user.phone || "", name: user.name || "" },
+      wallet: { balance: walletBalance, totalRecharge: walletTotalRecharge },
+      recharge: { doneSum, countDone: doneRows.length },
+      diff,
+      list,
+    });
+  } catch (err) {
+    console.error("GET /api/admin/recharge/reconcile error:", err);
+    return res.status(500).json({ success: false, message: "对账失败" });
+  }
+});
 export default router;

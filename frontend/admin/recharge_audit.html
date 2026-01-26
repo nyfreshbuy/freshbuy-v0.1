@@ -10,9 +10,8 @@
     .wrap{ max-width: 980px; margin: 20px auto; padding: 0 14px; }
     .card{ background:#fff; border-radius:16px; box-shadow:0 6px 20px rgba(0,0,0,.08); padding:16px; }
     .title{ font-size:18px; font-weight:800; color:#111827; margin-bottom:12px; display:flex; justify-content:space-between; gap:10px; align-items:center; }
-    .btn{ border:0; border-radius:12px; padding:10px 12px; cursor:pointer; font-weight:700; }
-    .btn-primary{ background:#16a34a; color:#fff; }
-    .btn-ghost{ background:#eef2ff; color:#1f2937; }
+    .btn{ border:0; border-radius:12px; padding:10px 12px; cursor:pointer; font-weight:800; }
+    .btn-ghost{ background:#eef2ff; color:#111827; }
     table{ width:100%; border-collapse:collapse; font-size:14px; }
     th,td{ padding:10px 8px; border-bottom:1px solid #f1f5f9; vertical-align:top; }
     th{ text-align:left; color:#475569; font-size:12px; }
@@ -20,16 +19,18 @@
     .btn-ok{ background:#22c55e; color:#fff; }
     .btn-no{ background:#ef4444; color:#fff; }
     .muted{ color:#64748b; font-size:12px; }
-    .remark{ white-space:pre-wrap; max-width:360px; }
-    .topbar{ display:flex; gap:10px; align-items:center; }
+    .remark{ white-space:pre-wrap; max-width:420px; }
+    .topbar{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
     input.note{ padding:9px 10px; border:1px solid #e5e7eb; border-radius:12px; width:260px; }
+    .badge{ display:inline-block; padding:4px 8px; border-radius:999px; background:#f1f5f9; font-size:12px; color:#0f172a; }
   </style>
 </head>
+
 <body>
   <div class="wrap">
     <div class="card">
       <div class="title">
-        <div>💸 Zelle 充值审核（Pending）</div>
+        <div>💸 Zelle 充值审核（Pending） <span class="badge" id="countBadge">0</span></div>
         <div class="topbar">
           <input class="note" id="adminNote" placeholder="备注（可选，例如：已到账 1/25）" />
           <button class="btn btn-ghost" id="btnRefresh">刷新</button>
@@ -61,13 +62,19 @@
     return (
       localStorage.getItem("admin_token") ||
       localStorage.getItem("adminToken") ||
-      localStorage.getItem("token") ||   // 如果你后台也用 token
+      localStorage.getItem("token") ||
       ""
     );
   }
 
   function fmtTime(s){
     try { return new Date(s).toLocaleString(); } catch(e){ return String(s||""); }
+  }
+
+  function esc(s){
+    return String(s ?? "").replace(/[<>&"]/g, (c) => ({
+      "<":"&lt;", ">":"&gt;", "&":"&amp;", '"':"&quot;"
+    }[c]));
   }
 
   async function api(url, opts={}){
@@ -86,13 +93,28 @@
   const tbody = document.getElementById("tbody");
   const statusText = document.getElementById("statusText");
   const adminNote = document.getElementById("adminNote");
+  const countBadge = document.getElementById("countBadge");
+
+  // ✅ 二次确认：防误点（输入 CONFIRM 才执行）
+  function strongConfirm(action, amount){
+    const tip = action === "approve"
+      ? `确认要【通过入账】 $${amount.toFixed(2)} 吗？\n为防误点，请输入：CONFIRM`
+      : `确认要【拒绝】 $${amount.toFixed(2)} 吗？\n为防误点，请输入：CONFIRM`;
+    const v = prompt(tip, "");
+    return (v || "").trim().toUpperCase() === "CONFIRM";
+  }
 
   async function load(){
     statusText.textContent = "加载中…";
     tbody.innerHTML = "";
+    countBadge.textContent = "0";
+
     try{
+      // ✅ 后端：{ success, total, items }，items = Recharge 原始结构，userId populate 后是对象
       const data = await api("/api/admin/recharge/pending?limit=200");
       const items = data.items || [];
+
+      countBadge.textContent = String(items.length);
       statusText.textContent = "共 " + items.length + " 条 pending";
 
       if(items.length === 0){
@@ -100,17 +122,23 @@
         return;
       }
 
-      tbody.innerHTML = items.map(it => {
-        const userLine = (it.userName || "") + (it.userPhone ? (" / " + it.userPhone) : "");
+      tbody.innerHTML = items.map(r => {
+        const rid = r._id || r.id || "";
+        const u = r.userId || {}; // populate 后：{_id,name,phone}
+        const userLine = (u.name || "") + (u.phone ? (" / " + u.phone) : "");
+        const userIdText = (u._id || r.userId || "");
+        const amt = Number(r.amount || 0);
+        const remark = esc(r.remark || "");
+
         return `
-          <tr data-id="${it.id}">
-            <td>${fmtTime(it.createdAt)}</td>
+          <tr data-id="${esc(rid)}" data-amt="${esc(String(amt))}">
+            <td>${fmtTime(r.createdAt)}</td>
             <td>
-              <div>${userLine || it.userId}</div>
-              <div class="muted">${it.userId}</div>
+              <div>${esc(userLine || String(userIdText || ""))}</div>
+              <div class="muted">${esc(String(userIdText || ""))}</div>
             </td>
-            <td><b>$${Number(it.amount||0).toFixed(2)}</b></td>
-            <td class="remark">${(it.remark||"").replace(/</g,"&lt;")}</td>
+            <td><b>$${amt.toFixed(2)}</b></td>
+            <td class="remark">${remark}</td>
             <td>
               <div class="actions">
                 <button class="btn btn-ok" data-act="approve">通过入账</button>
@@ -120,8 +148,9 @@
           </tr>
         `;
       }).join("");
+
     }catch(e){
-      statusText.textContent = "加载失败：" + e.message;
+      statusText.textContent = "加载失败：" + (e.message || "error");
       tbody.innerHTML = '<tr><td colspan="5" class="muted">加载失败</td></tr>';
     }
   }
@@ -129,33 +158,39 @@
   tbody.addEventListener("click", async (ev) => {
     const btn = ev.target.closest("button[data-act]");
     if(!btn) return;
+
     const tr = ev.target.closest("tr[data-id]");
     const id = tr?.dataset?.id;
     if(!id) return;
 
     const act = btn.dataset.act;
+    const amount = Number(tr.dataset.amt || 0) || 0;
+
+    // ✅ 二次确认
+    if(!strongConfirm(act, amount)) return;
+
     const note = (adminNote.value || "").trim();
 
     btn.disabled = true;
+    const old = btn.textContent;
     btn.textContent = "处理中…";
 
     try{
-      if(act === "approve"){
-        await api("/api/admin/recharge/" + id + "/approve", {
-          method:"POST",
-          body: JSON.stringify({ note })
-        });
-      }else{
-        await api("/api/admin/recharge/" + id + "/reject", {
-          method:"POST",
-          body: JSON.stringify({ note })
-        });
-      }
+      const url =
+        act === "approve"
+          ? ("/api/admin/recharge/" + encodeURIComponent(id) + "/approve")
+          : ("/api/admin/recharge/" + encodeURIComponent(id) + "/reject");
+
+      await api(url, {
+        method:"POST",
+        body: JSON.stringify({ note })
+      });
+
       await load();
     }catch(e){
       alert(e.message || "操作失败");
       btn.disabled = false;
-      btn.textContent = act === "approve" ? "通过入账" : "拒绝";
+      btn.textContent = old;
     }
   });
 

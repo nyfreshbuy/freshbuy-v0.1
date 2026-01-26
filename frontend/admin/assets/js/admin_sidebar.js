@@ -25,7 +25,8 @@
         { text: "营销中心", href: "/admin/marketing.html", icon: "%" },
         { text: "结算管理", href: "/admin/settlements.html", icon: "$" },
         { text: "后台充值", href: "/admin/recharge.html", icon: "💰" },
-
+        { text: "Zelle充值审核", href: "/admin/recharge_audit.html", icon: "✅" },
+        { text: "充值对账", href: "/admin/recharge_reconcile.html", icon: "📒" },
         // ✅ 你要新增的：配送方式说明
         { text: "配送方式说明", href: "/admin/delivery_settings.html", icon: "📝" },
       ],

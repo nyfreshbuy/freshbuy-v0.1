@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>充值对账 - Freshbuy Admin</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <link rel="stylesheet" href="../user/assets/css/main.css" />
+  <style>
+    body{background:#f3f4f6;}
+    .wrap{max-width:980px;margin:20px auto;padding:0 14px;}
+    .card{background:#fff;border-radius:16px;box-shadow:0 6px 20px rgba(0,0,0,.08);padding:16px;margin-bottom:14px;}
+    .title{font-size:18px;font-weight:900;color:#111827;margin-bottom:10px;display:flex;justify-content:space-between;gap:10px;align-items:center;}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
+    input{padding:10px 12px;border:1px solid #e5e7eb;border-radius:12px;}
+    .btn{border:0;border-radius:12px;padding:10px 12px;cursor:pointer;font-weight:900;background:#16a34a;color:#fff;}
+    .muted{color:#64748b;font-size:12px;}
+    .kpi{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;}
+    .k{background:#f9fafb;border:1px solid #eef2f7;border-radius:14px;padding:12px;}
+    .k b{display:block;font-size:18px;margin-top:6px;}
+    table{width:100%;border-collapse:collapse;font-size:14px;margin-top:10px;}
+    th,td{padding:10px 8px;border-bottom:1px solid #eef2f7;vertical-align:top;}
+    th{text-align:left;color:#475569;font-size:12px;}
+  </style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="card">
+    <div class="title">📒 充值 + 钱包对账</div>
+    <div class="row">
+      <input id="phone" placeholder="手机号（推荐）" />
+      <input id="userId" placeholder="userId（可选）" style="width:360px;" />
+      <button id="btnGo" class="btn">查询</button>
+      <span id="hint" class="muted"></span>
+    </div>
+  </div>
+
+  <div class="card" id="kpiCard" style="display:none;">
+    <div class="title">
+      <div>用户：<span id="uName"></span> <span class="muted" id="uPhone"></span></div>
+      <div class="muted" id="uId"></div>
+    </div>
+    <div class="kpi">
+      <div class="k">Wallet.balance<b id="kBalance">$0.00</b></div>
+      <div class="k">Wallet.totalRecharge<b id="kTotal">$0.00</b></div>
+      <div class="k">Recharge doneSum<b id="kDone">$0.00</b></div>
+      <div class="k">diff (balance - doneSum)<b id="kDiff">$0.00</b></div>
+    </div>
+  </div>
+
+  <div class="card" id="listCard" style="display:none;">
+    <div class="title">最近 50 条充值记录</div>
+    <div style="overflow:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>时间</th>
+            <th>金额</th>
+            <th>方式</th>
+            <th>状态</th>
+            <th>备注</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  function getAdminToken(){
+    return localStorage.getItem("admin_token") || localStorage.getItem("token") || "";
+  }
+  async function api(url){
+    const token = getAdminToken();
+    const res = await fetch(url, {
+      headers: token ? { Authorization: "Bearer " + token } : {}
+    });
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok) throw new Error(data.message || ("HTTP " + res.status));
+    return data;
+  }
+  function money(n){ return "$" + (Number(n||0)).toFixed(2); }
+  function fmtTime(x){ try{return new Date(x).toLocaleString();}catch(e){return String(x||"");}}
+
+  const phone = document.getElementById("phone");
+  const userId = document.getElementById("userId");
+  const hint = document.getElementById("hint");
+
+  const kpiCard = document.getElementById("kpiCard");
+  const listCard = document.getElementById("listCard");
+  const tbody = document.getElementById("tbody");
+
+  async function go(){
+    hint.textContent = "查询中…";
+    kpiCard.style.display = "none";
+    listCard.style.display = "none";
+    tbody.innerHTML = "";
+
+    const p = (phone.value||"").trim();
+    const uid = (userId.value||"").trim();
+    if(!p && !uid){
+      hint.textContent = "请输入手机号或 userId";
+      return;
+    }
+
+    const qs = p ? ("phone=" + encodeURIComponent(p)) : ("userId=" + encodeURIComponent(uid));
+    const data = await api("/api/admin/recharge/reconcile?" + qs);
+
+    if(!data.found){
+      hint.textContent = data.message || "未找到用户";
+      return;
+    }
+
+    hint.textContent = "OK";
+
+    document.getElementById("uName").textContent = data.user?.name || "";
+    document.getElementById("uPhone").textContent = data.user?.phone ? (" / " + data.user.phone) : "";
+    document.getElementById("uId").textContent = data.user?.id || "";
+
+    document.getElementById("kBalance").textContent = money(data.wallet?.balance);
+    document.getElementById("kTotal").textContent = money(data.wallet?.totalRecharge);
+    document.getElementById("kDone").textContent = money(data.recharge?.doneSum);
+
+    const diff = Number(data.diff || 0);
+    document.getElementById("kDiff").textContent = money(diff);
+
+    kpiCard.style.display = "block";
+
+    const list = data.list || [];
+    tbody.innerHTML = list.map(r => `
+      <tr>
+        <td>${fmtTime(r.createdAt)}</td>
+        <td><b>${money(r.amount)}</b></td>
+        <td>${r.payMethod || ""}</td>
+        <td>${r.status || ""}</td>
+        <td>${String(r.remark||"").replace(/</g,"&lt;")}</td>
+      </tr>
+    `).join("");
+
+    listCard.style.display = "block";
+  }
+
+  document.getElementById("btnGo").addEventListener("click", ()=>{
+    go().catch(e=> hint.textContent = "失败：" + e.message);
+  });
+</script>
+</body>
+</html>
