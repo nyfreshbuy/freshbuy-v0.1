@@ -692,7 +692,32 @@
       refreshRecommendBadges();
     });
   }
+// ===============================
+// 详情页兜底：补 toggleCartDrawer
+// （不改 cart.js）
+// ===============================
+(function ensureToggleCartDrawer() {
+  if (typeof window.toggleCartDrawer === "function") return;
 
+  window.toggleCartDrawer = function (open) {
+    const drawer = document.getElementById("cartDrawer");
+    const backdrop = document.getElementById("cartBackdrop");
+    if (!drawer || !backdrop) return;
+
+    const isOpen = drawer.classList.contains("open");
+    const shouldOpen = typeof open === "boolean" ? open : !isOpen;
+
+    if (shouldOpen) {
+      drawer.classList.add("open");
+      backdrop.classList.add("open");
+    } else {
+      drawer.classList.remove("open");
+      backdrop.classList.remove("open");
+    }
+  };
+
+  console.log("✅ product_detail.js: toggleCartDrawer fallback mounted");
+})();
   window.addEventListener("DOMContentLoaded", () => {
     initDetailPage();
   });

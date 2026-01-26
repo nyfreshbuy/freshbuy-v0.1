@@ -46,7 +46,31 @@
     const v = el ? Number(el.value || 0) : 0;
     return Number.isFinite(v) ? v : 0;
   }
+    // =========================
+  // ✅ 关键修复：把 "productId::variantKey" 拆开（否则后端不扣库存）
+  // =========================
+  function normalizeCheckoutItems(items) {
+    return (items || []).map((it) => {
+      let pid = String(it.productId || it._id || it.id || "").trim();
+      let variantKey = String(it.variantKey || it.variant || "").trim();
 
+      // 兼容你现在的格式： "6970...c20c::var_xxx"
+      if (pid.includes("::")) {
+        const parts = pid.split("::");
+        pid = String(parts[0] || "").trim();
+        if (!variantKey) variantKey = String(parts[1] || "").trim();
+      }
+
+      const qty = Math.max(1, Math.floor(Number(it.qty || 1)));
+
+      return {
+        ...it,
+        productId: pid,     // ✅ 纯 ObjectId（24位）
+        variantKey,         // ✅ 单独传
+        qty,
+      };
+    });
+  }
   function buildShippingPayload() {
     // ⚠️ 你的 id 可能不同，这里按你常见写法先取
     const firstName = (document.getElementById("firstName")?.value || "").trim();
@@ -289,7 +313,7 @@ const payMethod = payMethodRaw === "wallet" ? "auto" : "stripe";
     const payload = {
       mode,
       deliveryMode: mode,
-      items: s.items,          // FreshCart 的 items（应含 productId/qty/variantKey）
+      items: normalizeCheckoutItems(s.items),         // FreshCart 的 items（应含 productId/qty/variantKey）
       shipping,
       receiver: shipping,
       tipAmount,
