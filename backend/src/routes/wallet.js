@@ -4,7 +4,7 @@ import User from "../models/user.js";
 import Wallet from "../models/Wallet.js";
 import Recharge from "../models/Recharge.js";
 import { requireLogin } from "../middlewares/auth.js";
-
+import RechargeRequest from "../models/RechargeRequest.js";
 const router = express.Router();
 
 console.log("✅ wallet (DB + login) 路由已加载");

@@ -33,7 +33,7 @@ import adminDashboardrouter from "./routes/admin_dashboard.js";
 import productsRouter from "./routes/products.js";
 import frontendProductsRouter from "./routes/frontendProducts.js";
 import categoriesRouter from "./routes/categories.js";
-
+import stripeWebhookRouter from "./routes/stripe_webhook.js";
 // ✅ 你现在真正用的 Stripe 支付路由（包含 /publishable-key /order-intent /webhook）
 import stripePayRouter from "./routes/pay_stripe.js";
 
@@ -84,7 +84,7 @@ console.log("🔥 当前运行的 server.js 来自 =====> ", url.fileURLToPath(i
 // 创建 app
 // =======================
 const app = express();
-
+app.use("/api/stripe", stripeWebhookRouter)
 /**
  * ✅✅✅ Stripe Webhook 必须 RAW BODY，且必须在 express.json() 之前
  *

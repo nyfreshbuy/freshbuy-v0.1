@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>Zelle 充值审核 - Freshbuy Admin</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <link rel="stylesheet" href="../user/assets/css/main.css" />
+  <style>
+    body { background:#f3f4f6; }
+    .wrap{ max-width: 980px; margin: 20px auto; padding: 0 14px; }
+    .card{ background:#fff; border-radius:16px; box-shadow:0 6px 20px rgba(0,0,0,.08); padding:16px; }
+    .title{ font-size:18px; font-weight:800; color:#111827; margin-bottom:12px; display:flex; justify-content:space-between; gap:10px; align-items:center; }
+    .btn{ border:0; border-radius:12px; padding:10px 12px; cursor:pointer; font-weight:700; }
+    .btn-primary{ background:#16a34a; color:#fff; }
+    .btn-ghost{ background:#eef2ff; color:#1f2937; }
+    table{ width:100%; border-collapse:collapse; font-size:14px; }
+    th,td{ padding:10px 8px; border-bottom:1px solid #f1f5f9; vertical-align:top; }
+    th{ text-align:left; color:#475569; font-size:12px; }
+    .actions{ display:flex; gap:8px; flex-wrap:wrap; }
+    .btn-ok{ background:#22c55e; color:#fff; }
+    .btn-no{ background:#ef4444; color:#fff; }
+    .muted{ color:#64748b; font-size:12px; }
+    .remark{ white-space:pre-wrap; max-width:360px; }
+    .topbar{ display:flex; gap:10px; align-items:center; }
+    input.note{ padding:9px 10px; border:1px solid #e5e7eb; border-radius:12px; width:260px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="title">
+        <div>💸 Zelle 充值审核（Pending）</div>
+        <div class="topbar">
+          <input class="note" id="adminNote" placeholder="备注（可选，例如：已到账 1/25）" />
+          <button class="btn btn-ghost" id="btnRefresh">刷新</button>
+        </div>
+      </div>
+
+      <div class="muted" id="statusText">加载中…</div>
+
+      <div style="overflow:auto; margin-top:10px;">
+        <table>
+          <thead>
+            <tr>
+              <th>时间</th>
+              <th>用户</th>
+              <th>金额</th>
+              <th>备注（ref/memo）</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+<script>
+  // ✅ 管理员 token 兜底（按你项目可能的 key 来）
+  function getAdminToken(){
+    return (
+      localStorage.getItem("admin_token") ||
+      localStorage.getItem("adminToken") ||
+      localStorage.getItem("token") ||   // 如果你后台也用 token
+      ""
+    );
+  }
+
+  function fmtTime(s){
+    try { return new Date(s).toLocaleString(); } catch(e){ return String(s||""); }
+  }
+
+  async function api(url, opts={}){
+    const token = getAdminToken();
+    const headers = Object.assign(
+      { "Content-Type":"application/json" },
+      opts.headers || {},
+      token ? { Authorization: "Bearer " + token } : {}
+    );
+    const res = await fetch(url, Object.assign({}, opts, { headers }));
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok) throw new Error(data.message || ("HTTP " + res.status));
+    return data;
+  }
+
+  const tbody = document.getElementById("tbody");
+  const statusText = document.getElementById("statusText");
+  const adminNote = document.getElementById("adminNote");
+
+  async function load(){
+    statusText.textContent = "加载中…";
+    tbody.innerHTML = "";
+    try{
+      const data = await api("/api/admin/recharge/pending?limit=200");
+      const items = data.items || [];
+      statusText.textContent = "共 " + items.length + " 条 pending";
+
+      if(items.length === 0){
+        tbody.innerHTML = '<tr><td colspan="5" class="muted">暂无 pending</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = items.map(it => {
+        const userLine = (it.userName || "") + (it.userPhone ? (" / " + it.userPhone) : "");
+        return `
+          <tr data-id="${it.id}">
+            <td>${fmtTime(it.createdAt)}</td>
+            <td>
+              <div>${userLine || it.userId}</div>
+              <div class="muted">${it.userId}</div>
+            </td>
+            <td><b>$${Number(it.amount||0).toFixed(2)}</b></td>
+            <td class="remark">${(it.remark||"").replace(/</g,"&lt;")}</td>
+            <td>
+              <div class="actions">
+                <button class="btn btn-ok" data-act="approve">通过入账</button>
+                <button class="btn btn-no" data-act="reject">拒绝</button>
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join("");
+    }catch(e){
+      statusText.textContent = "加载失败：" + e.message;
+      tbody.innerHTML = '<tr><td colspan="5" class="muted">加载失败</td></tr>';
+    }
+  }
+
+  tbody.addEventListener("click", async (ev) => {
+    const btn = ev.target.closest("button[data-act]");
+    if(!btn) return;
+    const tr = ev.target.closest("tr[data-id]");
+    const id = tr?.dataset?.id;
+    if(!id) return;
+
+    const act = btn.dataset.act;
+    const note = (adminNote.value || "").trim();
+
+    btn.disabled = true;
+    btn.textContent = "处理中…";
+
+    try{
+      if(act === "approve"){
+        await api("/api/admin/recharge/" + id + "/approve", {
+          method:"POST",
+          body: JSON.stringify({ note })
+        });
+      }else{
+        await api("/api/admin/recharge/" + id + "/reject", {
+          method:"POST",
+          body: JSON.stringify({ note })
+        });
+      }
+      await load();
+    }catch(e){
+      alert(e.message || "操作失败");
+      btn.disabled = false;
+      btn.textContent = act === "approve" ? "通过入账" : "拒绝";
+    }
+  });
+
+  document.getElementById("btnRefresh").addEventListener("click", load);
+
+  load();
+</script>
+</body>
+</html>

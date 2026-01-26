@@ -8,7 +8,7 @@ import { requireLogin } from "../middlewares/auth.js";
 const router = express.Router();
 router.use(express.json());
 
-console.log("✅ admin_recharge.js 已加载");
+console.log("✅ admin_recharge.js loaded");
 
 // 工具：ObjectId 兜底
 function toObjectIdMaybe(v) {
@@ -21,6 +21,21 @@ function normalizePhone(p) {
   return String(p || "").replace(/\D/g, "");
 }
 
+// 工具：admin 权限校验（你当前项目就是靠 req.user.role）
+function ensureAdmin(req, res) {
+  if (req.user?.role !== "admin") {
+    res.status(403).json({ success: false, message: "无权限（仅管理员可操作）" });
+    return false;
+  }
+  return true;
+}
+
+// ✅ ping
+router.get("/ping", requireLogin, (req, res) => {
+  if (!ensureAdmin(req, res)) return;
+  res.json({ ok: true, name: "admin_recharge" });
+});
+
 // ==================================================
 // POST /api/admin/recharge
 // body: { userId | phone, amount, bonus, remark }
@@ -28,9 +43,7 @@ function normalizePhone(p) {
 // ==================================================
 router.post("/", requireLogin, async (req, res) => {
   try {
-    if (req.user?.role !== "admin") {
-      return res.status(403).json({ success: false, message: "无权限（仅管理员可操作）" });
-    }
+    if (!ensureAdmin(req, res)) return;
 
     const { userId, phone, amount, bonus = "", remark = "后台充值" } = req.body;
 
@@ -118,9 +131,7 @@ router.post("/", requireLogin, async (req, res) => {
 // ==================================================
 router.get("/list", requireLogin, async (req, res) => {
   try {
-    if (req.user?.role !== "admin") {
-      return res.status(403).json({ success: false, message: "无权限（仅管理员可查看）" });
-    }
+    if (!ensureAdmin(req, res)) return;
 
     let { page = 1, pageSize = 20, limit, userId, phone, status } = req.query;
 
@@ -218,6 +229,128 @@ router.get("/list", requireLogin, async (req, res) => {
   } catch (err) {
     console.error("GET /api/admin/recharge/list error:", err);
     return res.status(500).json({ success: false, message: "查询充值记录失败" });
+  }
+});
+
+// ==================================================
+// GET /api/admin/recharge/pending?limit=200
+// ✅ 只列出 Zelle pending（用于后台审核）
+// ==================================================
+router.get("/pending", requireLogin, async (req, res) => {
+  try {
+    if (!ensureAdmin(req, res)) return;
+
+    const limit = Math.min(Number(req.query.limit || 200), 300);
+
+    const items = await Recharge.find({ payMethod: "zelle", status: "pending" })
+      .populate("userId", "phone name")
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .lean();
+
+    return res.json({ success: true, total: items.length, items });
+  } catch (err) {
+    console.error("GET /api/admin/recharge/pending error:", err);
+    return res.status(500).json({ success: false, message: "加载 pending 失败" });
+  }
+});
+
+// ==================================================
+// POST /api/admin/recharge/:id/approve
+// body: { note? }
+// ✅ pending -> done + Wallet.balance/totalRecharge 加钱（只加一次）
+// ==================================================
+router.post("/:id/approve", requireLogin, async (req, res) => {
+  try {
+    if (!ensureAdmin(req, res)) return;
+
+    const id = String(req.params.id || "").trim();
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: "非法 id" });
+    }
+
+    // ✅ 幂等：只处理 zelle + pending
+    const note = String(req.body?.note || "").trim();
+
+    const rec = await Recharge.findOneAndUpdate(
+      { _id: id, payMethod: "zelle", status: "pending" },
+      { $set: { status: "done" } },
+      { new: true }
+    );
+
+    if (!rec) {
+      const existed = await Recharge.findById(id).lean();
+      if (!existed) return res.status(404).json({ success: false, message: "记录不存在" });
+      return res.json({ success: true, message: `无需重复处理（当前状态=${existed.status}）` });
+    }
+
+    const amount = Number(rec.amount || 0);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      // 防守：金额异常则回滚状态
+      await Recharge.updateOne({ _id: id }, { $set: { status: "pending" } });
+      return res.status(400).json({ success: false, message: "金额异常，已回滚状态" });
+    }
+
+    // ✅ 追加 remark（用于审计）
+    const append = note ? ` | admin=${note}` : " | admin=approved";
+    await Recharge.updateOne({ _id: id }, { $set: { remark: String(rec.remark || "") + append } });
+
+    // ✅ 更新 Wallet（真实余额来源）
+    const wallet = await Wallet.findOneAndUpdate(
+      { userId: rec.userId },
+      { $inc: { balance: amount, totalRecharge: amount } },
+      { new: true, upsert: true }
+    ).lean();
+
+    return res.json({
+      success: true,
+      message: "已确认入账",
+      walletBalance: Number(wallet?.balance || 0),
+    });
+  } catch (err) {
+    console.error("POST /api/admin/recharge/:id/approve error:", err);
+    return res.status(500).json({ success: false, message: "入账失败" });
+  }
+});
+
+// ==================================================
+// POST /api/admin/recharge/:id/reject
+// body: { note? }
+// ✅ pending -> rejected（不加钱）
+// ==================================================
+router.post("/:id/reject", requireLogin, async (req, res) => {
+  try {
+    if (!ensureAdmin(req, res)) return;
+
+    const id = String(req.params.id || "").trim();
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: "非法 id" });
+    }
+
+    const note = String(req.body?.note || "").trim();
+
+    // ✅ 幂等：只处理 zelle + pending
+    const rec = await Recharge.findOneAndUpdate(
+      { _id: id, payMethod: "zelle", status: "pending" },
+      {
+        $set: {
+          status: "rejected",
+          remark: String(note ? `admin=${note}` : "admin=rejected"),
+        },
+      },
+      { new: true }
+    );
+
+    if (!rec) {
+      const existed = await Recharge.findById(id).lean();
+      if (!existed) return res.status(404).json({ success: false, message: "记录不存在" });
+      return res.json({ success: true, message: `无需重复处理（当前状态=${existed.status}）` });
+    }
+
+    return res.json({ success: true, message: "已拒绝" });
+  } catch (err) {
+    console.error("POST /api/admin/recharge/:id/reject error:", err);
+    return res.status(500).json({ success: false, message: "拒绝失败" });
   }
 });
 

@@ -3,16 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <title>账户充值 - 在鲜购 Freshbuy</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-
-  <link rel="stylesheet" href="../assets/css/main.css" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <link rel="stylesheet" href="./assets/css/main.css" />
 
   <style>
-    body {
-      background: #f3f4f6;
-    }
+    body { background: #f3f4f6; }
 
-    .recharge-container {
+    .recharge-container{
       max-width: 480px;
       margin: 24px auto;
       background: #fff;
@@ -21,78 +18,148 @@
       box-shadow: 0 6px 20px rgba(0,0,0,0.08);
     }
 
-    .recharge-title {
+    .recharge-title{
       font-size: 22px;
       font-weight: 700;
       margin-bottom: 16px;
       color: #111827;
     }
 
-    .balance-box {
+    .balance-box{
       background: linear-gradient(135deg, #22c55e, #16a34a);
-      color: #fff;
-      padding: 16px;
-      border-radius: 14px;
-      font-size: 16px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-      margin-bottom: 22px;
+      color:#fff;
+      padding:16px;
+      border-radius:14px;
+      font-size:16px;
+      box-shadow:0 4px 12px rgba(0,0,0,0.15);
+      margin-bottom:18px;
     }
 
-    .recharge-amount-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 12px;
-      margin-bottom: 24px;
+    .recharge-amount-grid{
+      display:grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap:12px;
+      margin-bottom:14px;
     }
 
-    .amount-item {
-      background: #fff;
-      border: 2px solid #e5e7eb;
-      border-radius: 12px;
-      padding: 14px 6px;
-      text-align: center;
-      cursor: pointer;
-      font-size: 16px;
-      font-weight: 600;
+    .amount-item{
+      background:#fff;
+      border:2px solid #e5e7eb;
+      border-radius:12px;
+      padding:14px 6px;
+      text-align:center;
+      cursor:pointer;
+      font-size:16px;
+      font-weight:700;
       transition: all .2s ease;
+      user-select:none;
+    }
+    .amount-item.active{
+      border-color:#16a34a;
+      background:#ecfdf5;
+      color:#15803d;
     }
 
-    .amount-item.active {
-      border-color: #16a34a;
-      background: #ecfdf5;
-      color: #15803d;
+    .custom-amount{
+      margin-bottom: 18px;
+    }
+    .custom-amount input{
+      width:100%;
+      padding:14px 12px;
+      border-radius:12px;
+      border:2px solid #e5e7eb;
+      font-size:16px;
+      outline:none;
+    }
+    .custom-amount input:focus{
+      border-color:#16a34a;
+      box-shadow: 0 0 0 3px rgba(34,197,94,.15);
+    }
+    .hint{
+      font-size:12px;
+      color:#6b7280;
+      margin-top:8px;
     }
 
-    .btn-recharge {
-      width: 100%;
-      padding: 14px 0;
+    .pay-method{
+      border-top:1px solid #f3f4f6;
+      padding-top:14px;
+      margin-top:6px;
+      margin-bottom:14px;
+    }
+    .pay-title{
+      font-weight:700;
+      color:#111827;
+      margin-bottom:10px;
+      font-size:14px;
+    }
+    .pay-item{
+      display:flex;
+      gap:10px;
+      align-items:center;
+      padding:10px 10px;
+      border:2px solid #e5e7eb;
+      border-radius:12px;
+      cursor:pointer;
+      margin-bottom:10px;
+      user-select:none;
+    }
+    .pay-item input{ transform: scale(1.1); }
+    .pay-item.active{
+      border-color:#16a34a;
+      background:#ecfdf5;
+    }
+
+    #zelleBox{
+      display:none;
+      background:#f9fafb;
+      border:2px dashed #d1d5db;
+      border-radius:12px;
+      padding:12px;
+      margin-top:10px;
+    }
+    .zelle-tip{
+      font-size:13px;
+      color:#111827;
+      line-height:1.5;
+    }
+    .zelle-tip b{ color:#16a34a; }
+
+    #zelleRef{
+      width:100%;
+      padding:12px;
+      border:2px solid #e5e7eb;
+      border-radius:12px;
+      margin-top:10px;
+      font-size:14px;
+      outline:none;
+    }
+
+    .btn-recharge{
+      width:100%;
+      padding:14px 0;
       background: linear-gradient(135deg, #22c55e, #16a34a);
-      border: none;
-      border-radius: 999px;
-      color: #fff;
-      font-size: 18px;
-      font-weight: bold;
-      cursor: pointer;
-      box-shadow: 0 4px 14px rgba(34, 197, 94, 0.35);
+      border:none;
+      border-radius:999px;
+      color:#fff;
+      font-size:18px;
+      font-weight:bold;
+      cursor:pointer;
+      box-shadow:0 4px 14px rgba(34,197,94,0.35);
     }
+    .btn-recharge:active{ transform: scale(.97); }
 
-    .btn-recharge:active {
-      transform: scale(.97);
+    .back-home{
+      text-align:center;
+      margin-top:22px;
+      font-size:14px;
+      color:#22c55e;
+      cursor:pointer;
     }
-
-    .back-home {
-      text-align: center;
-      margin-top: 22px;
-      font-size: 14px;
-      color: #22c55e;
-      cursor: pointer;
-    }
-
   </style>
 </head>
 
 <body>
-
   <div class="recharge-container">
     <div class="recharge-title">账户充值</div>
 
@@ -100,40 +167,191 @@
       账户余额：<span id="balanceAmount">$0.00</span>
     </div>
 
-    <div class="recharge-amount-grid">
-      <div class="amount-item" data-amount="20">$20</div>
-      <div class="amount-item" data-amount="50">$50</div>
-      <div class="amount-item" data-amount="100">$100</div>
-      <div class="amount-item" data-amount="150">$150</div>
+    <div class="recharge-amount-grid" id="amountGrid">
       <div class="amount-item" data-amount="200">$200</div>
       <div class="amount-item" data-amount="300">$300</div>
+      <div class="amount-item" data-amount="500">$500</div>
+      <div class="amount-item" data-amount="1000">$1000</div>
+    </div>
+
+    <div class="custom-amount">
+      <input type="number" id="customAmount" min="10" step="1" placeholder="自定义金额（最低 $10）" />
+      <div class="hint">提示：选固定金额或输入自定义金额（二选一）。</div>
+    </div>
+
+    <div class="pay-method">
+      <div class="pay-title">支付方式</div>
+
+      <label class="pay-item active">
+        <input type="radio" name="payMethod" value="stripe" checked />
+        <span>信用卡 / 借记卡（Stripe 自动入账）</span>
+      </label>
+
+      <label class="pay-item">
+        <input type="radio" name="payMethod" value="zelle" />
+        <span>Zelle（转账后人工确认入账）</span>
+      </label>
+
+      <div id="zelleBox">
+        <div class="zelle-tip">
+          请用 Zelle 转账到：<b id="zelleRecipient">加载中…</b><br/>
+          转账备注请写：<b id="zelleMemo">加载中…</b>
+        </div>
+        <input id="zelleRef" type="text" placeholder="填写你的 Zelle 参考信息（可选：姓名/手机号/确认号）" />
+      </div>
     </div>
 
     <button class="btn-recharge" id="btnRecharge">立即充值</button>
-
     <div class="back-home" onclick="goHome()">返回首页</div>
   </div>
 
 <script>
+  // ===== 兼容取 token：优先 Auth.getToken，其次 localStorage.token =====
+  function getToken() {
+    try {
+      if (window.Auth && typeof Auth.getToken === "function") return Auth.getToken() || "";
+    } catch (e) {}
+    return localStorage.getItem("token") || "";
+  }
+
+  function fmtMoney(n){
+    const x = Number(n || 0);
+    return "$" + x.toFixed(2);
+  }
+
+  // ====== 余额加载（如果你不是 /api/wallet/me，告诉我你实际接口我给你改）======
+  async function loadBalance(){
+    try{
+      const token = getToken();
+      const res = await fetch("/api/wallet/me", {
+        headers: token ? { Authorization: "Bearer " + token } : {}
+      });
+      const data = await res.json().catch(()=>({}));
+      // 兼容字段：balance / wallet.balance
+      const bal = (data && typeof data.balance === "number") ? data.balance : (data.wallet && data.wallet.balance) || 0;
+      document.getElementById("balanceAmount").textContent = fmtMoney(bal);
+    }catch(e){}
+  }
+
+  // ====== Zelle 收款信息 ======
+  async function loadZelleInfo(){
+    try{
+      const res = await fetch("/api/wallet/recharge/zelle-info");
+      const data = await res.json().catch(()=>({}));
+      document.getElementById("zelleRecipient").textContent = data.recipient || "";
+      // 给 memo 加个随机码更好对账：这里用时间戳后 4 位
+      const suffix = String(Date.now()).slice(-4);
+      document.getElementById("zelleMemo").textContent = (data.memoPrefix || "Freshbuy充值") + "-" + suffix;
+    }catch(e){
+      document.getElementById("zelleRecipient").textContent = "";
+      document.getElementById("zelleMemo").textContent = "Freshbuy充值";
+    }
+  }
+
   let selectedAmount = 0;
 
-  document.querySelectorAll(".amount-item").forEach(item => {
+  const amountItems = Array.from(document.querySelectorAll(".amount-item"));
+  const customAmount = document.getElementById("customAmount");
+  const btnRecharge = document.getElementById("btnRecharge");
+
+  // 固定金额点击
+  amountItems.forEach(item => {
     item.addEventListener("click", () => {
-      document.querySelectorAll(".amount-item").forEach(b => b.classList.remove("active"));
+      amountItems.forEach(b => b.classList.remove("active"));
       item.classList.add("active");
-      selectedAmount = Number(item.dataset.amount);
+      selectedAmount = Number(item.dataset.amount || 0);
+      customAmount.value = "";
     });
   });
 
-  document.getElementById("btnRecharge").addEventListener("click", () => {
-    if (!selectedAmount) return alert("请选择充值金额");
-
-    alert("🎉 充值成功 $" + selectedAmount);
+  // 自定义输入：清除固定选中
+  customAmount.addEventListener("input", () => {
+    amountItems.forEach(b => b.classList.remove("active"));
+    selectedAmount = Number(customAmount.value || 0);
   });
 
-  function goHome() {
-    window.location.href = "/user/index.html";
+  // 支付方式切换：高亮 + 展示 Zelle box
+  const payLabels = Array.from(document.querySelectorAll(".pay-item"));
+  const zelleBox = document.getElementById("zelleBox");
+
+  function refreshPayUI(){
+    const v = document.querySelector('input[name="payMethod"]:checked')?.value || "stripe";
+    payLabels.forEach(l => l.classList.remove("active"));
+    const activeLabel = payLabels.find(l => l.querySelector('input[value="'+v+'"]'));
+    if (activeLabel) activeLabel.classList.add("active");
+    zelleBox.style.display = v === "zelle" ? "block" : "none";
   }
+
+  document.querySelectorAll('input[name="payMethod"]').forEach(r => {
+    r.addEventListener("change", refreshPayUI);
+  });
+
+  // 立即充值：Stripe 或 Zelle
+  btnRecharge.addEventListener("click", async () => {
+    if (!selectedAmount || selectedAmount < 10) return alert("请输入有效充值金额（最低 $10）");
+
+    const method = document.querySelector('input[name="payMethod"]:checked')?.value || "stripe";
+    const token = getToken();
+
+    if (!token) {
+      alert("请先登录后再充值");
+      return;
+    }
+
+    btnRecharge.disabled = true;
+    btnRecharge.textContent = "处理中...";
+
+    try {
+      if (method === "stripe") {
+        const res = await fetch("/api/wallet/recharge/create", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + token,
+          },
+          body: JSON.stringify({ amount: selectedAmount }),
+        });
+
+        const data = await res.json().catch(()=>({}));
+        if (data && data.url) {
+          location.href = data.url;
+          return;
+        }
+        throw new Error(data.message || "创建 Stripe 支付失败");
+      } else {
+        const ref = (document.getElementById("zelleRef").value || "").trim();
+        const memoShown = (document.getElementById("zelleMemo").textContent || "").trim();
+
+        const res = await fetch("/api/wallet/recharge/zelle", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + token,
+          },
+          body: JSON.stringify({ amount: selectedAmount, ref, memo: memoShown }),
+        });
+
+        const data = await res.json().catch(()=>({}));
+        if (!res.ok) throw new Error(data.message || "提交 Zelle 申请失败");
+
+        alert("已提交 Zelle 充值申请。我们确认收到转账后会入账。");
+        // 可选：清空
+        document.getElementById("zelleRef").value = "";
+      }
+    } catch (e) {
+      alert(e.message || "网络错误");
+    } finally {
+      btnRecharge.disabled = false;
+      btnRecharge.textContent = "立即充值";
+    }
+  });
+
+  function goHome(){ window.location.href = "/user/index.html"; }
+
+  // init
+  refreshPayUI();
+  loadBalance();
+  loadZelleInfo();
 </script>
 
 </body>
