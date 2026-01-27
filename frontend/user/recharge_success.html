@@ -53,28 +53,44 @@
       margin-right:6px;
     }
     @keyframes s { to { transform: rotate(360deg);} }
+    .small{
+      font-size:12px;color:#64748b;margin-top:12px;line-height:1.5;
+      text-align:left;background:#f8fafc;border:1px dashed #e5e7eb;border-radius:12px;padding:10px 12px;
+    }
+    .tag{
+      display:inline-block;font-size:12px;font-weight:800;
+      padding:4px 10px;border-radius:999px;
+      background:#ecfdf5;color:#15803d;border:1px solid #bbf7d0;
+      margin-top:6px;
+    }
+    .tag-warn{
+      background:#fff7ed;color:#9a3412;border:1px solid #fed7aa;
+    }
   </style>
 </head>
 <body>
   <div class="box">
     <div class="ok">✓</div>
     <h1>充值已完成</h1>
-    <p>
-      我们正在为你刷新账户余额。若余额未立刻更新，可能正在入账处理中，请稍后再刷新一次。
-    </p>
+    <p>我们正在为你刷新账户余额。若余额未立刻更新，可能正在入账处理中，请稍后再刷新一次。</p>
 
     <div class="row">
       <div class="label">当前账户余额</div>
       <div class="val" id="balText"><span class="spin"></span>加载中…</div>
       <div class="muted" id="balHint"></div>
+      <div id="stateTag" class="tag" style="display:none;"></div>
     </div>
 
     <button class="btn" id="btnRefresh">手动刷新余额</button>
     <button class="btn btn-ghost" onclick="goRecharge()">返回充值页</button>
     <button class="btn btn-ghost" onclick="goHome()">返回首页</button>
 
-    <div class="muted" style="margin-top:12px;">
-      小提示：Stripe 支付成功后，如果你还没做 webhook 自动入账，余额可能不会自动增加。
+    <div class="small">
+      <b>提示：</b>
+      Stripe 支付成功后，余额需要后端 webhook 入账才能增加。若你已部署 webhook 仍未更新，通常是：
+      <br/>1) 成功页调用的余额接口不是你真实接口
+      <br/>2) token 不对/没登录
+      <br/>3) webhook 没命中或 STRIPE_WEBHOOK_SECRET 不匹配（test/live）
     </div>
   </div>
 
@@ -92,54 +108,127 @@
     return "$" + x.toFixed(2);
   }
 
-  async function loadBalance(){
-    const balText = document.getElementById("balText");
-    const balHint = document.getElementById("balHint");
-    const token = getToken();
+  // 解析余额（兼容多个字段结构）
+  function pickBalance(data){
+    if (!data || typeof data !== "object") return null;
 
+    // 常见字段
+    if (typeof data.balance === "number") return data.balance;
+    if (typeof data.walletBalance === "number") return data.walletBalance;
+
+    // wallet: { balance }
+    if (data.wallet && typeof data.wallet.balance === "number") return data.wallet.balance;
+
+    // me: { wallet: { balance } }
+    if (data.me && data.me.wallet && typeof data.me.wallet.balance === "number") return data.me.wallet.balance;
+
+    // user: { walletBalance }
+    if (data.user && typeof data.user.walletBalance === "number") return data.user.walletBalance;
+
+    return null;
+  }
+
+  // 尝试多个接口，哪个返回了 balance 就用哪个
+  const BALANCE_ENDPOINTS = [
+    "/api/wallet/me",
+    "/api/wallet/my",
+    "/api/wallet/balance",
+    "/api/users/me",
+  ];
+
+  const balText = document.getElementById("balText");
+  const balHint = document.getElementById("balHint");
+  const stateTag = document.getElementById("stateTag");
+  const btnRefresh = document.getElementById("btnRefresh");
+
+  let lastBalance = null;
+
+  function setTag(type, text){
+    stateTag.style.display = "inline-block";
+    stateTag.className = "tag" + (type === "warn" ? " tag-warn" : "");
+    stateTag.textContent = text;
+  }
+
+  async function fetchBalanceOnce(){
+    const token = getToken();
+    if (!token) throw new Error("未登录（缺少 token）");
+
+    for (const url of BALANCE_ENDPOINTS) {
+      try {
+        const res = await fetch(url, {
+          headers: { Authorization: "Bearer " + token }
+        });
+        const data = await res.json().catch(()=>({}));
+        if (!res.ok) continue;
+
+        const bal = pickBalance(data);
+        if (typeof bal === "number") {
+          return { bal, from: url, raw: data };
+        }
+      } catch (e) {
+        // 单个接口失败就尝试下一个
+      }
+    }
+    throw new Error("未从任何余额接口获取到 balance（请确认后端余额接口）");
+  }
+
+  async function loadBalance(){
+    const token = getToken();
     if (!token) {
       balText.textContent = "未登录";
       balHint.textContent = "请先登录后查看余额。";
+      setTag("warn", "需要登录");
       return;
     }
 
     balText.innerHTML = '<span class="spin"></span>加载中…';
     balHint.textContent = "";
+    stateTag.style.display = "none";
 
     try{
-      // ⚠️ 如果你真实接口不是 /api/wallet/me，就改这里
-      const res = await fetch("/api/wallet/me", {
-        headers: { Authorization: "Bearer " + token }
-      });
-      const data = await res.json().catch(()=>({}));
-
-      if (!res.ok) throw new Error(data.message || ("HTTP " + res.status));
-
-      // 兼容字段：balance / wallet.balance / walletBalance
-      const bal =
-        (typeof data.balance === "number" ? data.balance : undefined) ??
-        (typeof data.walletBalance === "number" ? data.walletBalance : undefined) ??
-        (data.wallet && typeof data.wallet.balance === "number" ? data.wallet.balance : undefined) ??
-        0;
+      const out = await fetchBalanceOnce();
+      const bal = out.bal;
 
       balText.textContent = fmtMoney(bal);
 
-      // 如果余额没有变化，给点提示（不做强判断，只是提示）
-      balHint.textContent = "余额已刷新。若刚支付完成但未变化，可能正在入账处理中，可稍后再试。";
-    }catch(e){
+      if (lastBalance === null) {
+        setTag("ok", "已刷新");
+        balHint.textContent = "来源接口：" + out.from;
+      } else if (bal > lastBalance) {
+        setTag("ok", "已入账");
+        balHint.textContent = "余额已更新（入账完成）。来源接口：" + out.from;
+      } else if (bal === lastBalance) {
+        setTag("warn", "入账处理中");
+        balHint.textContent = "余额暂未变化，可能 webhook 正在入账处理中，稍后自动再试。来源接口：" + out.from;
+      } else {
+        setTag("warn", "余额变动");
+        balHint.textContent = "余额与上次不同（减少/变化）。来源接口：" + out.from;
+      }
+
+      lastBalance = bal;
+
+      // 可选：同步缓存，避免其它页面显示旧值
+      try {
+        localStorage.setItem("freshbuy_wallet_balance", String(bal));
+        localStorage.setItem("wallet_balance", String(bal));
+      } catch (e) {}
+    } catch(e){
       balText.textContent = "加载失败";
       balHint.textContent = "原因：" + (e.message || "网络错误");
+      setTag("warn", "加载失败");
     }
   }
 
   function goRecharge(){ location.href = "/user/recharge.html"; }
   function goHome(){ location.href = "/user/index.html"; }
 
-  document.getElementById("btnRefresh").addEventListener("click", loadBalance);
+  btnRefresh.addEventListener("click", loadBalance);
 
-  // 自动刷新：进入页面立即拉一次 + 3秒后再拉一次（给 webhook 入账一点时间）
+  // 自动刷新：0s / 2s / 5s / 10s（给 webhook 入账时间）
   loadBalance();
-  setTimeout(loadBalance, 3000);
+  setTimeout(loadBalance, 2000);
+  setTimeout(loadBalance, 5000);
+  setTimeout(loadBalance, 10000);
 </script>
 </body>
 </html>

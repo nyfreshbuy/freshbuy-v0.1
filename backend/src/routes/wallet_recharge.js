@@ -8,17 +8,24 @@ import Recharge from "../models/Recharge.js";
 const router = express.Router();
 router.use(express.json());
 
+console.log("✅ wallet_recharge.js loaded");
+
+// Stripe 初始化
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
   apiVersion: "2023-10-16",
 });
 
+// -------------------------
 // 工具：ObjectId 兜底
+// -------------------------
 function toObjectIdMaybe(v) {
   const s = String(v || "").trim();
   return mongoose.Types.ObjectId.isValid(s) ? new mongoose.Types.ObjectId(s) : null;
 }
 
+// -------------------------
 // 工具：前端域名兜底 + 自动补 https + 去掉末尾 /
+// -------------------------
 function getFrontendBaseUrl() {
   const raw = String(process.env.FRONTEND_BASE_URL || "").trim() || "https://nyfreshbuy.com";
   const withScheme =
@@ -34,12 +41,18 @@ function getFrontendBaseUrl() {
 router.get("/ping", (req, res) => {
   res.json({ ok: true, name: "wallet_recharge" });
 });
+
+// ===================================================
+// GET /api/wallet/recharge/__debug
+// 用来确认 Render 是否部署了最新代码
+// ===================================================
 router.get("/__debug", (req, res) => {
   res.json({
     ok: true,
     file: "backend/src/routes/wallet_recharge.js",
     ts: new Date().toISOString(),
-    hasPIData: true, // 你可以手动写死，部署后用来确认线上是否更新
+    hasPIData: true,
+    frontendBase: getFrontendBaseUrl(),
   });
 });
 
@@ -47,19 +60,26 @@ router.get("/__debug", (req, res) => {
 // POST /api/wallet/recharge/create
 // ✅ 创建 Stripe Checkout（钱包充值）
 // body: { amount }
+// 返回：{ success:true, url }
 // ===================================================
 router.post("/create", requireLogin, async (req, res) => {
   try {
     const userId = toObjectIdMaybe(req.user?.id || req.user?._id);
-    if (!userId) return res.status(401).json({ message: "未登录" });
+    if (!userId) return res.status(401).json({ success: false, message: "未登录" });
 
     if (!process.env.STRIPE_SECRET_KEY) {
-      return res.status(500).json({ message: "Stripe 未配置（缺少 STRIPE_SECRET_KEY）" });
+      return res.status(500).json({
+        success: false,
+        message: "Stripe 未配置（缺少 STRIPE_SECRET_KEY）",
+      });
     }
 
     const amount = Number(req.body?.amount || 0);
     if (!Number.isFinite(amount) || amount < 10) {
-      return res.status(400).json({ message: "充值金额不合法（最低 $10）" });
+      return res.status(400).json({
+        success: false,
+        message: "充值金额不合法（最低 $10）",
+      });
     }
 
     const FRONTEND = getFrontendBaseUrl();
@@ -71,6 +91,14 @@ router.post("/create", requireLogin, async (req, res) => {
       payMethod: "stripe",
       status: "pending",
       remark: "Stripe wallet recharge",
+    });
+
+    // ✅ DEBUG：确认线上走到这里
+    console.log("💳 [wallet_recharge/create] creating checkout", {
+      userId: String(userId),
+      amount,
+      rechargeId: String(recharge._id),
+      frontend: FRONTEND,
     });
 
     // 2) 创建 Stripe Checkout Session
@@ -89,7 +117,7 @@ router.post("/create", requireLogin, async (req, res) => {
         },
       ],
 
-      // ✅ 关键：把 metadata 同时写进 PaymentIntent（webhook 的 payment_intent.succeeded 用）
+      // ✅ 关键：把 metadata 写进 PaymentIntent（payment_intent.succeeded 能读到）
       payment_intent_data: {
         metadata: {
           type: "wallet_recharge",
@@ -99,7 +127,7 @@ router.post("/create", requireLogin, async (req, res) => {
         },
       },
 
-      // ✅ Session metadata（webhook 的 checkout.session.completed 也能用）
+      // ✅ Session metadata（checkout.session.completed 可读）
       metadata: {
         type: "wallet_recharge",
         rechargeId: recharge._id.toString(),
@@ -111,10 +139,18 @@ router.post("/create", requireLogin, async (req, res) => {
       cancel_url: `${FRONTEND}/user/recharge_cancel.html`,
     });
 
+    console.log("💳 [wallet_recharge/create] checkout created", {
+      sessionId: session?.id,
+      pi: session?.payment_intent || null,
+    });
+
     return res.json({ success: true, url: session.url });
   } catch (err) {
-    console.error("POST /wallet/recharge/create error:", err?.message || err, err);
-    return res.status(500).json({ message: err?.message || "创建 Stripe 充值失败" });
+    console.error("POST /api/wallet/recharge/create error:", err?.message || err, err);
+    return res.status(500).json({
+      success: false,
+      message: err?.message || "创建 Stripe 充值失败",
+    });
   }
 });
 
@@ -141,11 +177,14 @@ router.get("/zelle-info", (req, res) => {
 router.post("/zelle", requireLogin, async (req, res) => {
   try {
     const userId = toObjectIdMaybe(req.user?.id || req.user?._id);
-    if (!userId) return res.status(401).json({ message: "未登录" });
+    if (!userId) return res.status(401).json({ success: false, message: "未登录" });
 
     const amount = Number(req.body?.amount || 0);
     if (!Number.isFinite(amount) || amount < 10) {
-      return res.status(400).json({ message: "充值金额不合法（最低 $10）" });
+      return res.status(400).json({
+        success: false,
+        message: "充值金额不合法（最低 $10）",
+      });
     }
 
     const ref = String(req.body?.ref || "").trim();
@@ -163,14 +202,24 @@ router.post("/zelle", requireLogin, async (req, res) => {
       remark: remarkParts.join(" | ") || "Zelle recharge request",
     });
 
+    console.log("💸 [wallet_recharge/zelle] submitted", {
+      userId: String(userId),
+      amount,
+      rechargeId: String(rec._id),
+      remark: rec.remark,
+    });
+
     return res.json({
       success: true,
       message: "已提交 Zelle 充值申请（待审核）",
       id: rec._id.toString(),
     });
   } catch (err) {
-    console.error("POST /wallet/recharge/zelle error:", err);
-    return res.status(500).json({ message: "提交 Zelle 申请失败" });
+    console.error("POST /api/wallet/recharge/zelle error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "提交 Zelle 申请失败",
+    });
   }
 });
 
