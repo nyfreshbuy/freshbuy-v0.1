@@ -259,7 +259,7 @@ router.post("/webhook", express.raw({ type: "application/json" }), async (req, r
 
       return res.json({ received: true });
     }
-
+    console.log("🔎 PI.metadata =", pi?.metadata);
     // =====================================================
     // C) payment_intent.payment_failed
     // =====================================================
