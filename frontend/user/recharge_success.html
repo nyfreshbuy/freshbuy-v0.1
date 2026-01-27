@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>充值成功 - Freshbuy</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <link rel="stylesheet" href="./assets/css/main.css" />
+  <style>
+    body{background:#f3f4f6;}
+    .box{
+      max-width:520px;margin:30px auto;background:#fff;border-radius:18px;
+      padding:22px;box-shadow:0 8px 26px rgba(0,0,0,.08);
+      text-align:center;
+    }
+    .ok{
+      width:72px;height:72px;border-radius:50%;
+      background:#22c55e;color:#fff;display:flex;align-items:center;justify-content:center;
+      margin:6px auto 14px;font-size:34px;font-weight:900;
+    }
+    h1{margin:0 0 10px;font-size:20px;color:#111827;}
+    p{margin:0 0 16px;color:#64748b;font-size:14px;line-height:1.6;}
+    .row{
+      margin:14px 0 6px;
+      padding:14px 14px;
+      border:2px solid #e5e7eb;
+      border-radius:14px;
+      background:#f9fafb;
+      text-align:left;
+    }
+    .row .label{font-size:12px;color:#64748b;margin-bottom:6px;}
+    .row .val{font-size:20px;font-weight:900;color:#111827;}
+    .muted{font-size:12px;color:#64748b;margin-top:10px;}
+    .btn{
+      display:block;width:100%;
+      border:0;border-radius:999px;
+      padding:14px 12px;
+      background:linear-gradient(135deg,#22c55e,#16a34a);
+      color:#fff;font-weight:900;font-size:16px;
+      cursor:pointer;
+      margin-top:10px;
+    }
+    .btn-ghost{
+      background:#eef2ff;color:#111827;
+    }
+    .spin{
+      display:inline-block;
+      width:14px;height:14px;
+      border:2px solid rgba(0,0,0,.15);
+      border-top-color: rgba(0,0,0,.55);
+      border-radius:50%;
+      animation: s 0.8s linear infinite;
+      vertical-align:-2px;
+      margin-right:6px;
+    }
+    @keyframes s { to { transform: rotate(360deg);} }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <div class="ok">✓</div>
+    <h1>充值已完成</h1>
+    <p>
+      我们正在为你刷新账户余额。若余额未立刻更新，可能正在入账处理中，请稍后再刷新一次。
+    </p>
+
+    <div class="row">
+      <div class="label">当前账户余额</div>
+      <div class="val" id="balText"><span class="spin"></span>加载中…</div>
+      <div class="muted" id="balHint"></div>
+    </div>
+
+    <button class="btn" id="btnRefresh">手动刷新余额</button>
+    <button class="btn btn-ghost" onclick="goRecharge()">返回充值页</button>
+    <button class="btn btn-ghost" onclick="goHome()">返回首页</button>
+
+    <div class="muted" style="margin-top:12px;">
+      小提示：Stripe 支付成功后，如果你还没做 webhook 自动入账，余额可能不会自动增加。
+    </div>
+  </div>
+
+<script>
+  // ===== 兼容取 token：优先 Auth.getToken，其次 localStorage.token =====
+  function getToken() {
+    try {
+      if (window.Auth && typeof Auth.getToken === "function") return Auth.getToken() || "";
+    } catch (e) {}
+    return localStorage.getItem("token") || "";
+  }
+
+  function fmtMoney(n){
+    const x = Number(n || 0);
+    return "$" + x.toFixed(2);
+  }
+
+  async function loadBalance(){
+    const balText = document.getElementById("balText");
+    const balHint = document.getElementById("balHint");
+    const token = getToken();
+
+    if (!token) {
+      balText.textContent = "未登录";
+      balHint.textContent = "请先登录后查看余额。";
+      return;
+    }
+
+    balText.innerHTML = '<span class="spin"></span>加载中…';
+    balHint.textContent = "";
+
+    try{
+      // ⚠️ 如果你真实接口不是 /api/wallet/me，就改这里
+      const res = await fetch("/api/wallet/me", {
+        headers: { Authorization: "Bearer " + token }
+      });
+      const data = await res.json().catch(()=>({}));
+
+      if (!res.ok) throw new Error(data.message || ("HTTP " + res.status));
+
+      // 兼容字段：balance / wallet.balance / walletBalance
+      const bal =
+        (typeof data.balance === "number" ? data.balance : undefined) ??
+        (typeof data.walletBalance === "number" ? data.walletBalance : undefined) ??
+        (data.wallet && typeof data.wallet.balance === "number" ? data.wallet.balance : undefined) ??
+        0;
+
+      balText.textContent = fmtMoney(bal);
+
+      // 如果余额没有变化，给点提示（不做强判断，只是提示）
+      balHint.textContent = "余额已刷新。若刚支付完成但未变化，可能正在入账处理中，可稍后再试。";
+    }catch(e){
+      balText.textContent = "加载失败";
+      balHint.textContent = "原因：" + (e.message || "网络错误");
+    }
+  }
+
+  function goRecharge(){ location.href = "/user/recharge.html"; }
+  function goHome(){ location.href = "/user/index.html"; }
+
+  document.getElementById("btnRefresh").addEventListener("click", loadBalance);
+
+  // 自动刷新：进入页面立即拉一次 + 3秒后再拉一次（给 webhook 入账一点时间）
+  loadBalance();
+  setTimeout(loadBalance, 3000);
+</script>
+</body>
+</html>

@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>充值取消 - Freshbuy</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <link rel="stylesheet" href="./assets/css/main.css" />
+  <style>
+    body{background:#f3f4f6;}
+    .box{max-width:520px;margin:30px auto;background:#fff;border-radius:18px;padding:22px;box-shadow:0 8px 26px rgba(0,0,0,.08);text-align:center;}
+    h1{margin:0 0 10px;font-size:20px;color:#111827;}
+    p{margin:0 0 16px;color:#64748b;font-size:14px;line-height:1.5;}
+    .btn{display:block;width:100%;border:0;border-radius:999px;padding:14px 12px;background:#16a34a;color:#fff;font-weight:900;font-size:16px;cursor:pointer;margin-top:10px;}
+    .btn-ghost{background:#eef2ff;color:#111827;}
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h1>已取消充值</h1>
+    <p>你可以返回充值页重新选择金额再支付。</p>
+    <button class="btn" onclick="goRecharge()">返回充值页</button>
+    <button class="btn btn-ghost" onclick="goHome()">返回首页</button>
+  </div>
+<script>
+  function goRecharge(){ location.href="/user/recharge.html"; }
+  function goHome(){ location.href="/user/index.html"; }
+</script>
+</body>
+</html>

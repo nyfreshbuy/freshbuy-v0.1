@@ -1,19 +1,21 @@
 // backend/src/routes/stripe_webhook.js
 // ✅ Stripe webhook：
-// 1) 订单：payment_intent.succeeded -> Order 标记已支付（你原有逻辑）
-// 2) 充值：checkout.session.completed -> User.walletBalance 增加 + 写 Recharge 记录（新增）
+// 1) 订单支付成功 -> 更新 Order 为 paid（你原来的逻辑保留+增强）
+// 2) 钱包充值成功 -> Recharge: pending->done + Wallet.balance += amount（幂等防重复）
+//
+// ⚠️ 注意：这个路由必须挂在 express.json() 之前（因为 webhook 需要 raw body）
 
 import express from "express";
 import Stripe from "stripe";
 import mongoose from "mongoose";
 
 import Order from "../models/order.js";
-import User from "../models/user.js";
 import Recharge from "../models/Recharge.js";
+import Wallet from "../models/Wallet.js";
 
 const router = express.Router();
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
   apiVersion: "2023-10-16",
 });
 
@@ -31,6 +33,68 @@ function toObjectIdMaybe(v) {
   return mongoose.Types.ObjectId.isValid(s) ? new mongoose.Types.ObjectId(s) : null;
 }
 
+function moneyFromCents(cents) {
+  const n = Number(cents || 0);
+  return Math.round(n) / 100;
+}
+
+async function applyWalletRechargeFromMeta(meta, extra = {}) {
+  // meta: { type, rechargeId, amount, userId }
+  if (!meta) return { ok: false, reason: "no_meta" };
+
+  const type = String(meta.type || "").trim();
+  if (type !== "wallet_recharge") return { ok: false, reason: "not_wallet_recharge" };
+
+  const rechargeId = String(meta.rechargeId || "").trim();
+  if (!rechargeId || !mongoose.Types.ObjectId.isValid(rechargeId)) {
+    return { ok: false, reason: "bad_rechargeId", rechargeId };
+  }
+
+  // amount 优先来自 meta.amount，其次用 extra.amount
+  const amount =
+    Number(meta.amount || 0) ||
+    Number(extra.amount || 0);
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return { ok: false, reason: "bad_amount", amount };
+  }
+
+  const rec = await Recharge.findById(rechargeId).lean();
+  if (!rec) return { ok: false, reason: "recharge_not_found", rechargeId };
+
+  // ✅ 幂等：如果已 done，直接不再入账
+  if (String(rec.status || "") === "done") {
+    return { ok: true, already: true, rechargeId, amount };
+  }
+
+  // ✅ 将 Recharge 标记为 done（带条件，防并发重复）
+  const r1 = await Recharge.updateOne(
+    { _id: rec._id, status: { $ne: "done" } },
+    {
+      $set: {
+        status: "done",
+        paidAt: new Date(),
+        // 把 extra 信息写进 remark 方便追溯
+        remark: String(rec.remark || "") + (extra.remarkAppend ? ` | ${extra.remarkAppend}` : ""),
+      },
+    }
+  );
+
+  // 如果并发下别人先改 done 了，这里 matched/modified 可能为 0，此时不要再加钱
+  if (!r1.modifiedCount) {
+    return { ok: true, already: true, rechargeId, amount, note: "status_already_done_by_other_worker" };
+  }
+
+  // ✅ 钱包加钱（Wallet 是你余额来源）
+  const w = await Wallet.findOneAndUpdate(
+    { userId: rec.userId },
+    { $inc: { balance: amount, totalRecharge: amount } },
+    { new: true, upsert: true }
+  ).lean();
+
+  return { ok: true, rechargeId, amount, walletBalance: Number(w?.balance || 0) };
+}
+
 /**
  * ✅ Webhook 必须 raw body（不能被 express.json() 解析过）
  * 注意：在主入口 server.js 里，这个路由必须挂在 express.json() 之前
@@ -41,7 +105,11 @@ router.post("/webhook", express.raw({ type: "application/json" }), async (req, r
 
   // 1) 验签
   try {
-    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+    event = stripe.webhooks.constructEvent(
+      req.body,
+      sig,
+      process.env.STRIPE_WEBHOOK_SECRET || ""
+    );
   } catch (err) {
     console.error("❌ Stripe Webhook 验签失败:", err.message);
     return res.status(400).send("Webhook Error");
@@ -49,78 +117,66 @@ router.post("/webhook", express.raw({ type: "application/json" }), async (req, r
 
   try {
     // =====================================================
-    // A) ✅ 充值：Checkout Session 支付完成
-    // 你在 /api/recharge/stripe/create 里用的是 checkout.sessions.create
-    // 所以成功事件是 checkout.session.completed
-    // metadata 必须有：userId / rechargeAmount
+    // A) 钱包充值（推荐优先处理 checkout.session.completed）
     // =====================================================
     if (event.type === "checkout.session.completed") {
-      const session = event.data.object;
+      const sess = event.data.object;
 
-      const sessionId = String(session?.id || "");
-      const paymentIntentId = String(session?.payment_intent || "");
-      const metaUserId = session?.metadata?.userId ? String(session.metadata.userId) : "";
-      const metaAmount = session?.metadata?.rechargeAmount ? Number(session.metadata.rechargeAmount) : 0;
+      // sess.metadata 来自你 wallet_recharge.js 的 metadata
+      const meta = sess?.metadata || {};
+      const amount =
+        Number(meta.amount || 0) ||
+        moneyFromCents(sess?.amount_total); // 兜底
 
-      const uid = toObjectIdMaybe(metaUserId);
+      const out = await applyWalletRechargeFromMeta(meta, {
+        amount,
+        remarkAppend: `stripe_session=${sess?.id || ""}`,
+      });
 
-      // amount 兜底：优先 metadata，其次 session.amount_total
-      const amountTotal = Number(session?.amount_total || 0) / 100;
-      const amount = metaAmount > 0 ? metaAmount : amountTotal;
-
-      // 基础校验
-      if (!uid || !amount || amount <= 0) {
-        console.warn("⚠️ recharge webhook missing metadata/amount:", {
+      if (out.ok && (out.already || out.walletBalance !== undefined)) {
+        console.log("✅ Stripe webhook wallet (session.completed):", {
           event: event.type,
-          sessionId,
-          metaUserId,
-          metaAmount,
-          amountTotal,
+          session: sess?.id,
+          rechargeId: out.rechargeId,
+          amount: out.amount,
+          walletBalance: out.walletBalance,
+          already: !!out.already,
         });
         return res.json({ received: true });
       }
-
-      // ✅ 幂等：同一个 session / payment_intent 不能重复入账
-      const dedupOr = [];
-      if (sessionId) dedupOr.push({ remark: { $regex: `session=${sessionId}` } });
-      if (paymentIntentId) dedupOr.push({ remark: { $regex: `pi=${paymentIntentId}` } });
-
-      const existing = dedupOr.length
-        ? await Recharge.findOne({ payMethod: "stripe", $or: dedupOr }).lean()
-        : null;
-
-      if (existing) {
-        return res.json({ received: true, dedup: true });
-      }
-
-      // 1) 写充值记录（done）
-      await Recharge.create({
-        userId: uid,
-        amount: amount,
-        bonus: "",
-        payMethod: "stripe",
-        status: "done",
-        remark: `session=${sessionId}${paymentIntentId ? " | pi=" + paymentIntentId : ""}`,
-      });
-
-      // 2) 加钱包余额
-      await User.updateOne({ _id: uid }, { $inc: { walletBalance: amount } });
-
-      console.log("✅ Recharge credited:", {
-        userId: String(uid),
-        amount,
-        sessionId,
-        paymentIntentId,
-      });
+      // 如果不是钱包充值，继续往下走订单逻辑
     }
 
     // =====================================================
-    // B) ✅ 订单：PaymentIntent 支付成功（你原有逻辑）
+    // B) payment_intent.succeeded（钱包充值 & 订单支付都可能走这里）
     // =====================================================
     if (event.type === "payment_intent.succeeded") {
       const pi = event.data.object;
 
-      // ✅ 你创建 intent 时应写 metadata：orderId / userId / customerPhone(或 phone10)
+      // -----------------------------
+      // B1) 先尝试钱包充值（读取 PaymentIntent metadata）
+      // 你需要在 wallet_recharge.js 里写 payment_intent_data.metadata
+      // -----------------------------
+      const out = await applyWalletRechargeFromMeta(pi?.metadata || {}, {
+        amount: Number(pi?.metadata?.amount || 0) || moneyFromCents(pi?.amount_received),
+        remarkAppend: `pi=${pi?.id || ""}`,
+      });
+
+      if (out.ok) {
+        console.log("✅ Stripe webhook wallet (pi.succeeded):", {
+          event: event.type,
+          pi: pi?.id,
+          rechargeId: out.rechargeId,
+          amount: out.amount,
+          walletBalance: out.walletBalance,
+          already: !!out.already,
+        });
+        return res.json({ received: true });
+      }
+
+      // -----------------------------
+      // B2) 不是钱包充值 -> 按“订单支付成功”处理（保留你原逻辑）
+      // -----------------------------
       const orderId = pi.metadata?.orderId ? String(pi.metadata.orderId) : "";
       const intentKey = pi.metadata?.intentKey ? String(pi.metadata.intentKey) : "";
 
@@ -130,10 +186,9 @@ router.post("/webhook", express.raw({ type: "application/json" }), async (req, r
       const uid = toObjectIdMaybe(metaUserId);
       const phone10 = normPhone(metaPhone);
 
-      const paid = Number(pi.amount_received || 0) / 100;
-      const amountTotal = Number(pi.amount || 0) / 100;
+      const paid = moneyFromCents(pi.amount_received);
+      const amountTotal = moneyFromCents(pi.amount);
 
-      // ✅ 统一写入的“已支付”字段
       const paidPatch = {
         status: "paid",
         paidAt: new Date(),
@@ -153,15 +208,17 @@ router.post("/webhook", express.raw({ type: "application/json" }), async (req, r
         "payment.intentKey": intentKey || undefined,
       };
 
-      // ✅ Webhook 同时补 userId + customerPhone（用于“我的订单”）
       if (uid) paidPatch.userId = uid;
       if (phone10) paidPatch.customerPhone = phone10;
 
-      // 3) 尝试更新（优先 orderId）
       let r = null;
 
+      // 优先按 orderId 更新
       if (orderId && mongoose.Types.ObjectId.isValid(orderId)) {
-        r = await Order.updateOne({ _id: orderId }, { $set: paidPatch });
+        r = await Order.updateOne(
+          { _id: orderId },
+          { $set: paidPatch }
+        );
       } else {
         if (!orderId) {
           console.warn("⚠️ payment_intent.succeeded 但 metadata.orderId 缺失，pi=", pi?.id);
@@ -170,12 +227,14 @@ router.post("/webhook", express.raw({ type: "application/json" }), async (req, r
         }
       }
 
-      // 4) 兜底：orderId 缺失或更新不到，用 intentId/intentKey 找订单
+      // 兜底：按 PI / intentKey 找订单
       if (!r || !r.modifiedCount) {
         const q = {
-          $or: [{ "payment.stripePaymentIntentId": pi.id }, { "payment.intentId": pi.id }],
+          $or: [
+            { "payment.stripePaymentIntentId": pi.id },
+            { "payment.intentId": pi.id },
+          ],
         };
-
         if (intentKey) {
           q.$or.push({ "payment.intentKey": intentKey });
           q.$or.push({ intentKey });
@@ -185,7 +244,7 @@ router.post("/webhook", express.raw({ type: "application/json" }), async (req, r
         r = r2;
       }
 
-      console.log("✅ Stripe Webhook 更新订单结果:", {
+      console.log("✅ Stripe webhook order paid:", {
         event: event.type,
         pi: pi.id,
         orderId: orderId || null,
@@ -197,16 +256,23 @@ router.post("/webhook", express.raw({ type: "application/json" }), async (req, r
         amountTotal,
         paid,
       });
+
+      return res.json({ received: true });
     }
 
+    // =====================================================
+    // C) payment_intent.payment_failed
+    // =====================================================
     if (event.type === "payment_intent.payment_failed") {
       const pi = event.data.object;
       console.warn("⚠️ Stripe payment_failed:", {
         pi: pi?.id,
         msg: pi?.last_payment_error?.message || "",
       });
+      return res.json({ received: true });
     }
 
+    // 其它事件不处理也要 200
     return res.json({ received: true });
   } catch (e) {
     console.error("❌ Stripe Webhook 处理异常:", e);

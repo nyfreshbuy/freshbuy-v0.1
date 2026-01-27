@@ -3,7 +3,6 @@ import express from "express";
 import Stripe from "stripe";
 import mongoose from "mongoose";
 import { requireLogin } from "../middlewares/auth.js";
-import Wallet from "../models/Wallet.js";
 import Recharge from "../models/Recharge.js";
 
 const router = express.Router();
@@ -19,13 +18,22 @@ function toObjectIdMaybe(v) {
   return mongoose.Types.ObjectId.isValid(s) ? new mongoose.Types.ObjectId(s) : null;
 }
 
-// 工具：前端域名兜底 + 自动补 https
+// 工具：前端域名兜底 + 自动补 https + 去掉末尾 /
 function getFrontendBaseUrl() {
   const raw = String(process.env.FRONTEND_BASE_URL || "").trim() || "https://nyfreshbuy.com";
-  if (raw.startsWith("http://") || raw.startsWith("https://")) return raw.replace(/\/+$/, "");
-  // 如果用户填的是 nyfreshbuy.com（无 scheme），自动补 https
-  return ("https://" + raw.replace(/^\/+/, "")).replace(/\/+$/, "");
+  const withScheme =
+    raw.startsWith("http://") || raw.startsWith("https://")
+      ? raw
+      : "https://" + raw.replace(/^\/+/, "");
+  return withScheme.replace(/\/+$/, "");
 }
+
+// ===================================================
+// GET /api/wallet/recharge/ping
+// ===================================================
+router.get("/ping", (req, res) => {
+  res.json({ ok: true, name: "wallet_recharge" });
+});
 
 // ===================================================
 // POST /api/wallet/recharge/create
@@ -37,7 +45,6 @@ router.post("/create", requireLogin, async (req, res) => {
     const userId = toObjectIdMaybe(req.user?.id || req.user?._id);
     if (!userId) return res.status(401).json({ message: "未登录" });
 
-    // Stripe key 必须存在
     if (!process.env.STRIPE_SECRET_KEY) {
       return res.status(500).json({ message: "Stripe 未配置（缺少 STRIPE_SECRET_KEY）" });
     }
@@ -62,6 +69,7 @@ router.post("/create", requireLogin, async (req, res) => {
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       payment_method_types: ["card"],
+
       line_items: [
         {
           price_data: {
@@ -72,19 +80,31 @@ router.post("/create", requireLogin, async (req, res) => {
           quantity: 1,
         },
       ],
-      success_url: `${FRONTEND}/user/recharge_success.html`,
-      cancel_url: `${FRONTEND}/user/recharge.html`,
+
+      // ✅ 关键：把 metadata 同时写进 PaymentIntent（webhook 的 payment_intent.succeeded 用）
+      payment_intent_data: {
+        metadata: {
+          type: "wallet_recharge",
+          rechargeId: recharge._id.toString(),
+          userId: userId.toString(),
+          amount: String(amount),
+        },
+      },
+
+      // ✅ Session metadata（webhook 的 checkout.session.completed 也能用）
       metadata: {
         type: "wallet_recharge",
         rechargeId: recharge._id.toString(),
         userId: userId.toString(),
         amount: String(amount),
       },
+
+      success_url: `${FRONTEND}/user/recharge_success.html`,
+      cancel_url: `${FRONTEND}/user/recharge_cancel.html`,
     });
 
     return res.json({ success: true, url: session.url });
   } catch (err) {
-    // ✅ 把 Stripe 的真实错误也打印出来，方便你 Render 排查
     console.error("POST /wallet/recharge/create error:", err?.message || err, err);
     return res.status(500).json({ message: err?.message || "创建 Stripe 充值失败" });
   }
