@@ -34,6 +34,14 @@ function getFrontendBaseUrl() {
 router.get("/ping", (req, res) => {
   res.json({ ok: true, name: "wallet_recharge" });
 });
+router.get("/__debug", (req, res) => {
+  res.json({
+    ok: true,
+    file: "backend/src/routes/wallet_recharge.js",
+    ts: new Date().toISOString(),
+    hasPIData: true, // 你可以手动写死，部署后用来确认线上是否更新
+  });
+});
 
 // ===================================================
 // POST /api/wallet/recharge/create

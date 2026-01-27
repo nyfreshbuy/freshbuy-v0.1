@@ -85,26 +85,25 @@ console.log("🔥 当前运行的 server.js 来自 =====> ", url.fileURLToPath(i
 // =======================
 const app = express();
 app.use("/api/wallet/recharge", walletRechargeRouter);
-app.use("/api/stripe", stripeWebhookRouter)
+app.use("/api/stripe", stripeWebhookRouter);
+
 /**
- * ✅✅✅ Stripe Webhook 必须 RAW BODY，且必须在 express.json() 之前
+ * Stripe Webhook 必须 RAW BODY，且必须在 express.json() 之前
  *
  * 你当前有两套：
  * 1) 旧：/api/stripe  -> stripe_webhook.js（你原本就放在 json 之前，OK）
  * 2) 新：/api/pay/stripe/webhook -> pay_stripe.js 内部的 router.post("/webhook", express.raw(...))
  *
- * 最稳方案：在这里把 /api/pay/stripe/webhook 单独“提前”挂一次 raw，
- * 然后让它继续走 pay_stripe.js 里定义的 /webhook handler。
- *
- * ⚠️ 注意：这里用 express.raw 先吃掉 body，仅用于 webhook 这个路径，不影响其它 API。
+ * 说明：
+ * - pay_stripe.js 内部已经对 /webhook 使用了 express.raw
+ * - 这里只需要确保 /api/pay/stripe 在 express.json() 之前挂载
  */
-app.post(
-  "/api/pay/stripe/webhook",
-  express.raw({ type: "application/json" }),
-  (req, res, next) => next()
-);
 
+// cors 放在这里是安全的（不影响 webhook raw）
 app.use(cors());
+
+// ✅ 你真正的 Stripe 支付路由
+app.use("/api/pay/stripe", stripePayRouter);
 
 // 其它 API 才用 json
 app.use(express.json());
@@ -186,9 +185,6 @@ app.use("/api/user", userMeRouter);
 
 // ---- 支付 ----
 app.use("/api/payments", paymentsRouter);
-
-// ✅✅✅ 你真正的 Stripe 支付路由：/api/pay/stripe/...
-app.use("/api/pay/stripe", stripePayRouter);
 
 // ---- 司机 ----
 app.use("/api/driver", driverRouter);
