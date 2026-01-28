@@ -106,6 +106,9 @@ function resetForm() {
   // 基本
   document.getElementById("p_name").value = "";
   document.getElementById("p_originPrice").value = "";
+    // ✅ 押金（deposit）
+  const depEl = document.getElementById("p_deposit");
+  if (depEl) depEl.value = "";
 
   // ✅ 特价：新字段
   const qtyEl = document.getElementById("p_specialQty");
@@ -499,6 +502,7 @@ async function loadProducts() {
         <td>${renderSpecialCell(p)}</td>
         <td>
   $${money(p.originPrice || 0)}
+  ${Number(p.deposit || 0) > 0 ? `<div style="font-size:11px;color:#9ca3af;margin-top:2px;">押金：$${money(p.deposit)}</div>` : ""}
   ${renderVariantPrices(p)}
 </td>
         <td>${p.stock || 0}</td>
@@ -528,6 +532,13 @@ async function loadProducts() {
 async function saveProduct() {
   const name = document.getElementById("p_name").value.trim();
   const originPriceRaw = document.getElementById("p_originPrice").value;
+    // ✅ 押金（deposit）
+  const depositRaw = document.getElementById("p_deposit")?.value;
+  const deposit = depositRaw === "" || depositRaw == null ? 0 : Number(depositRaw);
+  if (!Number.isFinite(deposit) || deposit < 0) {
+    alert("押金必须是 >= 0 的数字（可留空表示 0）");
+    return;
+  }
 
   const sku = document.getElementById("p_sku").value.trim();
   const internalCompanyId = document.getElementById("p_internalCompanyId").value.trim();
@@ -683,6 +694,7 @@ async function saveProduct() {
     minStock,
     allowZeroStock,
     taxable,
+    deposit,
     topCategoryKey,
     category,
     subCategory,
@@ -773,6 +785,10 @@ function editProduct(anyId, tab) {
   // 基本字段
   document.getElementById("p_name").value = p.name || "";
   document.getElementById("p_originPrice").value = p.originPrice != null ? p.originPrice : "";
+    // ✅ 押金（deposit）回填
+  const depEl = document.getElementById("p_deposit");
+  if (depEl) depEl.value = p.deposit != null ? p.deposit : "";
+
   document.getElementById("p_tag").value = p.tag || "";
   document.getElementById("p_type").value = p.type || "normal";
   document.getElementById("p_stock").value = p.stock != null ? p.stock : "";

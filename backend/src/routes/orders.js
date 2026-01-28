@@ -432,6 +432,10 @@ const variantKey = String(it.variantKey || it.variant || inferredVariantKey || "
     let finalImage = it.image ? String(it.image) : "";
     let cost = Number(it.cost || 0) || 0;
     let hasTax = !!it.hasTax;
+    // ✅ variants + deposit（全部用 deposit）
+let finalVariantKey = variantKey || "single";
+let finalUnitCount = 1;
+let depositEach = 0; // 每个“单个单位”的押金（来自 DB）
 
     // ✅ 特价字段：先用前端兜底
     let specialQty = safeNumber(it.specialQty ?? it.specialN ?? it.dealQty ?? it.dealN ?? 0, 0);
@@ -442,8 +446,8 @@ const variantKey = String(it.variantKey || it.variant || inferredVariantKey || "
 
     if (productId) {
       const q = Product.findById(productId).select(
-        "name sku price cost taxable image images stock allowZeroStock variants specialQty specialTotalPrice specialN specialTotal dealQty dealTotalPrice dealPrice"
-      );
+  "name sku price cost taxable deposit image images stock allowZeroStock variants specialQty specialTotalPrice specialN specialTotal dealQty dealTotalPrice dealPrice"
+);
       const pdoc = session ? await q.session(session) : await q;
 
       if (!pdoc) {
@@ -455,6 +459,11 @@ const variantKey = String(it.variantKey || it.variant || inferredVariantKey || "
       // 解析规格（单个/整箱）
       const v = getVariantFromProduct(pdoc, variantKey);
       const unitCount = Math.max(1, Math.floor(Number(v.unitCount || 1)));
+      finalVariantKey = v.key || "single";
+finalUnitCount = unitCount;
+
+// ✅ 全部用 deposit（没有就按 0）
+depositEach = safeNumber(pdoc.deposit ?? 0, 0);
 
       // 用后端价格：variant.price 优先，否则 product.price
       const backendPrice = v.price != null ? Number(v.price) : Number(pdoc.price || 0);
@@ -526,6 +535,9 @@ const variantKey = String(it.variantKey || it.variant || inferredVariantKey || "
       sku: finalSku,
       price: round2(price),
       qty,
+       variantKey: finalVariantKey,
+  unitCount: finalUnitCount,
+  deposit: round2(depositEach),
       image: finalImage,
       lineTotal,
       cost,
@@ -533,8 +545,17 @@ const variantKey = String(it.variantKey || it.variant || inferredVariantKey || "
     });
   }
 
-  subtotal = round2(subtotal);
+ subtotal = round2(subtotal);
 
+// ✅ depositTotal：全部用 deposit（按“单位”计算：qty * unitCount * deposit）
+const depositTotal = round2(
+  cleanItems.reduce((sum, x) => {
+    const qty = Math.max(1, Math.floor(Number(x.qty || 1)));
+    const unitCount = Math.max(1, Math.floor(Number(x.unitCount || 1)));
+    const dep = safeNumber(x.deposit ?? 0, 0);
+    return sum + dep * qty * unitCount;
+  }, 0)
+);
   // 规则校验
   const hasSpecial = items.some((it) => isSpecialItem(it));
   const hasNonSpecial = items.some((it) => !isSpecialItem(it));
@@ -581,19 +602,20 @@ const variantKey = String(it.variantKey || it.variant || inferredVariantKey || "
   const tipFee = round2(Math.max(0, safeNumber(tipRaw, 0)));
 
   // taxableSubtotal（按 hasTax）
-  const taxableSubtotal = round2(
-    cleanItems.filter((x) => x.hasTax === true).reduce((sum, x) => sum + Number(x.lineTotal || 0), 0)
-  );
+const taxableSubtotal = round2(
+  cleanItems.filter((x) => x.hasTax === true).reduce((sum, x) => sum + Number(x.lineTotal || 0), 0)
+);
 
-  // tax
-  const salesTax = round2(taxableSubtotal * NY_TAX_RATE);
+// ✅ 税：只有 NY 才收
+const shipState = String(ship.state || "").trim().toUpperCase();
+const taxRate = shipState === "NY" ? NY_TAX_RATE : 0;
+const salesTax = round2(taxableSubtotal * taxRate);
 
   const discount = 0;
   const platformFee = 0;
 
   // ✅ 基础总额（不含平台费）
-  const baseTotalAmount = round2(subtotal + deliveryFee + salesTax + tipFee - discount);
-
+  const baseTotalAmount = round2(subtotal + deliveryFee + salesTax + tipFee + depositTotal - discount);
   // zone
   const zip = String(ship.zip || ship.postalCode || "").trim();
   const { zoneKey, zoneName } = await resolveZoneFromPayload({ zoneId, ship, zip });
@@ -618,7 +640,8 @@ const variantKey = String(it.variantKey || it.variant || inferredVariantKey || "
     amountSubtotal: Number(subtotal || 0),
     amountDeliveryFee: Number(deliveryFee || 0),
     amountTax: Number(salesTax || 0),
-    amountPlatformFee: 0,
+amountDeposit: Number(depositTotal || 0),
+amountPlatformFee: 0,
     amountTip: Number(tipFee || 0),
     amountDiscount: Number(discount || 0),
   };
@@ -646,9 +669,10 @@ const variantKey = String(it.variantKey || it.variant || inferredVariantKey || "
 
     taxableSubtotal,
     salesTax,
+    depositTotal,
     platformFee,
     tipFee,
-    salesTaxRate: Number(NY_TAX_RATE || 0),
+    salesTaxRate: Number(taxRate || 0),
 
     payment: paymentSnap,
 
@@ -986,17 +1010,6 @@ newBalance = round2(Number(w2?.balance || 0));
 // body: { intentId, paid }
 // =====================================================
 router.post("/:id([0-9a-fA-F]{24})/confirm-stripe", requireLogin, async (req, res) => {
-  try {
-    const orderId = req.params.id;
-    const intentId = String(req.body?.intentId || req.body?.stripePaymentIntentId || "").trim();
-    const stripePaid = Number(req.body?.paid ?? req.body?.stripePaid ?? 0);
-
-    if (!intentId) return res.status(400).json({ success: false, message: "intentId required" });
-    if (!Number.isFinite(stripePaid) || stripePaid <= 0) {
-      return res.status(400).json({ success: false, message: "paid must be > 0" });
-    }
-
-    router.post("/:id([0-9a-fA-F]{24})/confirm-stripe", requireLogin, async (req, res) => {
   const session = await mongoose.startSession();
   try {
     const orderId = req.params.id;
@@ -1009,7 +1022,6 @@ router.post("/:id([0-9a-fA-F]{24})/confirm-stripe", requireLogin, async (req, re
     }
 
     const uid = toObjectIdMaybe(req.user?.id || req.user?._id);
-
     let outDoc = null;
 
     await session.withTransaction(async () => {
@@ -1046,7 +1058,7 @@ router.post("/:id([0-9a-fA-F]{24})/confirm-stripe", requireLogin, async (req, re
         return;
       }
 
-      // ✅ 关键：如果当初没走 checkout（stockReserve 为空），这里补扣库存
+      // ✅ 如果当初没走 checkout（stockReserve 为空），这里补扣库存
       const reserved = await reserveStockForExistingOrder(doc, session);
       if (reserved.length > 0 && (!doc.stockReserve || doc.stockReserve.length === 0)) {
         doc.stockReserve = reserved;
@@ -1082,7 +1094,6 @@ router.post("/:id([0-9a-fA-F]{24})/confirm-stripe", requireLogin, async (req, re
       outDoc = doc;
     });
 
-    // ✅ 已 paid 的幂等返回
     if (outDoc?.payment?.status === "paid" || outDoc?.status === "paid") {
       return res.json({
         success: true,
@@ -1103,19 +1114,7 @@ router.post("/:id([0-9a-fA-F]{24})/confirm-stripe", requireLogin, async (req, re
     session.endSession();
   }
 });
-    return res.json({
-      success: true,
-      message: "paid",
-      orderId: doc._id.toString(),
-      orderNo: doc.orderNo,
-      totalAmount: doc.totalAmount,
-      payment: doc.payment,
-    });
-  } catch (err) {
-    console.error("POST /api/orders/:id/confirm-stripe error:", err);
-    return res.status(500).json({ success: false, message: "confirm stripe failed" });
-  }
-});
+
 
 // =====================================================
 // 2) 未登录按手机号查订单

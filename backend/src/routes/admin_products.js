@@ -264,7 +264,7 @@ router.post("/", async (req, res) => {
       autoCancelSpecialOnLowStock: !!body.autoCancelSpecialOnLowStock,
       isSpecial: !!body.isSpecial,
       taxable: !!body.taxable, // ✅ 新增：是否收税
-
+      deposit: body.deposit !== undefined && body.deposit !== null ? Number(body.deposit) : 0, // ✅ 押金（deposit）
       // 数字字段可能来自字符串
       specialPrice:
         body.specialPrice !== undefined && body.specialPrice !== null
@@ -332,6 +332,7 @@ router.patch("/:id", async (req, res) => {
       "minStock",
       "allowZeroStock",
       "taxable",
+      "deposit",
       "topCategoryKey",
       "category",
       "subCategory",
@@ -418,6 +419,7 @@ router.patch("/:id", async (req, res) => {
           "specialTotalPrice",
           "cost",
           "soldCount",
+          "deposit", 
         ].includes(key)
       ) {
         p[key] = body[key] === null ? null : Number(body[key]);
@@ -474,9 +476,14 @@ router.get("/:id/purchase-batches", async (req, res) => {
       return res.status(404).json({ success: false, message: "商品不存在" });
     }
 
-    await ProductPurchaseBatch.find({ productId: p._id }).sort({ createdAt: -1 });
+   const batches = await ProductPurchaseBatch.find({ productId: p._id }).sort({ createdAt: -1 });
 
-    return res.json({ success: true, product: toClient(p) });
+return res.json({
+  success: true,
+  product: toClient(p),
+  batches,
+});
+
   } catch (err) {
     console.error("获取进货批次出错:", err);
     return res
@@ -531,6 +538,7 @@ router.post("/:id/purchase-batches", async (req, res) => {
     const batch = await ProductPurchaseBatch.create({
       productId: p._id,
       supplierName,
+      supplierCompanyId,
       boxPrice,
       boxCount,
       unitsPerBox,

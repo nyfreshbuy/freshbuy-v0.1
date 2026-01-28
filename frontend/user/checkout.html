@@ -431,15 +431,18 @@
             <span>预计配送费</span>
             <span id="sumShipping">$0.00</span>
           </div>
-
-          <div class="row muted">
-            <span>纽约销售税</span>
-            <span id="sumTax">$0.00</span>
-          </div>
-          <div class="row muted">
-            <span>平台服务费（2%）</span>
-            <span id="sumService">$0.00</span>
-          </div>
+<div class="row muted" id="rowDeposit" style="display:none">
+  <span>瓶子押金</span>
+  <span id="sumDeposit">$0.00</span>
+</div>
+          <div class="row muted" id="rowTax">
+  <span>纽约销售税</span>
+  <span id="sumTax">$0.00</span>
+</div>
+          <div class="row muted" id="rowService">
+  <span>平台服务费（2%）</span>
+  <span id="sumService">$0.00</span>
+</div>
           <div class="row muted">
             <span>小费（可选）</span>
             <span id="sumTip">$0.00</span>
@@ -681,7 +684,14 @@ function getSpecialMeta(p, qty) {
         const items = Array.isArray(snapshot.items) ? snapshot.items : [];
         const subtotal = safeNum(snapshot.subtotal, 0);
         const shipping = safeNum(snapshot.shipping, 0);
-
+        // =====【⬇⬇⬇ 在这里加：瓶子押金计算】=====
+let bottleDeposit = 0;
+for (const it of items) {
+  const qty = safeNum(it.qty, 1);
+  const dep = safeNum(it.deposit ?? it.bottleDeposit ?? 0, 0);
+  if (dep > 0) bottleDeposit += dep * qty;
+}
+// =====【⬆⬆⬆ 押金计算结束】=====
         // 1) taxable 小计（✅ 兼容 taxable / hasTax）
         let taxableAmount = 0;
 for (const it of items) {
@@ -712,24 +722,43 @@ for (const it of items) {
         const serviceFee = willNeedStripe ? subtotal * SERVICE_FEE_RATE : 0;
 
         // 4) 总计
-        const grand = baseGrand + serviceFee;
-
+        const grand = baseGrand + serviceFee + bottleDeposit;
         return {
           tax: Number(tax.toFixed(2)),
           serviceFee: Number(serviceFee.toFixed(2)),
           tip: Number(currentTip.toFixed(2)),
           grand: Number(grand.toFixed(2)),
           taxableAmount: Number(taxableAmount.toFixed(2)),
+          bottleDeposit: Number(bottleDeposit.toFixed(2)), // ←【就加这一行】
         };
       }
 
       function renderExtra(extra) {
-        document.getElementById("sumTax").textContent = money(extra.tax);
-        document.getElementById("sumService").textContent = money(extra.serviceFee);
-        document.getElementById("sumTip").textContent = money(extra.tip);
-        document.getElementById("sumGrand").textContent = money(extra.grand);
-      }
+        // === 平台服务费：只有 Stripe 才显示 ===
+const serviceRow = document.getElementById("rowService");
+const payMethod = getPayMethod(); // wallet / stripe
+if (serviceRow) {
+  serviceRow.style.display = payMethod === "stripe" && extra.serviceFee > 0
+    ? "flex"
+    : "none";
+}
+  // === 税：只有 taxableAmount > 0 才显示 ===
+  const taxRow = document.getElementById("rowTax");
+  if (taxRow) {
+    taxRow.style.display = extra.taxableAmount > 0 ? "flex" : "none";
+  }
+  document.getElementById("sumTax").textContent = money(extra.tax);
 
+  document.getElementById("sumService").textContent = money(extra.serviceFee);
+  document.getElementById("sumTip").textContent = money(extra.tip);
+  document.getElementById("sumGrand").textContent = money(extra.grand);
+// === 押金：有押金才显示 ===
+const depRow = document.getElementById("rowDeposit");
+if (depRow) depRow.style.display = extra.bottleDeposit > 0 ? "flex" : "none";
+
+const depVal = document.getElementById("sumDeposit");
+if (depVal) depVal.textContent = money(extra.bottleDeposit);
+}
       // ========= 区域配置：给结算页计算用（与 cart.js 同口径） =========
       const DEFAULT_ZONE = {
         id: "zone_freshmeadows",

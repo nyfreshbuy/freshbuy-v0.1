@@ -27,6 +27,7 @@ export function toClient(p) {
     price: o.price ?? 0,
     cost: o.cost ?? 0,
     taxable: !!o.taxable,
+    deposit: Number(o.deposit || 0),
 
     // images / labels
     image: o.image || "",

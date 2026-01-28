@@ -258,6 +258,7 @@
                     <th>标签</th>
                     <th>特价</th>
                     <th>原价</th>
+                    <th>押金</th>
                     <th>库存</th>
                     <th>状态</th>
                     <th>操作</th>
@@ -333,27 +334,36 @@
               <div style="margin-top: 4px">
                 <!-- 基本信息 -->
                 <div class="form-row">
-                  <div class="field-block">
-                    <div class="field-label">商品名称</div>
-                    <input id="p_name" placeholder="例如：十枚装新鲜鸡蛋" />
-                    <div class="field-help">
-                      客户在前台看到的名称，尽量简单清晰。
-                    </div>
-                  </div>
+  <div class="field-block">
+    <div class="field-label">商品名称</div>
+    <input id="p_name" placeholder="例如：十枚装新鲜鸡蛋" />
+    <div class="field-help">客户在前台看到的名称，尽量简单清晰。</div>
+  </div>
 
-                  <div class="field-block">
-                    <div class="field-label">原价（必填）</div>
-                    <input
-                      id="p_originPrice"
-                      type="number"
-                      step="0.01"
-                      placeholder="例如：3.99"
-                    />
-                    <div class="field-help">
-                      平时正常售价，用于计算特价和毛利。进货成本核算出来的零售价也会同步到这里。
-                    </div>
-                  </div>
-                </div>
+  <div class="field-block">
+    <div class="field-label">原价（必填）</div>
+    <input id="p_originPrice" type="number" step="0.01" placeholder="例如：3.99" />
+    <div class="field-help">
+      平时正常售价，用于计算特价和毛利。进货成本核算出来的零售价也会同步到这里。
+    </div>
+  </div>
+
+  <!-- ✅ NEW：押金 -->
+  <div class="field-block">
+    <div class="field-label">押金（Deposit，单个）</div>
+    <input
+      id="p_deposit"
+      type="number"
+      step="0.01"
+      min="0"
+      placeholder="例如：0.05"
+    />
+    <div class="field-help">
+      按“单个单位”填写；整箱会按 unitCount 自动乘上去（结算时）。
+    </div>
+  </div>
+</div>
+
                 <!-- ✅ 是否收税（NY） -->
 <div class="form-row">
   <label class="form-label" style="display:flex; gap:10px; align-items:center;">

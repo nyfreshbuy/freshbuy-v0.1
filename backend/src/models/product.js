@@ -41,7 +41,7 @@ const productSchema = new mongoose.Schema(
     originPrice: { type: Number, default: 0 }, // ✅ 单件原价（你现在后台填的“原价”）
     cost: { type: Number, default: 0 }, // 成本
     taxable: { type: Boolean, default: false }, // ✅ 是否收 NY 销售税
-
+    deposit: { type: Number, default: 0, min: 0 },
     // 分类
     topCategoryKey: { type: String, trim: true, default: "" }, // 导航大类 key：fresh/meat/...
     category: { type: String, trim: true, default: "" }, // 展示大类：生鲜果蔬

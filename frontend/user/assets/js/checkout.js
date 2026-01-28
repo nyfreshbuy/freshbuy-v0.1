@@ -2,6 +2,10 @@
 // 统一处理：最低消费、运费、配送方式限制 + 游客不显示地址/钱包
 // ✅ FIX: 防重复加载 + checkout items productId/variantKey 拆分（库存扣减关键）
 // ✅ FIX: 纯爆品订单 => mode=dealsDay（后端规则要求）
+// ✅ NEW: 平台服务费 = $0.50 + 商品小计*2%
+// ✅ NEW: 显示 NY Sales Tax 金额（并显示税率）
+// ✅ NEW: 瓶子押金（按 item.deposit / item.bottleDeposit 累加）
+// ✅ NEW: 下单 payload 带 platformFee / taxAmount / bottleDeposit / subtotal / shippingFee
 
 (function () {
   // =========================
@@ -13,7 +17,14 @@
   }
   window.__FRESHBUY_CHECKOUT_JS_LOADED__ = true;
 
-  console.log("Checkout script loaded (FULL FIXED)");
+  console.log("Checkout script loaded (FULL FIXED + FEES/TAX/DEPOSIT)");
+
+  // =========================
+  // 费用/税配置
+  // =========================
+  const PLATFORM_FEE_FIXED = 0.5; // 每单固定 $0.50
+  const PLATFORM_FEE_RATE = 0.02; // 商品小计 2%
+  const NY_TAX_RATE = 0.08875; // NY 8.875%
 
   // =========================
   // Auth
@@ -176,7 +187,7 @@
 
       return {
         ...it,
-        productId: pid,                 // ✅ 纯 24位 ObjectId
+        productId: pid, // ✅ 纯 24位 ObjectId
         variantKey: variantKey || "single",
         qty,
       };
@@ -191,6 +202,72 @@
     nextDayFee: 4.99,
     areaFee: 0,
   };
+
+  // =========================
+  // 金额工具
+  // =========================
+  function toMoney(n) {
+    const x = Number(n || 0);
+    return Number.isFinite(x) ? +x.toFixed(2) : 0;
+  }
+
+  function parseMoneyText(txt) {
+    const s = String(txt || "").replace(/[^0-9.\-]/g, "");
+    const v = Number(s || 0);
+    return Number.isFinite(v) ? v : 0;
+  }
+
+  function calcSubtotalFromItems(items) {
+    let subtotal = 0;
+    for (const it of items || []) {
+      const qty = Math.max(0, Number(it.qty || 0));
+      // 兼容字段：finalPrice / price / unitPrice / salePrice / dealPrice...
+      const priceCandidates = [
+        it.finalPrice,
+        it.priceFinal,
+        it.unitPrice,
+        it.price,
+        it.salePrice,
+        it.dealPrice,
+        it.specialPrice,
+        it.payPrice,
+      ];
+      let p = 0;
+      for (const c of priceCandidates) {
+        const v = Number(c);
+        if (Number.isFinite(v) && v >= 0) {
+          p = v;
+          break;
+        }
+      }
+      subtotal += p * qty;
+    }
+    return toMoney(subtotal);
+  }
+
+  function calcBottleDeposit(items) {
+    let dep = 0;
+    for (const it of items || []) {
+      const qty = Math.max(0, Number(it.qty || 0));
+      const d = Number(it.deposit || it.bottleDeposit || it.containerDeposit || 0);
+      if (Number.isFinite(d) && d > 0) dep += d * qty;
+    }
+    return toMoney(dep);
+  }
+
+  function calcPlatformFee(subtotal) {
+    return toMoney(PLATFORM_FEE_FIXED + Number(subtotal || 0) * PLATFORM_FEE_RATE);
+  }
+
+  function calcTaxAmount(subtotal) {
+    return toMoney(Number(subtotal || 0) * NY_TAX_RATE);
+  }
+
+  function getCurrentShippingFeeFromUI() {
+    const feeEl = document.getElementById("deliveryFee");
+    if (!feeEl) return 0;
+    return toMoney(parseMoneyText(feeEl.textContent));
+  }
 
   // =========================
   // UI：运费/模式提示
@@ -259,6 +336,63 @@
   }
 
   // =========================
+  // ✅ NEW：更新右侧汇总（平台费/税/押金显示 + 方便给 payload）
+  // =========================
+  function computeCheckoutAmounts() {
+    const s = getSummary();
+    const items = Array.isArray(s?.items) ? s.items : [];
+
+    // 优先用购物车 summary 的金额字段（如果存在），否则自己算
+    const subtotal =
+      Number.isFinite(Number(s?.amount)) ? toMoney(s.amount) :
+      Number.isFinite(Number(s?.totalAmount)) ? toMoney(s.totalAmount) :
+      Number.isFinite(Number(s?.itemsAmount)) ? toMoney(s.itemsAmount) :
+      calcSubtotalFromItems(items);
+
+    const shippingFee = getCurrentShippingFeeFromUI();
+    const tipAmount = toMoney(readTip());
+
+    const platformFee = calcPlatformFee(subtotal);
+    const taxAmount = calcTaxAmount(subtotal);
+    const bottleDeposit = calcBottleDeposit(items);
+
+    const total = toMoney(subtotal + shippingFee + platformFee + taxAmount + bottleDeposit + tipAmount);
+
+    return { subtotal, shippingFee, platformFee, taxAmount, bottleDeposit, tipAmount, total };
+  }
+
+  function renderFeesTaxDepositUI() {
+    const a = computeCheckoutAmounts();
+
+    // 这几个 id 需要你在 checkout.html 右侧汇总里加（不存在也不会报错）
+    const platformEl = document.getElementById("platformFeeAmount");
+    if (platformEl) platformEl.textContent = "$" + a.platformFee.toFixed(2);
+
+    const taxLabelEl = document.getElementById("taxLabel");
+    if (taxLabelEl) taxLabelEl.textContent = `NY Sales Tax (${(NY_TAX_RATE * 100).toFixed(3)}%)`;
+
+    const taxEl = document.getElementById("taxAmount");
+    if (taxEl) taxEl.textContent = "$" + a.taxAmount.toFixed(2);
+
+    const depEl = document.getElementById("bottleDepositAmount");
+    if (depEl) depEl.textContent = "$" + a.bottleDeposit.toFixed(2);
+
+    // 如果你页面有总计 id，就顺便更新（不确定你用哪个）
+    const totalEl =
+      document.getElementById("orderTotal") ||
+      document.getElementById("totalAmount") ||
+      document.querySelector("[data-total-amount]");
+    if (totalEl) totalEl.textContent = "$" + a.total.toFixed(2);
+
+    // 可选：如果你有小计显示
+    const subEl =
+      document.getElementById("itemsSubtotal") ||
+      document.getElementById("subtotalAmount") ||
+      document.querySelector("[data-subtotal]");
+    if (subEl) subEl.textContent = "$" + a.subtotal.toFixed(2);
+  }
+
+  // =========================
   // 初始化
   // =========================
   document.addEventListener("DOMContentLoaded", () => {
@@ -268,11 +402,21 @@
     if (isGuest) clearCheckoutUserUI();
 
     updateCheckoutUI();
+    renderFeesTaxDepositUI();
   });
 
   document.addEventListener("change", (e) => {
     if (e.target && e.target.id === "deliveryMode") {
       updateCheckoutUI();
+      renderFeesTaxDepositUI();
+    }
+  });
+
+  // tip 改变时也刷新总计（如果存在 tip 输入框）
+  document.addEventListener("input", (e) => {
+    const id = e.target?.id;
+    if (id === "tipAmount" || id === "tip") {
+      renderFeesTaxDepositUI();
     }
   });
 
@@ -327,6 +471,9 @@
     // ✅ wallet 表示“自动能扣多少扣多少”
     const payMethod = payMethodRaw === "wallet" ? "auto" : "stripe";
 
+    // ✅ NEW：提交时把费用/税/押金算出来一起给后端（后端仍建议再算一遍）
+    const amounts = computeCheckoutAmounts();
+
     const payload = {
       mode,
       deliveryMode: mode,
@@ -339,6 +486,13 @@
       deliveryDate: document.getElementById("deliveryDate")?.value || undefined,
       deliveryType: "home",
       source: "web_checkout",
+
+      // ✅ NEW fields
+      subtotal: amounts.subtotal,
+      shippingFee: amounts.shippingFee,
+      platformFee: amounts.platformFee,
+      taxAmount: amounts.taxAmount,
+      bottleDeposit: amounts.bottleDeposit,
     };
 
     // 1) 先走后端 checkout（事务里会扣库存 + 扣钱包）
