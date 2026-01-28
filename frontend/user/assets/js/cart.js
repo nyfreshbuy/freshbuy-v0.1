@@ -96,7 +96,35 @@ console.log("🧪 SPECIAL-PATCH v20260122-FIXSPECIAL");
   function normStr(v) {
     return String(v == null ? "" : v).trim();
   }
+    function readDeposit(p) {
+    const v = p?.deposit ?? p?.bottleDeposit ?? p?.containerDeposit ?? p?.crv ?? 0;
+    return safeNum(v, 0);
+  }
 
+  function readUnitCount(p) {
+    const v = p?.unitCount ?? p?.unitsPerBox ?? p?.packCount ?? 1;
+    return Math.max(1, Math.floor(safeNum(v, 1)));
+  }
+    // ✅ 押金字段统一：deposit/bottleDeposit/containerDeposit/crv
+  function readDeposit(p) {
+    const v =
+      p?.deposit ??
+      p?.bottleDeposit ??
+      p?.containerDeposit ??
+      p?.crv ??
+      0;
+    return safeNum(v, 0);
+  }
+
+  // ✅ 箱规字段统一：unitCount/unitsPerBox/packCount
+  function readUnitCount(p) {
+    const v =
+      p?.unitCount ??
+      p?.unitsPerBox ??
+      p?.packCount ??
+      1;
+    return Math.max(1, Math.floor(safeNum(v, 1)));
+  }
   function getBaseIdFromAny(p) {
     // 购物车里 id 形如 6970...::single
     const id = normStr(p?.baseId || "");
@@ -314,12 +342,16 @@ console.log("🧪 SPECIAL-PATCH v20260122-FIXSPECIAL");
         p.isDeal = isDealProduct(p);
 
         // ✅ 关键：这里很多旧数据 specialQty / specialTotalPrice = 0（后面会 hydrate）
-        p.specialQty = safeNum(p.specialQty, 0);
+                p.specialQty = safeNum(p.specialQty, 0);
         p.specialTotalPrice = safeNum(p.specialTotalPrice, 0);
         p.regularPrice = safeNum(p.regularPrice ?? p.price ?? p.priceNum, 0);
+
+        // ✅ NEW：押金/箱规写进购物车 product（否则 checkout 永远是 0 / 1）
+        p.deposit = readDeposit(p);
+        p.unitCount = readUnitCount(p);
+
         // ✅ baseId 给 hydrate 用
         p.baseId = getBaseIdFromAny(p);
-
         return { product: p, qty: Number(it.qty) || 1 };
       });
 
@@ -345,9 +377,14 @@ console.log("🧪 SPECIAL-PATCH v20260122-FIXSPECIAL");
             specialTotalPrice: product.specialTotalPrice,
             tag: product.tag,
             type: product.type,
-            taxable: !!product.taxable,
+                        taxable: !!product.taxable,
             isDeal: isDealProduct(product),
             isSpecial: product.isSpecial,
+
+            // ✅ NEW：押金/箱规必须持久化
+            deposit: safeNum(product.deposit ?? product.bottleDeposit ?? 0, 0),
+            unitCount: Math.max(1, Math.floor(safeNum(product.unitCount ?? 1, 1))),
+
             imageUrl: product.imageUrl || product.image || product.img || "",
           },
           qty,
@@ -505,7 +542,23 @@ if (spTotal > 0 && spTotal !== safeNum(p.specialTotalPrice, 0)) {
 
         p.isDeal = isDealProduct(p);
       });
+              // ✅ NEW：从 API 回填押金/箱规（本地没带就靠这里补齐）
+        const apiDep = readDeposit(apiP);
+        const apiUnit = readUnitCount(apiP);
 
+        if (readDeposit(p) <= 0 && apiDep > 0) {
+          p.deposit = apiDep;
+          changed = true;
+        } else {
+          p.deposit = readDeposit(p); // 保底
+        }
+
+        if (readUnitCount(p) <= 1 && apiUnit > 1) {
+          p.unitCount = apiUnit;
+          changed = true;
+        } else {
+          p.unitCount = readUnitCount(p); // 保底
+        }
       if (changed) {
         console.log("🧪 hydrateCartProductsFromAPI applied -> recalcing");
         handleCartChange({ fromAdd: false, skipSave: false });
@@ -1417,7 +1470,9 @@ const lineTotalHtml = hitSpecial
       const normalized = { ...product };
       normalized.baseId = getBaseIdFromAny(normalized);
       normalized.taxable = !!normalized.taxable;
-
+            // ✅ NEW：押金/箱规归一
+      normalized.deposit = readDeposit(normalized);
+      normalized.unitCount = readUnitCount(normalized);
       // ✅ 特价字段归一（即使 payload 字段名不同）
       const { spQty, spTotal } = readSpecialFieldsFromApiProduct(normalized);
       normalized.specialQty = safeNum(spQty, safeNum(normalized.specialQty, 0));
@@ -1546,7 +1601,11 @@ const lineTotalHtml = hitSpecial
         specialTotalPrice: safeNum(spTotal, 0),
         tag: payload.tag || "",
         type: payload.type || "",
-        taxable: !!payload.taxable,
+                taxable: !!payload.taxable,
+
+        // ✅ NEW：押金/箱规（payload 里叫 bottleDeposit/unitsPerBox 也能读到）
+        deposit: readDeposit(payload),
+        unitCount: readUnitCount(payload),
         isSpecial: !!payload.isSpecial,
         imageUrl:
           payload.imageUrl ||
