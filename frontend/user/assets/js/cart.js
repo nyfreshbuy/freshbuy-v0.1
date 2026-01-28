@@ -96,15 +96,7 @@ console.log("🧪 SPECIAL-PATCH v20260122-FIXSPECIAL");
   function normStr(v) {
     return String(v == null ? "" : v).trim();
   }
-    function readDeposit(p) {
-    const v = p?.deposit ?? p?.bottleDeposit ?? p?.containerDeposit ?? p?.crv ?? 0;
-    return safeNum(v, 0);
-  }
 
-  function readUnitCount(p) {
-    const v = p?.unitCount ?? p?.unitsPerBox ?? p?.packCount ?? 1;
-    return Math.max(1, Math.floor(safeNum(v, 1)));
-  }
     // ✅ 押金字段统一：deposit/bottleDeposit/containerDeposit/crv
   function readDeposit(p) {
     const v =
@@ -377,14 +369,11 @@ console.log("🧪 SPECIAL-PATCH v20260122-FIXSPECIAL");
             specialTotalPrice: product.specialTotalPrice,
             tag: product.tag,
             type: product.type,
-                        taxable: !!product.taxable,
-            isDeal: isDealProduct(product),
+            taxable: !!product.taxable,
+            deposit: readDeposit(product),
+            unitCount: readUnitCount(product),
+            isDeal: isDealProduct(product),  
             isSpecial: product.isSpecial,
-
-            // ✅ NEW：押金/箱规必须持久化
-            deposit: safeNum(product.deposit ?? product.bottleDeposit ?? 0, 0),
-            unitCount: Math.max(1, Math.floor(safeNum(product.unitCount ?? 1, 1))),
-
             imageUrl: product.imageUrl || product.image || product.img || "",
           },
           qty,
@@ -475,7 +464,28 @@ console.log("🧪 SPECIAL-PATCH v20260122-FIXSPECIAL");
 
         const apiP = map.get(baseId);
         if (!apiP) return;
+       // ✅ NEW：从 API 回填押金/箱规/是否计税（以 API 为准）
+const apiDep = readDeposit(apiP);
+const apiUnit = readUnitCount(apiP);
+const apiTaxable = !!apiP.taxable;
 
+// deposit：以 API 覆盖
+if (readDeposit(p) !== apiDep) {
+  p.deposit = apiDep;
+  changed = true;
+}
+
+// unitCount：以 API 覆盖
+if (readUnitCount(p) !== apiUnit) {
+  p.unitCount = apiUnit;
+  changed = true;
+}
+
+// taxable：以 API 覆盖（你要算纽约消费税就靠它）
+if (!!p.taxable !== apiTaxable) {
+  p.taxable = apiTaxable;
+  changed = true;
+}
         const { spQty, spTotal } = readSpecialFieldsFromApiProduct(apiP);
 
 const apiPrice = safeNum(apiP.price ?? apiP.priceNum, 0);
@@ -515,12 +525,6 @@ if (spTotal > 0 && spTotal !== safeNum(p.specialTotalPrice, 0)) {
   p.specialTotalPrice = spTotal;
   changed = true;
 }
-
-        if (spQty > 0 && spQty !== safeNum(p.specialQty, 0)) {
-          p.specialQty = spQty;
-          changed = true;
-        }
-
         if (spTotal > 0 && spTotal !== safeNum(p.specialTotalPrice, 0)) {
           p.specialTotalPrice = spTotal;
           changed = true;
@@ -542,23 +546,6 @@ if (spTotal > 0 && spTotal !== safeNum(p.specialTotalPrice, 0)) {
 
         p.isDeal = isDealProduct(p);
       });
-              // ✅ NEW：从 API 回填押金/箱规（本地没带就靠这里补齐）
-        const apiDep = readDeposit(apiP);
-        const apiUnit = readUnitCount(apiP);
-
-        if (readDeposit(p) <= 0 && apiDep > 0) {
-          p.deposit = apiDep;
-          changed = true;
-        } else {
-          p.deposit = readDeposit(p); // 保底
-        }
-
-        if (readUnitCount(p) <= 1 && apiUnit > 1) {
-          p.unitCount = apiUnit;
-          changed = true;
-        } else {
-          p.unitCount = readUnitCount(p); // 保底
-        }
       if (changed) {
         console.log("🧪 hydrateCartProductsFromAPI applied -> recalcing");
         handleCartChange({ fromAdd: false, skipSave: false });
@@ -1471,7 +1458,7 @@ const lineTotalHtml = hitSpecial
       normalized.baseId = getBaseIdFromAny(normalized);
       normalized.taxable = !!normalized.taxable;
             // ✅ NEW：押金/箱规归一
-      normalized.deposit = readDeposit(normalized);
+      normalized.deposit = safeNum(normalized.deposit, 0); // ✅ 新增
       normalized.unitCount = readUnitCount(normalized);
       // ✅ 特价字段归一（即使 payload 字段名不同）
       const { spQty, spTotal } = readSpecialFieldsFromApiProduct(normalized);
@@ -1604,7 +1591,7 @@ const lineTotalHtml = hitSpecial
                 taxable: !!payload.taxable,
 
         // ✅ NEW：押金/箱规（payload 里叫 bottleDeposit/unitsPerBox 也能读到）
-        deposit: readDeposit(payload),
+        deposit: safeNum(payload.deposit, 0),   // ✅ 新增
         unitCount: readUnitCount(payload),
         isSpecial: !!payload.isSpecial,
         imageUrl:
