@@ -717,34 +717,36 @@ for (const it of items) {
         // - 钱包支付且余额足够覆盖（不含服务费）→ 服务费=0
         // - 只要需要走 Stripe（余额不足或用户选 Stripe）→ 服务费= subtotal * 2%
         const payMethod = getPayMethod(); // wallet | stripe
-        const baseGrand = subtotal + shipping + tax + currentTip;
 
-        const willNeedStripe =
-          payMethod === "stripe" ||
-          (typeof lastWalletBalance === "number" && lastWalletBalance < baseGrand);
+// ✅ baseGrand 必须包含押金（押金也要支付）
+const baseGrand = subtotal + shipping + tax + currentTip + bottleDeposit;
 
-        const serviceFee = willNeedStripe ? subtotal * SERVICE_FEE_RATE : 0;
+const willNeedStripe =
+  payMethod === "stripe" ||
+  (typeof lastWalletBalance === "number" && lastWalletBalance < baseGrand);
 
-        // 4) 总计
-        const grand = baseGrand + serviceFee + bottleDeposit;
-        return {
-          tax: Number(tax.toFixed(2)),
-          serviceFee: Number(serviceFee.toFixed(2)),
-          tip: Number(currentTip.toFixed(2)),
-          grand: Number(grand.toFixed(2)),
-          taxableAmount: Number(taxableAmount.toFixed(2)),
-          bottleDeposit: Number(bottleDeposit.toFixed(2)), // ←【就加这一行】
-        };
+const serviceFee = willNeedStripe ? subtotal * SERVICE_FEE_RATE : 0;
+
+// ✅ grand：押金已在 baseGrand 里了，这里不要再重复加
+const grand = baseGrand + serviceFee;
+
+return {
+  tax: Number(tax.toFixed(2)),
+  serviceFee: Number(serviceFee.toFixed(2)),
+  tip: Number(currentTip.toFixed(2)),
+  grand: Number(grand.toFixed(2)),
+  taxableAmount: Number(taxableAmount.toFixed(2)),
+  bottleDeposit: Number(bottleDeposit.toFixed(2)),
+  // ✅ 可选：把 willNeedStripe 带出去，后面显示服务费更准
+  willNeedStripe,
+};
       }
-
       function renderExtra(extra) {
         // === 平台服务费：只有 Stripe 才显示 ===
 const serviceRow = document.getElementById("rowService");
-const payMethod = getPayMethod(); // wallet / stripe
 if (serviceRow) {
-  serviceRow.style.display = payMethod === "stripe" && extra.serviceFee > 0
-    ? "flex"
-    : "none";
+  // ✅ 只要 serviceFee > 0 就显示（最准）
+  serviceRow.style.display = extra.serviceFee > 0 ? "flex" : "none";
 }
   // === 税：只有 taxableAmount > 0 才显示 ===
   const taxRow = document.getElementById("rowTax");
@@ -1682,7 +1684,7 @@ lastStripePaymentIntentId = String(data.paymentIntentId || data.payment_intent |
 
   return {
     productId: pid,                 // ✅ 纯 ObjectId
-    variantKey: variantKey || it.variantKey || it.variant || "", // ✅ 单独传
+    variantKey: (variantKey || it.variantKey || it.variant || "single"),
     name: it.name,
     qty: Number(it.qty || 1),
     price: Number(it.priceNum || it.price || 0),
