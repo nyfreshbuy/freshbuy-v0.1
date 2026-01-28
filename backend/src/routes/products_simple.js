@@ -29,57 +29,54 @@ router.get("/products-simple", async (req, res) => {
             : "/uploads/" + img.replace(/^\.\/uploads\//, "")
           : "";
 
-     return {
-  _id: String(p._id || ""),
+           return {
+        _id: String(p._id || ""),
 
-  // ✅ 关键：统一 id 为 Mongo _id
-  id: String(p._id || ""),
-  legacyId: p.id || "",
-  baseId: String(p._id || ""),
+        // ✅ 关键：统一 id 为 Mongo _id
+        id: String(p._id || ""),
+        legacyId: p.id || "",
+        baseId: String(p._id || ""),
 
-  sku: p.sku || "",
+        sku: p.sku || "",
 
-  name: p.name || "",
-  desc: p.desc || "",
+        name: p.name || "",
+        desc: p.desc || "",
 
-  image: normImage,
-  imageUrl: normImage, // ✅ 多给一个字段，前端更稳
-  images: Array.isArray(p.images) ? p.images : [],
+        image: normImage,
+        imageUrl: normImage,
+        images: Array.isArray(p.images) ? p.images : [],
 
-  tag: p.tag || "",
-  type: p.type || "",
-  category: p.category || "",
-  subCategory: p.subCategory || "",
-  topCategoryKey: p.topCategoryKey || "",
+        tag: p.tag || "",
+        type: p.type || "",
+        category: p.category || "",
+        subCategory: p.subCategory || "",
+        topCategoryKey: p.topCategoryKey || "",
 
-  price: Number(p.price || 0),
-  originPrice: Number(p.originPrice || 0),
+        price: Number(p.price || 0),
+        originPrice: Number(p.originPrice || 0),
 
-  // ✅ 税/押金（你 cart 里已经在用）
-  taxable: !!p.taxable,
-  deposit: Number(p.deposit || 0),
+        taxable: !!p.taxable,
+        deposit: Number(p.deposit || 0),
 
-  // ✅ 2 for / 特价字段
-  specialEnabled: !!p.specialEnabled,
-  specialQty: Number(p.specialQty || 1),
-  specialTotalPrice:
-    p.specialTotalPrice === null || p.specialTotalPrice === undefined
-      ? null
-      : Number(p.specialTotalPrice),
-  specialPrice:
-    p.specialPrice === null || p.specialPrice === undefined ? null : Number(p.specialPrice),
-  specialFrom: p.specialFrom || null,
-  specialTo: p.specialTo || null,
+        specialEnabled: !!p.specialEnabled,
+        specialQty: Number(p.specialQty || 1),
+        specialTotalPrice:
+          p.specialTotalPrice === null || p.specialTotalPrice === undefined
+            ? null
+            : Number(p.specialTotalPrice),
+        specialPrice:
+          p.specialPrice === null || p.specialPrice === undefined ? null : Number(p.specialPrice),
+        specialFrom: p.specialFrom || null,
+        specialTo: p.specialTo || null,
 
-  variants: Array.isArray(p.variants) ? p.variants : [],
+        variants: Array.isArray(p.variants) ? p.variants : [],
 
-  stock: Number(p.stock || 0),
-  isActive: p.isActive !== false,
-  status: p.status || "on",
-  soldCount: Number(p.soldCount || 0),
-};
-    });
-
+        stock: Number(p.stock || 0),
+        isActive: p.isActive !== false,
+        status: p.status || "on",
+        soldCount: Number(p.soldCount || 0),
+      };
+    }); // ✅ 这一行现在就对了：map 回调已正确闭合
     // ✅ 返回多份字段名，防止前端不同页面写法不一致
     return res.json({ success: true, ok: true, items, list: items, products: items });
   } catch (err) {
