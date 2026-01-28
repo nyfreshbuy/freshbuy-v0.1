@@ -815,22 +815,117 @@ if (depVal) depVal.textContent = money(extra.bottleDeposit);
       }
 
       // ========= 从 Cart / localStorage 取 items =========
-      function getItemsFromCart() {
+      function truthyFlag(v) {
+  return v === true || v === "true" || v === 1 || v === "1";
+}
+
+function getItemsFromCart() {
+  try {
+    if (window.Cart && typeof window.Cart.getState === "function") {
+      const st = window.Cart.getState();
+      const items = Array.isArray(st?.items) ? st.items : [];
+
+      return items.map((it) => {
+        const p = it.product || {};
+
+        const taxFlag =
+          p.taxable ?? p.hasTax ?? p.isTaxable ?? p.tax ??
+          it.taxable ?? it.hasTax ?? it.isTaxable ?? it.tax ?? false;
+
+        const dep =
+          p.deposit ?? p.bottleDeposit ?? p.containerDeposit ?? p.crv ??
+          it.deposit ?? it.bottleDeposit ?? it.containerDeposit ?? it.crv ?? 0;
+
+        const bottleDep =
+          p.bottleDeposit ?? p.deposit ?? p.containerDeposit ?? p.crv ??
+          it.bottleDeposit ?? it.deposit ?? it.containerDeposit ?? it.crv ?? 0;
+
+        return {
+          ...p,
+          qty: Number(it.qty || 1),
+
+          taxable: truthyFlag(taxFlag),
+          hasTax: truthyFlag(taxFlag),
+
+          deposit: safeNum(dep, 0),
+          bottleDeposit: safeNum(bottleDep, 0),
+
+          unitCount: Math.max(1, Math.floor(safeNum(p.unitCount ?? it.unitCount ?? 1, 1))),
+        };
+      });
+    }
+  } catch {}
+
+  const raw = localStorage.getItem(CART_LS_KEY);
+  const cart = raw ? safeJsonParse(raw, null) : null;
+  const items = Array.isArray(cart?.items) ? cart.items : [];
+
+  return items.map((it) => {
+    const p = it.product || {};
+
+    const taxFlag =
+      p.taxable ?? p.hasTax ?? p.isTaxable ?? p.tax ??
+      it.taxable ?? it.hasTax ?? it.isTaxable ?? it.tax ?? false;
+
+    const dep =
+      p.deposit ?? p.bottleDeposit ?? p.containerDeposit ?? p.crv ??
+      it.deposit ?? it.bottleDeposit ?? it.containerDeposit ?? it.crv ?? 0;
+
+    const bottleDep =
+      p.bottleDeposit ?? p.deposit ?? p.containerDeposit ?? p.crv ??
+      it.bottleDeposit ?? it.deposit ?? it.containerDeposit ?? it.crv ?? 0;
+
+    return {
+      ...p,
+      qty: Number(it.qty || 1),
+
+      taxable: truthyFlag(taxFlag),
+      hasTax: truthyFlag(taxFlag),
+
+      deposit: safeNum(dep, 0),
+      bottleDeposit: safeNum(bottleDep, 0),
+
+      unitCount: Math.max(1, Math.floor(safeNum(p.unitCount ?? it.unitCount ?? 1, 1))),
+    };
+  });
+}
         try {
           if (window.Cart && typeof window.Cart.getState === "function") {
             const st = window.Cart.getState();
             const items = Array.isArray(st?.items) ? st.items : [];
-            return items.map((it) => {
+           return items.map((it) => {
   const p = it.product || {};
+
+  // ✅ 先在对象外面算好 taxFlag
+  const taxFlag =
+    p.taxable ?? p.hasTax ?? p.isTaxable ?? p.tax ??
+    it.taxable ?? it.hasTax ?? it.isTaxable ?? it.tax ?? false;
+
+  const isTax =
+    taxFlag === true || taxFlag === "true" || taxFlag === 1 || taxFlag === "1";
+
+  // ✅ 押金兜底（CRV / bottle deposit）
+  const bottleDep =
+    p.bottleDeposit ?? p.deposit ?? p.containerDeposit ?? p.crv ??
+    it.bottleDeposit ?? it.deposit ?? it.containerDeposit ?? it.crv ?? 0;
+
   return {
     ...p,
     qty: Number(it.qty || 1),
-   taxable: (p.taxable ?? it.taxable ?? it.hasTax ?? false) === true,
-hasTax:  (p.taxable ?? it.taxable ?? it.hasTax ?? false) === true,
-    // ✅ 关键：把押金/规格从 cart item / product 上都兜底带出来
-    deposit: safeNum(p.deposit ?? it.deposit ?? it.bottleDeposit ?? p.bottleDeposit ?? 0, 0),
-    bottleDeposit: safeNum(p.bottleDeposit ?? it.bottleDeposit ?? 0, 0),
-    unitCount: Math.max(1, Math.floor(safeNum(p.unitCount ?? it.unitCount ?? 1, 1))),
+
+    // ✅ 税
+    taxable: isTax,
+    hasTax: isTax,
+
+    // ✅ 押金
+    bottleDeposit: Number(bottleDep || 0),
+    deposit: Number(bottleDep || 0),
+
+    // ✅ 规格数量（整箱）
+    unitCount: Math.max(
+      1,
+      Math.floor(Number(p.unitCount ?? it.unitCount ?? 1) || 1)
+    ),
   };
 });
           }
@@ -844,13 +939,20 @@ hasTax:  (p.taxable ?? it.taxable ?? it.hasTax ?? false) === true,
   return {
     ...p,
     qty: Number(it.qty || 1),
-    deposit: safeNum(p.deposit ?? it.deposit ?? it.bottleDeposit ?? p.bottleDeposit ?? 0, 0),
+   deposit: safeNum(
+  p.deposit ?? p.bottleDeposit ?? p.containerDeposit ?? p.crv ??
+  it.deposit ?? it.bottleDeposit ?? it.containerDeposit ?? it.crv ?? 0,
+  0
+),
+bottleDeposit: safeNum(
+  p.bottleDeposit ?? p.deposit ?? p.containerDeposit ?? p.crv ??
+  it.bottleDeposit ?? it.deposit ?? it.containerDeposit ?? it.crv ?? 0,
+  0
+),
     bottleDeposit: safeNum(p.bottleDeposit ?? it.bottleDeposit ?? 0, 0),
     unitCount: Math.max(1, Math.floor(safeNum(p.unitCount ?? it.unitCount ?? 1, 1))),
   };
 });
-      }
-
       function calcSubtotal(items) {
   return items.reduce((sum, it) => {
     const qty = Number(it.qty || 1);
@@ -1410,7 +1512,12 @@ let lastStripePaymentIntentId = "";
 
           const token = getToken();
           if (!token) throw new Error("未登录：没有 token");
-
+          // ✅ Stripe 创建 intent 前：必须先验证地址（placeId + lat/lng + ZIP 支持）
+const okAddr = await verifyAddress();
+if (!okAddr) {
+  setStripeAreaVisible(false);
+  throw new Error("请先从地址下拉建议中选择一个地址（需要 placeId + 坐标）");
+}
           setStripeAreaVisible(true);
 
           const intentKey = buildIntentKey(snapshot, extra);
@@ -1517,14 +1624,15 @@ let lastStripePaymentIntentId = "";
           });
 
           const data = await res.json().catch(() => ({}));
-          if (!res.ok || !data.success || !data.clientSecret) {
-            throw new Error(data.message || "创建 Stripe 支付失败");
-          }
-
+if (!res.ok || !data.success || !data.clientSecret) {
+  console.error("❌ /api/pay/stripe/order-intent failed:", res.status, data);
+  const msg = data?.message || data?.error || data?.msg || ("HTTP " + res.status);
+  throw new Error(msg);
+}
           lastIntentKey = intentKey;
           // ✅ NEW：保存给支付成功后 confirm 用
 lastStripeOrderId = String(data.orderId || "");
-lastStripePaymentIntentId = String(data.paymentIntentId || data.paymentIntentId || "");
+lastStripePaymentIntentId = String(data.paymentIntentId || data.payment_intent || "");
           if (data.clientSecret !== lastClientSecret) {
             lastClientSecret = data.clientSecret;
             await mountStripeElements(data.clientSecret);
@@ -1862,6 +1970,10 @@ return;
 
       // ========= 启动 =========
       window.addEventListener("DOMContentLoaded", async () => {
+        // ✅ 默认州：NY（不选州会导致税=0）
+const stateEl = document.getElementById("state");
+if (stateEl && !stateEl.value) stateEl.value = "NY";
+
         // 小费按钮绑定
         const tipButtons = Array.from(document.querySelectorAll(".tip-btn"));
         const customTip = document.getElementById("customTip");
