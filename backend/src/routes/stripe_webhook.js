@@ -107,7 +107,15 @@ async function applyWalletRechargeFromMeta(meta, extra = {}) {
 
   return { ok: true, rechargeId, amount, walletBalance: Number(wallet?.balance || 0) };
 }
-
+// ✅ ping：用来确认 /api/stripe 是否真的挂上了
+router.get("/ping", (req, res) => {
+  res.json({
+    ok: true,
+    name: "stripe_webhook",
+    ts: new Date().toISOString(),
+    file: "backend/src/routes/stripe_webhook.js",
+  });
+});
 // =====================================================
 // POST /api/stripe/webhook
 // =====================================================
