@@ -61,6 +61,94 @@ async function findProductByAnyId(idParam) {
 // ✅ 同时支持：
 // - 单件特价：specialPrice
 // - N for 总价：specialQty + specialTotalPrice（例如 2 for 0.88）
+function numOrNull(v) {
+  if (v === undefined || v === null) return null;
+  if (typeof v === "string" && v.trim() === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function normalizeVariants(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((v) => ({
+      key: String(v?.key || "").trim(),
+      label: String(v?.label || ""),
+      unitCount: Math.max(1, Math.floor(Number(v?.unitCount || 1))),
+      price: numOrNull(v?.price),
+      enabled: v?.enabled !== false,
+      sortOrder: Number(v?.sortOrder || 0),
+    }))
+    .filter((v) => v.key);
+}
+
+function normalizeSpecialAndDeposit(body) {
+  const specialEnabled = !!body.specialEnabled;
+
+  // ✅ deposit 兼容：前端可能传 bottleDeposit / crv
+  const deposit =
+    Number(
+      body.deposit ??
+        body.bottleDeposit ??
+        body.containerDeposit ??
+        body.crv ??
+        0
+    ) || 0;
+
+  // ✅ specialQty：空字符串会变 0，所以必须兜底 >=1
+  const qtyRaw = Number(
+    body.specialQty ??
+      body.specialN ??
+      body.specialCount ??
+      body.special_qty ??
+      body.special_count ??
+      1
+  );
+  const specialQty = Math.max(1, Math.floor(qtyRaw || 1));
+
+  // ✅ specialTotalPrice：允许为空（null），不要把 "" 变成 0
+  const specialTotalPrice = numOrNull(
+    body.specialTotalPrice ??
+      body.specialTotal ??
+      body.special_total_price ??
+      body.special_total ??
+      null
+  );
+
+  // ✅ specialPrice：允许为空（null）
+  const specialPrice = numOrNull(
+    body.specialPrice ??
+      body.special_price ??
+      null
+  );
+
+  // ✅ specialEnabled=false 时必须清空（否则前端/计算会混乱）
+  const normalized = {
+    deposit,
+    specialEnabled,
+  };
+
+  if (!specialEnabled) {
+    normalized.specialQty = 1;
+    normalized.specialTotalPrice = null;
+    normalized.specialPrice = null;
+    normalized.specialFrom = null;
+    normalized.specialTo = null;
+  } else {
+    normalized.specialQty = specialQty;
+    normalized.specialTotalPrice = specialTotalPrice;
+    // qty=1 且只填了总价：同步到 specialPrice（兼容旧逻辑）
+    normalized.specialPrice =
+      specialQty === 1 && specialTotalPrice != null
+        ? specialTotalPrice
+        : specialPrice;
+
+    normalized.specialFrom = body.specialFrom ?? null;
+    normalized.specialTo = body.specialTo ?? null;
+  }
+
+  return normalized;
+}
 function applyAutoCancelSpecial(p) {
   if (!p) return;
 
@@ -245,7 +333,8 @@ router.post("/", async (req, res) => {
 
     // 兼容你旧内存逻辑：如果没传 id 就生成一个，避免前端还在用旧 id
     const legacyId = body.id || "p_" + Date.now();
-
+    const specialFix = normalizeSpecialAndDeposit(body);
+const variantsFix = normalizeVariants(body.variants);
     const created = await Product.create({
       ...body,
       id: legacyId,
@@ -260,27 +349,13 @@ router.post("/", async (req, res) => {
       // 布尔字段兜底
       isActive: body.isActive === undefined ? true : !!body.isActive,
       isFlashDeal: !!body.isFlashDeal,
-      specialEnabled: !!body.specialEnabled,
-      autoCancelSpecialOnLowStock: !!body.autoCancelSpecialOnLowStock,
-      isSpecial: !!body.isSpecial,
-      taxable: !!body.taxable, // ✅ 新增：是否收税
-      deposit: body.deposit !== undefined && body.deposit !== null ? Number(body.deposit) : 0, // ✅ 押金（deposit）
-      // 数字字段可能来自字符串
-      specialPrice:
-        body.specialPrice !== undefined && body.specialPrice !== null
-          ? Number(body.specialPrice)
-          : null,
-      autoCancelSpecialThreshold: Number(body.autoCancelSpecialThreshold) || 0,
-      minStock: body.minStock !== undefined ? Number(body.minStock) : undefined,
-      allowZeroStock:
-        body.allowZeroStock !== undefined ? !!body.allowZeroStock : undefined,
-      specialQty: body.specialQty !== undefined ? Number(body.specialQty) : 1,
-      specialTotalPrice:
-        body.specialTotalPrice !== undefined && body.specialTotalPrice !== null
-          ? Number(body.specialTotalPrice)
-          : null,
-      variants: Array.isArray(body.variants) ? body.variants : [],
-
+      specialEnabled: specialFix.specialEnabled,
+specialQty: specialFix.specialQty,
+specialTotalPrice: specialFix.specialTotalPrice,
+specialPrice: specialFix.specialPrice,
+specialFrom: specialFix.specialFrom,
+specialTo: specialFix.specialTo,
+      variants: variantsFix,
       // 数组
       labels: Array.isArray(body.labels) ? body.labels : [],
       images: Array.isArray(body.images)
@@ -446,6 +521,21 @@ router.patch("/:id", async (req, res) => {
 
       p[key] = body[key];
     });
+    // ✅ 统一归一化：special + deposit（解决 "" -> 0、specialQty 变 0 等问题）
+const specialFix = normalizeSpecialAndDeposit(body);
+p.deposit = specialFix.deposit;
+
+p.specialEnabled = specialFix.specialEnabled;
+p.specialQty = specialFix.specialQty;
+p.specialTotalPrice = specialFix.specialTotalPrice;
+p.specialPrice = specialFix.specialPrice;
+p.specialFrom = specialFix.specialFrom;
+p.specialTo = specialFix.specialTo;
+
+// ✅ variants 归一化（确保 unitCount 是数字）
+if (body.variants !== undefined) {
+  p.variants = normalizeVariants(body.variants);
+}
 
     // 更新后重新计算库存保护与标签（库存保护会重算 price）
     applyAutoCancelSpecial(p);
