@@ -688,8 +688,9 @@ function getSpecialMeta(p, qty) {
 let bottleDeposit = 0;
 for (const it of items) {
   const qty = safeNum(it.qty, 1);
+  const unitCount = Math.max(1, Math.floor(safeNum(it.unitCount, 1)));
   const dep = safeNum(it.deposit ?? it.bottleDeposit ?? 0, 0);
-  if (dep > 0) bottleDeposit += dep * qty;
+  if (dep > 0) bottleDeposit += dep * qty * unitCount;
 }
 // =====【⬆⬆⬆ 押金计算结束】=====
         // 1) taxable 小计（✅ 兼容 taxable / hasTax）
@@ -820,19 +821,34 @@ if (depVal) depVal.textContent = money(extra.bottleDeposit);
             const st = window.Cart.getState();
             const items = Array.isArray(st?.items) ? st.items : [];
             return items.map((it) => {
-              const p = it.product || {};
-              return {
-                ...p,
-                qty: Number(it.qty || 1),
-              };
-            });
+  const p = it.product || {};
+  return {
+    ...p,
+    qty: Number(it.qty || 1),
+   taxable: (p.taxable ?? it.taxable ?? it.hasTax ?? false) === true,
+hasTax:  (p.taxable ?? it.taxable ?? it.hasTax ?? false) === true,
+    // ✅ 关键：把押金/规格从 cart item / product 上都兜底带出来
+    deposit: safeNum(p.deposit ?? it.deposit ?? it.bottleDeposit ?? p.bottleDeposit ?? 0, 0),
+    bottleDeposit: safeNum(p.bottleDeposit ?? it.bottleDeposit ?? 0, 0),
+    unitCount: Math.max(1, Math.floor(safeNum(p.unitCount ?? it.unitCount ?? 1, 1))),
+  };
+});
           }
         } catch {}
 
         const raw = localStorage.getItem(CART_LS_KEY);
         const cart = raw ? safeJsonParse(raw, null) : null;
         const items = Array.isArray(cart?.items) ? cart.items : [];
-        return items.map((it) => ({ ...(it.product || {}), qty: Number(it.qty || 1) }));
+        return items.map((it) => {
+  const p = it.product || {};
+  return {
+    ...p,
+    qty: Number(it.qty || 1),
+    deposit: safeNum(p.deposit ?? it.deposit ?? it.bottleDeposit ?? p.bottleDeposit ?? 0, 0),
+    bottleDeposit: safeNum(p.bottleDeposit ?? it.bottleDeposit ?? 0, 0),
+    unitCount: Math.max(1, Math.floor(safeNum(p.unitCount ?? it.unitCount ?? 1, 1))),
+  };
+});
       }
 
       function calcSubtotal(items) {
@@ -1434,7 +1450,7 @@ let lastStripePaymentIntentId = "";
 
   return {
     productId: pid,                 // ✅ 纯 ObjectId
-    variantKey: variantKey || it.variantKey || it.variant || "", // ✅ 单独传
+    variantKey: (variantKey || it.variantKey || it.variant || "single"),
     name: it.name,
     qty: Number(it.qty || 1),
     price: Number(it.priceNum ?? it.price ?? 0),
@@ -1460,17 +1476,35 @@ let lastStripePaymentIntentId = "";
               lng: Number.isFinite(lng) ? lng : undefined,
               note: f.note || "",
             },
-            pricing: {
-              subtotal: Number(snapshot.subtotal),
-              shippingFee: Number(snapshot.shipping),
-              taxableAmount: Number(extra.taxableAmount),
-              tax: Number(extra.tax),
-              serviceFee: Number(extra.serviceFee),
-              tip: Number(extra.tip),
-              total: Number(extra.grand), // ✅ 不要 ||0
-              taxRate: (document.getElementById("state")?.value || "") === "NY" ? NY_TAX_RATE : 0,
-              serviceRate: SERVICE_FEE_RATE,
-            },
+           pricing: {
+  // ✅ 基础
+  subtotal: Number(snapshot.subtotal),
+  shippingFee: Number(snapshot.shipping),
+
+  // ✅ 税（后端常用 taxAmount）
+  taxableAmount: Number(extra.taxableAmount),
+  taxAmount: Number(extra.tax),     // ✅ NEW
+  tax: Number(extra.tax),           // 兼容旧字段
+
+  // ✅ 平台费（后端常用 platformFee）
+  platformFee: Number(extra.serviceFee), // ✅ NEW（你这边叫 serviceFee，但给后端也写 platformFee）
+  serviceFee: Number(extra.serviceFee),  // 兼容旧字段
+
+  // ✅ 押金（你前面已经算了）
+  bottleDeposit: Number(extra.bottleDeposit || 0), // ✅ NEW
+
+  // ✅ 小费
+  tipAmount: Number(extra.tip),     // ✅ NEW
+  tip: Number(extra.tip),           // 兼容旧字段
+
+  // ✅ 总计（后端常用 totalAmount / grandTotal）
+  totalAmount: Number(extra.grand), // ✅ NEW
+  total: Number(extra.grand),       // 兼容旧字段
+
+  taxRate: (document.getElementById("state")?.value || "") === "NY" ? NY_TAX_RATE : 0,
+  platformRate: SERVICE_FEE_RATE,   // ✅ NEW
+  serviceRate: SERVICE_FEE_RATE,    // 兼容旧字段
+},
             source: "web_checkout",
           };
 
@@ -1624,16 +1658,34 @@ lastStripePaymentIntentId = String(data.paymentIntentId || data.paymentIntentId 
             note: f.note || "",
           },
           pricing: {
-            subtotal: Number(snapshot.subtotal),
-            shippingFee: Number(snapshot.shipping),
-            taxableAmount: Number(extra.taxableAmount),
-            tax: Number(extra.tax),
-            serviceFee: Number(extra.serviceFee),
-            tip: Number(extra.tip),
-            total: Number(extra.grand), // ✅ 不要 ||0
-            taxRate: (document.getElementById("state")?.value || "") === "NY" ? NY_TAX_RATE : 0,
-            serviceRate: SERVICE_FEE_RATE,
-          },
+  // ✅ 基础
+  subtotal: Number(snapshot.subtotal),
+  shippingFee: Number(snapshot.shipping),
+
+  // ✅ 税（后端常用 taxAmount）
+  taxableAmount: Number(extra.taxableAmount),
+  taxAmount: Number(extra.tax),     // ✅ NEW
+  tax: Number(extra.tax),           // 兼容旧字段
+
+  // ✅ 平台费（后端常用 platformFee）
+  platformFee: Number(extra.serviceFee), // ✅ NEW（你这边叫 serviceFee，但给后端也写 platformFee）
+  serviceFee: Number(extra.serviceFee),  // 兼容旧字段
+
+  // ✅ 押金（你前面已经算了）
+  bottleDeposit: Number(extra.bottleDeposit || 0), // ✅ NEW
+
+  // ✅ 小费
+  tipAmount: Number(extra.tip),     // ✅ NEW
+  tip: Number(extra.tip),           // 兼容旧字段
+
+  // ✅ 总计（后端常用 totalAmount / grandTotal）
+  totalAmount: Number(extra.grand), // ✅ NEW
+  total: Number(extra.grand),       // 兼容旧字段
+
+  taxRate: (document.getElementById("state")?.value || "") === "NY" ? NY_TAX_RATE : 0,
+  platformRate: SERVICE_FEE_RATE,   // ✅ NEW
+  serviceRate: SERVICE_FEE_RATE,    // 兼容旧字段
+},
           source: "web_checkout",
         };
 

@@ -757,6 +757,7 @@ router.get("/my", requireLogin, async (req, res) => {
         subtotal: o.subtotal,
         deliveryFee: o.deliveryFee,
         salesTax: o.salesTax,
+        depositTotal: o.depositTotal,
         platformFee: o.platformFee,
         tipFee: o.tipFee,
         taxableSubtotal: o.taxableSubtotal,
@@ -784,16 +785,23 @@ router.post("/", requireLogin, async (req, res) => {
     const { orderDoc } = await buildOrderPayload(req, null);
     const doc = await Order.create(orderDoc);
 
-    return res.json({
-      success: true,
-      orderId: doc._id.toString(),
-      orderNo: doc.orderNo,
-      totalAmount: doc.totalAmount,
-      payment: doc.payment,
-      deliveryMode: doc.deliveryMode,
-      fulfillment: doc.fulfillment,
-      deliveryDate: doc.deliveryDate,
-    });
+   return res.json({
+  success: true,
+  orderId: doc._id.toString(),
+  orderNo: doc.orderNo,
+  totalAmount: doc.totalAmount,
+
+  // ✅ 新增：税 / 押金明细
+  salesTax: round2(doc.salesTax ?? 0),
+  depositTotal: round2(doc.depositTotal ?? 0),
+  taxableSubtotal: round2(doc.taxableSubtotal ?? 0),
+  salesTaxRate: round2(doc.salesTaxRate ?? 0),
+
+  payment: doc.payment,
+  deliveryMode: doc.deliveryMode,
+  fulfillment: doc.fulfillment,
+  deliveryDate: doc.deliveryDate,
+});
   } catch (err) {
     console.error("POST /api/orders error:", err);
     return res.status(err?.status || 500).json({ success: false, message: err?.message || "创建订单失败" });
@@ -977,14 +985,20 @@ newBalance = round2(Number(w2?.balance || 0));
     });
 
     const fresh = await Order.findById(created._id)
-      .select("payment status totalAmount orderNo deliveryMode fulfillment subtotal deliveryFee discount salesTax platformFee tipFee taxableSubtotal deliveryDate stockReserve")
-      .lean();
+  .select(
+    "payment status totalAmount orderNo deliveryMode fulfillment subtotal deliveryFee discount salesTax depositTotal salesTaxRate platformFee tipFee taxableSubtotal deliveryDate stockReserve"
+  )
+  .lean();
 
     return res.json({
       success: true,
       orderId: created._id.toString(),
       orderNo: created.orderNo,
       totalAmount: round2(fresh?.totalAmount ?? finalTotal),
+      salesTax: round2(fresh?.salesTax ?? 0),
+  depositTotal: round2(fresh?.depositTotal ?? 0),
+  taxableSubtotal: round2(fresh?.taxableSubtotal ?? 0),
+  salesTaxRate: round2(fresh?.salesTaxRate ?? 0),
       walletUsed: round2(walletUsed),
       remaining: round2(remaining),
       paid: remaining <= 0 && (fresh?.status === "paid" || fresh?.payment?.status === "paid"),
@@ -1147,6 +1161,7 @@ router.get("/", async (req, res) => {
         subtotal: o.subtotal,
         deliveryFee: o.deliveryFee,
         salesTax: o.salesTax,
+        depositTotal: o.depositTotal,
         platformFee: o.platformFee,
         tipFee: o.tipFee,
         taxableSubtotal: o.taxableSubtotal,
@@ -1188,6 +1203,8 @@ router.get("/:id([0-9a-fA-F]{24})", async (req, res) => {
         totalAmount: doc.totalAmount,
         taxableSubtotal: doc.taxableSubtotal,
         salesTax: doc.salesTax,
+        depositTotal: doc.depositTotal,
+        salesTaxRate: doc.salesTaxRate,
         platformFee: doc.platformFee,
         tipFee: doc.tipFee,
         addressText: doc.addressText,
