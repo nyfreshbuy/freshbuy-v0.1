@@ -595,6 +595,9 @@
         const n = Number(v);
         return Number.isFinite(n) ? n : fallback;
       }
+      function truthyFlag(v) {
+  return v === true || v === "true" || v === 1 || v === "1";
+}
      // ✅ 特价：N for $X 行小计计算（与 cart.js / cart.html 同口径）
      // ✅ 关键修复：把 "productId::variantKey" 拆开（否则后端不扣库存）
 function splitPidVariant(raw) {
@@ -813,28 +816,20 @@ if (depVal) depVal.textContent = money(extra.bottleDeposit);
         if (raw.startsWith("/")) return location.origin + raw;
         return raw;
       }
-
-      // ========= 从 Cart / localStorage 取 items =========
-      function truthyFlag(v) {
-  return v === true || v === "true" || v === 1 || v === "1";
-}
-
+    // ========= 从 Cart / localStorage 取 items =========
 function getItemsFromCart() {
+  // 1) 优先从 window.Cart 取（你结算页上方已加载 cart.js）
   try {
     if (window.Cart && typeof window.Cart.getState === "function") {
       const st = window.Cart.getState();
       const items = Array.isArray(st?.items) ? st.items : [];
 
       return items.map((it) => {
-        const p = it.product || {};
+        const p = it.product || it || {};
 
         const taxFlag =
           p.taxable ?? p.hasTax ?? p.isTaxable ?? p.tax ??
           it.taxable ?? it.hasTax ?? it.isTaxable ?? it.tax ?? false;
-
-        const dep =
-          p.deposit ?? p.bottleDeposit ?? p.containerDeposit ?? p.crv ??
-          it.deposit ?? it.bottleDeposit ?? it.containerDeposit ?? it.crv ?? 0;
 
         const bottleDep =
           p.bottleDeposit ?? p.deposit ?? p.containerDeposit ?? p.crv ??
@@ -842,34 +837,45 @@ function getItemsFromCart() {
 
         return {
           ...p,
-          qty: Number(it.qty || 1),
 
+          // ✅ qty
+          qty: Number(it.qty || p.qty || 1),
+
+          // ✅ 税标记（统一 boolean）
           taxable: truthyFlag(taxFlag),
           hasTax: truthyFlag(taxFlag),
 
-          deposit: safeNum(dep, 0),
+          // ✅ 押金（统一字段）
+          deposit: safeNum(bottleDep, 0),
           bottleDeposit: safeNum(bottleDep, 0),
 
-          unitCount: Math.max(1, Math.floor(safeNum(p.unitCount ?? it.unitCount ?? 1, 1))),
+          // ✅ 整箱规格数量（用于押金 qty * unitCount）
+          unitCount: Math.max(
+            1,
+            Math.floor(safeNum(p.unitCount ?? it.unitCount ?? 1, 1))
+          ),
+
+          // ✅ id 兼容（后面展示/拆分用）
+          _id: p._id || it._id || p.id || it.id,
+          id: p.id || it.id || p._id || it._id,
         };
       });
     }
-  } catch {}
+  } catch (e) {
+    console.warn("getItemsFromCart() from window.Cart failed:", e);
+  }
 
+  // 2) fallback：从 localStorage 取
   const raw = localStorage.getItem(CART_LS_KEY);
   const cart = raw ? safeJsonParse(raw, null) : null;
   const items = Array.isArray(cart?.items) ? cart.items : [];
 
   return items.map((it) => {
-    const p = it.product || {};
+    const p = it.product || it || {};
 
     const taxFlag =
       p.taxable ?? p.hasTax ?? p.isTaxable ?? p.tax ??
       it.taxable ?? it.hasTax ?? it.isTaxable ?? it.tax ?? false;
-
-    const dep =
-      p.deposit ?? p.bottleDeposit ?? p.containerDeposit ?? p.crv ??
-      it.deposit ?? it.bottleDeposit ?? it.containerDeposit ?? it.crv ?? 0;
 
     const bottleDep =
       p.bottleDeposit ?? p.deposit ?? p.containerDeposit ?? p.crv ??
@@ -877,82 +883,24 @@ function getItemsFromCart() {
 
     return {
       ...p,
-      qty: Number(it.qty || 1),
+      qty: Number(it.qty || p.qty || 1),
 
       taxable: truthyFlag(taxFlag),
       hasTax: truthyFlag(taxFlag),
 
-      deposit: safeNum(dep, 0),
+      deposit: safeNum(bottleDep, 0),
       bottleDeposit: safeNum(bottleDep, 0),
 
-      unitCount: Math.max(1, Math.floor(safeNum(p.unitCount ?? it.unitCount ?? 1, 1))),
+      unitCount: Math.max(
+        1,
+        Math.floor(safeNum(p.unitCount ?? it.unitCount ?? 1, 1))
+      ),
+
+      _id: p._id || it._id || p.id || it.id,
+      id: p.id || it.id || p._id || it._id,
     };
   });
 }
-        try {
-          if (window.Cart && typeof window.Cart.getState === "function") {
-            const st = window.Cart.getState();
-            const items = Array.isArray(st?.items) ? st.items : [];
-           return items.map((it) => {
-  const p = it.product || {};
-
-  // ✅ 先在对象外面算好 taxFlag
-  const taxFlag =
-    p.taxable ?? p.hasTax ?? p.isTaxable ?? p.tax ??
-    it.taxable ?? it.hasTax ?? it.isTaxable ?? it.tax ?? false;
-
-  const isTax =
-    taxFlag === true || taxFlag === "true" || taxFlag === 1 || taxFlag === "1";
-
-  // ✅ 押金兜底（CRV / bottle deposit）
-  const bottleDep =
-    p.bottleDeposit ?? p.deposit ?? p.containerDeposit ?? p.crv ??
-    it.bottleDeposit ?? it.deposit ?? it.containerDeposit ?? it.crv ?? 0;
-
-  return {
-    ...p,
-    qty: Number(it.qty || 1),
-
-    // ✅ 税
-    taxable: isTax,
-    hasTax: isTax,
-
-    // ✅ 押金
-    bottleDeposit: Number(bottleDep || 0),
-    deposit: Number(bottleDep || 0),
-
-    // ✅ 规格数量（整箱）
-    unitCount: Math.max(
-      1,
-      Math.floor(Number(p.unitCount ?? it.unitCount ?? 1) || 1)
-    ),
-  };
-});
-          }
-        } catch {}
-
-        const raw = localStorage.getItem(CART_LS_KEY);
-        const cart = raw ? safeJsonParse(raw, null) : null;
-        const items = Array.isArray(cart?.items) ? cart.items : [];
-        return items.map((it) => {
-  const p = it.product || {};
-  return {
-    ...p,
-    qty: Number(it.qty || 1),
-   deposit: safeNum(
-  p.deposit ?? p.bottleDeposit ?? p.containerDeposit ?? p.crv ??
-  it.deposit ?? it.bottleDeposit ?? it.containerDeposit ?? it.crv ?? 0,
-  0
-),
-bottleDeposit: safeNum(
-  p.bottleDeposit ?? p.deposit ?? p.containerDeposit ?? p.crv ??
-  it.bottleDeposit ?? it.deposit ?? it.containerDeposit ?? it.crv ?? 0,
-  0
-),
-    bottleDeposit: safeNum(p.bottleDeposit ?? it.bottleDeposit ?? 0, 0),
-    unitCount: Math.max(1, Math.floor(safeNum(p.unitCount ?? it.unitCount ?? 1, 1))),
-  };
-});
       function calcSubtotal(items) {
   return items.reduce((sum, it) => {
     const qty = Number(it.qty || 1);
