@@ -491,7 +491,7 @@ async function buildOrderPayload(req, session = null) {
       }
     }
 
-    // ✅ 后端按特价口径算行小计（与前端一致）
+    // ✅ cleanItems：保留 specialQty/specialTotalPrice/deposit/taxable 等字段，给 computeTotalsFromPayload 统一结算
     cleanItems.push({
       productId,
       legacyProductId: legacyId || "",
@@ -848,8 +848,15 @@ router.post("/checkout", requireLogin, async (req, res) => {
         );
 
         platformFee = round2(totalsStripe.platformFee);
-        finalTotal = round2(totalsStripe.totalAmount);
+finalTotal = round2(totalsStripe.totalAmount);
 
+// ✅ 同步 Stripe 口径的明细（一次性解决对账问题）
+orderDoc.subtotal = round2(totalsStripe.subtotal);
+orderDoc.deliveryFee = round2(totalsStripe.shipping);
+orderDoc.taxableSubtotal = round2(totalsStripe.taxableSubtotal);
+orderDoc.salesTax = round2(totalsStripe.salesTax);
+orderDoc.depositTotal = round2(totalsStripe.depositTotal);
+orderDoc.tipFee = round2(totalsStripe.tipFee);
         walletUsed = round2(Math.min(balance0, finalTotal));
         remaining = round2(finalTotal - walletUsed);
       }
