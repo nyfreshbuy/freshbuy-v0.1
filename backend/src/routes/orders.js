@@ -390,6 +390,18 @@ if (maybeId && mongoose.Types.ObjectId.isValid(maybeId)) {
   preFetchedProduct = session ? await q2.session(session) : await q2;
   if (preFetchedProduct?._id) productId = preFetchedProduct._id;
 }
+// ✅✅✅ 就在这里插入（解析 productId 完成后）
+console.log(
+  "🧩 item#", idx + 1,
+  "rawId=", it.productId || it._id || it.id,
+  "maybeId=", maybeId,
+  "=> productId=", productId ? String(productId) : null
+);
+if (!productId) {
+  const e = new Error(`商品ID无法识别（第 ${idx + 1} 项：${it.name || ""}）`);
+  e.status = 400;
+  throw e;
+}
     const legacyId = String(it.legacyProductId || it.id || it._id || "").trim();
 
     // ✅ variantKey：优先用显式字段，其次用从 productId:: 推断的
@@ -511,6 +523,14 @@ if (maybeId && mongoose.Types.ObjectId.isValid(maybeId)) {
 if (productId && !Number.isFinite(depositEach)) depositEach = 0;
 if (productId && depositEach < 0) depositEach = 0;
     // ✅ cleanItems：保留 specialQty/specialTotalPrice/deposit/taxable 等字段，给 computeTotalsFromPayload 统一结算
+    // ✅✅✅ 就在 cleanItems.push 之前插入
+console.log(
+  "🧾 item#", idx + 1,
+  "depositEach=", depositEach,
+  "unitCount=", finalUnitCount,
+  "qty=", qty,
+  "name=", finalName
+);
     cleanItems.push({
       productId,
       legacyProductId: legacyId || "",
