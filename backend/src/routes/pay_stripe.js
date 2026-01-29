@@ -192,17 +192,34 @@ router.post("/intent-for-order", requireLogin, express.json(), async (req, res) 
     // ✅ 幂等：如果已有 intentId，直接复用
     const existingIntentId = String(doc.payment?.stripe?.intentId || "").trim();
     if (existingIntentId) {
-      return res.json({
-        success: true,
-        reused: true,
-        orderId: String(doc._id),
-        orderNo: doc.orderNo,
-        paymentIntentId: existingIntentId,
-        clientSecret: "",
-        remaining,
-      });
-    }
+  let clientSecret = "";
+  try {
+    const pi = await stripe.paymentIntents.retrieve(existingIntentId);
+    clientSecret = String(pi?.client_secret || "");
+  } catch (e) {
+    console.warn("⚠️ retrieve existing PI failed:", existingIntentId, e?.message);
+  }
 
+  if (!clientSecret) {
+    return res.status(500).json({
+      success: false,
+      message: "已存在 PaymentIntent，但 clientSecret 读取失败",
+      paymentIntentId: existingIntentId,
+      reused: true,
+      remaining,
+    });
+  }
+
+  return res.json({
+    success: true,
+    reused: true,
+    orderId: String(doc._id),
+    orderNo: doc.orderNo,
+    paymentIntentId: existingIntentId,
+    clientSecret,
+    remaining,
+  });
+}
     const cents = moneyToCents(remaining);
     const intentKey = String(doc.payment?.idempotencyKey || doc.orderNo || doc._id);
 
@@ -348,18 +365,37 @@ if (payload?.useWallet === true || payload?.payMethod === "wallet" || payload?.p
       "payment.status": "unpaid",
     }).catch(() => null);
 
-    // 如果已存在 intentId：直接返回（前端可用 intentId 重新取 clientSecret 或走 confirm）
-    if (doc?.payment?.stripe?.intentId) {
-      return res.json({
-        success: true,
-        orderId: String(doc._id),
-        orderNo: doc.orderNo,
-        clientSecret: "",
-        paymentIntentId: doc.payment.stripe.intentId,
-        reused: true,
-      });
-    }
+    // ✅ 如果已存在 intentId：必须返回 clientSecret（Payment Element 需要）
+if (doc?.payment?.stripe?.intentId) {
+  const intentId = String(doc.payment.stripe.intentId || "").trim();
 
+  let clientSecret = "";
+  try {
+    const pi = await stripe.paymentIntents.retrieve(intentId);
+    clientSecret = String(pi?.client_secret || "");
+  } catch (e) {
+    console.warn("⚠️ retrieve existing PaymentIntent failed:", intentId, e?.message);
+  }
+
+  // 如果拿不到 clientSecret，就别让前端继续挂载（否则一直“200 但失败”）
+  if (!clientSecret) {
+    return res.status(500).json({
+      success: false,
+      message: "已存在 PaymentIntent，但 clientSecret 读取失败（请稍后重试或联系管理员）",
+      paymentIntentId: intentId,
+      reused: true,
+    });
+  }
+
+  return res.json({
+    success: true,
+    orderId: String(doc._id),
+    orderNo: doc.orderNo,
+    clientSecret,
+    paymentIntentId: intentId,
+    reused: true,
+  });
+}
     // ---------- 2.2 创建订单 ----------
     if (!doc) {
       doc = await Order.create({
