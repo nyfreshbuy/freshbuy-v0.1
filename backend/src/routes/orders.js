@@ -138,7 +138,6 @@ function isSpecialItem(it) {
   if (name.includes("爆品")) return true;
   return false;
 }
-
 // ✅ 规格解析：从 product.variants 找 variantKey
 function getVariantFromProduct(productDoc, variantKey) {
   const key = String(variantKey || "").trim();
