@@ -131,8 +131,22 @@ export function computeTotalsFromPayload(payload = {}, options = {}) {
   const salesTax = round2(taxableSubtotal * taxRate);
 
   // 5) deposit
-  const depositTotal = computeDepositTotal(items);
+// ✅ 支持前端直接传“押金总额”（你的 payload 里是 pricing.bottleDeposit）
+// 优先用 override；没有才按 items.deposit * qty * unitCount 计算
+const depositOverrideRaw =
+  payload?.pricing?.bottleDeposit ??
+  payload?.pricing?.depositTotal ??
+  payload?.pricing?.deposit ??
+  payload?.bottleDeposit ??
+  payload?.depositTotal ??
+  payload?.deposit;
 
+const depositOverride = safeNum(depositOverrideRaw, NaN);
+
+const depositTotal =
+  Number.isFinite(depositOverride) && depositOverride > 0
+    ? round2(depositOverride)
+    : computeDepositTotal(items);
   // 6) tip
   const tipFee = Math.max(
     0,

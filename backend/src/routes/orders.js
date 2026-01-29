@@ -562,10 +562,28 @@ const tipFee = round2(Math.max(0, safeNumber(tipRaw, 0)));
   // ✅ 统一结算：buildOrderPayload 阶段用 “wallet口径”(平台费=0)
   // checkout 阶段如需 Stripe，会用 stripe口径重算（平台费=0.5+2%）
   // -------------------------
-  const totalsWallet = computeTotalsFromPayload(
-    { items: cleanItems, shipping: ship, mode, pricing: { tip: tipFee } },
-    { payChannel: "wallet", taxRateNY: NY_TAX_RATE }
-  );
+  // ✅ 押金 override（来自前端 pricing）
+const pricingIn2 = body?.pricing || {};
+const depositOverride = safeNumber(
+  pricingIn2.bottleDeposit ?? pricingIn2.depositTotal ?? pricingIn2.deposit ?? 0,
+  0
+);
+
+const totalsWallet = computeTotalsFromPayload(
+  {
+    items: cleanItems,
+    shipping: ship,
+    mode,
+    pricing: {
+      tip: tipFee,
+      // ✅ 把押金总额传给统一结算工具（否则它只能从 items.deposit 算）
+      bottleDeposit: depositOverride,
+      depositTotal: depositOverride,
+      deposit: depositOverride,
+    },
+  },
+  { payChannel: "wallet", taxRateNY: NY_TAX_RATE }
+);
 const subtotalForRule = round2(totalsWallet.subtotal);
 
 if (mode === "normal" && subtotalForRule < 49.99) {
@@ -592,20 +610,9 @@ const depositOverride = safeNumber(
   0
 );
 
-const depositTotal = round2(Math.max(0, depositOverride || totalsWallet.depositTotal || 0));
-  const discount = 0;
-
-  // build 阶段平台费固定为 0（Stripe 时再加）
-  const platformFee = 0;
-
-  // ✅ build 阶段 baseTotalAmount 必须包含：subtotal + shipping + tax + deposit + tip（平台费 build=0）
-const baseTotalAmount = round2(
-  round2(totalsWallet.subtotal) +
-    round2(totalsWallet.shipping) +
-    round2(totalsWallet.salesTax) +
-    round2(depositTotal) +
-    round2(tipFee)
-);
+// ✅ 统一用 computeTotalsFromPayload 的结果（口径一致）
+const depositTotal = round2(totalsWallet.depositTotal);
+const baseTotalAmount = round2(totalsWallet.totalAmount);
   // zone
   const zip = String(ship.zip || ship.postalCode || "").trim();
   const { zoneKey, zoneName } = await resolveZoneFromPayload({ zoneId, ship, zip });
