@@ -142,6 +142,11 @@ function renderOrderDetailToDOM(order) {
         }
 
         <div>运费：${money(order.deliveryFee)}</div>
+                ${
+          Number(order.tipFee || 0) > 0
+            ? `<div>小费：${money(order.tipFee)}</div>`
+            : ""
+        }
         <div>优惠：${money(order.discount)}</div>
         <div class="total">订单总金额：${money(order.totalAmount)}</div>
       </div>
