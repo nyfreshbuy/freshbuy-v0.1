@@ -525,8 +525,15 @@ const vSpecialTotal = safeNumber(v?.specialTotalPrice, 0);
 if (vSpecialQty > 0) specialQty = vSpecialQty;
 if (vSpecialTotal > 0) specialTotalPrice = vSpecialTotal;
            // ✅ 再用 variant 覆盖一次（很多商品把 2for/3for 存在 variants.single 上）
-      specialQty = safeNumber(v.specialQty ?? specialQty, specialQty);
-      specialTotalPrice = safeNumber(v.specialTotalPrice ?? specialTotalPrice, specialTotalPrice);
+      // ✅ 再用 variant 覆盖一次：但只有当 variant 给的是“有效特价”才覆盖 product
+const vQty = safeNumber(v?.specialQty, 0);
+const vTotal = safeNumber(v?.specialTotalPrice, 0);
+
+if (vQty >= 2 && vTotal > 0) {
+  specialQty = vQty;
+  specialTotalPrice = vTotal;
+}
+
       // ✅ FIX: 特价必须是有效的 “N for $X” 才生效；否则一律当无特价
 specialQty = Math.max(0, Math.floor(Number(specialQty || 0)));
 specialTotalPrice = round2(Math.max(0, Number(specialTotalPrice || 0)));
