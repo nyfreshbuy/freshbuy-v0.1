@@ -52,24 +52,6 @@ function safeNumber(v, def = 0) {
   const n = Number(v);
   return Number.isFinite(n) ? n : def;
 }
-
-// ✅ 特价：N for $X 行小计（与前端 checkout 同口径）
-function calcSpecialLineTotalBackend({ price, specialQty, specialTotalPrice }, qty) {
-  const q = Math.max(0, Math.floor(Number(qty || 0)));
-  const p = Number(price || 0);
-  const n = Math.floor(Number(specialQty || 0));
-  const dealTotal = Number(specialTotalPrice || 0);
-
-  if (q <= 0) return 0;
-
-  if (n > 0 && dealTotal > 0 && q >= n) {
-    const groups = Math.floor(q / n);
-    const remainder = q % n;
-    return round2(groups * dealTotal + remainder * p);
-  }
-  return round2(q * p);
-}
-
 function genOrderNo() {
   const d = new Date();
   const y = d.getFullYear();
@@ -368,7 +350,6 @@ async function buildOrderPayload(req, session = null) {
   // =========================
   // ✅ items 整理 +（checkout时）预扣库存 + stockReserve
   // =========================
-  let subtotal = 0;
   const cleanItems = [];
   const stockReserve = [];
 
@@ -511,9 +492,6 @@ async function buildOrderPayload(req, session = null) {
     }
 
     // ✅ 后端按特价口径算行小计（与前端一致）
-    const lineTotal = calcSpecialLineTotalBackend({ price, specialQty, specialTotalPrice }, qty);
-    subtotal += lineTotal;
-
     cleanItems.push({
       productId,
       legacyProductId: legacyId || "",
@@ -537,13 +515,9 @@ async function buildOrderPayload(req, session = null) {
       deposit: round2(depositEach),
 
       image: finalImage,
-      lineTotal,
       cost,
     });
   }
-
-  subtotal = round2(subtotal);
-
   // -------------------------
   // 规则校验（保留你原来的）
   // -------------------------
@@ -568,18 +542,6 @@ async function buildOrderPayload(req, session = null) {
     throw e;
   }
 
-  if (mode === "normal" && subtotal < 49.99) {
-    const e = new Error("未满足 $49.99 最低消费");
-    e.status = 400;
-    throw e;
-  }
-
-  if (mode === "friendGroup" && subtotal < 29) {
-    const e = new Error("未满足 $29 最低消费");
-    e.status = 400;
-    throw e;
-  }
-
   // -------------------------
   // tip（先算出来）
   // -------------------------
@@ -594,7 +556,19 @@ async function buildOrderPayload(req, session = null) {
     { items: cleanItems, shipping: ship, mode, pricing: { tip: tipFee } },
     { payChannel: "wallet", taxRateNY: NY_TAX_RATE }
   );
+const subtotalForRule = round2(totalsWallet.subtotal);
 
+if (mode === "normal" && subtotalForRule < 49.99) {
+  const e = new Error("未满足 $49.99 最低消费");
+  e.status = 400;
+  throw e;
+}
+
+if (mode === "friendGroup" && subtotalForRule < 29) {
+  const e = new Error("未满足 $29 最低消费");
+  e.status = 400;
+  throw e;
+}
   // ✅ 用统一结算覆盖所有金额字段
   const deliveryFee = round2(totalsWallet.shipping);
   const taxableSubtotal = round2(totalsWallet.taxableSubtotal);
