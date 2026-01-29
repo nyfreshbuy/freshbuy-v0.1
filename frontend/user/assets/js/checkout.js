@@ -484,15 +484,15 @@ function clearIntentKey() {
     }
 
     // ✅ wallet 表示“自动能扣多少扣多少”
-    const payMethod = payMethodRaw === "wallet" ? "auto" : "stripe";
-
+    // ✅ 对齐后端：用户选 wallet 就传 "wallet"；否则 "stripe"
+const payMethod = payMethodRaw === "wallet" ? "wallet" : "stripe";
     // ✅ NEW：提交时把费用/税/押金算出来一起给后端（后端仍建议再算一遍）
     const amounts = computeCheckoutAmounts();
 
     const payload = {
      intentKey: getOrCreateIntentKey(), // ✅ 新增：短幂等键（给后端/Stripe 用）
       mode,
-      deliveryMode: mode,
+      deliveryMode: deliveryModeUI,
       items: normalizedItems,
       shipping,
       receiver: shipping,
@@ -561,9 +561,15 @@ function clearIntentKey() {
       e.preventDefault();
 
       submitCheckout().catch((err) => {
-        console.error("submitCheckout error:", err);
-        alert(err?.message || "下单失败");
-      });
+  console.error("submitCheckout error:", err);
+
+  const msg = String(err?.message || "");
+  if (msg.includes("复用了同一个下单Key") || msg.includes("409")) {
+    clearIntentKey();
+  }
+
+  alert(msg || "下单失败");
+});
     });
   }
 

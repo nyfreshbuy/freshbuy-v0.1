@@ -665,6 +665,20 @@ if (mode === "friendGroup" && subtotalForRule < 29) {
 // ✅ 统一用 computeTotalsFromPayload 的结果（口径一致）
 const depositTotal = round2(totalsWallet.depositTotal);
 const baseTotalAmount = round2(totalsWallet.totalAmount);
+// ✅ FIX: discount / platformFee 必须定义，否则会 ReferenceError
+const discount = round2(
+  safeNumber(
+    totalsWallet.discount ??
+      totalsWallet.discountTotal ??
+      totalsWallet.amountDiscount ??
+      totalsWallet.couponDiscount ??
+      0,
+    0
+  )
+);
+
+// buildOrderPayload 阶段走 wallet 口径：平台费固定为 0
+const platformFee = 0;
   // zone
   const zip = String(ship.zip || ship.postalCode || "").trim();
   const { zoneKey, zoneName } = await resolveZoneFromPayload({ zoneId, ship, zip });
@@ -692,7 +706,7 @@ const baseTotalAmount = round2(totalsWallet.totalAmount);
     amountDeposit: Number(depositTotal || 0),
     amountPlatformFee: 0,
     amountTip: Number(tipFee || 0),
-    amountDiscount: 0,
+    amountDiscount: Number(discount || 0),
   };
 
   const orderDoc = {
