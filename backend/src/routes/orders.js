@@ -543,11 +543,19 @@ async function buildOrderPayload(req, session = null) {
   }
 
   // -------------------------
-  // tip（先算出来）
-  // -------------------------
-  const tipRaw = tipAmount ?? tip ?? ship.tip ?? 0;
-  const tipFee = round2(Math.max(0, safeNumber(tipRaw, 0)));
+// tip（先算出来）
+// ✅ 兼容：顶层 tip/tipAmount + pricing.tip/tipAmount
+// -------------------------
+const pricingIn = body?.pricing || {};
+const tipRaw =
+  pricingIn.tipAmount ??
+  pricingIn.tip ??
+  tipAmount ??
+  tip ??
+  ship.tip ??
+  0;
 
+const tipFee = round2(Math.max(0, safeNumber(tipRaw, 0)));
   // -------------------------
   // ✅ 统一结算：buildOrderPayload 阶段用 “wallet口径”(平台费=0)
   // checkout 阶段如需 Stripe，会用 stripe口径重算（平台费=0.5+2%）
@@ -574,15 +582,29 @@ if (mode === "friendGroup" && subtotalForRule < 29) {
   const taxableSubtotal = round2(totalsWallet.taxableSubtotal);
   const taxRate = round2(totalsWallet.taxRate);
   const salesTax = round2(totalsWallet.salesTax);
-  const depositTotal = round2(totalsWallet.depositTotal);
+  // ✅ 押金：优先使用前端传来的 pricing.bottleDeposit（因为 DB 没 deposit 字段）
+// 兼容字段：bottleDeposit / depositTotal / deposit
+const pricingIn2 = body?.pricing || {};
+const depositOverride = safeNumber(
+  pricingIn2.bottleDeposit ?? pricingIn2.depositTotal ?? pricingIn2.deposit ?? 0,
+  0
+);
+
+const depositTotal = round2(Math.max(0, depositOverride || totalsWallet.depositTotal || 0));
   const discount = 0;
 
   // build 阶段平台费固定为 0（Stripe 时再加）
   const platformFee = 0;
 
-  // ✅ build 阶段 baseTotalAmount 就是钱包口径总额
-  const baseTotalAmount = round2(totalsWallet.totalAmount);
-
+  // ✅ build 阶段 baseTotalAmount 必须包含：subtotal + shipping + tax + deposit + tip（平台费 build=0）
+const baseTotalAmount = round2(
+  round2(totalsWallet.subtotal) +
+    round2(totalsWallet.shipping) +
+    round2(totalsWallet.salesTax) +
+    round2(depositTotal) +
+    round2(tipFee) +
+    0
+);
   // zone
   const zip = String(ship.zip || ship.postalCode || "").trim();
   const { zoneKey, zoneName } = await resolveZoneFromPayload({ zoneId, ship, zip });
