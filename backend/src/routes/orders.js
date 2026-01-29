@@ -492,7 +492,10 @@ async function buildOrderPayload(req, session = null) {
         });
       }
     }
-
+    // ✅ 兜底：如果 productId 有，但 depositEach 还是 0，说明 DB 里没填押金（或查不到商品）
+// 这里绝对不要用前端 it.deposit 来覆盖（防止被前端 0 污染）
+if (productId && !Number.isFinite(depositEach)) depositEach = 0;
+if (productId && depositEach < 0) depositEach = 0;
     // ✅ cleanItems：保留 specialQty/specialTotalPrice/deposit/taxable 等字段，给 computeTotalsFromPayload 统一结算
     cleanItems.push({
       productId,
@@ -562,22 +565,12 @@ const tipFee = round2(Math.max(0, safeNumber(tipRaw, 0)));
   // ✅ 统一结算：buildOrderPayload 阶段用 “wallet口径”(平台费=0)
   // checkout 阶段如需 Stripe，会用 stripe口径重算（平台费=0.5+2%）
   // -------------------------
-  const depositOverride = safeNumber(
-  pricingIn.bottleDeposit ?? pricingIn.depositTotal ?? pricingIn.deposit ?? 0,
-  0
-);
-const totalsWallet = computeTotalsFromPayload(
+  const totalsWallet = computeTotalsFromPayload(
   {
     items: cleanItems,
     shipping: ship,
     mode,
-    pricing: {
-      tip: tipFee,
-      // ✅ 把押金总额传给统一结算工具（否则它只能从 items.deposit 算）
-      bottleDeposit: depositOverride,
-      depositTotal: depositOverride,
-      deposit: depositOverride,
-    },
+    pricing: { tip: tipFee },
   },
   { payChannel: "wallet", taxRateNY: NY_TAX_RATE }
 );
@@ -630,7 +623,7 @@ const baseTotalAmount = round2(totalsWallet.totalAmount);
     amountDeposit: Number(depositTotal || 0),
     amountPlatformFee: 0,
     amountTip: Number(tipFee || 0),
-    amountDiscount: Number(discount || 0),
+    amountDiscount: 0,
   };
 
   const orderDoc = {
@@ -849,13 +842,7 @@ const totalsWallet = computeTotalsFromPayload(
     items: orderDoc.items,
     shipping: ship,
     mode: orderDoc.deliveryMode,
-    pricing: {
-      tip: orderDoc.tipFee || 0,
-      // ✅ 关键：把押金总额也告诉统一结算工具（否则它只会从 items.deposit 算，DB 没字段就=0）
-      bottleDeposit: orderDoc.depositTotal || 0,
-      depositTotal: orderDoc.depositTotal || 0,
-      deposit: orderDoc.depositTotal || 0,
-    },
+    pricing: { tip: orderDoc.tipFee || 0 },
   },
   { payChannel: "wallet", taxRateNY: NY_TAX_RATE }
 );
