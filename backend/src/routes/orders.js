@@ -516,24 +516,20 @@ if (hasFrontendPrice) {
 
       cost = Number(pdoc.cost || 0) || cost;
       hasTax = !!pdoc.taxable;
+// ✅ 先用 product（pdoc）上的特价覆盖（这是主来源）
+specialQty = safeNumber(pdoc.specialQty ?? pdoc.specialN ?? pdoc.dealQty ?? specialQty, specialQty);
+specialTotalPrice = safeNumber(
+  pdoc.specialTotalPrice ?? pdoc.specialTotal ?? pdoc.dealTotalPrice ?? pdoc.dealPrice ?? specialTotalPrice,
+  specialTotalPrice
+);
 
-      // ✅ DB 覆盖特价字段（防止前端乱传）
-     // ✅ FIX: 只有 variant 里真的有促销（>0）才覆盖，避免 0 把 product 的促销覆盖没了
-const vSpecialQty = safeNumber(v?.specialQty, 0);
-const vSpecialTotal = safeNumber(v?.specialTotalPrice, 0);
-
-if (vSpecialQty > 0) specialQty = vSpecialQty;
-if (vSpecialTotal > 0) specialTotalPrice = vSpecialTotal;
-           // ✅ 再用 variant 覆盖一次（很多商品把 2for/3for 存在 variants.single 上）
-      // ✅ 再用 variant 覆盖一次：但只有当 variant 给的是“有效特价”才覆盖 product
+// ✅ 再用 variant 覆盖：但只有当 variant 给的是“有效特价”才覆盖 product（防止 1/0 污染）
 const vQty = safeNumber(v?.specialQty, 0);
 const vTotal = safeNumber(v?.specialTotalPrice, 0);
-
 if (vQty >= 2 && vTotal > 0) {
   specialQty = vQty;
   specialTotalPrice = vTotal;
 }
-
       // ✅ FIX: 特价必须是有效的 “N for $X” 才生效；否则一律当无特价
 specialQty = Math.max(0, Math.floor(Number(specialQty || 0)));
 specialTotalPrice = round2(Math.max(0, Number(specialTotalPrice || 0)));
