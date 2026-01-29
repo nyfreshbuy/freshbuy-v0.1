@@ -463,10 +463,8 @@ let v = null;      // ✅ FIX 2：提前声明（关键）
       it.specialTotalPrice ?? it.specialTotal ?? it.dealTotalPrice ?? it.dealPrice ?? 0,
       0
     );
-   let pdoc = null; // ✅ FIX: 提前声明，供后面日志/计算使用
    if (productId) {
-  pdoc =
-    preFetchedProduct ||
+   pdoc = preFetchedProduct ||
     (session
       ? await Product.findById(productId)
           .select(
@@ -483,7 +481,7 @@ let v = null;      // ✅ FIX 2：提前声明（关键）
     throw e;
   }
       // 解析规格（单个/整箱）
-      const v = getVariantFromProduct(pdoc, variantKey);
+      v = getVariantFromProduct(pdoc, variantKey);
       const unitCount = Math.max(1, Math.floor(Number(v.unitCount || 1)));
       finalVariantKey = v.key || "single";
       finalUnitCount = unitCount;
