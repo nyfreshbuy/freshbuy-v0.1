@@ -455,7 +455,8 @@ if (!productId) {
     let finalVariantKey = variantKey || "single";
     let finalUnitCount = 1;
     let depositEach = 0; // 每个“单个单位”的押金（来自 DB）
-
+    let pdoc = null;   // ✅ FIX 1：提前声明
+let v = null;      // ✅ FIX 2：提前声明（关键）
     // ✅ 特价字段：先用前端兜底
     let specialQty = safeNumber(it.specialQty ?? it.specialN ?? it.dealQty ?? it.dealN ?? 0, 0);
     let specialTotalPrice = safeNumber(
