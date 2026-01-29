@@ -79,23 +79,38 @@
     const pid = getPid(p);
 
     return {
-      id: pid,
-      name: p?.name || "商品",
-      price: finalPrice,
-      priceNum: finalPrice,
-      isDeal: !!(
-        p?.isDeal ||
-        p?.specialEnabled ||
-        p?.isSpecial ||
-        String(p?.tag || "").includes("爆品")
-      ),
-      tag: p?.tag || "",
-      type: p?.type || "",
-      isSpecial: !!p?.isSpecial,
-      image: p?.image || "",
-    };
-  }
+  // ✅ 关键：同时带 id + productId，保证后端一定能识别
+  id: pid,
+  productId: String(p?._id || p?.id || pid || ""),     // 给后端优先用
+  legacyProductId: String(p?.id || ""),               // 兼容旧字段
 
+  name: p?.name || "商品",
+
+  price: finalPrice,
+  priceNum: finalPrice,
+
+  // ✅ 税 / 押金（没有就 0）
+  taxable: !!p?.taxable,
+  hasTax: !!p?.taxable,
+  deposit: toNum(p?.deposit || 0),
+
+  // ✅ 规格（你现在详情页默认 single）
+  variantKey: "single",
+  unitCount: 1,
+
+  isDeal: !!(
+    p?.isDeal ||
+    p?.specialEnabled ||
+    p?.isSpecial ||
+    String(p?.tag || "").includes("爆品")
+  ),
+  tag: p?.tag || "",
+  type: p?.type || "",
+  isSpecial: !!p?.isSpecial,
+
+  image: p?.image || "",
+};
+} 
   function notifyCartChanged(pid) {
     try {
       if (typeof window.updateCartUI === "function") window.updateCartUI();
@@ -683,7 +698,7 @@
     bindFavButton();
     renderRecommendList();
 
-    // 初次同步胶囊徽章
+        // 初次同步胶囊徽章
     refreshCapsuleUI();
 
     // 监听全站购物车更新（如果 cart.js 有发事件）
@@ -691,33 +706,35 @@
       refreshCapsuleUI();
       refreshRecommendBadges();
     });
-  }
-// ===============================
-// 详情页兜底：补 toggleCartDrawer
-// （不改 cart.js）
-// ===============================
-(function ensureToggleCartDrawer() {
-  if (typeof window.toggleCartDrawer === "function") return;
+  } // ✅ initDetailPage end
 
-  window.toggleCartDrawer = function (open) {
-    const drawer = document.getElementById("cartDrawer");
-    const backdrop = document.getElementById("cartBackdrop");
-    if (!drawer || !backdrop) return;
+  // ===============================
+  // 详情页兜底：补 toggleCartDrawer
+  // （不改 cart.js）
+  // ===============================
+  (function ensureToggleCartDrawer() {
+    if (typeof window.toggleCartDrawer === "function") return;
 
-    const isOpen = drawer.classList.contains("open");
-    const shouldOpen = typeof open === "boolean" ? open : !isOpen;
+    window.toggleCartDrawer = function (open) {
+      const drawer = document.getElementById("cartDrawer");
+      const backdrop = document.getElementById("cartBackdrop");
+      if (!drawer || !backdrop) return;
 
-    if (shouldOpen) {
-      drawer.classList.add("open");
-      backdrop.classList.add("open");
-    } else {
-      drawer.classList.remove("open");
-      backdrop.classList.remove("open");
-    }
-  };
+      const isOpen = drawer.classList.contains("open");
+      const shouldOpen = typeof open === "boolean" ? open : !isOpen;
 
-  console.log("✅ product_detail.js: toggleCartDrawer fallback mounted");
-})();
+      if (shouldOpen) {
+        drawer.classList.add("open");
+        backdrop.classList.add("open");
+      } else {
+        drawer.classList.remove("open");
+        backdrop.classList.remove("open");
+      }
+    };
+
+    console.log("✅ product_detail.js: toggleCartDrawer fallback mounted");
+  })();
+
   window.addEventListener("DOMContentLoaded", () => {
     initDetailPage();
   });

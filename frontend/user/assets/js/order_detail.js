@@ -122,8 +122,25 @@ function renderOrderDetailToDOM(order) {
         </tbody>
       </table>
 
-      <div class="od-summary">
+            <div class="od-summary">
         <div>商品小计：${money(order.subtotal)}</div>
+
+        ${
+          Number(order.platformFee || 0) > 0
+            ? `<div>平台服务费：${money(order.platformFee)}</div>`
+            : ""
+        }
+        ${
+          Number(order.depositTotal || 0) > 0
+            ? `<div>押金：${money(order.depositTotal)}</div>`
+            : ""
+        }
+        ${
+          Number(order.salesTax || 0) > 0
+            ? `<div>消费税：${money(order.salesTax)}</div>`
+            : ""
+        }
+
         <div>运费：${money(order.deliveryFee)}</div>
         <div>优惠：${money(order.discount)}</div>
         <div class="total">订单总金额：${money(order.totalAmount)}</div>
