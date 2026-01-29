@@ -492,10 +492,19 @@ depositEach = safeNumber(
   pdoc.bottleDeposit ?? pdoc.containerDeposit ?? pdoc.deposit ?? pdoc.crv ?? 0,
   0
 );
-      // 用后端价格：variant.price 优先，否则 product.price
-      const backendPrice = v.price != null ? Number(v.price) : Number(pdoc.price || 0);
-      if (Number.isFinite(backendPrice) && backendPrice >= 0) price = round2(backendPrice);
+      // ✅ FIX: 不要无条件用 DB 覆盖 price（避免 DB 里被存成“特价均摊价 0.66/0.67”导致买1个也变便宜）
+// 仅当“前端没给有效价格”时，才用 DB 价兜底
+const frontendPrice = Number(it.priceNum ?? it.price);
+const hasFrontendPrice = Number.isFinite(frontendPrice) && frontendPrice > 0;
 
+const backendPrice = v.price != null ? Number(v.price) : Number(pdoc.price || 0);
+const hasBackendPrice = Number.isFinite(backendPrice) && backendPrice >= 0;
+
+if (hasFrontendPrice) {
+  price = round2(frontendPrice); // ✅ 以前端为准（你说前端是对的）
+} else if (hasBackendPrice) {
+  price = round2(backendPrice); // ✅ 前端没给才用 DB 兜底
+}
       // 名称/sku 增强
       const vLabel = String(v.label || "").trim();
       finalName = vLabel ? `${pdoc.name} - ${vLabel}` : String(pdoc.name || finalName);
@@ -565,6 +574,16 @@ console.log(
   "qty=", qty,
   "name=", finalName
 );
+console.log("🔎 PRICE CHECK", {
+  name: finalName,
+  qty,
+  frontendPrice: Number(it.priceNum ?? it.price),
+  dbPrice: Number(preFetchedProduct?.price ?? pdoc?.price),
+  variantPrice: Number(v?.price),
+  finalPrice: price,
+  specialQty,
+  specialTotalPrice,
+});
     cleanItems.push({
       productId,
       legacyProductId: legacyId || "",
