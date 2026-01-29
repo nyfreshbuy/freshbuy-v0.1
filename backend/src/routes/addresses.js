@@ -57,13 +57,24 @@ router.post("/check-zip", async (req, res) => {
       return res.status(400).json({ success: false, message: "zip required" });
     }
 
-    const zone = await Zone.findOne({ enabled: true, zips: zip }).lean();
+    const zip5 = zip.includes("-") ? zip.split("-")[0] : zip;
 
+const zone = await Zone.findOne({
+  enabled: true,
+  $or: [{ zips: zip5 }, { zipWhitelist: zip5 }, { zips: zip }, { zipWhitelist: zip }],
+}).lean();
+
+if (!zone) {
+  return res.status(400).json({
+    success: false,
+    message: `暂不支持 ZIP：${zip5}（请换一个或先联系客服）`,
+  });
+}
     if (!zone) {
       return res.json({
         success: true,
         supported: false,
-        zip,
+        zip: zip5,
         message: `暂不支持 ZIP：${zip}（请换一个或先联系客服）`,
       });
     }
@@ -149,7 +160,20 @@ router.post("/default", requireLogin, async (req, res) => {
     }
 
     // ✅ 强制：只能保存已支持的 ZIP（结算页更合理）
-    const zone = await Zone.findOne({ enabled: true, zips: zip }).lean();
+    // ✅ 统一 ZIP：只拿前 5 位（11365-1234 -> 11365）
+const zip5 = zip.includes("-") ? zip.split("-")[0] : zip;
+
+// ✅ 同时兼容：zips / zipWhitelist（避免你 DB 字段不一致导致全都不支持）
+const zone = await Zone.findOne({
+  enabled: true,
+  $or: [
+    { zips: zip5 },
+    { zipWhitelist: zip5 },
+    // 兼容：有些人会存成 "11365-1234"（不推荐，但兜底一下）
+    { zips: zip },
+    { zipWhitelist: zip },
+  ],
+}).lean();
     if (!zone) {
       return res.status(400).json({
         success: false,
