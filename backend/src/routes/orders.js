@@ -518,11 +518,12 @@ if (hasFrontendPrice) {
       hasTax = !!pdoc.taxable;
 
       // ✅ DB 覆盖特价字段（防止前端乱传）
-      specialQty = safeNumber(pdoc.specialQty ?? pdoc.specialN ?? pdoc.dealQty ?? specialQty, specialQty);
-      specialTotalPrice = safeNumber(
-        pdoc.specialTotalPrice ?? pdoc.specialTotal ?? pdoc.dealTotalPrice ?? pdoc.dealPrice ?? specialTotalPrice,
-        specialTotalPrice
-      );
+     // ✅ FIX: 只有 variant 里真的有促销（>0）才覆盖，避免 0 把 product 的促销覆盖没了
+const vSpecialQty = safeNumber(v?.specialQty, 0);
+const vSpecialTotal = safeNumber(v?.specialTotalPrice, 0);
+
+if (vSpecialQty > 0) specialQty = vSpecialQty;
+if (vSpecialTotal > 0) specialTotalPrice = vSpecialTotal;
            // ✅ 再用 variant 覆盖一次（很多商品把 2for/3for 存在 variants.single 上）
       specialQty = safeNumber(v.specialQty ?? specialQty, specialQty);
       specialTotalPrice = safeNumber(v.specialTotalPrice ?? specialTotalPrice, specialTotalPrice);
