@@ -462,9 +462,9 @@ if (!productId) {
       it.specialTotalPrice ?? it.specialTotal ?? it.dealTotalPrice ?? it.dealPrice ?? 0,
       0
     );
-
+   let pdoc = null; // ✅ FIX: 提前声明，供后面日志/计算使用
    if (productId) {
-  const pdoc =
+  pdoc =
     preFetchedProduct ||
     (session
       ? await Product.findById(productId)
