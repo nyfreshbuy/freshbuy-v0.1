@@ -2,7 +2,7 @@
 // =====================================================
 // Stripe Webhook：
 // A) 钱包充值（Stripe） -> Recharge: pending → done + Wallet.balance += amount
-// B) 订单支付成功        -> Order.status = paid
+// B) 订单支付成功        -> Order.status = paid + 重新结算写回明细（含特价/平台费/押金/税/小费）
 // =====================================================
 // ⚠️ 必须使用 RAW BODY（不能被 express.json() 解析）
 // ⚠️ 必须挂在 express.json() 之前
@@ -15,6 +15,7 @@ import mongoose from "mongoose";
 import Order from "../models/order.js";
 import Recharge from "../models/Recharge.js";
 import Wallet from "../models/Wallet.js";
+import { computeTotalsFromPayload } from "../utils/checkout_pricing.js";
 
 const router = express.Router();
 
@@ -22,12 +23,18 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
   apiVersion: "2023-10-16",
 });
 
+// ✅ NY 税率（可用环境变量覆盖）
+const NY_TAX_RATE = Number(process.env.NY_TAX_RATE || 0.08875);
+
 // =====================================================
 // utils
 // =====================================================
 function moneyFromCents(cents) {
   const n = Number(cents || 0);
   return Math.round(n) / 100;
+}
+function round2(n) {
+  return Math.round(Number(n || 0) * 100) / 100;
 }
 
 // =====================================================
@@ -41,7 +48,7 @@ async function applyWalletRechargeFromMeta(meta, extra = {}) {
 
   const rechargeId = String(meta.rechargeId || "").trim();
 
-  // ✅ 允许 meta.type 缺失：只要有 rechargeId 且能在 DB 找到 stripe pending 记录，也能入账
+  // ✅ 允许 meta.type 缺失
   const type = String(meta.type || "").trim();
 
   if (!rechargeId || !mongoose.Types.ObjectId.isValid(rechargeId)) {
@@ -52,23 +59,18 @@ async function applyWalletRechargeFromMeta(meta, extra = {}) {
   if (!rec) return { ok: false, reason: "recharge_not_found", rechargeId };
 
   // 如果 meta.type 有且不是 wallet_recharge，则不处理
-  // ✅ 但如果 meta.type 缺失，我们允许继续；并且要求这条 recharge 是 stripe/zelle 之一（你主要用 stripe）
   if (type && type !== "wallet_recharge") {
     return { ok: false, reason: "not_wallet_recharge", type };
   }
 
-  // ✅ 额外保护：只允许处理 Stripe 充值（避免误把订单 paymentIntent 的 metadata.orderId 带了 rechargeId 就加钱）
-  // 你的 Recharge 创建时 payMethod="stripe" 或 "zelle"
+  // ✅ 额外保护：只允许处理 Stripe 充值
   const payMethod = String(rec.payMethod || "").toLowerCase();
   if (payMethod && payMethod !== "stripe") {
     return { ok: false, reason: "not_stripe_recharge", payMethod };
   }
 
-  // amount 优先：meta.amount -> extra.amount -> DB rec.amount（兜底）
-  const amount =
-    Number(meta.amount || 0) ||
-    Number(extra.amount || 0) ||
-    Number(rec.amount || 0);
+  // amount 优先：meta.amount -> extra.amount -> DB rec.amount
+  const amount = Number(meta.amount || 0) || Number(extra.amount || 0) || Number(rec.amount || 0);
 
   if (!Number.isFinite(amount) || amount <= 0) {
     return { ok: false, reason: "bad_amount", amount };
@@ -86,14 +88,11 @@ async function applyWalletRechargeFromMeta(meta, extra = {}) {
       $set: {
         status: "done",
         paidAt: new Date(),
-        remark:
-          String(rec.remark || "") +
-          (extra.remarkAppend ? ` | ${extra.remarkAppend}` : ""),
+        remark: String(rec.remark || "") + (extra.remarkAppend ? ` | ${extra.remarkAppend}` : ""),
       },
     }
   );
 
-  // 没改动：说明被别的 webhook/worker 处理过，不再加钱
   if (!r.modifiedCount) {
     return { ok: true, already: true, rechargeId, amount, note: "already_done_by_other_worker" };
   }
@@ -107,7 +106,8 @@ async function applyWalletRechargeFromMeta(meta, extra = {}) {
 
   return { ok: true, rechargeId, amount, walletBalance: Number(wallet?.balance || 0) };
 }
-// ✅ ping：用来确认 /api/stripe 是否真的挂上了
+
+// ✅ ping：确认路由挂载
 router.get("/ping", (req, res) => {
   res.json({
     ok: true,
@@ -116,11 +116,11 @@ router.get("/ping", (req, res) => {
     file: "backend/src/routes/stripe_webhook.js",
   });
 });
+
 // =====================================================
 // POST /api/stripe/webhook
 // =====================================================
 router.post("/webhook", express.raw({ type: "application/json" }), async (req, res) => {
-  // ✅ 关键：先确认 Stripe 有没有打到你服务
   console.log("🔔 Stripe webhook HIT", new Date().toISOString());
 
   const sig = req.headers["stripe-signature"];
@@ -128,11 +128,7 @@ router.post("/webhook", express.raw({ type: "application/json" }), async (req, r
 
   // 1️⃣ 验签
   try {
-    event = stripe.webhooks.constructEvent(
-      req.body,
-      sig,
-      process.env.STRIPE_WEBHOOK_SECRET || ""
-    );
+    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET || "");
     console.log("✅ Stripe webhook VERIFIED type=", event.type);
   } catch (err) {
     console.error("❌ Stripe webhook 验签失败:", err.message);
@@ -147,9 +143,7 @@ router.post("/webhook", express.raw({ type: "application/json" }), async (req, r
       const sess = event.data.object;
       const meta = sess?.metadata || {};
 
-      const amount =
-        Number(meta.amount || 0) ||
-        moneyFromCents(sess?.amount_total);
+      const amount = Number(meta.amount || 0) || moneyFromCents(sess?.amount_total);
 
       const out = await applyWalletRechargeFromMeta(meta, {
         amount,
@@ -166,6 +160,8 @@ router.post("/webhook", express.raw({ type: "application/json" }), async (req, r
         });
         return res.json({ received: true });
       }
+
+      return res.json({ received: true });
     }
 
     // =================================================
@@ -176,9 +172,7 @@ router.post("/webhook", express.raw({ type: "application/json" }), async (req, r
 
       // B1) 先尝试钱包充值（pi.metadata）
       const out = await applyWalletRechargeFromMeta(pi?.metadata || {}, {
-        amount:
-          Number(pi?.metadata?.amount || 0) ||
-          moneyFromCents(pi?.amount_received),
+        amount: Number(pi?.metadata?.amount || 0) || moneyFromCents(pi?.amount_received),
         remarkAppend: `pi=${pi?.id || ""}`,
       });
 
@@ -193,35 +187,101 @@ router.post("/webhook", express.raw({ type: "application/json" }), async (req, r
         return res.json({ received: true });
       }
 
-      // B2) 不是钱包充值 -> 按订单支付处理
+      // B2) 不是钱包充值 -> 按订单支付处理（✅重算明细 + 混合支付累计 + 幂等）
       const orderId = String(pi?.metadata?.orderId || "").trim();
       if (orderId && mongoose.Types.ObjectId.isValid(orderId)) {
-        const paid = moneyFromCents(pi.amount_received);
+        const stripePaid = moneyFromCents(pi.amount_received);
+
+        const order = await Order.findById(orderId).lean();
+        if (!order) {
+          console.log("ℹ️ PI succeeded but order not found", { orderId, pi: pi?.id });
+          return res.json({ received: true });
+        }
+
+        // ✅ 幂等：同一个 PI 重复通知直接吞掉
+        const alreadyPI =
+          String(order?.payment?.stripePaymentIntentId || "") === String(pi?.id || "") ||
+          String(order?.payment?.stripe?.intentId || "") === String(pi?.id || "");
+
+        if (alreadyPI && (order?.payment?.status === "paid" || order?.status === "paid")) {
+          console.log("ℹ️ Stripe webhook duplicate (already paid)", { orderId, pi: pi?.id });
+          return res.json({ received: true });
+        }
+
+        // ✅ 用“订单落库 items”重算（这里 items 应该已包含 specialQty/specialTotalPrice）
+        const ship = order?.address || order?.shipping || {};
+        const totalsStripe = computeTotalsFromPayload(
+          {
+            items: Array.isArray(order?.items) ? order.items : [],
+            shipping: ship,
+            mode: order?.deliveryMode,
+            pricing: { tip: Number(order?.tipFee || 0) },
+          },
+          { payChannel: "stripe", taxRateNY: NY_TAX_RATE, platformRate: 0.02, platformFixed: 0.5 }
+        );
+
+        // ✅ 混合支付累计：walletPaid + stripePaid(累计)
+        const walletPaid = Number(order?.payment?.wallet?.paid || 0);
+        const prevStripePaid = Number(order?.payment?.stripe?.paid || 0);
+        const newStripePaid = round2(prevStripePaid + stripePaid);
+        const paidTotal = round2(walletPaid + newStripePaid);
 
         await Order.updateOne(
           { _id: orderId },
           {
             $set: {
+              // 状态
               status: "paid",
               isPaid: true,
               paidAt: new Date(),
+
+              // ✅ 写回明细（保证对账一致）
+              subtotal: totalsStripe.subtotal,
+              deliveryFee: totalsStripe.shipping,
+              taxableSubtotal: totalsStripe.taxableSubtotal,
+              salesTax: totalsStripe.salesTax,
+              depositTotal: totalsStripe.depositTotal,
+              platformFee: totalsStripe.platformFee,
+              tipFee: totalsStripe.tipFee,
+              totalAmount: totalsStripe.totalAmount,
+              salesTaxRate: totalsStripe.taxRate,
+
+              // ✅ payment 快照
               "payment.status": "paid",
               "payment.method": "stripe",
-              "payment.paidTotal": paid,
+              "payment.paidTotal": paidTotal,
+              "payment.amountSubtotal": totalsStripe.subtotal,
+              "payment.amountDeliveryFee": totalsStripe.shipping,
+              "payment.amountTax": totalsStripe.salesTax,
+              "payment.amountDeposit": totalsStripe.depositTotal,
+              "payment.amountPlatformFee": totalsStripe.platformFee,
+              "payment.amountTip": totalsStripe.tipFee,
+              "payment.amountTotal": totalsStripe.totalAmount,
+
+              // Stripe 字段
               "payment.stripePaymentIntentId": pi.id,
+              "payment.stripe.intentId": pi.id,
+              "payment.stripe.paid": newStripePaid,
             },
           }
         );
 
-        console.log("✅ Stripe order paid", { orderId, pi: pi.id, paid });
-      } else {
-        // 不处理也可以，但留个日志方便你排查 metadata 是否正确
-        console.log("ℹ️ PI succeeded (not wallet, no valid orderId)", {
-          pi: pi?.id,
-          metaKeys: Object.keys(pi?.metadata || {}),
+        console.log("✅ Stripe order paid (recalc+merge)", {
+          orderId,
+          pi: pi.id,
+          stripePaid,
+          walletPaid,
+          paidTotal,
+          totalAmount: totalsStripe.totalAmount,
         });
+
+        return res.json({ received: true });
       }
 
+      console.log("ℹ️ PI succeeded (not wallet, no valid orderId)", {
+        pi: pi?.id,
+        metaKeys: Object.keys(pi?.metadata || {}),
+      });
       return res.json({ received: true });
     }
 
