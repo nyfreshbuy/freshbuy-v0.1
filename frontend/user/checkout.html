@@ -1980,21 +1980,23 @@ if (stateEl && !stateEl.value) stateEl.value = "NY";
         // stripe 初始化
         await initStripeUI();
 
-        // ✅ 支付方式切换：点信用卡就立刻加载输入框
-       const onPaySwitch = async () => {
+       // ✅ 支付方式切换：点信用卡就立刻加载输入框
+const onPaySwitch = async () => {
   const m = getPayMethod();
 
   if (m === "stripe") {
+    // 先显示 Stripe 区域
+    setStripeAreaVisible(true);
+
     try {
-      setStripeAreaVisible(true);
-      await ensureStripeMounted();
+      await ensureStripeMounted(); // 挂载 paymentElement
       refreshAll();
-      return; // ✅ 成功就结束，不要再回退钱包
+      return; // ✅ 成功就直接返回，绝对不要切回钱包
     } catch (e) {
       console.error(e);
       showAlert(e.message || "信用卡初始化失败（请先完善地址）", false);
 
-      // ✅ 失败才回退钱包
+      // ✅ 失败才回退到钱包
       document.getElementById("payWallet").checked = true;
       setStripeAreaVisible(false);
       refreshAll();
