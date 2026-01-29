@@ -1241,64 +1241,60 @@ ${
           componentRestrictions: { country: "us" },
           fields: ["place_id", "address_components", "formatted_address", "geometry"],
         });
+ac.addListener("place_changed", () => {
+  const p = ac.getPlace();
+  if (!p || !p.place_id) return;
 
-        ac.addListener("place_changed", () => {
-          const p = ac.getPlace();
-          if (!p || !p.place_id) return;
+  document.getElementById("addrPlaceId").value = p.place_id;
 
-          document.getElementById("addrPlaceId").value = p.place_id;
+  const getComp = (type) => {
+    const cs = p.address_components || [];
+    const c = cs.find((x) => (x.types || []).includes(type));
+    return c ? (c.short_name || c.long_name) : "";
+  };
 
-          const getComp = (type) => {
-            const cs = p.address_components || [];
-            const c = cs.find((x) => (x.types || []).includes(type));
-            return c ? (c.short_name || c.long_name) : "";
-          };
+  const streetNumber = getComp("street_number");
+  const route = getComp("route");
+  const city =
+    getComp("locality") ||
+    getComp("sublocality") ||
+    getComp("sublocality_level_1") ||
+    getComp("administrative_area_level_3");
+  const state = getComp("administrative_area_level_1");
+  const zip = getComp("postal_code");
 
-          const streetNumber = getComp("street_number");
-          const route = getComp("route");
-          const city =
-            getComp("locality") ||
-            getComp("sublocality") ||
-            getComp("sublocality_level_1") ||
-            getComp("administrative_area_level_3");
-          const state = getComp("administrative_area_level_1");
-          const zip = getComp("postal_code");
+  const street1 = [streetNumber, route].filter(Boolean).join(" ").trim();
+  if (street1) document.getElementById("street").value = street1;
+  if (city) document.getElementById("city").value = city;
+  if (state) document.getElementById("state").value = state;
+  if (zip) document.getElementById("zip").value = zip;
 
-          const street1 = [streetNumber, route].filter(Boolean).join(" ").trim();
-          if (street1) document.getElementById("street").value = street1;
-          if (city) document.getElementById("city").value = city;
-          if (state) document.getElementById("state").value = state;
-          if (zip) document.getElementById("zip").value = zip;
+  const lat = p.geometry?.location?.lat?.();
+  const lng = p.geometry?.location?.lng?.();
+  if (typeof lat === "number") document.getElementById("addrLat").value = String(lat);
+  if (typeof lng === "number") document.getElementById("addrLng").value = String(lng);
 
-          const lat = p.geometry?.location?.lat?.();
-          const lng = p.geometry?.location?.lng?.();
-          if (typeof lat === "number") document.getElementById("addrLat").value = String(lat);
-          if (typeof lng === "number") document.getElementById("addrLng").value = String(lng);
+  const formatted = p.formatted_address || "";
+  const full = addrLineUS().full;
+  document.getElementById("addrFullText").value = formatted || full;
 
-          const formatted = p.formatted_address || "";
-          const full = addrLineUS().full;
-          document.getElementById("addrFullText").value = formatted || full;
+  // ✅ 先刷新金额/税/服务费
+  refreshAll();
 
-          refreshAll();
-
-// ✅ NEW：如果用户已选择 Stripe，则地址选中后立刻挂载卡输入框
-if (getPayMethod() === "stripe") {
-  ensureStripeMounted()
-    .then((ok) => {
-      if (ok) setStripeAreaVisible(true);
-    })
-    .catch((e) => {
-      console.warn("ensureStripeMounted after place_changed failed:", e);
-    });
-}
-        });
-
+  // ✅ NEW：如果当前选的是 Stripe，地址选中后立刻挂载卡输入框
+  if (getPayMethod() === "stripe") {
+    ensureStripeMounted()
+      .then((ok) => {
+        if (ok) setStripeAreaVisible(true);
+      })
+      .catch((e) => console.warn("ensureStripeMounted after place_changed failed:", e));
+  }
+});
         input.addEventListener("input", () => {
           clearAddressSelection();
           refreshAll();
         });
       }
-
       async function verifyAddress() {
         const f = getFormUS();
         const { full } = addrLineUS();
@@ -1476,11 +1472,9 @@ let lastStripePaymentIntentId = "";
           // ✅ Stripe 创建 intent 前：必须先验证地址（placeId + lat/lng + ZIP 支持）
 const okAddr = await verifyAddress();
 if (!okAddr) {
-  // ✅ 不要在“选支付方式”阶段 throw（会导致看起来点不了）
-  // ✅ 这里只提示并返回，让用户先选 Stripe，再去选地址
   setStripeAreaVisible(false);
-  showAlert("信用卡支付需要先从地址下拉建议中选中一个地址（生成 placeId + 坐标）。你可以先选信用卡，填好地址后再点支付。", false);
-  return false;
+  showAlert("信用卡支付需要先在 Street Address 输入后，从下拉建议中选中一个地址（生成 placeId + 坐标）。", false);
+  return false; // ✅ 关键：不 throw
 }
 setStripeAreaVisible(true);
           const intentKey = buildIntentKey(snapshot, extra);
@@ -1977,39 +1971,36 @@ if (stateEl && !stateEl.value) stateEl.value = "NY";
         // stripe 初始化
         await initStripeUI();
 
-        // ✅ 支付方式切换：点信用卡就立刻加载输入框
-        const onPaySwitch = async () => {
-          const m = getPayMethod();
+       // ✅ 支付方式切换：点信用卡就立刻加载输入框
+const onPaySwitch = async () => {
+  const m = getPayMethod();
 
-          if (m === "stripe") {
-  try {
-    const ok = await ensureStripeMounted();
-
-    // ✅ ok=false 代表“地址未验证/未选中下拉”，允许保持 Stripe 选中，但先不显示卡输入框
-    if (!ok) {
+  if (m === "stripe") {
+    try {
+      setStripeAreaVisible(true); // 先把容器显示出来
+      const ok = await ensureStripeMounted();
+      if (!ok) {
+        // 地址未通过 verifyAddress()（比如没从下拉选中）
+        setStripeAreaVisible(false);
+        refreshAll();
+        return;
+      }
+      setStripeAreaVisible(true);
+      refreshAll();
+      return;
+    } catch (e) {
+      console.error(e);
       setStripeAreaVisible(false);
-      // 不要切回钱包
+      showAlert(e.message || "信用卡初始化失败", false);
       refreshAll();
       return;
     }
-
-    // ✅ ok=true：显示并刷新
-    setStripeAreaVisible(true);
-    refreshAll();
-  } catch (e) {
-    console.error(e);
-    // ✅ 发生真实错误（比如后端 intent 创建失败）才提示，但也不要强制切回钱包
-    setStripeAreaVisible(false);
-    showAlert(e.message || "信用卡初始化失败", false);
-    refreshAll();
   }
-  return;
-}
-          // wallet
-          setStripeAreaVisible(false);
-          refreshAll();
-        };
 
+  // wallet
+  setStripeAreaVisible(false);
+  refreshAll();
+};
         const payWalletEl = document.getElementById("payWallet");
         const payStripeEl = document.getElementById("payStripe");
 
