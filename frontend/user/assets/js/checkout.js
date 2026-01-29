@@ -43,7 +43,11 @@
   function getToken() {
     return getAnyToken();
   }
-
+// ✅ Stripe/订单幂等键：必须短（<255）。用 UUID 最稳。
+function createIntentKey() {
+  if (window.crypto && crypto.randomUUID) return "ik_" + crypto.randomUUID();
+  return "ik_" + Date.now() + "_" + Math.random().toString(16).slice(2);
+}
   // =========================
   // ✅ API 工具
   // =========================
@@ -475,7 +479,8 @@
     const amounts = computeCheckoutAmounts();
 
     const payload = {
-      mode,
+       intentKey: createIntentKey(), // ✅ 新增：短幂等键（给后端/Stripe 用）
+      mode
       deliveryMode: mode,
       items: normalizedItems,
       shipping,

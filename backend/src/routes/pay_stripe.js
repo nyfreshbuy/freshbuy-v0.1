@@ -7,6 +7,16 @@ import User from "../models/user.js";
 import Zone from "../models/Zone.js";
 import { requireLogin } from "../middlewares/auth.js";
 import { computeTotalsFromPayload } from "../utils/checkout_pricing.js";
+import crypto from "crypto";
+
+// ✅ Stripe Idempotency-Key 必须 1~255 字符：超长就压缩成固定短串
+function normalizeIdempotencyKey(raw) {
+  const s = String(raw || "").trim();
+  if (!s) return "ik_" + crypto.randomUUID();
+  if (s.length <= 255) return s;
+  const hash = crypto.createHash("sha256").update(s).digest("hex"); // 64 chars
+  return "ik_" + hash; // 永远 < 255
+}
 const router = express.Router();
 
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || "";
@@ -221,25 +231,27 @@ router.post("/intent-for-order", requireLogin, express.json(), async (req, res) 
   });
 }
     const cents = moneyToCents(remaining);
-    const intentKey = String(doc.payment?.idempotencyKey || doc.orderNo || doc._id);
+const intentKey = String(doc.payment?.idempotencyKey || doc.orderNo || doc._id);
 
-    const intent = await stripe.paymentIntents.create(
-      {
-        amount: cents,
-        currency: "usd",
-        automatic_payment_methods: { enabled: true },
-        metadata: {
-          orderId: String(doc._id),
-          orderNo: String(doc.orderNo),
-          userId: String(doc.userId || ""),
-          intentKey,
-          amountCents: String(cents),
-          source: "intent-for-order",
-        },
-      },
-      { idempotencyKey: `fb_exist_${intentKey}__${cents}` }
-    );
+const rawIdem = `fb_exist_${intentKey}__${cents}`;
+const idemKey = normalizeIdempotencyKey(rawIdem);
 
+const intent = await stripe.paymentIntents.create(
+  {
+    amount: cents,
+    currency: "usd",
+    automatic_payment_methods: { enabled: true },
+    metadata: {
+      orderId: String(doc._id),
+      orderNo: String(doc.orderNo),
+      userId: String(doc.userId || ""),
+      intentKey,
+      amountCents: String(cents),
+      source: "intent-for-order",
+    },
+  },
+  { idempotencyKey: idemKey }
+);
     // 写回订单
     doc.payment = doc.payment || {};
     doc.payment.method = "stripe";
@@ -478,25 +490,24 @@ if (doc?.payment?.stripe?.intentId) {
     // ---------- 2.3 创建 PaymentIntent ----------
     const cents = moneyToCents(totals.totalAmount);
 
-    const intent = await stripe.paymentIntents.create(
-      {
-        amount: cents,
-        currency: "usd",
-        automatic_payment_methods: { enabled: true },
-        metadata: {
-          orderId: String(doc._id),
-          orderNo: String(doc.orderNo),
-          userId: String(user._id),
-          intentKey,
-          amountCents: String(cents),
-        },
-      },
-      {
-        // ✅ 这里必须用反引号，不然你会直接语法错误
-        idempotencyKey: `fb_pi_${intentKey}__${cents}`,
-      }
-    );
+    const rawIdem = `fb_pi_${intentKey}__${cents}`;
+const idemKey = normalizeIdempotencyKey(rawIdem);
 
+const intent = await stripe.paymentIntents.create(
+  {
+    amount: cents,
+    currency: "usd",
+    automatic_payment_methods: { enabled: true },
+    metadata: {
+      orderId: String(doc._id),
+      orderNo: String(doc.orderNo),
+      userId: String(user._id),
+      intentKey,
+      amountCents: String(cents),
+    },
+  },
+  { idempotencyKey: idemKey }
+);
     // 写回 intentId
     doc.payment = doc.payment || {};
     doc.payment.method = "stripe";
