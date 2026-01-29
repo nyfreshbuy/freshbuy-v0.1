@@ -428,8 +428,10 @@ async function buildOrderPayload(req, session = null) {
       finalUnitCount = unitCount;
 
       // ✅ 全部用 deposit（没有就按 0）
-      depositEach = safeNumber(pdoc.deposit ?? 0, 0);
-
+      depositEach = safeNumber(
+  pdoc.deposit ?? pdoc.bottleDeposit ?? pdoc.containerDeposit ?? pdoc.crv ?? 0,
+  0
+);
       // 用后端价格：variant.price 优先，否则 product.price
       const backendPrice = v.price != null ? Number(v.price) : Number(pdoc.price || 0);
       if (Number.isFinite(backendPrice) && backendPrice >= 0) price = round2(backendPrice);
@@ -845,11 +847,21 @@ router.post("/checkout", requireLogin, async (req, res) => {
 
       // ✅ 先按“钱包口径”总额（平台费=0）
       const ship = req.body?.shipping || req.body?.receiver || {};
-      const totalsWallet = computeTotalsFromPayload(
-        { items: orderDoc.items, shipping: ship, mode: orderDoc.deliveryMode, pricing: { tip: orderDoc.tipFee || 0 } },
-        { payChannel: "wallet", taxRateNY: NY_TAX_RATE }
-      );
-
+const totalsWallet = computeTotalsFromPayload(
+  {
+    items: orderDoc.items,
+    shipping: ship,
+    mode: orderDoc.deliveryMode,
+    pricing: {
+      tip: orderDoc.tipFee || 0,
+      // ✅ 关键：把押金总额也告诉统一结算工具（否则它只会从 items.deposit 算，DB 没字段就=0）
+      bottleDeposit: orderDoc.depositTotal || 0,
+      depositTotal: orderDoc.depositTotal || 0,
+      deposit: orderDoc.depositTotal || 0,
+    },
+  },
+  { payChannel: "wallet", taxRateNY: NY_TAX_RATE }
+);
       finalTotal = round2(totalsWallet.totalAmount);
       platformFee = 0;
 
@@ -864,10 +876,19 @@ router.post("/checkout", requireLogin, async (req, res) => {
       // 3) 如果需要 Stripe：按 Stripe 口径重算（平台费=0.5 + 2%）
       if (remaining > 0) {
         const totalsStripe = computeTotalsFromPayload(
-          { items: orderDoc.items, shipping: ship, mode: orderDoc.deliveryMode, pricing: { tip: orderDoc.tipFee || 0 } },
-          { payChannel: "stripe", taxRateNY: NY_TAX_RATE, platformRate: 0.02, platformFixed: 0.5 }
-        );
-
+  {
+    items: orderDoc.items,
+    shipping: ship,
+    mode: orderDoc.deliveryMode,
+    pricing: {
+      tip: orderDoc.tipFee || 0,
+      bottleDeposit: orderDoc.depositTotal || 0,
+      depositTotal: orderDoc.depositTotal || 0,
+      deposit: orderDoc.depositTotal || 0,
+    },
+  },
+  { payChannel: "stripe", taxRateNY: NY_TAX_RATE, platformRate: 0.02, platformFixed: 0.5 }
+);
         platformFee = round2(totalsStripe.platformFee);
 finalTotal = round2(totalsStripe.totalAmount);
 
