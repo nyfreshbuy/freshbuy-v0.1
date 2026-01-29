@@ -119,12 +119,13 @@ function computeTotalsFromPayload(payload) {
   const taxRate = safeNum(payload?.pricing?.taxRate, safeNum(payload?.taxRate, 0));
   const salesTax = round2(taxableSubtotal * taxRate);
 
-  // ✅ 平台费：Stripe 2%（你之前写的是 (subtotal+shipping+salesTax)*2%，这里保留一致）
-  const platformFee = round2((subtotal + shipping + salesTax) * 0.02);
+  // ✅ 平台服务费：每单 $0.50 + 小计(subtotal) 的 2%
+const platformFee = round2(0.5 + subtotal * 0.02);
 
-  const tipFee = Math.max(0, round2(safeNum(payload?.pricing?.tip, safeNum(payload?.tip, 0))));
+const tipFee = Math.max(0, round2(safeNum(payload?.pricing?.tip, safeNum(payload?.tip, 0))));
 
-  const totalAmount = round2(subtotal + shipping + salesTax + platformFee + tipFee);
+// ✅ Stripe 实际扣款总额
+const totalAmount = round2(subtotal + shipping + salesTax + platformFee + tipFee);
 
   return { subtotal, shipping, taxableSubtotal, taxRate, salesTax, platformFee, tipFee, totalAmount };
 }
