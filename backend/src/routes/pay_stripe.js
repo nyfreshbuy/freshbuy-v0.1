@@ -5,6 +5,7 @@ import mongoose from "mongoose";
 import Order from "../models/order.js";
 import User from "../models/user.js";
 import Zone from "../models/Zone.js";
+import Product from "../models/product.js";
 import { requireLogin } from "../middlewares/auth.js";
 import { computeTotalsFromPayload } from "../utils/checkout_pricing.js";
 import crypto from "crypto";
@@ -91,6 +92,66 @@ function isDealLike(it) {
   if (String(it.type || "").toLowerCase() === "hot") return true;
   return false;
 }
+// ✅ 给 items 补齐押金/整箱倍数（Stripe 这条链路前端常不带 deposit）
+// ✅ 给 items 补齐押金/整箱倍数（Stripe 这条链路前端常不带 deposit）
+async function hydrateItemsWithDeposit(items = []) {
+  const arr = Array.isArray(items) ? items : [];
+  if (!arr.length) return arr;
+
+  // 收集 productId（同时兼容 ObjectId + 自定义 id）
+  const rawIds = arr
+    .map((it) => String(it?.productId || it?._id || it?.id || "").trim())
+    .filter(Boolean);
+
+  const mongoIds = rawIds.filter((x) => mongoose.Types.ObjectId.isValid(x));
+  const customIds = rawIds.filter((x) => x && !mongoose.Types.ObjectId.isValid(x));
+
+  if (!mongoIds.length && !customIds.length) return arr;
+
+  const pdocs = await Product.find({
+    $or: [
+      mongoIds.length ? { _id: { $in: mongoIds } } : null,
+      customIds.length ? { id: { $in: customIds } } : null,
+    ].filter(Boolean),
+  })
+    .select("id deposit bottleDeposit containerDeposit crv variants")
+    .lean();
+
+  // ✅ map 说一次就够了（同时支持 _id 和 id）
+  const pmap = new Map();
+  for (const p of pdocs) {
+    pmap.set(String(p._id), p);
+    if (p.id) pmap.set(String(p.id), p);
+  }
+
+  return arr.map((it) => {
+    const pid = String(it?.productId || it?._id || it?.id || "").trim();
+    const p = pmap.get(pid);
+    if (!p) return it;
+
+    // 单个押金（deposit 优先，其次 bottleDeposit/containerDeposit/crv）
+    const depositEach = safeNum(
+      p.deposit ?? p.bottleDeposit ?? p.containerDeposit ?? p.crv ?? 0,
+      0
+    );
+
+    // unitCount：有 variantKey 就从 variants 里取，否则默认 1
+    const variantKey = String(it?.variantKey || it?.variant || "single").trim() || "single";
+    const variants = Array.isArray(p.variants) ? p.variants : [];
+    const v = variants.find(
+      (x) => String(x?.key || "").trim() === variantKey && x?.enabled !== false
+    );
+    const unitCount = Math.max(1, Math.floor(Number(v?.unitCount || it?.unitCount || 1)));
+
+    return {
+      ...it,
+      variantKey,
+      unitCount,
+      deposit: round2(depositEach),
+    };
+  });
+}
+
 // ✅ 特价：N for $X 行小计（与前端 checkout.html 同口径）
 function calcSpecialLineTotal(it, qty) {
   const q = Math.max(0, Math.floor(safeNum(qty, 0)));
@@ -322,13 +383,14 @@ if (payload?.useWallet === true || payload?.payMethod === "wallet" || payload?.p
 
     const items = Array.isArray(payload.items) ? payload.items : [];
     if (!items.length) return res.status(400).json({ success: false, message: "items 不能为空" });
-
-    const hasNonDeal = items.some((it) => !isDealLike(it));
+    // ✅ 关键：Stripe 计算前补齐押金/整箱倍数
+payload.items = await hydrateItemsWithDeposit(items);
+    const hasNonDeal = (payload.items || []).some((it) => !isDealLike(it));
     if ((payload.mode || payload.deliveryMode) === "dealsDay" && hasNonDeal) {
       return res.status(400).json({ success: false, message: "爆品日订单只能包含爆品商品" });
     }
     // ✅ 把 items 统一成 computeTotalsFromPayload 需要的口径（至少要有 deposit）
-const cleanItems = items.map((it) => {
+const cleanItems = (payload.items || []).map((it) => {
   const qty = Math.max(1, Math.floor(safeNum(it.qty, 1)));
   const unitCount = Math.max(1, Math.floor(safeNum(it.unitCount, 1))); // 前端没传就=1
   const depositEach = safeNum(it.deposit ?? it.bottleDeposit ?? it.crv ?? 0, 0);
@@ -354,6 +416,14 @@ const payloadForTotals = {
   platformRate: 0.02,
   platformFixed: 0.5,
 });
+console.log("🧾 totals check:", {
+  subtotal: totals.subtotal,
+  shipping: totals.shipping,
+  salesTax: totals.salesTax,
+  depositTotal: totals.depositTotal,
+  totalAmount: totals.totalAmount,
+});
+
     if (!totals.totalAmount || totals.totalAmount <= 0) {
       return res.status(400).json({ success: false, message: "金额异常" });
     }
@@ -494,18 +564,23 @@ if (doc?.payment?.stripe?.intentId) {
 
         status: "pending",
 
-        items: items.map((it) => ({
-          productId: mongoose.Types.ObjectId.isValid(String(it.productId || "")) ? it.productId : undefined,
-          legacyProductId: String(it.legacyProductId || it.id || it._id || ""),
-          name: it.name || "",
-          sku: it.sku || "",
-          price: safeNum(it.price, 0),
-          qty: Math.max(1, safeNum(it.qty, 1)),
-          image: it.image || "",
-          lineTotal: round2(safeNum(it.price, 0) * Math.max(1, safeNum(it.qty, 1))),
-          cost: safeNum(it.cost, 0),
-          hasTax: isTruthy(it.taxable) || isTruthy(it.hasTax),
-        })),
+        items: cleanItems.map((it) => ({
+  productId: mongoose.Types.ObjectId.isValid(String(it.productId || "")) ? it.productId : undefined,
+  legacyProductId: String(it.legacyProductId || it.id || it._id || ""),
+  name: it.name || "",
+  sku: it.sku || "",
+  price: safeNum(it.price, 0),
+  qty: Math.max(1, safeNum(it.qty, 1)),
+
+  // ✅ 押金/整箱倍数写进订单明细（关键）
+  unitCount: Math.max(1, safeNum(it.unitCount, 1)),
+  deposit: round2(safeNum(it.deposit, 0)),
+
+  image: it.image || "",
+  lineTotal: round2(safeNum(it.price, 0) * Math.max(1, safeNum(it.qty, 1))),
+  cost: safeNum(it.cost, 0),
+  hasTax: isTruthy(it.taxable) || isTruthy(it.hasTax),
+})),
       });
     }
 
