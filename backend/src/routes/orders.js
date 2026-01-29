@@ -566,7 +566,6 @@ const tipFee = round2(Math.max(0, safeNumber(tipRaw, 0)));
   pricingIn.bottleDeposit ?? pricingIn.depositTotal ?? pricingIn.deposit ?? 0,
   0
 );
-
 const totalsWallet = computeTotalsFromPayload(
   {
     items: cleanItems,

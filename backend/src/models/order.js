@@ -32,6 +32,40 @@ function round2(n) {
   return Math.round(x * 100) / 100;
 }
 
+function safeNum(v, fb = 0) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fb;
+}
+
+// ✅ 特价：N for $X（与 checkout_pricing.js 一致口径）
+function calcSpecialLineTotal(it, qty) {
+  const q = Math.max(0, Math.floor(safeNum(qty, 0)));
+  if (!it || q <= 0) return 0;
+
+  const price = safeNum(it.price, 0);
+
+  const specialQty = safeNum(
+    it.specialQty ?? it.specialN ?? it.specialCount ?? it.dealQty,
+    0
+  );
+
+  const specialTotalPrice = safeNum(
+    it.specialTotalPrice ??
+      it.specialTotal ??
+      it.specialPrice ??
+      it.dealTotalPrice ??
+      it.dealPrice,
+    0
+  );
+
+  if (specialQty > 0 && specialTotalPrice > 0 && q >= specialQty) {
+    const groups = Math.floor(q / specialQty);
+    const remainder = q % specialQty;
+    return round2(groups * specialTotalPrice + remainder * price);
+  }
+  return round2(q * price);
+}
+
 // =========================
 // 子 Schema
 // =========================
@@ -41,10 +75,13 @@ const orderItemSchema = new mongoose.Schema(
     legacyProductId: { type: String, default: "" },
     name: { type: String, default: "" },
     sku: { type: String, default: "" },
+
     price: { type: Number, default: 0 },
     qty: { type: Number, default: 1 },
+
     image: { type: String, default: "" },
     lineTotal: { type: Number, default: 0 },
+
     cost: { type: Number, default: 0 },
     hasTax: { type: Boolean, default: false },
 
@@ -53,6 +90,14 @@ const orderItemSchema = new mongoose.Schema(
     isSpecial: { type: Boolean, default: false },
     tag: { type: String, default: "" },
     type: { type: String, default: "" },
+
+    // ✅ 规格/押金/特价（用于后端统一结算、落库对账）
+    variantKey: { type: String, default: "single" },
+    unitCount: { type: Number, default: 1 },
+
+    deposit: { type: Number, default: 0 }, // 每个基础单位押金（例如 2）
+    specialQty: { type: Number, default: 0 },
+    specialTotalPrice: { type: Number, default: 0 },
   },
   { _id: false }
 );
@@ -182,6 +227,7 @@ const orderSchema = new mongoose.Schema(
       amountSubtotal: { type: Number, default: 0 },
       amountDeliveryFee: { type: Number, default: 0 },
       amountTax: { type: Number, default: 0 },
+      amountDeposit: { type: Number, default: 0 }, // ✅ NEW
       amountPlatformFee: { type: Number, default: 0 },
       amountTip: { type: Number, default: 0 },
       amountDiscount: { type: Number, default: 0 },
@@ -208,6 +254,9 @@ const orderSchema = new mongoose.Schema(
 
     taxableSubtotal: { type: Number, default: 0 },
     salesTax: { type: Number, default: 0 },
+
+    depositTotal: { type: Number, default: 0 }, // ✅ NEW（押金总额）
+
     platformFee: { type: Number, default: 0 },
     tipFee: { type: Number, default: 0 },
     salesTaxRate: { type: Number, default: 0 },
@@ -261,7 +310,6 @@ const orderSchema = new mongoose.Schema(
 
 // =========================
 // ✅ Virtual：remark <-> note
-// 目的：你前端已经在传 remark，后端就算用 remark 赋值也会自动写入 note
 // =========================
 orderSchema
   .virtual("remark")
@@ -291,6 +339,9 @@ orderSchema.index({ "stockReserve.variantKey": 1 });
 
 // =========================
 // pre-validate：金额 / 批次 / 派单统一
+// ✅ 修复：把押金写入 depositTotal + payment.amountDeposit
+// ✅ 修复：subtotal/taxableSubtotal 用特价口径（N for $X）
+// ✅ 修复：Stripe 平台费 = 0.5 + 2%*subtotal；钱包=0
 // =========================
 orderSchema.pre("validate", function () {
   if (this.packBatchId && this.status === "paid") {
@@ -321,43 +372,59 @@ orderSchema.pre("validate", function () {
 
   let subtotal = 0;
   let taxableSubtotal = 0;
+  let depositTotal = 0;
 
   for (const it of this.items || []) {
-    const qty = Math.max(1, Number(it.qty || 1));
+    const qty = Math.max(1, Math.floor(safeNum(it.qty, 1)));
     it.qty = qty;
-    it.lineTotal = round2(Number(it.price || 0) * qty);
+
+    // ✅ 特价口径 lineTotal
+    it.lineTotal = calcSpecialLineTotal(it, qty);
     subtotal += it.lineTotal;
 
     const hasTax = !!it.hasTax || !!it.taxable;
     it.hasTax = hasTax;
+    it.taxable = hasTax;
     if (hasTax) taxableSubtotal += it.lineTotal;
+
+    // ✅ 押金：deposit * qty * unitCount
+    const unitCount = Math.max(1, Math.floor(safeNum(it.unitCount, 1)));
+    it.unitCount = unitCount;
+
+    const dep = safeNum(it.deposit, 0);
+    if (dep > 0) depositTotal += dep * qty * unitCount;
   }
 
   this.subtotal = round2(subtotal);
   this.taxableSubtotal = round2(taxableSubtotal);
+  this.depositTotal = round2(depositTotal);
 
   this.salesTax = round2(this.taxableSubtotal * Number(this.salesTaxRate || 0));
 
+  // ✅ 平台费：Stripe 才收（0.5 + 2% * subtotal）
   const method = this.payment?.method || "none";
   const shouldPlatformFee = method === "stripe";
-
-  if (shouldPlatformFee) {
-    const base = this.subtotal + this.deliveryFee + this.salesTax - this.discount;
-    this.platformFee = round2(base * 0.02);
-  } else {
-    this.platformFee = round2(this.platformFee || 0);
-  }
+  this.platformFee = shouldPlatformFee ? round2(0.5 + this.subtotal * 0.02) : 0;
 
   this.tipFee = round2(this.tipFee || 0);
 
+  // ✅ totalAmount 必须加押金
   this.totalAmount = round2(
-    this.subtotal + this.deliveryFee + this.salesTax + this.platformFee + this.tipFee - this.discount
+    this.subtotal +
+      this.deliveryFee +
+      this.salesTax +
+      this.depositTotal +
+      this.platformFee +
+      this.tipFee -
+      this.discount
   );
 
+  // payment 快照同步
   this.payment ||= {};
   this.payment.amountSubtotal = this.subtotal;
   this.payment.amountDeliveryFee = this.deliveryFee;
   this.payment.amountTax = this.salesTax;
+  this.payment.amountDeposit = this.depositTotal; // ✅ NEW
   this.payment.amountPlatformFee = this.platformFee;
   this.payment.amountTip = this.tipFee;
   this.payment.amountDiscount = this.discount;
