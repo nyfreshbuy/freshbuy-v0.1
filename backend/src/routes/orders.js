@@ -527,6 +527,14 @@ if (vSpecialTotal > 0) specialTotalPrice = vSpecialTotal;
            // ✅ 再用 variant 覆盖一次（很多商品把 2for/3for 存在 variants.single 上）
       specialQty = safeNumber(v.specialQty ?? specialQty, specialQty);
       specialTotalPrice = safeNumber(v.specialTotalPrice ?? specialTotalPrice, specialTotalPrice);
+      // ✅ FIX: 特价必须是有效的 “N for $X” 才生效；否则一律当无特价
+specialQty = Math.max(0, Math.floor(Number(specialQty || 0)));
+specialTotalPrice = round2(Math.max(0, Number(specialTotalPrice || 0)));
+
+if (!(specialQty >= 2 && specialTotalPrice > 0)) {
+  specialQty = 0;
+  specialTotalPrice = 0;
+}
       const needUnits = qty * unitCount;
       const allowZero = pdoc.allowZeroStock === true;
       const curStock = Number(pdoc.stock || 0);
@@ -574,6 +582,17 @@ console.log(
   "qty=", qty,
   "name=", finalName
 );
+console.log("🧪 SPECIAL SOURCE", {
+  productSpecialQty: pdoc?.specialQty,
+  productSpecialN: pdoc?.specialN,
+  productDealQty: pdoc?.dealQty,
+  productSpecialTotalPrice: pdoc?.specialTotalPrice,
+  productSpecialTotal: pdoc?.specialTotal,
+  productDealTotalPrice: pdoc?.dealTotalPrice,
+  productDealPrice: pdoc?.dealPrice,
+  variantSpecialQty: v?.specialQty,
+  variantSpecialTotalPrice: v?.specialTotalPrice,
+});
 console.log("🔎 PRICE CHECK", {
   name: finalName,
   qty,
