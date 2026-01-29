@@ -140,7 +140,7 @@ function isSpecialItem(it) {
 }
 // ✅ 规格解析：从 product.variants 找 variantKey
 function getVariantFromProduct(productDoc, variantKey) {
-  const key = String(variantKey || "").trim();
+  const key = String(variantKey || "").trim() || "single";
   const list = Array.isArray(productDoc?.variants) ? productDoc.variants : [];
   const found = list.find((v) => String(v?.key || "").trim() === key && v?.enabled !== false);
     if (found) {
@@ -481,7 +481,7 @@ let v = null;      // ✅ FIX 2：提前声明（关键）
     throw e;
   }
       // 解析规格（单个/整箱）
-      v = getVariantFromProduct(pdoc, variantKey);
+      v = getVariantFromProduct(pdoc, variantKey || "single");
       const unitCount = Math.max(1, Math.floor(Number(v.unitCount || 1)));
       finalVariantKey = v.key || "single";
       finalUnitCount = unitCount;
