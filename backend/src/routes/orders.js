@@ -363,25 +363,33 @@ async function buildOrderPayload(req, session = null) {
       e.status = 400;
       throw e;
     }
+// 尝试解析 productId（兼容 "productId::variantKey"）
+// ✅ 修复：支持前端传自定义 id（p_176...），用 Product.id 反查真实 _id
+let productId = null;
+let preFetchedProduct = null;
 
-    // 尝试解析 productId（兼容 "productId::variantKey"）
-    let productId;
+// 先拿原始
+let maybeId = String(it.productId || it._id || it.id || "").trim();
 
-    // 先拿原始
-    let maybeMongoId = String(it.productId || it._id || "").trim();
+// ✅ 兼容： "6970...a268::single"
+let inferredVariantKey = "";
+if (maybeId.includes("::")) {
+  const parts = maybeId.split("::");
+  maybeId = String(parts[0] || "").trim();
+  inferredVariantKey = String(parts[1] || "").trim();
+}
 
-    // ✅ 兼容： "6970...a268::single"
-    let inferredVariantKey = "";
-    if (maybeMongoId.includes("::")) {
-      const parts = maybeMongoId.split("::");
-      maybeMongoId = String(parts[0] || "").trim();
-      inferredVariantKey = String(parts[1] || "").trim();
-    }
-
-    if (maybeMongoId && mongoose.Types.ObjectId.isValid(maybeMongoId)) {
-      productId = new mongoose.Types.ObjectId(maybeMongoId);
-    }
-
+// 1) Mongo ObjectId
+if (maybeId && mongoose.Types.ObjectId.isValid(maybeId)) {
+  productId = new mongoose.Types.ObjectId(maybeId);
+} else if (maybeId) {
+  // 2) 自定义 id：p_176... （你的 Product 里字段名就是 id）
+  const q2 = Product.findOne({ id: maybeId }).select(
+    "name sku price cost taxable deposit image images stock allowZeroStock variants specialQty specialTotalPrice specialN specialTotal dealQty dealTotalPrice dealPrice"
+  );
+  preFetchedProduct = session ? await q2.session(session) : await q2;
+  if (preFetchedProduct?._id) productId = preFetchedProduct._id;
+}
     const legacyId = String(it.legacyProductId || it.id || it._id || "").trim();
 
     // ✅ variantKey：优先用显式字段，其次用从 productId:: 推断的
@@ -409,18 +417,24 @@ async function buildOrderPayload(req, session = null) {
       0
     );
 
-    if (productId) {
-      const q = Product.findById(productId).select(
-        "name sku price cost taxable deposit image images stock allowZeroStock variants specialQty specialTotalPrice specialN specialTotal dealQty dealTotalPrice dealPrice"
-      );
-      const pdoc = session ? await q.session(session) : await q;
+   if (productId) {
+  const pdoc =
+    preFetchedProduct ||
+    (session
+      ? await Product.findById(productId)
+          .select(
+            "name sku price cost taxable deposit image images stock allowZeroStock variants specialQty specialTotalPrice specialN specialTotal dealQty dealTotalPrice dealPrice"
+          )
+          .session(session)
+      : await Product.findById(productId).select(
+          "name sku price cost taxable deposit image images stock allowZeroStock variants specialQty specialTotalPrice specialN specialTotal dealQty dealTotalPrice dealPrice"
+        ));
 
-      if (!pdoc) {
-        const e = new Error(`商品不存在（productId=${productId}）`);
-        e.status = 400;
-        throw e;
-      }
-
+  if (!pdoc) {
+    const e = new Error(`商品不存在（productId=${productId}）`);
+    e.status = 400;
+    throw e;
+  }
       // 解析规格（单个/整箱）
       const v = getVariantFromProduct(pdoc, variantKey);
       const unitCount = Math.max(1, Math.floor(Number(v.unitCount || 1)));
