@@ -480,7 +480,7 @@ function createIntentKey() {
 
     const payload = {
        intentKey: createIntentKey(), // ✅ 新增：短幂等键（给后端/Stripe 用）
-      mode
+      mode,
       deliveryMode: mode,
       items: normalizedItems,
       shipping,
