@@ -1463,11 +1463,16 @@ let lastStripePaymentIntentId = "";
 
           const token = getToken();
           if (!token) throw new Error("未登录：没有 token");
-          // ✅ Stripe 创建 intent 前：必须先验证地址（placeId + lat/lng + ZIP 支持）
-const okAddr = await verifyAddress();
-if (!okAddr) {
-  setStripeAreaVisible(false);
-  throw new Error("请先从地址下拉建议中选择一个地址（需要 placeId + 坐标）");
+         // ✅ 不要在“切换支付方式/加载卡输入框”阶段强制验证地址
+// ✅ 只检查：有没有 placeId + 坐标（不打接口，不查 zip）
+// ✅ 真正验证（含 ZIP 支持）放到 placeOrder() 里做
+const placeId0 = document.getElementById("addrPlaceId").value.trim();
+const lat0 = Number(document.getElementById("addrLat").value);
+const lng0 = Number(document.getElementById("addrLng").value);
+
+if (!placeId0 || !Number.isFinite(lat0) || !Number.isFinite(lng0)) {
+  // 允许用户先看到 Stripe 输入框，但提示一下
+  showAlert("提示：信用卡支付前请从地址下拉建议中选择一个地址（生成坐标）", false);
 }
           setStripeAreaVisible(true);
 
@@ -1647,10 +1652,21 @@ lastStripePaymentIntentId = String(data.paymentIntentId || data.payment_intent |
         if (!f.firstName || !f.lastName || !f.phone) return showAlert("请填写 First Name / Last Name / Phone。", false);
         if (!f.street1 || !f.city || !f.state || !f.zip) return showAlert("请完整填写 Street / City / State / ZIP。", false);
 
-        const lat = Number(document.getElementById("addrLat").value);
-        const lng = Number(document.getElementById("addrLng").value);
-        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return showAlert("请从 Places 下拉选择地址（生成坐标）。", false);
+       const lat = Number(document.getElementById("addrLat").value);
+const lng = Number(document.getElementById("addrLng").value);
+const placeId = document.getElementById("addrPlaceId").value.trim();
 
+if (!placeId || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+  return showAlert("请在 Street Address 输入后，从下拉建议中选择一个地址（需要 placeId + 坐标）。", false);
+}
+
+// ✅ 真正下单/支付前再做 ZIP 支持校验（只在这里做，别在切换支付方式时做）
+try {
+  const okZip = await checkZipSupported((document.getElementById("zip").value || "").trim());
+  if (!okZip) return showAlert("该 ZIP 暂不支持配送。", false);
+} catch (e) {
+  return showAlert(e.message || "ZIP 校验失败", false);
+}
         if (document.getElementById("setAsDefault").checked) {
           try {
             await saveAsDefaultAddress();
@@ -1659,7 +1675,6 @@ lastStripePaymentIntentId = String(data.paymentIntentId || data.payment_intent |
 
         const { addrLine, full } = addrLineUS();
         const fullText = document.getElementById("addrFullText").value || full;
-        const placeId = document.getElementById("addrPlaceId").value.trim();
 
         const extra = calcFinalAmount(snapshot);
         const { deliveryType, deliveryDate } = computeDeliveryMeta(snapshot.mode);
@@ -1966,30 +1981,31 @@ if (stateEl && !stateEl.value) stateEl.value = "NY";
         await initStripeUI();
 
         // ✅ 支付方式切换：点信用卡就立刻加载输入框
-        const onPaySwitch = async () => {
-          const m = getPayMethod();
+       const onPaySwitch = async () => {
+  const m = getPayMethod();
 
-          if (m === "stripe") {
-            try {
-              await ensureStripeMounted();
-              refreshAll();
-            } catch (e) {
-              console.error(e);
-              showAlert(e.message || "信用卡初始化失败", false);
+  if (m === "stripe") {
+    try {
+      setStripeAreaVisible(true);
+      await ensureStripeMounted();
+      refreshAll();
+      return; // ✅ 成功就结束，不要再回退钱包
+    } catch (e) {
+      console.error(e);
+      showAlert(e.message || "信用卡初始化失败（请先完善地址）", false);
 
-              // 回退到钱包
-              document.getElementById("payWallet").checked = true;
-              setStripeAreaVisible(false);
-              refreshAll();
-            }
-            return;
-          }
+      // ✅ 失败才回退钱包
+      document.getElementById("payWallet").checked = true;
+      setStripeAreaVisible(false);
+      refreshAll();
+      return;
+    }
+  }
 
-          // wallet
-          setStripeAreaVisible(false);
-          refreshAll();
-        };
-
+  // wallet
+  setStripeAreaVisible(false);
+  refreshAll();
+};
         const payWalletEl = document.getElementById("payWallet");
         const payStripeEl = document.getElementById("payStripe");
 
