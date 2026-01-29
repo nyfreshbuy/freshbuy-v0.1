@@ -453,9 +453,9 @@ if (!productId) {
       finalVariantKey = v.key || "single";
       finalUnitCount = unitCount;
 
-      // ✅ 全部用 deposit（没有就按 0）
-      depositEach = safeNumber(
-  pdoc.deposit ?? pdoc.bottleDeposit ?? pdoc.containerDeposit ?? pdoc.crv ?? 0,
+      // ✅ 押金优先级：瓶押金/箱押金 > 通用 deposit > crv（小押金）
+depositEach = safeNumber(
+  pdoc.bottleDeposit ?? pdoc.containerDeposit ?? pdoc.deposit ?? pdoc.crv ?? 0,
   0
 );
       // 用后端价格：variant.price 优先，否则 product.price

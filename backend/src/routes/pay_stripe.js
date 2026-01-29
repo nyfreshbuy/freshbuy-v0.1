@@ -327,8 +327,28 @@ if (payload?.useWallet === true || payload?.payMethod === "wallet" || payload?.p
     if ((payload.mode || payload.deliveryMode) === "dealsDay" && hasNonDeal) {
       return res.status(400).json({ success: false, message: "爆品日订单只能包含爆品商品" });
     }
+    // ✅ 把 items 统一成 computeTotalsFromPayload 需要的口径（至少要有 deposit）
+const cleanItems = items.map((it) => {
+  const qty = Math.max(1, Math.floor(safeNum(it.qty, 1)));
+  const unitCount = Math.max(1, Math.floor(safeNum(it.unitCount, 1))); // 前端没传就=1
+  const depositEach = safeNum(it.deposit ?? it.bottleDeposit ?? it.crv ?? 0, 0);
 
-    const totals = computeTotalsFromPayload(payload, {
+  return {
+    ...it,
+    qty,
+    unitCount,
+    deposit: round2(depositEach),
+    taxable: isTruthy(it.taxable) || isTruthy(it.hasTax),
+    hasTax: isTruthy(it.taxable) || isTruthy(it.hasTax),
+  };
+});
+
+// ✅ 用 cleanItems 重新组 payload 给统一结算
+const payloadForTotals = {
+  ...payload,
+  items: cleanItems,
+};
+    const totals = computeTotalsFromPayload(payloadForTotals, {
   payChannel: "stripe",
   taxRateNY: Number(process.env.NY_TAX_RATE || 0.08875),
   platformRate: 0.02,
@@ -445,6 +465,7 @@ if (doc?.payment?.stripe?.intentId) {
         taxableSubtotal: totals.taxableSubtotal,
         salesTaxRate: totals.taxRate,
         salesTax: totals.salesTax,
+        depositTotal: totals.depositTotal,
         platformFee: totals.platformFee,
         tipFee: totals.tipFee,
         discount: 0,
@@ -460,6 +481,7 @@ if (doc?.payment?.stripe?.intentId) {
           amountSubtotal: totals.subtotal,
           amountDeliveryFee: totals.shipping,
           amountTax: totals.salesTax,
+          amountDeposit: totals.depositTotal,
           amountPlatformFee: totals.platformFee,
           amountTip: totals.tipFee,
           amountDiscount: 0,
