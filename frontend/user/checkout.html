@@ -1465,19 +1465,20 @@ let lastStripePaymentIntentId = "";
           // ✅ Stripe 创建 intent 前：必须先验证地址（placeId + lat/lng + ZIP 支持）
 const okAddr = await verifyAddress();
 if (!okAddr) {
+  // ✅ 不要在“选支付方式”阶段 throw（会导致看起来点不了）
+  // ✅ 这里只提示并返回，让用户先选 Stripe，再去选地址
   setStripeAreaVisible(false);
-  throw new Error("请先从地址下拉建议中选择一个地址（需要 placeId + 坐标）");
+  showAlert("信用卡支付需要先从地址下拉建议中选中一个地址（生成 placeId + 坐标）。你可以先选信用卡，填好地址后再点支付。", false);
+  return false;
 }
-          setStripeAreaVisible(true);
-
+setStripeAreaVisible(true);
           const intentKey = buildIntentKey(snapshot, extra);
 
           // ✅ 同一个 key 已挂载：不再创建新 intent
           if (intentKey === lastIntentKey && lastClientSecret && elements && paymentElement) {
-            showAlert("信用卡输入框已就绪，请填写卡信息。", true);
-            return;
-          }
-
+  showAlert("信用卡输入框已就绪，请填写卡信息。", true);
+  return true;
+}
           const f = getFormUS();
           const { addrLine, full } = addrLineUS();
           const fullText = document.getElementById("addrFullText").value || full;
@@ -1589,6 +1590,7 @@ lastStripePaymentIntentId = String(data.paymentIntentId || data.payment_intent |
           }
 
           showAlert("信用卡输入框已加载，请填写卡信息。", true);
+          return true;
         } finally {
           stripeMounting = false;
         }
@@ -1969,21 +1971,29 @@ if (stateEl && !stateEl.value) stateEl.value = "NY";
           const m = getPayMethod();
 
           if (m === "stripe") {
-            try {
-              await ensureStripeMounted();
-              refreshAll();
-            } catch (e) {
-              console.error(e);
-              showAlert(e.message || "信用卡初始化失败", false);
+  try {
+    const ok = await ensureStripeMounted();
 
-              // 回退到钱包
-              document.getElementById("payWallet").checked = true;
-              setStripeAreaVisible(false);
-              refreshAll();
-            }
-            return;
-          }
+    // ✅ ok=false 代表“地址未验证/未选中下拉”，允许保持 Stripe 选中，但先不显示卡输入框
+    if (!ok) {
+      setStripeAreaVisible(false);
+      // 不要切回钱包
+      refreshAll();
+      return;
+    }
 
+    // ✅ ok=true：显示并刷新
+    setStripeAreaVisible(true);
+    refreshAll();
+  } catch (e) {
+    console.error(e);
+    // ✅ 发生真实错误（比如后端 intent 创建失败）才提示，但也不要强制切回钱包
+    setStripeAreaVisible(false);
+    showAlert(e.message || "信用卡初始化失败", false);
+    refreshAll();
+  }
+  return;
+}
           // wallet
           setStripeAreaVisible(false);
           refreshAll();
