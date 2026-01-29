@@ -384,9 +384,9 @@ if (maybeId && mongoose.Types.ObjectId.isValid(maybeId)) {
   productId = new mongoose.Types.ObjectId(maybeId);
 } else if (maybeId) {
   // 2) 自定义 id：p_176... （你的 Product 里字段名就是 id）
-  const q2 = Product.findOne({ id: maybeId }).select(
-    "name sku price cost taxable deposit image images stock allowZeroStock variants specialQty specialTotalPrice specialN specialTotal dealQty dealTotalPrice dealPrice"
-  );
+ const q2 = Product.findOne({ id: maybeId }).select(
+  "name sku price cost taxable deposit bottleDeposit containerDeposit crv image images stock allowZeroStock variants specialQty specialTotalPrice specialN specialTotal dealQty dealTotalPrice dealPrice"
+);
   preFetchedProduct = session ? await q2.session(session) : await q2;
   if (preFetchedProduct?._id) productId = preFetchedProduct._id;
 }
@@ -423,11 +423,11 @@ if (maybeId && mongoose.Types.ObjectId.isValid(maybeId)) {
     (session
       ? await Product.findById(productId)
           .select(
-            "name sku price cost taxable deposit image images stock allowZeroStock variants specialQty specialTotalPrice specialN specialTotal dealQty dealTotalPrice dealPrice"
+            "name sku price cost taxable deposit bottleDeposit containerDeposit crv image images stock allowZeroStock variants specialQty specialTotalPrice specialN specialTotal dealQty dealTotalPrice dealPrice"
           )
           .session(session)
       : await Product.findById(productId).select(
-          "name sku price cost taxable deposit image images stock allowZeroStock variants specialQty specialTotalPrice specialN specialTotal dealQty dealTotalPrice dealPrice"
+          "name sku price cost taxable deposit bottleDeposit containerDeposit crv image images stock allowZeroStock variants specialQty specialTotalPrice specialN specialTotal dealQty dealTotalPrice dealPrice"
         ));
 
   if (!pdoc) {
@@ -878,12 +878,7 @@ const totalsWallet = computeTotalsFromPayload(
     items: orderDoc.items,
     shipping: ship,
     mode: orderDoc.deliveryMode,
-    pricing: {
-      tip: orderDoc.tipFee || 0,
-      bottleDeposit: orderDoc.depositTotal || 0,
-      depositTotal: orderDoc.depositTotal || 0,
-      deposit: orderDoc.depositTotal || 0,
-    },
+   pricing: { tip: orderDoc.tipFee || 0 },
   },
   { payChannel: "stripe", taxRateNY: NY_TAX_RATE, platformRate: 0.02, platformFixed: 0.5 }
 );
