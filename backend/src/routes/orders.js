@@ -602,8 +602,7 @@ const baseTotalAmount = round2(
     round2(totalsWallet.shipping) +
     round2(totalsWallet.salesTax) +
     round2(depositTotal) +
-    round2(tipFee) +
-    0
+    round2(tipFee)
 );
   // zone
   const zip = String(ship.zip || ship.postalCode || "").trim();
