@@ -6,7 +6,7 @@ import Order from "../models/order.js";
 import User from "../models/user.js";
 import Zone from "../models/Zone.js";
 import { requireLogin } from "../middlewares/auth.js";
-
+import { computeTotalsFromPayload } from "../utils/checkout_pricing.js";
 const router = express.Router();
 
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || "";
@@ -81,55 +81,31 @@ function isDealLike(it) {
   if (String(it.type || "").toLowerCase() === "hot") return true;
   return false;
 }
+// ✅ 特价：N for $X 行小计（与前端 checkout.html 同口径）
+function calcSpecialLineTotal(it, qty) {
+  const q = Math.max(0, Math.floor(safeNum(qty, 0)));
+  if (!it || q <= 0) return 0;
 
-// =========================
-// 金额重算（服务端权威）
-// ✅ 与你的 orders.js 思路一致：Stripe 会收平台费（这里是纯 Stripe 订单，所以一定收）
-// =========================
-function computeTotalsFromPayload(payload) {
-  const items = Array.isArray(payload?.items) ? payload.items : [];
+  const price = safeNum(it.priceNum ?? it.price, 0);
 
-  let subtotal = 0;
-  for (const it of items) {
-    const qty = Math.max(1, safeNum(it.qty, 1));
-    const price = safeNum(it.price, 0);
-    subtotal += price * qty;
+  const specialQty = safeNum(
+    it.specialQty ?? it.specialN ?? it.specialCount ?? it.dealQty,
+    0
+  );
+
+  const specialTotalPrice = safeNum(
+    it.specialTotalPrice ?? it.specialTotal ?? it.specialPrice ?? it.dealTotalPrice ?? it.dealPrice,
+    0
+  );
+
+  if (specialQty > 0 && specialTotalPrice > 0 && q >= specialQty) {
+    const groups = Math.floor(q / specialQty);
+    const remainder = q % specialQty;
+    return round2(groups * specialTotalPrice + remainder * price);
   }
-  subtotal = round2(subtotal);
 
-  const mode = String(payload?.mode || payload?.deliveryMode || "normal").trim();
-
-  let shipping = 0;
-  if (mode === "dealsDay") shipping = 0;
-  else if (mode === "groupDay") shipping = subtotal >= 49.99 ? 0 : 4.99;
-  else if (mode === "friendGroup") shipping = 4.99;
-  else shipping = 4.99;
-  shipping = round2(shipping);
-
-  // taxableSubtotal：用 items taxable/hasTax
-  let taxableSubtotal = 0;
-  for (const it of items) {
-    const qty = Math.max(1, safeNum(it.qty, 1));
-    const price = safeNum(it.price, 0);
-    const taxable = isTruthy(it.taxable) || isTruthy(it.hasTax);
-    if (taxable) taxableSubtotal += price * qty;
-  }
-  taxableSubtotal = round2(taxableSubtotal);
-
-  const taxRate = safeNum(payload?.pricing?.taxRate, safeNum(payload?.taxRate, 0));
-  const salesTax = round2(taxableSubtotal * taxRate);
-
-  // ✅ 平台服务费：每单 $0.50 + 小计(subtotal) 的 2%
-const platformFee = round2(0.5 + subtotal * 0.02);
-
-const tipFee = Math.max(0, round2(safeNum(payload?.pricing?.tip, safeNum(payload?.tip, 0))));
-
-// ✅ Stripe 实际扣款总额
-const totalAmount = round2(subtotal + shipping + salesTax + platformFee + tipFee);
-
-  return { subtotal, shipping, taxableSubtotal, taxRate, salesTax, platformFee, tipFee, totalAmount };
+  return round2(q * price);
 }
-
 // =========================
 // zone 解析（可选，给派单/路线用）
 // =========================
@@ -323,7 +299,12 @@ if (payload?.useWallet === true || payload?.payMethod === "wallet" || payload?.p
       return res.status(400).json({ success: false, message: "爆品日订单只能包含爆品商品" });
     }
 
-    const totals = computeTotalsFromPayload(payload);
+    const totals = computeTotalsFromPayload(payload, {
+  payChannel: "stripe",
+  taxRateNY: Number(process.env.NY_TAX_RATE || 0.08875),
+  platformRate: 0.02,
+  platformFixed: 0.5,
+});
     if (!totals.totalAmount || totals.totalAmount <= 0) {
       return res.status(400).json({ success: false, message: "金额异常" });
     }

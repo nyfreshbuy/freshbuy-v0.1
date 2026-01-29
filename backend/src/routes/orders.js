@@ -7,6 +7,8 @@ import Zone from "../models/Zone.js";
 import Product from "../models/product.js";
 import { requireLogin } from "../middlewares/auth.js";
 import Wallet from "../models/Wallet.js";
+import { computeTotalsFromPayload } from "../utils/checkout_pricing.js";
+
 const router = express.Router();
 router.use(express.json());
 
@@ -51,7 +53,7 @@ function safeNumber(v, def = 0) {
   return Number.isFinite(n) ? n : def;
 }
 
-// ✅ 特价：N for $X 行小计（与前端 checkout.html 同口径）
+// ✅ 特价：N for $X 行小计（与前端 checkout 同口径）
 function calcSpecialLineTotalBackend({ price, specialQty, specialTotalPrice }, qty) {
   const q = Math.max(0, Math.floor(Number(qty || 0)));
   const p = Number(price || 0);
@@ -212,43 +214,6 @@ async function resolveZoneFromPayload({ zoneId, ship, zip }) {
   return { zoneKey, zoneName };
 }
 
-/**
- * ✅ 钱包字段兼容：walletBalance / balance / wallet.balance
- */
-function detectWalletField(userDoc) {
-  if (!userDoc) return { field: "walletBalance", path: "walletBalance" };
-
-  if (userDoc.walletBalance != null) return { field: "walletBalance", path: "walletBalance" };
-  if (userDoc.balance != null) return { field: "balance", path: "balance" };
-
-  // wallet: { balance: number }
-  if (userDoc.wallet && typeof userDoc.wallet === "object" && userDoc.wallet.balance != null) {
-    return { field: "wallet.balance", path: "wallet.balance" };
-  }
-
-  // wallet 直接就是数字（极少见）
-  if (typeof userDoc.wallet === "number") return { field: "wallet", path: "wallet" };
-
-  return { field: "walletBalance", path: "walletBalance" };
-}
-
-function getWalletBalance(userDoc) {
-  if (!userDoc) return 0;
-  const v =
-    userDoc.walletBalance ??
-    userDoc.balance ??
-    (userDoc.wallet && typeof userDoc.wallet === "object" ? userDoc.wallet.balance : userDoc.wallet) ??
-    0;
-  return Number(v || 0);
-}
-
-/**
- * ✅ 构建订单（与 Order Model 对齐）
- * ✅ 支持 variants：items 可传 variantKey（single/box12）
- *
- * @param {object} req
- * @param {mongoose.ClientSession|null} session - 只有在 checkout 里才传，用于扣库存 + 写 stockReserve
- */
 // ✅ 如果订单当初没走 checkout 预扣库存（stockReserve 为空），在支付确认时补扣
 async function reserveStockForExistingOrder(orderDoc, session) {
   if (!orderDoc || !Array.isArray(orderDoc.items) || orderDoc.items.length === 0) return [];
@@ -261,7 +226,6 @@ async function reserveStockForExistingOrder(orderDoc, session) {
   const reserve = [];
 
   for (const it of orderDoc.items) {
-    // 订单 items 里可能没有 variantKey：从 sku 里解析（你保存的是 baseSku::variantKey）
     const sku = String(it?.sku || "");
     const skuVariantKey = sku.includes("::") ? sku.split("::").pop() : "";
     const variantKey = String(it?.variantKey || it?.variant || skuVariantKey || "single").trim() || "single";
@@ -310,6 +274,14 @@ async function reserveStockForExistingOrder(orderDoc, session) {
 
   return reserve;
 }
+
+/**
+ * ✅ 构建订单（与 Order Model 对齐）
+ * ✅ 支持 variants：items 可传 variantKey（single/box12）
+ *
+ * @param {object} req
+ * @param {mongoose.ClientSession|null} session - 只有在 checkout 里才传，用于扣库存 + 写 stockReserve
+ */
 async function buildOrderPayload(req, session = null) {
   const body = req.body || {};
   const mode = pickMode(body);
@@ -402,27 +374,28 @@ async function buildOrderPayload(req, session = null) {
     }
 
     // 尝试解析 productId（兼容 "productId::variantKey"）
-let productId;
+    let productId;
 
-// 先拿原始
-let maybeMongoId = String(it.productId || it._id || "").trim();
+    // 先拿原始
+    let maybeMongoId = String(it.productId || it._id || "").trim();
 
-// ✅ 兼容： "6970...a268::single"
-let inferredVariantKey = "";
-if (maybeMongoId.includes("::")) {
-  const parts = maybeMongoId.split("::");
-  maybeMongoId = String(parts[0] || "").trim();
-  inferredVariantKey = String(parts[1] || "").trim();
-}
+    // ✅ 兼容： "6970...a268::single"
+    let inferredVariantKey = "";
+    if (maybeMongoId.includes("::")) {
+      const parts = maybeMongoId.split("::");
+      maybeMongoId = String(parts[0] || "").trim();
+      inferredVariantKey = String(parts[1] || "").trim();
+    }
 
-if (maybeMongoId && mongoose.Types.ObjectId.isValid(maybeMongoId)) {
-  productId = new mongoose.Types.ObjectId(maybeMongoId);
-}
+    if (maybeMongoId && mongoose.Types.ObjectId.isValid(maybeMongoId)) {
+      productId = new mongoose.Types.ObjectId(maybeMongoId);
+    }
 
-const legacyId = String(it.legacyProductId || it.id || it._id || "").trim();
+    const legacyId = String(it.legacyProductId || it.id || it._id || "").trim();
 
-// ✅ variantKey：优先用显式字段，其次用从 productId:: 推断的
-const variantKey = String(it.variantKey || it.variant || inferredVariantKey || "").trim();
+    // ✅ variantKey：优先用显式字段，其次用从 productId:: 推断的
+    const variantKey = String(it.variantKey || it.variant || inferredVariantKey || "").trim();
+
     // 默认使用前端价格（兼容旧逻辑）
     let price = Number(it.priceNum ?? it.price ?? 0);
     if (!Number.isFinite(price) || price < 0) price = 0;
@@ -432,10 +405,11 @@ const variantKey = String(it.variantKey || it.variant || inferredVariantKey || "
     let finalImage = it.image ? String(it.image) : "";
     let cost = Number(it.cost || 0) || 0;
     let hasTax = !!it.hasTax;
+
     // ✅ variants + deposit（全部用 deposit）
-let finalVariantKey = variantKey || "single";
-let finalUnitCount = 1;
-let depositEach = 0; // 每个“单个单位”的押金（来自 DB）
+    let finalVariantKey = variantKey || "single";
+    let finalUnitCount = 1;
+    let depositEach = 0; // 每个“单个单位”的押金（来自 DB）
 
     // ✅ 特价字段：先用前端兜底
     let specialQty = safeNumber(it.specialQty ?? it.specialN ?? it.dealQty ?? it.dealN ?? 0, 0);
@@ -446,8 +420,8 @@ let depositEach = 0; // 每个“单个单位”的押金（来自 DB）
 
     if (productId) {
       const q = Product.findById(productId).select(
-  "name sku price cost taxable deposit image images stock allowZeroStock variants specialQty specialTotalPrice specialN specialTotal dealQty dealTotalPrice dealPrice"
-);
+        "name sku price cost taxable deposit image images stock allowZeroStock variants specialQty specialTotalPrice specialN specialTotal dealQty dealTotalPrice dealPrice"
+      );
       const pdoc = session ? await q.session(session) : await q;
 
       if (!pdoc) {
@@ -460,10 +434,10 @@ let depositEach = 0; // 每个“单个单位”的押金（来自 DB）
       const v = getVariantFromProduct(pdoc, variantKey);
       const unitCount = Math.max(1, Math.floor(Number(v.unitCount || 1)));
       finalVariantKey = v.key || "single";
-finalUnitCount = unitCount;
+      finalUnitCount = unitCount;
 
-// ✅ 全部用 deposit（没有就按 0）
-depositEach = safeNumber(pdoc.deposit ?? 0, 0);
+      // ✅ 全部用 deposit（没有就按 0）
+      depositEach = safeNumber(pdoc.deposit ?? 0, 0);
 
       // 用后端价格：variant.price 优先，否则 product.price
       const backendPrice = v.price != null ? Number(v.price) : Number(pdoc.price || 0);
@@ -482,7 +456,7 @@ depositEach = safeNumber(pdoc.deposit ?? 0, 0);
       cost = Number(pdoc.cost || 0) || cost;
       hasTax = !!pdoc.taxable;
 
-      // ✅ DB 覆盖特价字段（关键：防止前端乱传）
+      // ✅ DB 覆盖特价字段（防止前端乱传）
       specialQty = safeNumber(pdoc.specialQty ?? pdoc.specialN ?? pdoc.dealQty ?? specialQty, specialQty);
       specialTotalPrice = safeNumber(
         pdoc.specialTotalPrice ?? pdoc.specialTotal ?? pdoc.dealTotalPrice ?? pdoc.dealPrice ?? specialTotalPrice,
@@ -493,7 +467,7 @@ depositEach = safeNumber(pdoc.deposit ?? 0, 0);
       const allowZero = pdoc.allowZeroStock === true;
       const curStock = Number(pdoc.stock || 0);
 
-      // ✅ 关键：不管是不是 checkout，都禁止“下单数量 > 库存”
+      // ✅ 不管是不是 checkout，都禁止“下单数量 > 库存”
       if (!allowZero && curStock < needUnits) {
         const e = new Error(`库存不足：${pdoc.name}（需要 ${needUnits}，当前 ${curStock}）`);
         e.status = 400;
@@ -533,30 +507,34 @@ depositEach = safeNumber(pdoc.deposit ?? 0, 0);
       legacyProductId: legacyId || "",
       name: finalName,
       sku: finalSku,
+
       price: round2(price),
       qty,
-       variantKey: finalVariantKey,
-  unitCount: finalUnitCount,
-  deposit: round2(depositEach),
+      variantKey: finalVariantKey,
+      unitCount: finalUnitCount,
+
+      // ✅ 特价字段保留给统一结算用（与前端一致）
+      specialQty: Number(specialQty || 0),
+      specialTotalPrice: Number(specialTotalPrice || 0),
+
+      // ✅ 税字段统一：hasTax / taxable 都带
+      hasTax: !!hasTax,
+      taxable: !!hasTax,
+
+      // ✅ 押金
+      deposit: round2(depositEach),
+
       image: finalImage,
       lineTotal,
       cost,
-      hasTax,
     });
   }
 
- subtotal = round2(subtotal);
+  subtotal = round2(subtotal);
 
-// ✅ depositTotal：全部用 deposit（按“单位”计算：qty * unitCount * deposit）
-const depositTotal = round2(
-  cleanItems.reduce((sum, x) => {
-    const qty = Math.max(1, Math.floor(Number(x.qty || 1)));
-    const unitCount = Math.max(1, Math.floor(Number(x.unitCount || 1)));
-    const dep = safeNumber(x.deposit ?? 0, 0);
-    return sum + dep * qty * unitCount;
-  }, 0)
-);
-  // 规则校验
+  // -------------------------
+  // 规则校验（保留你原来的）
+  // -------------------------
   const hasSpecial = items.some((it) => isSpecialItem(it));
   const hasNonSpecial = items.some((it) => !isSpecialItem(it));
 
@@ -583,39 +561,42 @@ const depositTotal = round2(
     e.status = 400;
     throw e;
   }
+
   if (mode === "friendGroup" && subtotal < 29) {
     const e = new Error("未满足 $29 最低消费");
     e.status = 400;
     throw e;
   }
 
-  // 运费
-  let deliveryFee = 0;
-  if (mode === "dealsDay") deliveryFee = 0;
-  else if (mode === "groupDay") deliveryFee = subtotal >= 49.99 ? 0 : 4.99;
-  else if (mode === "friendGroup") deliveryFee = 4.99;
-  else deliveryFee = 4.99;
-  deliveryFee = round2(deliveryFee);
-
-  // tip
+  // -------------------------
+  // tip（先算出来）
+  // -------------------------
   const tipRaw = tipAmount ?? tip ?? ship.tip ?? 0;
   const tipFee = round2(Math.max(0, safeNumber(tipRaw, 0)));
 
-  // taxableSubtotal（按 hasTax）
-const taxableSubtotal = round2(
-  cleanItems.filter((x) => x.hasTax === true).reduce((sum, x) => sum + Number(x.lineTotal || 0), 0)
-);
+  // -------------------------
+  // ✅ 统一结算：buildOrderPayload 阶段用 “wallet口径”(平台费=0)
+  // checkout 阶段如需 Stripe，会用 stripe口径重算（平台费=0.5+2%）
+  // -------------------------
+  const totalsWallet = computeTotalsFromPayload(
+    { items: cleanItems, shipping: ship, mode, pricing: { tip: tipFee } },
+    { payChannel: "wallet", taxRateNY: NY_TAX_RATE }
+  );
 
-// ✅ 税：只有 NY 才收
-const shipState = String(ship.state || "").trim().toUpperCase();
-const taxRate = shipState === "NY" ? NY_TAX_RATE : 0;
-const salesTax = round2(taxableSubtotal * taxRate);
-
+  // ✅ 用统一结算覆盖所有金额字段
+  const deliveryFee = round2(totalsWallet.shipping);
+  const taxableSubtotal = round2(totalsWallet.taxableSubtotal);
+  const taxRate = round2(totalsWallet.taxRate);
+  const salesTax = round2(totalsWallet.salesTax);
+  const depositTotal = round2(totalsWallet.depositTotal);
   const discount = 0;
+
+  // build 阶段平台费固定为 0（Stripe 时再加）
   const platformFee = 0;
 
-  // ✅ 基础总额（不含平台费）
-  const baseTotalAmount = round2(subtotal + deliveryFee + salesTax + tipFee + depositTotal - discount);
+  // ✅ build 阶段 baseTotalAmount 就是钱包口径总额
+  const baseTotalAmount = round2(totalsWallet.totalAmount);
+
   // zone
   const zip = String(ship.zip || ship.postalCode || "").trim();
   const { zoneKey, zoneName } = await resolveZoneFromPayload({ zoneId, ship, zip });
@@ -637,11 +618,11 @@ const salesTax = round2(taxableSubtotal * taxRate);
     wallet: { paid: 0 },
     zelle: { paid: 0 },
     idempotencyKey: "",
-    amountSubtotal: Number(subtotal || 0),
+    amountSubtotal: Number(round2(totalsWallet.subtotal) || 0),
     amountDeliveryFee: Number(deliveryFee || 0),
     amountTax: Number(salesTax || 0),
-amountDeposit: Number(depositTotal || 0),
-amountPlatformFee: 0,
+    amountDeposit: Number(depositTotal || 0),
+    amountPlatformFee: 0,
     amountTip: Number(tipFee || 0),
     amountDiscount: Number(discount || 0),
   };
@@ -662,7 +643,7 @@ amountPlatformFee: 0,
     dispatch: z ? { zoneId: z, batchKey, batchName: zoneName || "" } : { zoneId: "", batchKey: "", batchName: "" },
 
     status: "pending",
-    subtotal,
+    subtotal: round2(totalsWallet.subtotal),
     deliveryFee,
     discount,
     totalAmount: Number(baseTotalAmount || 0),
@@ -785,23 +766,25 @@ router.post("/", requireLogin, async (req, res) => {
     const { orderDoc } = await buildOrderPayload(req, null);
     const doc = await Order.create(orderDoc);
 
-   return res.json({
-  success: true,
-  orderId: doc._id.toString(),
-  orderNo: doc.orderNo,
-  totalAmount: doc.totalAmount,
+    return res.json({
+      success: true,
+      orderId: doc._id.toString(),
+      orderNo: doc.orderNo,
+      totalAmount: doc.totalAmount,
 
-  // ✅ 新增：税 / 押金明细
-  salesTax: round2(doc.salesTax ?? 0),
-  depositTotal: round2(doc.depositTotal ?? 0),
-  taxableSubtotal: round2(doc.taxableSubtotal ?? 0),
-  salesTaxRate: round2(doc.salesTaxRate ?? 0),
+      // ✅ 明细
+      salesTax: round2(doc.salesTax ?? 0),
+      depositTotal: round2(doc.depositTotal ?? 0),
+      taxableSubtotal: round2(doc.taxableSubtotal ?? 0),
+      salesTaxRate: round2(doc.salesTaxRate ?? 0),
+      platformFee: round2(doc.platformFee ?? 0),
+      tipFee: round2(doc.tipFee ?? 0),
 
-  payment: doc.payment,
-  deliveryMode: doc.deliveryMode,
-  fulfillment: doc.fulfillment,
-  deliveryDate: doc.deliveryDate,
-});
+      payment: doc.payment,
+      deliveryMode: doc.deliveryMode,
+      fulfillment: doc.fulfillment,
+      deliveryDate: doc.deliveryDate,
+    });
   } catch (err) {
     console.error("POST /api/orders error:", err);
     return res.status(err?.status || 500).json({ success: false, message: err?.message || "创建订单失败" });
@@ -851,43 +834,53 @@ router.post("/checkout", requireLogin, async (req, res) => {
 
     await session.withTransaction(async () => {
       // ✅ 先在事务里构建订单 + 预扣库存 + 写 stockReserve
-      const { orderDoc, baseTotalAmount } = await buildOrderPayload(req, session);
+      const { orderDoc } = await buildOrderPayload(req, session);
 
-      const baseTotal = Number(baseTotalAmount || 0);
-      if (!Number.isFinite(baseTotal) || baseTotal <= 0) {
-        const e = new Error("订单金额不合法");
-        e.status = 400;
-        throw e;
-      }
+      // ✅ 先按“钱包口径”总额（平台费=0）
+      const ship = req.body?.shipping || req.body?.receiver || {};
+      const totalsWallet = computeTotalsFromPayload(
+        { items: orderDoc.items, shipping: ship, mode: orderDoc.deliveryMode, pricing: { tip: orderDoc.tipFee || 0 } },
+        { payChannel: "wallet", taxRateNY: NY_TAX_RATE }
+      );
 
-      finalTotal = round2(baseTotal);
+      finalTotal = round2(totalsWallet.totalAmount);
+      platformFee = 0;
 
-      // 1) 钱包余额：从 wallets 集合读取
-const w0 = await Wallet.findOne({ userId }).session(session);
-const balance0 = Number(w0?.balance || 0);
-      // 2) 先按 baseTotal 试算
+      // 1) 钱包余额
+      const w0 = await Wallet.findOne({ userId }).session(session);
+      const balance0 = Number(w0?.balance || 0);
+
+      // 2) 先按钱包口径试算
       walletUsed = round2(Math.min(balance0, finalTotal));
       remaining = round2(finalTotal - walletUsed);
 
-      // 3) 如果需要 Stripe，才收平台费 2%（按 subtotal）
+      // 3) 如果需要 Stripe：按 Stripe 口径重算（平台费=0.5 + 2%）
       if (remaining > 0) {
-        platformFee = round2(Number(orderDoc.subtotal || 0) * 0.02);
-        finalTotal = round2(finalTotal + platformFee);
+        const totalsStripe = computeTotalsFromPayload(
+          { items: orderDoc.items, shipping: ship, mode: orderDoc.deliveryMode, pricing: { tip: orderDoc.tipFee || 0 } },
+          { payChannel: "stripe", taxRateNY: NY_TAX_RATE, platformRate: 0.02, platformFixed: 0.5 }
+        );
+
+        platformFee = round2(totalsStripe.platformFee);
+        finalTotal = round2(totalsStripe.totalAmount);
 
         walletUsed = round2(Math.min(balance0, finalTotal));
         remaining = round2(finalTotal - walletUsed);
       }
 
-      // ✅ 如果前端选择钱包支付（wallet），但余额不足 => 直接 400（防止“下单成功但变信用卡”）
-const clientPayMethod = String(
-  req.body?.payMethod || req.body?.paymentMethod || req.body?.payment?.method || ""
-).trim().toLowerCase();
+      // ✅ 如果前端选择钱包支付（wallet），但余额不足 => 直接 400
+      const clientPayMethod = String(
+        req.body?.payMethod || req.body?.paymentMethod || req.body?.payment?.method || ""
+      )
+        .trim()
+        .toLowerCase();
 
-if (clientPayMethod === "wallet" && remaining > 0) {
-  const e = new Error(`钱包余额不足：需要 $${finalTotal.toFixed(2)}，当前 $${balance0.toFixed(2)}`);
-  e.status = 400;
-  throw e;
-}
+      if (clientPayMethod === "wallet" && remaining > 0) {
+        const e = new Error(`钱包余额不足：需要 $${finalTotal.toFixed(2)}，当前 $${balance0.toFixed(2)}`);
+        e.status = 400;
+        throw e;
+      }
+
       // 4) 创建订单（创建时一律 unpaid）
       const docToCreate = {
         ...orderDoc,
@@ -912,50 +905,50 @@ if (clientPayMethod === "wallet" && remaining > 0) {
       created = created?.[0] || null;
       if (!created) throw new Error("创建订单失败");
 
-    // 5) 钱包扣款（只有钱包要用时）—— ✅扣 wallets 集合
-if (walletUsed > 0) {
-  const w1 = await Wallet.findOneAndUpdate(
-    { userId, balance: { $gte: walletUsed } },
-    { $inc: { balance: -walletUsed } },
-    { new: true, session }
-  );
+      // 5) 钱包扣款（只有钱包要用时）—— ✅扣 wallets 集合
+      if (walletUsed > 0) {
+        const w1 = await Wallet.findOneAndUpdate(
+          { userId, balance: { $gte: walletUsed } },
+          { $inc: { balance: -walletUsed } },
+          { new: true, session }
+        );
 
-  if (w1) {
-    walletDeducted = true;
+        if (w1) {
+          walletDeducted = true;
 
-    await Order.updateOne(
-      { _id: created._id },
-      {
-        $set: {
-          "payment.wallet.paid": Number(walletUsed || 0),
-          "payment.paidTotal": Number(walletUsed || 0),
-        },
-      },
-      { session }
-    );
-  } else {
-    // 扣款失败：不扣钱包，全部走 Stripe
-    walletDeducted = false;
-    walletUsed = 0;
-    remaining = round2(finalTotal);
+          await Order.updateOne(
+            { _id: created._id },
+            {
+              $set: {
+                "payment.wallet.paid": Number(walletUsed || 0),
+                "payment.paidTotal": Number(walletUsed || 0),
+              },
+            },
+            { session }
+          );
+        } else {
+          // 扣款失败：不扣钱包，全部走 Stripe
+          walletDeducted = false;
+          walletUsed = 0;
+          remaining = round2(finalTotal);
 
-    await Order.updateOne(
-      { _id: created._id },
-      {
-        $set: {
-          "payment.status": "unpaid",
-          "payment.method": "stripe",
-          "payment.paidTotal": 0,
-          "payment.wallet.paid": 0,
-        },
-      },
-      { session }
-    );
-  }
-}
-     const w2 = await Wallet.findOne({ userId }).session(session);
-newBalance = round2(Number(w2?.balance || 0));
+          await Order.updateOne(
+            { _id: created._id },
+            {
+              $set: {
+                "payment.status": "unpaid",
+                "payment.method": "stripe",
+                "payment.paidTotal": 0,
+                "payment.wallet.paid": 0,
+              },
+            },
+            { session }
+          );
+        }
+      }
 
+      const w2 = await Wallet.findOne({ userId }).session(session);
+      newBalance = round2(Number(w2?.balance || 0));
 
       // ✅ 保护：如果理论上应为纯钱包，但钱包没扣成功 => 回滚
       if (remaining <= 0 && walletUsed > 0 && walletDeducted !== true) {
@@ -985,10 +978,10 @@ newBalance = round2(Number(w2?.balance || 0));
     });
 
     const fresh = await Order.findById(created._id)
-  .select(
-    "payment status totalAmount orderNo deliveryMode fulfillment subtotal deliveryFee discount salesTax depositTotal salesTaxRate platformFee tipFee taxableSubtotal deliveryDate stockReserve"
-  )
-  .lean();
+      .select(
+        "payment status totalAmount orderNo deliveryMode fulfillment subtotal deliveryFee discount salesTax depositTotal salesTaxRate platformFee tipFee taxableSubtotal deliveryDate stockReserve"
+      )
+      .lean();
 
     return res.json({
       success: true,
@@ -996,9 +989,12 @@ newBalance = round2(Number(w2?.balance || 0));
       orderNo: created.orderNo,
       totalAmount: round2(fresh?.totalAmount ?? finalTotal),
       salesTax: round2(fresh?.salesTax ?? 0),
-  depositTotal: round2(fresh?.depositTotal ?? 0),
-  taxableSubtotal: round2(fresh?.taxableSubtotal ?? 0),
-  salesTaxRate: round2(fresh?.salesTaxRate ?? 0),
+      depositTotal: round2(fresh?.depositTotal ?? 0),
+      taxableSubtotal: round2(fresh?.taxableSubtotal ?? 0),
+      salesTaxRate: round2(fresh?.salesTaxRate ?? 0),
+      platformFee: round2(fresh?.platformFee ?? 0),
+      tipFee: round2(fresh?.tipFee ?? 0),
+
       walletUsed: round2(walletUsed),
       remaining: round2(remaining),
       paid: remaining <= 0 && (fresh?.status === "paid" || fresh?.payment?.status === "paid"),
@@ -1046,7 +1042,7 @@ router.post("/:id([0-9a-fA-F]{24})/confirm-stripe", requireLogin, async (req, re
         throw e;
       }
 
-      // ✅ 绑定 userId / phone（保留你原逻辑）
+      // ✅ 绑定 userId / phone
       if (uid && !doc.userId) {
         doc.userId = uid;
 
@@ -1059,7 +1055,7 @@ router.post("/:id([0-9a-fA-F]{24})/confirm-stripe", requireLogin, async (req, re
         if (p10) doc.customerPhone = p10;
       }
 
-      // 权限检查（绑定后）
+      // 权限检查
       if (uid && doc.userId && String(doc.userId) !== String(uid) && req.user.role !== "admin") {
         const e = new Error("无权限");
         e.status = 403;
@@ -1128,7 +1124,6 @@ router.post("/:id([0-9a-fA-F]{24})/confirm-stripe", requireLogin, async (req, re
     session.endSession();
   }
 });
-
 
 // =====================================================
 // 2) 未登录按手机号查订单
