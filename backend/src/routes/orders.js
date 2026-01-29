@@ -981,6 +981,18 @@ const totalsWallet = computeTotalsFromPayload(
   { payChannel: "wallet", taxRateNY: NY_TAX_RATE }
 );
       finalTotal = round2(totalsWallet.totalAmount);
+      console.log("🧾 totalsWallet", {
+  subtotal: totalsWallet.subtotal,
+  total: totalsWallet.totalAmount,
+  items: (orderDoc.items || []).map(it => ({
+    name: it.name,
+    qty: it.qty,
+    price: it.price,
+    specialQty: it.specialQty,
+    specialTotalPrice: it.specialTotalPrice,
+    line: it.qty * it.price
+  }))
+});
       platformFee = 0;
 
       // 1) 钱包余额
@@ -1004,7 +1016,18 @@ const totalsWallet = computeTotalsFromPayload(
 );
         platformFee = round2(totalsStripe.platformFee);
 finalTotal = round2(totalsStripe.totalAmount);
-
+console.log("🧾 totalsStripe", {
+  subtotal: totalsStripe.subtotal,
+  platformFee: totalsStripe.platformFee,
+  total: totalsStripe.totalAmount,
+  items: (orderDoc.items || []).map(it => ({
+    name: it.name,
+    qty: it.qty,
+    price: it.price,
+    specialQty: it.specialQty,
+    specialTotalPrice: it.specialTotalPrice
+  }))
+});
 // ✅ 同步 Stripe 口径的明细（一次性解决对账问题）
 orderDoc.subtotal = round2(totalsStripe.subtotal);
 orderDoc.deliveryFee = round2(totalsStripe.shipping);
