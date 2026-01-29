@@ -292,11 +292,8 @@ router.post("/intent-for-order", requireLogin, express.json(), async (req, res) 
   });
 }
     const cents = moneyToCents(remaining);
-const intentKey = String(doc.payment?.idempotencyKey || doc.orderNo || doc._id);
-
-const rawIdem = `fb_exist_${intentKey}__${cents}`;
+const rawIdem = `fb_exist_order_${String(doc._id)}__${cents}`;
 const idemKey = normalizeIdempotencyKey(rawIdem);
-
 const intent = await stripe.paymentIntents.create(
   {
     amount: cents,
@@ -464,7 +461,7 @@ console.log("🧾 totals check:", {
       userId: user._id,
       "payment.method": "stripe",
       "payment.idempotencyKey": intentKey,
-      "payment.status": "unpaid",
+       status: { $ne: "paid" }, // ✅ 只要没 paid，就复用
     }).catch(() => null);
 
     // ✅ 如果已存在 intentId：必须返回 clientSecret（Payment Element 需要）
@@ -587,9 +584,11 @@ if (doc?.payment?.stripe?.intentId) {
     // ---------- 2.3 创建 PaymentIntent ----------
     const cents = moneyToCents(totals.totalAmount);
 
-    const rawIdem = `fb_pi_${intentKey}__${cents}`;
+   // ✅ Stripe 幂等键：只绑定“这张订单 + 这次金额”
+// - 同一订单重复点支付：复用同一个 key（防重复创建）
+// - 不同订单即使同金额：orderId 不同 => key 不同（可正常下第二单）
+const rawIdem = `fb_pi_order_${String(doc._id)}__${cents}`;
 const idemKey = normalizeIdempotencyKey(rawIdem);
-
 const intent = await stripe.paymentIntents.create(
   {
     amount: cents,

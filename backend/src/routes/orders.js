@@ -8,7 +8,7 @@ import Product from "../models/product.js";
 import { requireLogin } from "../middlewares/auth.js";
 import Wallet from "../models/Wallet.js";
 import { computeTotalsFromPayload } from "../utils/checkout_pricing.js";
-
+import crypto from "crypto";
 const router = express.Router();
 router.use(express.json());
 
@@ -60,7 +60,42 @@ function genOrderNo() {
   const rand = Math.random().toString(36).slice(2, 7).toUpperCase();
   return `FB${y}${m}${day}-${rand}`;
 }
+// ✅ 幂等指纹：同一个 intentKey/checkoutKey 必须对应同一份“订单关键参数”
+// 只要购物车/地址/模式变了，就必须用新的 key（否则复用旧订单会让用户困惑）
+function stableStringify(x) {
+  if (x === null || typeof x !== "object") return JSON.stringify(x);
+  if (Array.isArray(x)) return "[" + x.map(stableStringify).join(",") + "]";
+  const keys = Object.keys(x).sort();
+  return "{" + keys.map((k) => JSON.stringify(k) + ":" + stableStringify(x[k])).join(",") + "}";
+}
+function makeCheckoutFingerprint(body) {
+  const mode = pickMode(body);
+  const ship = body?.shipping || body?.receiver || {};
+  const items = Array.isArray(body?.items) ? body.items : [];
 
+  // 只取“决定订单唯一性”的字段：商品/规格/数量 + 地址核心字段 + 配送模式 + deliveryDate
+  const core = {
+    mode,
+    deliveryDate: body?.deliveryDate ? String(body.deliveryDate) : "",
+    ship: {
+      zip: String(ship.zip || ""),
+      street1: String(ship.street1 || ""),
+      apt: String(ship.apt || ""),
+      city: String(ship.city || ""),
+      state: String(ship.state || ""),
+      lat: Number(ship.lat || 0),
+      lng: Number(ship.lng || 0),
+    },
+    items: items.map((it) => ({
+      productId: String(it.productId || it._id || it.id || ""),
+      variantKey: String(it.variantKey || it.variant || ""),
+      qty: Math.max(1, Math.floor(Number(it.qty || 1))),
+    })),
+  };
+
+  const raw = stableStringify(core);
+  return crypto.createHash("sha256").update(raw).digest("hex");
+}
 function toYMD(d) {
   const x = new Date(d);
   if (Number.isNaN(x.getTime())) return "";
@@ -847,24 +882,38 @@ router.post("/checkout", requireLogin, async (req, res) => {
     let platformFee = 0;
     let walletDeducted = false;
 
-    // ✅ 幂等：同一次提交不要重复生成订单
-    if (idemKey) {
-      const existed = await Order.findOne({ "payment.idempotencyKey": idemKey })
-        .select("_id orderNo status payment totalAmount")
-        .lean();
-      if (existed) {
-        return res.json({
-          success: true,
-          reused: true,
-          orderId: String(existed._id),
-          orderNo: existed.orderNo,
-          status: existed.status,
-          payment: existed.payment,
-          totalAmount: existed.totalAmount,
-        });
-      }
+   // ✅ 幂等：同一次提交不要重复生成订单（必须绑定 userId）
+// ✅ 同 key 但参数变了 => 409 强制前端生成新 key（避免复用旧订单导致“点不开/下不了第二单”的错觉）
+const fingerprint = makeCheckoutFingerprint(req.body);
+
+if (idemKey) {
+  const existed = await Order.findOne({
+    userId, // ✅ 关键：避免不同用户撞 key
+    "payment.idempotencyKey": idemKey,
+  })
+    .select("_id orderNo status payment totalAmount")
+    .lean();
+
+  if (existed) {
+    const oldFp = String(existed?.payment?.idemFingerprint || "");
+    if (oldFp && oldFp !== fingerprint) {
+      return res.status(409).json({
+        success: false,
+        message: "检测到你复用了同一个下单Key，但订单内容已变化。请刷新页面后重新下单。",
+      });
     }
 
+    return res.json({
+      success: true,
+      reused: true,
+      orderId: String(existed._id),
+      orderNo: existed.orderNo,
+      status: existed.status,
+      payment: existed.payment,
+      totalAmount: existed.totalAmount,
+    });
+  }
+}
     await session.withTransaction(async () => {
       // ✅ 先在事务里构建订单 + 预扣库存 + 写 stockReserve
       const { orderDoc } = await buildOrderPayload(req, session);
@@ -939,6 +988,7 @@ orderDoc.tipFee = round2(totalsStripe.tipFee);
         payment: {
           ...(orderDoc.payment || {}),
           idempotencyKey: idemKey || "",
+          idemFingerprint: fingerprint,
           amountPlatformFee: Number(platformFee || 0),
           amountTotal: Number(finalTotal || 0),
           status: "unpaid",

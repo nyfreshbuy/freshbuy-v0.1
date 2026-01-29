@@ -43,10 +43,21 @@
   function getToken() {
     return getAnyToken();
   }
-// ✅ Stripe/订单幂等键：必须短（<255）。用 UUID 最稳。
-function createIntentKey() {
-  if (window.crypto && crypto.randomUUID) return "ik_" + crypto.randomUUID();
-  return "ik_" + Date.now() + "_" + Math.random().toString(16).slice(2);
+// ✅ checkout intentKey：同一次下单复用；下次下单才会换新
+const CHECKOUT_INTENT_KEY_LS = "fb_checkout_intentKey";
+
+function getOrCreateIntentKey() {
+  let k = localStorage.getItem(CHECKOUT_INTENT_KEY_LS);
+  if (!k) {
+    if (window.crypto && crypto.randomUUID) k = "ik_" + crypto.randomUUID();
+    else k = "ik_" + Date.now() + "_" + Math.random().toString(16).slice(2);
+    localStorage.setItem(CHECKOUT_INTENT_KEY_LS, k);
+  }
+  return k;
+}
+
+function clearIntentKey() {
+  localStorage.removeItem(CHECKOUT_INTENT_KEY_LS);
 }
   // =========================
   // ✅ API 工具
@@ -479,7 +490,7 @@ function createIntentKey() {
     const amounts = computeCheckoutAmounts();
 
     const payload = {
-       intentKey: createIntentKey(), // ✅ 新增：短幂等键（给后端/Stripe 用）
+     intentKey: getOrCreateIntentKey(), // ✅ 新增：短幂等键（给后端/Stripe 用）
       mode,
       deliveryMode: mode,
       items: normalizedItems,
@@ -507,7 +518,8 @@ function createIntentKey() {
     });
 
     if (out.paid === true || out.remaining <= 0) {
-      alert("支付成功（钱包）");
+      clearIntentKey();
+      alert("支付成功（钱包）");   
       try {
         window.FreshCart?.clear?.();
       } catch (e) {}
