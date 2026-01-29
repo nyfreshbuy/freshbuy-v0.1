@@ -102,6 +102,14 @@ export function computeTotalsFromPayload(payload = {}, options = {}) {
   let subtotal = 0;
   for (const it of items) {
     const qty = Math.max(1, Math.floor(safeNum(it.qty, 1)));
+    console.log("🧮 PRICING ITEM", {
+  name: it?.name,
+  qty,
+  price: it?.priceNum ?? it?.price,
+  specialQty: it?.specialQty,
+  specialTotalPrice: it?.specialTotalPrice,
+});
+
     subtotal += calcSpecialLineTotal(it, qty);
   }
   subtotal = Math.max(0, round2(subtotal));

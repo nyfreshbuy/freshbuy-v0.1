@@ -516,13 +516,20 @@ if (hasFrontendPrice) {
 
       cost = Number(pdoc.cost || 0) || cost;
       hasTax = !!pdoc.taxable;
-// ✅ 先用 product（pdoc）上的特价覆盖（这是主来源）
-specialQty = safeNumber(pdoc.specialQty ?? pdoc.specialN ?? pdoc.dealQty ?? specialQty, specialQty);
-specialTotalPrice = safeNumber(
-  pdoc.specialTotalPrice ?? pdoc.specialTotal ?? pdoc.dealTotalPrice ?? pdoc.dealPrice ?? specialTotalPrice,
-  specialTotalPrice
+// ✅ 先用 product 根字段（最常见：specialQty + specialTotalPrice）
+specialQty = safeNumber(
+  pdoc.specialQty ?? pdoc.specialN ?? pdoc.dealQty ?? specialQty,
+  specialQty
 );
 
+specialTotalPrice = safeNumber(
+  pdoc.specialTotalPrice ??
+    pdoc.specialTotal ??
+    pdoc.dealTotalPrice ??
+    pdoc.dealPrice ??
+    specialTotalPrice,
+  specialTotalPrice
+);
 // ✅ 再用 variant 覆盖：但只有当 variant 给的是“有效特价”才覆盖 product（防止 1/0 污染）
 const vQty = safeNumber(v?.specialQty, 0);
 const vTotal = safeNumber(v?.specialTotalPrice, 0);
@@ -971,7 +978,15 @@ if (idemKey) {
     await session.withTransaction(async () => {
       // ✅ 先在事务里构建订单 + 预扣库存 + 写 stockReserve
       const { orderDoc } = await buildOrderPayload(req, session);
-
+     console.log("🧩 ORDER ITEMS BEFORE PRICING", (orderDoc.items || []).map(it => ({
+  name: it.name,
+  qty: it.qty,
+  price: it.price,
+  specialQty: it.specialQty,
+  specialTotalPrice: it.specialTotalPrice,
+  variantKey: it.variantKey,
+  unitCount: it.unitCount,
+})));
       // ✅ 先按“钱包口径”总额（平台费=0）
       const ship = req.body?.shipping || req.body?.receiver || {};
 const totalsWallet = computeTotalsFromPayload(
