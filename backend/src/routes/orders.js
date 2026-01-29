@@ -562,10 +562,8 @@ const tipFee = round2(Math.max(0, safeNumber(tipRaw, 0)));
   // ✅ 统一结算：buildOrderPayload 阶段用 “wallet口径”(平台费=0)
   // checkout 阶段如需 Stripe，会用 stripe口径重算（平台费=0.5+2%）
   // -------------------------
-  // ✅ 押金 override（来自前端 pricing）
-const pricingIn2 = body?.pricing || {};
-const depositOverride = safeNumber(
-  pricingIn2.bottleDeposit ?? pricingIn2.depositTotal ?? pricingIn2.deposit ?? 0,
+  const depositOverride = safeNumber(
+  pricingIn.bottleDeposit ?? pricingIn.depositTotal ?? pricingIn.deposit ?? 0,
   0
 );
 
@@ -603,13 +601,6 @@ if (mode === "friendGroup" && subtotalForRule < 29) {
   const taxRate = round2(totalsWallet.taxRate);
   const salesTax = round2(totalsWallet.salesTax);
   // ✅ 押金：优先使用前端传来的 pricing.bottleDeposit（因为 DB 没 deposit 字段）
-// 兼容字段：bottleDeposit / depositTotal / deposit
-const pricingIn2 = body?.pricing || {};
-const depositOverride = safeNumber(
-  pricingIn2.bottleDeposit ?? pricingIn2.depositTotal ?? pricingIn2.deposit ?? 0,
-  0
-);
-
 // ✅ 统一用 computeTotalsFromPayload 的结果（口径一致）
 const depositTotal = round2(totalsWallet.depositTotal);
 const baseTotalAmount = round2(totalsWallet.totalAmount);
