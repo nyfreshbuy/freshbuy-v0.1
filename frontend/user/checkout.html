@@ -1280,6 +1280,17 @@ ${
           document.getElementById("addrFullText").value = formatted || full;
 
           refreshAll();
+
+// ✅ NEW：如果用户已选择 Stripe，则地址选中后立刻挂载卡输入框
+if (getPayMethod() === "stripe") {
+  ensureStripeMounted()
+    .then((ok) => {
+      if (ok) setStripeAreaVisible(true);
+    })
+    .catch((e) => {
+      console.warn("ensureStripeMounted after place_changed failed:", e);
+    });
+}
         });
 
         input.addEventListener("input", () => {
