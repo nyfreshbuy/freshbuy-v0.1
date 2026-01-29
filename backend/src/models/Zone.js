@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 
 const zoneSchema = new mongoose.Schema(
   {
+    enabled: { type: Boolean, default: true },
     // 名称
     name: { type: String, default: "" },
     zoneName: { type: String, default: "" }, // 兼容旧字段

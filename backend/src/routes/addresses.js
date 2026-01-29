@@ -52,37 +52,44 @@ router.get("/my", requireLogin, async (req, res) => {
  */
 router.post("/check-zip", async (req, res) => {
   try {
-    const zip = String(req.body?.zip || "").trim();
-    if (!zip) {
+    const zipRaw = String(req.body?.zip || "").trim();
+    if (!zipRaw) {
       return res.status(400).json({ success: false, message: "zip required" });
     }
 
-    const zip5 = zip.includes("-") ? zip.split("-")[0] : zip;
+    // 统一成 5 位 zip（11365-1234 -> 11365）
+    const m = zipRaw.match(/^(\d{5})/);
+    const zip5 = m ? m[1] : "";
+    if (!zip5) {
+      return res.status(400).json({ success: false, message: "ZIP 格式不正确" });
+    }
 
-const zone = await Zone.findOne({
-  enabled: true,
-  $or: [{ zips: zip5 }, { zipWhitelist: zip5 }, { zips: zip }, { zipWhitelist: zip }],
-}).lean();
+    // ✅ 兼容字段：zips / zipWhitelist / zipWhiteList / zipList
+    // ✅ enabled：如果你数据库还没有 enabled 字段，先别加 enabled 过滤（等你把 Zone.js + DB 补齐后再加回来）
+    const zone = await Zone.findOne({
+      $or: [
+        { zips: zip5 },
+        { zipWhitelist: zip5 },
+        { zipWhiteList: zip5 },
+        { zipList: zip5 },
+      ],
+      // enabled: true, // ← 等 Zone 有 enabled 字段 + DB 补齐后再打开
+    }).lean();
 
-if (!zone) {
-  return res.status(400).json({
-    success: false,
-    message: `暂不支持 ZIP：${zip5}（请换一个或先联系客服）`,
-  });
-}
     if (!zone) {
+      // ✅ 注意：这里返回 200，success:true + supported:false（前端最好处理）
       return res.json({
         success: true,
         supported: false,
         zip: zip5,
-        message: `暂不支持 ZIP：${zip}（请换一个或先联系客服）`,
+        message: `暂不支持 ZIP：${zip5}（请换一个或先联系客服）`,
       });
     }
 
     return res.json({
       success: true,
       supported: true,
-      zip,
+      zip: zip5,
       zone: {
         id: String(zone._id),
         slug: zone.slug,
@@ -99,7 +106,6 @@ if (!zone) {
     return res.status(500).json({ success: false, message: "Check zip failed" });
   }
 });
-
 // POST /api/addresses/default
 // 结算页专用：保存为默认地址（美国格式 + placeId 必须 + lat/lng 必须）
 router.post("/default", requireLogin, async (req, res) => {

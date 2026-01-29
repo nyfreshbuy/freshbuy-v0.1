@@ -127,7 +127,7 @@ function getVariantFromProduct(productDoc, variantKey) {
   const key = String(variantKey || "").trim();
   const list = Array.isArray(productDoc?.variants) ? productDoc.variants : [];
   const found = list.find((v) => String(v?.key || "").trim() === key && v?.enabled !== false);
-  if (found) {
+    if (found) {
     return {
       key: String(found.key || key || "single"),
       label:
@@ -135,6 +135,16 @@ function getVariantFromProduct(productDoc, variantKey) {
         (Number(found.unitCount || 1) > 1 ? `整箱(${found.unitCount}个)` : "单个"),
       unitCount: Math.max(1, Math.floor(Number(found.unitCount || 1))),
       price: found.price != null ? Number(found.price) : null,
+
+      // ✅ 关键：把 variant 上可能存在的促销字段带出来（兼容多种命名）
+      specialQty: found.specialQty ?? found.specialN ?? found.dealQty ?? found.dealN ?? 0,
+      specialTotalPrice:
+        found.specialTotalPrice ??
+        found.specialTotal ??
+        found.dealTotalPrice ??
+        found.dealTotal ??
+        found.dealPrice ??
+        0,
     };
   }
   return { key: "single", label: "单个", unitCount: 1, price: null };
@@ -462,7 +472,9 @@ async function buildOrderPayload(req, session = null) {
         pdoc.specialTotalPrice ?? pdoc.specialTotal ?? pdoc.dealTotalPrice ?? pdoc.dealPrice ?? specialTotalPrice,
         specialTotalPrice
       );
-
+           // ✅ 再用 variant 覆盖一次（很多商品把 2for/3for 存在 variants.single 上）
+      specialQty = safeNumber(v.specialQty ?? specialQty, specialQty);
+      specialTotalPrice = safeNumber(v.specialTotalPrice ?? specialTotalPrice, specialTotalPrice);
       const needUnits = qty * unitCount;
       const allowZero = pdoc.allowZeroStock === true;
       const curStock = Number(pdoc.stock || 0);
