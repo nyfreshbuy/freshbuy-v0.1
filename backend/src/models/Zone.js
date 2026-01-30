@@ -31,6 +31,34 @@ const zoneSchema = new mongoose.Schema(
     // =========================
     polygon: { type: Array, default: null },
     polygonPaths: { type: Array, default: null },
+        // =========================
+    // ✅ 配送配置（给 admin_zones.js 用）
+    // - deliveryDays: [0..6] 0=周日 ... 6=周六
+    // - cutoffTime:  "23:59" 这种字符串
+    // - deliveryModes: ["groupDay","normal"] 之类（可选）
+    // =========================
+    deliveryModes: { type: [String], default: [] },
+    cutoffTime: { type: String, default: "" },
+    deliveryDays: { type: [Number], default: [] },
+
+    // =========================
+    // ✅ 旧字段兼容（你 admin_zones.js 里 select 了）
+    // =========================
+    zoneId: { type: String, default: "" },
+    slug: { type: String, default: "" },
+        // =========================
+    // 配送配置（区域团 / groupDay）
+    // =========================
+    groupDay: {
+      enabled: { type: Boolean, default: false },
+      // 0=周日 1=周一 ... 6=周六
+      shipWeekday: { type: Number, default: null },
+      // 预计送达时间
+      etaStart: { type: String, default: "18:00" },
+      etaEnd: { type: String, default: "22:00" },
+      // 截单 = 配送日前 N 天（通常 1 天）
+      cutoffOffsetDays: { type: Number, default: 1 },
+    },
   },
   {
     timestamps: true,

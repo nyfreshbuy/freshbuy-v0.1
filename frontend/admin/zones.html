@@ -69,7 +69,7 @@
     .zone-h2 { margin:0 0 12px; font-size:16px; font-weight:800; color:#e5e7eb; }
     .zone-row { margin-bottom:10px; }
     .zone-row label { display:block; font-size:12px; color:#94a3b8; margin-bottom:6px; }
-    .zone-row input, .zone-row textarea {
+    .zone-row input, .zone-row textarea, .zone-row select {
       width:100%;
       padding:10px;
       border:1px solid rgba(148,163,184,.28);
@@ -171,6 +171,28 @@
               <label>备注（可选）</label>
               <textarea id="zoneNote" placeholder="例如：周五 5-9PM 配送"></textarea>
             </div>
+            <!-- ✅ 新增：配送星期 / 截单时间 -->
+<div class="zone-row">
+  <label>配送星期（0=周日 … 6=周六）</label>
+  <select id="zoneDeliveryDay">
+    <option value="">（不设置）</option>
+    <option value="0">周日 (0)</option>
+    <option value="1">周一 (1)</option>
+    <option value="2">周二 (2)</option>
+    <option value="3">周三 (3)</option>
+    <option value="4">周四 (4)</option>
+    <option value="5">周五 (5)</option>
+    <option value="6">周六 (6)</option>
+  </select>
+  <div class="zone-hint" style="margin-top:8px;">
+    建议：新鲜草原=周五(5)，白石镇/大学点=周六(6)，贝赛/小颈=周日(0)
+  </div>
+</div>
+
+<div class="zone-row">
+  <label>截单时间（例如 23:59）</label>
+  <input id="zoneCutoffTime" placeholder="23:59" autocomplete="off" />
+</div>
 
             <div class="zone-btns">
               <button class="zone-btn primary" id="btnSave">保存 / 更新</button>

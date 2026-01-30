@@ -1,8 +1,10 @@
 // frontend/admin/assets/js/admin_zones.js
-// ZIP-only 版本：不使用地图，不依赖 google.maps
-// 功能：Zone 列表 / 编辑回填 / 保存更新 / 删除
+// ZIP-only 版本：不使用地图
+// ✅ 新增支持：配送星期 deliveryDays + 截单时间 cutoffTime
 
-// ✅ 兼容读取 admin token（避免 Render 域名下 key 不一致导致 401）
+// =========================
+// Token
+// =========================
 function getAdminToken() {
   return (
     localStorage.getItem("freshbuy_token") ||
@@ -17,19 +19,27 @@ function getAdminToken() {
 (function () {
   const API_BASE = "/api/admin/zones";
 
-  const elZoneId = document.getElementById("zoneId"); // 可选
+  // =========================
+  // DOM
+  // =========================
+  const elZoneId = document.getElementById("zoneId");
   const elZoneName = document.getElementById("zoneName");
   const elZoneZips = document.getElementById("zoneZips");
   const elZoneNote = document.getElementById("zoneNote");
-  const elList = document.getElementById("zonesList");
 
+  // ✅ 新增字段（HTML 里必须已存在）
+  const elDeliveryDay = document.getElementById("zoneDeliveryDay");
+  const elCutoffTime = document.getElementById("zoneCutoffTime");
+
+  const elList = document.getElementById("zonesList");
   const btnSave = document.getElementById("btnSave");
   const btnNew = document.getElementById("btnNew");
-  const btnBack = document.getElementById("btnBack"); // 可选（你 html 里有）
 
-  // 当前正在编辑的 zone（已有 zone）
   let editingZone = null;
 
+  // =========================
+  // Utils
+  // =========================
   function toast(msg) {
     alert(msg);
   }
@@ -41,23 +51,6 @@ function getAdminToken() {
       .replaceAll(">", "&gt;")
       .replaceAll('"', "&quot;")
       .replaceAll("'", "&#039;");
-  }
-
-  // ✅ 统一 zip 解析：支持换行/空格/逗号/分号；去重；只保留 5 位
-  function parseZips() {
-    const raw = String(elZoneZips?.value || "");
-    const parts = raw.split(/[\s,;]+/).map((s) => s.trim()).filter(Boolean);
-
-    const seen = new Set();
-    const out = [];
-
-    for (const z of parts) {
-      if (!/^\d{5}$/.test(z)) continue;
-      if (seen.has(z)) continue;
-      seen.add(z);
-      out.push(z);
-    }
-    return out;
   }
 
   function buildAuthHeaders(extra = {}) {
@@ -73,13 +66,26 @@ function getAdminToken() {
     try {
       return text ? JSON.parse(text) : {};
     } catch {
-      return {
-        ok: false,
-        success: false,
-        message: "Non-JSON response",
-        _raw: text.slice(0, 300),
-      };
+      return { ok: false, message: "Non-JSON response", _raw: text };
     }
+  }
+
+  // =========================
+  // ZIP 解析
+  // =========================
+  function parseZips() {
+    const raw = String(elZoneZips?.value || "");
+    const parts = raw.split(/[\s,;]+/).map((s) => s.trim()).filter(Boolean);
+
+    const seen = new Set();
+    const out = [];
+    for (const z of parts) {
+      if (!/^\d{5}$/.test(z)) continue;
+      if (seen.has(z)) continue;
+      seen.add(z);
+      out.push(z);
+    }
+    return out;
   }
 
   // =========================
@@ -91,7 +97,7 @@ function getAdminToken() {
       headers: buildAuthHeaders({ Accept: "application/json" }),
     });
     const data = await safeReadJson(res);
-    data._http = { ok: res.ok, status: res.status, statusText: res.statusText };
+    data._http = { ok: res.ok, status: res.status };
     return data;
   }
 
@@ -105,7 +111,7 @@ function getAdminToken() {
       body: JSON.stringify(body),
     });
     const data = await safeReadJson(res);
-    data._http = { ok: res.ok, status: res.status, statusText: res.statusText };
+    data._http = { ok: res.ok, status: res.status };
     return data;
   }
 
@@ -119,7 +125,7 @@ function getAdminToken() {
       body: JSON.stringify(body),
     });
     const data = await safeReadJson(res);
-    data._http = { ok: res.ok, status: res.status, statusText: res.statusText };
+    data._http = { ok: res.ok, status: res.status };
     return data;
   }
 
@@ -129,7 +135,7 @@ function getAdminToken() {
       headers: buildAuthHeaders({ Accept: "application/json" }),
     });
     const data = await safeReadJson(res);
-    data._http = { ok: res.ok, status: res.status, statusText: res.statusText };
+    data._http = { ok: res.ok, status: res.status };
     return data;
   }
 
@@ -141,89 +147,85 @@ function getAdminToken() {
   }
 
   function getZoneZipList(zone) {
-    // ✅ 兼容：新字段 zipWhitelist / 旧字段 zips / 其它兼容字段
     return (
       zone?.zipWhitelist ||
       zone?.zips ||
       zone?.zipWhiteList ||
-      zone?.zipWhitelist ||
       zone?.zipList ||
       []
     );
   }
 
+  function getFirstDeliveryDay(zone) {
+    if (Array.isArray(zone?.deliveryDays) && zone.deliveryDays.length) {
+      const d = Number(zone.deliveryDays[0]);
+      if (Number.isFinite(d)) return String(d);
+    }
+    return "";
+  }
+
   function resetForm() {
     editingZone = null;
-    if (elZoneId) elZoneId.value = "";
-    if (elZoneName) elZoneName.value = "";
-    if (elZoneZips) elZoneZips.value = "";
-    if (elZoneNote) elZoneNote.value = "";
+    elZoneId.value = "";
+    elZoneName.value = "";
+    elZoneZips.value = "";
+    elZoneNote.value = "";
+    if (elDeliveryDay) elDeliveryDay.value = "";
+    if (elCutoffTime) elCutoffTime.value = "";
+    btnSave.textContent = "保存 / 更新";
   }
 
   function startEditZone(zone) {
     editingZone = zone;
+    elZoneId.value = zone?.zoneId || "";
+    elZoneName.value = zone?.name || "";
+    elZoneZips.value = (getZoneZipList(zone) || []).join("\n");
+    elZoneNote.value = zone?.note || "";
 
-    if (elZoneId) elZoneId.value = zone?.zoneId || "";
-    if (elZoneName) elZoneName.value = zone?.name || "";
-    if (elZoneZips) elZoneZips.value = (getZoneZipList(zone) || []).join("\n");
-    if (elZoneNote) elZoneNote.value = zone?.note || "";
+    // ✅ 回填配送字段
+    if (elDeliveryDay) elDeliveryDay.value = getFirstDeliveryDay(zone);
+    if (elCutoffTime) elCutoffTime.value = zone?.cutoffTime || "";
+
+    btnSave.textContent = "保存 / 更新（编辑中）";
   }
 
   // =========================
   // Render List
   // =========================
   function renderList(zones) {
-    if (!elList) return;
     elList.innerHTML = "";
 
     zones.forEach((z) => {
-      const div = document.createElement("div");
-      div.className = "zone-card"; // ✅ 适配你 zones.html 里的样式（有 zone-card）
-      // 如果你的 CSS 还是用 card/title/sub/badge，也能正常显示
-
       const id = getZoneId(z);
       const zips = getZoneZipList(z);
-      const points = (z?.polygon?.coordinates?.[0] || []).length; // 仍显示但不依赖地图
+      const day = getFirstDeliveryDay(z);
+      const cutoff = z?.cutoffTime || "";
+
+      const info = [];
+      if (day !== "") info.push(`周${"日一二三四五六"[Number(day)]}配送`);
+      if (cutoff) info.push(`截单 ${cutoff}`);
+
+      const div = document.createElement("div");
+      div.className = "zone-card";
 
       div.innerHTML = `
         <div class="title">${escapeHtml(z?.name || "(未命名)")}</div>
-        ${z?.zoneId ? `<div class="sub">zoneId: <b>${escapeHtml(z.zoneId)}</b></div>` : ""}
         <div class="sub">_id: <b>${escapeHtml(id)}</b></div>
+        <div class="sub">${info.join(" · ") || "未设置配送日"}</div>
         <div class="mini">
-          <span class="zone-badge">zips: ${(zips || []).length}</span>
-          <span class="zone-badge">points: ${points}</span>
-          ${z?.slug ? `<span class="zone-badge">slug: ${escapeHtml(z.slug)}</span>` : ""}
+          <span class="zone-badge">ZIP: ${(zips || []).length}</span>
         </div>
         <div class="btns" style="margin-top:10px;">
           <button class="zone-btn ghost" data-act="edit">编辑</button>
-          <button class="zone-btn ghost" data-act="copy">复制ZIP</button>
           <button class="zone-btn" style="border-color: rgba(239,68,68,.35); background: rgba(239,68,68,.12);" data-act="del">删除</button>
         </div>
       `;
 
       div.querySelector('[data-act="edit"]').onclick = () => startEditZone(z);
-
-      div.querySelector('[data-act="copy"]').onclick = async () => {
-        try {
-          await navigator.clipboard.writeText((zips || []).join(","));
-          toast("已复制 ZIP");
-        } catch {
-          toast("复制失败（浏览器权限限制）");
-        }
-      };
-
       div.querySelector('[data-act="del"]').onclick = async () => {
-        if (!id) return toast("缺少 zone id");
         if (!confirm(`确定删除 Zone：${z?.name || ""} ?`)) return;
-
         const r = await apiDeleteZone(id);
-        if (!(r.success || r.ok)) {
-  const http = r?._http ? `HTTP ${r._http.status} ${r._http.statusText || ""}`.trim() : "HTTP ?";
-  const msg = r?.message || r?.error || "unknown";
-  const detail = r?.detail ? `\n${r.detail}` : "";
-  const raw = r?._raw ? `\n\n返回片段：\n${r._raw}` : "";
-  return toast(`删除失败：${http}\n${msg}${detail}${raw}`);
-}
+        if (!(r.success || r.ok)) return toast("删除失败");
         await reload();
       };
 
@@ -232,86 +234,57 @@ function getAdminToken() {
   }
 
   async function reload() {
-    let r;
-    try {
-      r = await apiGetZones();
-    } catch (e) {
-      return toast("加载失败：fetch 异常\n" + (e?.message || e));
-    }
-
-    const ok = (r && (r.success || r.ok)) === true;
-
-    if (!ok) {
-      const http = r?._http;
-      const httpInfo = http ? `HTTP ${http.status} ${http.statusText}` : "HTTP ?";
-      const msg = r?.message || r?.error || r?.reason || "未知错误";
-      const raw = r?._raw ? `\n\n返回内容片段：\n${r._raw}` : "";
-      return toast(`加载失败：${httpInfo}\n${msg}${raw}`);
-    }
-
-    const zones = r.zones || r.data || r.items || r.list || [];
-    renderList(zones);
+    const r = await apiGetZones();
+    if (!(r.success || r.ok)) return toast("加载 Zone 失败");
+    renderList(r.zones || []);
   }
 
   // =========================
-  // Save logic（✅ ZIP 白名单为硬规则；polygon 可选但 ZIP-only 这里不传 polygon）
+  // Save
   // =========================
   async function onSave() {
-    const zoneId = String(elZoneId?.value || "").trim(); // 可选
-    const name = String(elZoneName?.value || "").trim();
+    const name = elZoneName.value.trim();
     const zipWhitelist = parseZips();
-    const note = String(elZoneNote?.value || "");
+    const note = elZoneNote.value || "";
+    const zoneId = elZoneId.value || "";
 
-    if (!name) return toast("name 不能为空");
-    if (!zipWhitelist.length) return toast("请至少填写 1 个 5 位 ZIP（白名单）");
+    if (!name) return toast("Zone 名称不能为空");
+    if (!zipWhitelist.length) return toast("请至少填写 1 个 ZIP");
+
+    const deliveryDayRaw = elDeliveryDay?.value || "";
+    const cutoffTime = elCutoffTime?.value || "";
 
     const body = {
       name,
-      zipWhitelist, // ✅ 新字段
       note,
-      polygon: null, // ✅ ZIP-only：不使用地图就不保存 polygon
-      // 兼容旧字段（后端若仍接收也不影响）
-      zoneId,
+      zipWhitelist,
       zips: zipWhitelist,
+      zoneId,
+      polygon: null,
+
+      // ✅ 新增：配送配置
+      deliveryDays: deliveryDayRaw !== "" ? [Number(deliveryDayRaw)] : [],
+      cutoffTime: cutoffTime,
+      deliveryModes: ["groupDay"],
     };
 
-    const id = editingZone ? getZoneId(editingZone) : "";
     let r;
+    if (editingZone) {
+      r = await apiUpdateZone(getZoneId(editingZone), body);
+    } else {
+      r = await apiCreateZone(body);
+    }
 
-    if (id) r = await apiUpdateZone(id, body);
-    else r = await apiCreateZone(body);
-
-    if (!(r.success || r.ok)) {
-  const http = r?._http ? `HTTP ${r._http.status} ${r._http.statusText || ""}`.trim() : "HTTP ?";
-  const msg = r?.message || r?.error || "unknown";
-  const detail = r?.detail ? `\n${r.detail}` : "";
-  const raw = r?._raw ? `\n\n返回片段：\n${r._raw}` : "";
-  return toast(`保存失败：${http}\n${msg}${detail}${raw}`);
-}
-
+    if (!(r.success || r.ok)) return toast("保存失败");
     toast("保存成功");
     resetForm();
     await reload();
   }
 
   // =========================
-  // Bind UI & Boot
+  // Boot
   // =========================
-  function bindUI() {
-    if (btnSave) btnSave.onclick = onSave;
-    if (btnNew) btnNew.onclick = () => resetForm();
-
-    // ZIP-only：如果页面里还残留 btnClearPoly，我们不需要它
-    const btnClearPoly = document.getElementById("btnClearPoly");
-    if (btnClearPoly) btnClearPoly.style.display = "none";
-
-    if (btnBack) {
-      // 你 zones.html 已经有自己的 back 逻辑，这里不抢
-      // 留空即可
-    }
-  }
-
-  // ✅ 启动：不等地图，直接绑定 + 拉列表
-  bindUI();
+  btnSave.onclick = onSave;
+  btnNew.onclick = resetForm;
   reload();
 })();
