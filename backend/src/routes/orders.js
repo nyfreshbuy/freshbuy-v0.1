@@ -7,7 +7,7 @@ import Zone from "../models/Zone.js";
 import Product from "../models/product.js";
 import { requireLogin } from "../middlewares/auth.js";
 import Wallet from "../models/Wallet.js";
-import { computeTotalsFromPayload } from "../utils/checkout_pricing.js";
+import { computeTotalsFromPayload, calcSpecialLineTotal } from "../utils/checkout_pricing.js";
 import crypto from "crypto";
 const router = express.Router();
 router.use(express.json());
@@ -543,7 +543,9 @@ specialTotalPrice = safeNumber(
 // ✅ 再用 variant 覆盖：但只有当 variant 给的是“有效特价”才覆盖 product（防止 1/0 污染）
 const vQty = safeNumber(v?.specialQty, 0);
 const vTotal = safeNumber(v?.specialTotalPrice, 0);
-if (vQty >= 2 && vTotal > 0) {
+
+// ✅ variant 也允许 1 for X
+if ((vQty === 1 || vQty >= 2) && vTotal > 0) {
   specialQty = vQty;
   specialTotalPrice = vTotal;
 }
@@ -551,7 +553,10 @@ if (vQty >= 2 && vTotal > 0) {
 specialQty = Math.max(0, Math.floor(Number(specialQty || 0)));
 specialTotalPrice = round2(Math.max(0, Number(specialTotalPrice || 0)));
 
-if (!(specialQty >= 2 && specialTotalPrice > 0)) {
+// ✅ 有效特价：
+// - specialQty === 1 且 specialTotalPrice > 0  => 单件特价（1 for X）
+// - specialQty >= 2 且 specialTotalPrice > 0  => N for $X
+if (!((specialQty === 1 || specialQty >= 2) && specialTotalPrice > 0)) {
   specialQty = 0;
   specialTotalPrice = 0;
 }
@@ -1018,7 +1023,7 @@ const totalsWallet = computeTotalsFromPayload(
     price: it.price,
     specialQty: it.specialQty,
     specialTotalPrice: it.specialTotalPrice,
-    line: it.qty * it.price
+    line: calcSpecialLineTotal(it, it.qty)
   }))
 });
       platformFee = 0;

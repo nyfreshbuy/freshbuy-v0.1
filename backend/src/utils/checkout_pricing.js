@@ -1,9 +1,11 @@
 // backend/src/utils/checkout_pricing.js
 // =======================================================
 // ✅ 全站统一结算（算法与前端一致）
+//
 // - 特价：同一套字段支持：
 //    * N=1  => 单件特价（单价 = specialTotalPrice）
 //    * N>=2 => N for $X（买够 N 才触发；remainder 按原价）
+//
 // - 运费：按 mode
 // - 税：NY 才收（默认 0.08875，可覆盖）
 // - 押金：deposit * qty * unitCount（或前端 override 总额）
@@ -17,36 +19,84 @@ export function safeNum(v, fb = 0) {
   const n = Number(v);
   return Number.isFinite(n) ? n : fb;
 }
+
 export function round2(n) {
   return Math.round(Number(n || 0) * 100) / 100;
 }
+
 export function isTruthy(v) {
   return v === true || v === "true" || v === 1 || v === "1";
 }
 
-// ✅ 特价：N for $X 行小计（支持 N=1 单件特价 + N>=2 多件特价）
-// 规则：
-// - specialQty = 1：单个就特价（单价 = specialTotalPrice）
-// - specialQty >= 2：买够 N 才触发组价；remainder 按原价 basePrice
-export function calcSpecialLineTotal(it, qty) {
-  const q = Math.max(0, Math.floor(safeNum(qty, 0)));
-  if (!it || q <= 0) return 0;
-
-  const basePrice = safeNum(it.priceNum ?? it.price, 0);
-
+/**
+ * ✅ 从任意来源提取“特价字段”（兼容你项目里各种命名）
+ * @returns { specialQty, specialTotalPrice }
+ */
+export function getSpecialFields(src = {}) {
   const specialQty = safeNum(
-    it.specialQty ?? it.specialN ?? it.specialCount ?? it.dealQty,
+    src.specialQty ?? src.specialN ?? src.specialCount ?? src.dealQty ?? 0,
     0
   );
 
   const specialTotalPrice = safeNum(
-    it.specialTotalPrice ??
-      it.specialTotal ??
-      it.dealTotalPrice ??
-      it.dealPrice ??
+    src.specialTotalPrice ??
+      src.specialTotal ??
+      src.specialPrice ?? // 某些数据会这么叫
+      src.dealTotalPrice ??
+      src.dealPrice ??
       0,
     0
   );
+
+  return { specialQty, specialTotalPrice };
+}
+
+/**
+ * ✅ 把 DB 的特价覆盖/补全到 item 上（解决：前端 payload 没带特价字段导致后端算价不生效）
+ *
+ * 用法（在 orders.js 拿到 product 后）：
+ *   applyDbSpecialToItem(item, productOrVariant)
+ *
+ * 规则：
+ * - item 已经带了 specialQty/specialTotalPrice 且 >0：尊重 item（前端明确传了）
+ * - 否则用 db 的 special
+ * - 特别支持：db specialQty=1 时，补全到 item（单件特价）
+ */
+export function applyDbSpecialToItem(item = {}, dbSource = {}) {
+  if (!item || typeof item !== "object") return item;
+
+  const itSp = getSpecialFields(item);
+  const dbSp = getSpecialFields(dbSource);
+
+  const itemHasSpecial = itSp.specialQty > 0 && itSp.specialTotalPrice > 0;
+  const dbHasSpecial = dbSp.specialQty > 0 && dbSp.specialTotalPrice > 0;
+
+  if (!itemHasSpecial && dbHasSpecial) {
+    item.specialQty = dbSp.specialQty;
+    item.specialTotalPrice = dbSp.specialTotalPrice;
+  }
+
+  // 统一回写，避免后面 calcSpecialLineTotal 读不到
+  const finalSp = getSpecialFields(item);
+  item.specialQty = finalSp.specialQty;
+  item.specialTotalPrice = finalSp.specialTotalPrice;
+
+  return item;
+}
+
+/**
+ * ✅ 特价：N for $X 行小计（支持 N=1 单件特价 + N>=2 多件特价）
+ * 规则：
+ * - specialQty = 1：单个就特价（单价 = specialTotalPrice）
+ * - specialQty >= 2：买够 N 才触发组价；remainder 按原价 basePrice
+ */
+export function calcSpecialLineTotal(it, qty) {
+  const q = Math.max(0, Math.floor(safeNum(qty, 0)));
+  if (!it || q <= 0) return 0;
+
+  const basePrice = safeNum(it.priceNum ?? it.price ?? it.basePrice, 0);
+
+  const { specialQty, specialTotalPrice } = getSpecialFields(it);
 
   // ✅ 1 for X：单件特价（立刻生效）
   if (specialQty === 1 && specialTotalPrice > 0) {
@@ -105,27 +155,29 @@ export function computeShippingAndRules(mode, subtotal) {
  * ✅ 统一结算入口：Stripe / Wallet 都调用它
  *
  * @param payload { items, shipping, mode, pricing/tip }
- * @param options { payChannel, taxRateNY, platformRate, platformFixed }
+ * @param options { payChannel, taxRateNY, platformRate, platformFixed, debug }
  */
 export function computeTotalsFromPayload(payload = {}, options = {}) {
   const items = Array.isArray(payload?.items) ? payload.items : [];
   const ship = payload?.shipping || {};
+  const debug = options?.debug === true;
 
   // 1) subtotal（特价口径）
   let subtotal = 0;
   for (const it of items) {
     const qty = Math.max(1, Math.floor(safeNum(it.qty, 1)));
 
-    // ✅ Debug：确认 payload 里是否带了 specialQty/specialTotalPrice
-    console.log("🧮 PRICING ITEM", {
-      name: it?.name,
-      qty,
-      basePrice: it?.priceNum ?? it?.price,
-      specialQty: it?.specialQty ?? it?.specialN ?? it?.specialCount ?? it?.dealQty,
-      specialTotalPrice:
-        it?.specialTotalPrice ?? it?.specialTotal ?? it?.dealTotalPrice ?? it?.dealPrice,
-      lineTotal: calcSpecialLineTotal(it, qty),
-    });
+    if (debug) {
+      const { specialQty, specialTotalPrice } = getSpecialFields(it);
+      console.log("🧮 PRICING ITEM", {
+        name: it?.name,
+        qty,
+        basePrice: it?.priceNum ?? it?.price,
+        specialQty,
+        specialTotalPrice,
+        lineTotal: calcSpecialLineTotal(it, qty),
+      });
+    }
 
     subtotal += calcSpecialLineTotal(it, qty);
   }
@@ -199,7 +251,9 @@ export function computeTotalsFromPayload(payload = {}, options = {}) {
       : 0;
 
   // 8) total
-  const totalAmount = round2(subtotal + shipping + salesTax + depositTotal + tipFee + platformFee);
+  const totalAmount = round2(
+    subtotal + shipping + salesTax + depositTotal + tipFee + platformFee
+  );
 
   return {
     mode,
