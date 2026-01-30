@@ -2,13 +2,14 @@
 import express from "express";
 import Stripe from "stripe";
 import mongoose from "mongoose";
+import crypto from "crypto";
+
 import Order from "../models/order.js";
 import User from "../models/user.js";
 import Zone from "../models/Zone.js";
 import Product from "../models/product.js";
 import { requireLogin } from "../middlewares/auth.js";
-import { computeTotalsFromPayload } from "../utils/checkout_pricing.js";
-import crypto from "crypto";
+import { computeTotalsFromPayload, calcSpecialLineTotal } from "../utils/checkout_pricing.js";
 
 // ✅ Stripe Idempotency-Key 必须 1~255 字符：超长就压缩成固定短串
 function normalizeIdempotencyKey(raw) {
@@ -18,6 +19,7 @@ function normalizeIdempotencyKey(raw) {
   const hash = crypto.createHash("sha256").update(s).digest("hex"); // 64 chars
   return "ik_" + hash; // 永远 < 255
 }
+
 const router = express.Router();
 
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || "";
@@ -26,7 +28,11 @@ const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || "";
 
 if (!STRIPE_SECRET_KEY) console.warn("⚠️ STRIPE_SECRET_KEY 未设置，Stripe 接口将不可用");
 
+// 你项目里也有 2023-10-16 的 webhook 文件，这里保持 2024-06-20 不冲突
 const stripe = STRIPE_SECRET_KEY ? new Stripe(STRIPE_SECRET_KEY, { apiVersion: "2024-06-20" }) : null;
+
+// ✅ NY 税率（可用环境变量覆盖）
+const NY_TAX_RATE = Number(process.env.NY_TAX_RATE || 0.08875);
 
 // =========================
 // 工具
@@ -92,8 +98,15 @@ function isDealLike(it) {
   if (String(it.type || "").toLowerCase() === "hot") return true;
   return false;
 }
-// ✅ 给 items 补齐押金/整箱倍数（Stripe 这条链路前端常不带 deposit）
-// ✅ 给 items 补齐押金/整箱倍数（Stripe 这条链路前端常不带 deposit）
+
+/**
+ * ✅ 给 items 补齐：
+ * - deposit（每个基础单位押金）
+ * - unitCount（规格倍数）
+ * - specialQty / specialTotalPrice（✅支持 specialQty=1 单件特价）
+ *
+ * 说明：Stripe 这条链路前端常不带 deposit/special，所以必须补齐
+ */
 async function hydrateItemsWithDeposit(items = []) {
   const arr = Array.isArray(items) ? items : [];
   if (!arr.length) return arr;
@@ -113,15 +126,15 @@ async function hydrateItemsWithDeposit(items = []) {
       mongoIds.length ? { _id: { $in: mongoIds } } : null,
       customIds.length ? { id: { $in: customIds } } : null,
     ].filter(Boolean),
-    })
+  })
     .select(
       "id deposit bottleDeposit containerDeposit crv " +
-      "specialEnabled specialQty specialTotalPrice specialPrice " +
-      "dealQty dealTotalPrice dealPrice " +
-      "variants"
+        "specialEnabled specialQty specialTotalPrice specialPrice " +
+        "dealQty dealTotalPrice dealPrice " +
+        "variants"
     )
     .lean();
-  // ✅ map 说一次就够了（同时支持 _id 和 id）
+
   const pmap = new Map();
   for (const p of pdocs) {
     pmap.set(String(p._id), p);
@@ -133,42 +146,41 @@ async function hydrateItemsWithDeposit(items = []) {
     const p = pmap.get(pid);
     if (!p) return it;
 
-    // 单个押金（deposit 优先，其次 bottleDeposit/containerDeposit/crv）
-    const depositEach = safeNum(
-      p.deposit ?? p.bottleDeposit ?? p.containerDeposit ?? p.crv ?? 0,
-      0
-    );
+    // 单个押金（优先 bottle/container，再 fallback deposit/crv）
+    const depositEach = safeNum(p.bottleDeposit ?? p.containerDeposit ?? p.deposit ?? p.crv ?? 0, 0);
 
     // unitCount：有 variantKey 就从 variants 里取，否则默认 1
     const variantKey = String(it?.variantKey || it?.variant || "single").trim() || "single";
     const variants = Array.isArray(p.variants) ? p.variants : [];
-    const v = variants.find(
-      (x) => String(x?.key || "").trim() === variantKey && x?.enabled !== false
-    );
+    const v = variants.find((x) => String(x?.key || "").trim() === variantKey && x?.enabled !== false);
     const unitCount = Math.max(1, Math.floor(Number(v?.unitCount || it?.unitCount || 1)));
 
-       // ✅ 特价：先用 product 根字段（最常见）
+    // ✅ 特价：先用 product 根字段
     let specialQty = safeNum(p.specialQty ?? p.dealQty ?? 0, 0);
     let specialTotalPrice = safeNum(
       p.specialTotalPrice ?? p.specialPrice ?? p.dealTotalPrice ?? p.dealPrice ?? 0,
       0
     );
 
-    // ✅ 再用 variant 覆盖（如果 variant 上未来也配置特价）
+    // ✅ 再用 variant 覆盖（如果未来 variant 也配置特价）
     const vSpecialQty = safeNum(v?.specialQty ?? v?.dealQty ?? 0, 0);
     const vSpecialTotal = safeNum(
       v?.specialTotalPrice ?? v?.specialPrice ?? v?.dealTotalPrice ?? v?.dealPrice ?? 0,
       0
     );
-    if (vSpecialQty >= 2 && vSpecialTotal > 0) {
+    if ((vSpecialQty === 1 || vSpecialQty >= 2) && vSpecialTotal > 0) {
       specialQty = vSpecialQty;
       specialTotalPrice = vSpecialTotal;
     }
 
-    // ✅ 无效特价一律清零（防止 undefined/脏值）
+    // ✅ 无效特价清零（✅支持 specialQty=1 单件特价）
     specialQty = Math.max(0, Math.floor(Number(specialQty || 0)));
     specialTotalPrice = round2(Math.max(0, Number(specialTotalPrice || 0)));
-    if (!(specialQty >= 2 && specialTotalPrice > 0)) {
+
+    const okSpecial =
+      (specialQty === 1 && specialTotalPrice > 0) || (specialQty >= 2 && specialTotalPrice > 0);
+
+    if (!okSpecial) {
       specialQty = 0;
       specialTotalPrice = 0;
     }
@@ -178,44 +190,17 @@ async function hydrateItemsWithDeposit(items = []) {
       variantKey,
       unitCount,
       deposit: round2(depositEach),
-
-      // ✅✅✅ 关键：把特价字段也补回 items，后面 computeTotalsFromPayload 才能算对
       specialQty,
       specialTotalPrice,
     };
   });
 }
 
-// ✅ 特价：N for $X 行小计（与前端 checkout.html 同口径）
-function calcSpecialLineTotal(it, qty) {
-  const q = Math.max(0, Math.floor(safeNum(qty, 0)));
-  if (!it || q <= 0) return 0;
-
-  const price = safeNum(it.priceNum ?? it.price, 0);
-
-  const specialQty = safeNum(
-    it.specialQty ?? it.specialN ?? it.specialCount ?? it.dealQty,
-    0
-  );
-
-  const specialTotalPrice = safeNum(
-    it.specialTotalPrice ?? it.specialTotal ?? it.specialPrice ?? it.dealTotalPrice ?? it.dealPrice,
-    0
-  );
-
-  if (specialQty > 0 && specialTotalPrice > 0 && q >= specialQty) {
-    const groups = Math.floor(q / specialQty);
-    const remainder = q % specialQty;
-    return round2(groups * specialTotalPrice + remainder * price);
-  }
-
-  return round2(q * price);
-}
 // =========================
 // zone 解析（可选，给派单/路线用）
 // =========================
 async function resolveZoneFromPayload(payload, shipping) {
-  const zoneId = String(payload?.zoneId || shipping?.zoneId || shipping?.address?.zoneId || "").trim();
+  const zoneId = String(payload?.zoneId || payload?.zoneKey || shipping?.zoneId || shipping?.address?.zoneId || "").trim();
   if (zoneId) return { zoneKey: zoneId, zoneName: "" };
 
   const zip = String(shipping?.zip || shipping?.postalCode || "").trim();
@@ -232,6 +217,13 @@ async function resolveZoneFromPayload(payload, shipping) {
 }
 
 // =========================
+// 0) ping
+// =========================
+router.get("/ping", (req, res) => {
+  res.json({ ok: true, name: "pay_stripe", ts: new Date().toISOString() });
+});
+
+// =========================
 // 1) publishable key
 // =========================
 router.get("/publishable-key", (req, res) => {
@@ -240,14 +232,11 @@ router.get("/publishable-key", (req, res) => {
   }
   return res.json({ success: true, key: STRIPE_PUBLISHABLE_KEY });
 });
+
 // =========================
 // ✅ 2.5 给【已有订单】创建 PaymentIntent（用于 orders/checkout 的 remaining 部分）
 // POST /api/pay/stripe/intent-for-order
 // body: { orderId }
-// 规则：
-// - 订单必须存在且未支付
-// - PI 金额 = order.totalAmount - (wallet.paid + stripe.paid)
-// - 不再创建新订单（避免钱包扣款丢失）
 // =========================
 router.post("/intent-for-order", requireLogin, express.json(), async (req, res) => {
   try {
@@ -269,7 +258,7 @@ router.post("/intent-for-order", requireLogin, express.json(), async (req, res) 
       return res.status(403).json({ success: false, message: "无权限" });
     }
 
-    // 已支付幂等
+    // 幂等：已支付直接返回
     if (doc.status === "paid" || doc.payment?.status === "paid") {
       return res.json({ success: true, message: "already paid", orderNo: doc.orderNo });
     }
@@ -280,70 +269,69 @@ router.post("/intent-for-order", requireLogin, express.json(), async (req, res) 
     const remaining = round2(total - walletPaid - stripePaid);
 
     if (!Number.isFinite(remaining) || remaining <= 0) {
-      return res.status(400).json({
-        success: false,
-        message: `无需 Stripe（remaining=${remaining}）`,
-      });
+      return res.status(400).json({ success: false, message: `无需 Stripe（remaining=${remaining}）` });
     }
 
     // Stripe 最低 $0.50
     if (remaining < 0.5) {
-      return res.status(400).json({
-        success: false,
-        message: "Stripe 最低 $0.50，请改用纯钱包或增加金额",
-      });
+      return res.status(400).json({ success: false, message: "Stripe 最低 $0.50，请改用纯钱包或增加金额" });
     }
 
     // ✅ 幂等：如果已有 intentId，直接复用
     const existingIntentId = String(doc.payment?.stripe?.intentId || "").trim();
     if (existingIntentId) {
-  let clientSecret = "";
-  try {
-    const pi = await stripe.paymentIntents.retrieve(existingIntentId);
-    clientSecret = String(pi?.client_secret || "");
-  } catch (e) {
-    console.warn("⚠️ retrieve existing PI failed:", existingIntentId, e?.message);
-  }
+      let clientSecret = "";
+      try {
+        const pi = await stripe.paymentIntents.retrieve(existingIntentId);
+        clientSecret = String(pi?.client_secret || "");
+      } catch (e) {
+        console.warn("⚠️ retrieve existing PI failed:", existingIntentId, e?.message);
+      }
 
-  if (!clientSecret) {
-    return res.status(500).json({
-      success: false,
-      message: "已存在 PaymentIntent，但 clientSecret 读取失败",
-      paymentIntentId: existingIntentId,
-      reused: true,
-      remaining,
-    });
-  }
+      if (!clientSecret) {
+        return res.status(500).json({
+          success: false,
+          message: "已存在 PaymentIntent，但 clientSecret 读取失败",
+          paymentIntentId: existingIntentId,
+          reused: true,
+          remaining,
+        });
+      }
 
-  return res.json({
-    success: true,
-    reused: true,
-    orderId: String(doc._id),
-    orderNo: doc.orderNo,
-    paymentIntentId: existingIntentId,
-    clientSecret,
-    remaining,
-  });
-}
+      return res.json({
+        success: true,
+        reused: true,
+        orderId: String(doc._id),
+        orderNo: doc.orderNo,
+        paymentIntentId: existingIntentId,
+        clientSecret,
+        remaining,
+      });
+    }
+
     const cents = moneyToCents(remaining);
-const rawIdem = `fb_exist_order_${String(doc._id)}__${cents}`;
-const idemKey = normalizeIdempotencyKey(rawIdem);
-const intent = await stripe.paymentIntents.create(
-  {
-    amount: cents,
-    currency: "usd",
-    automatic_payment_methods: { enabled: true },
-    metadata: {
-      orderId: String(doc._id),
-      orderNo: String(doc.orderNo),
-      userId: String(doc.userId || ""),
-      intentKey,
-      amountCents: String(cents),
-      source: "intent-for-order",
-    },
-  },
-  { idempotencyKey: idemKey }
-);
+
+    // ✅ Stripe 幂等键：同订单同金额复用
+    const rawIdem = `fb_exist_order_${String(doc._id)}__${cents}`;
+    const idemKey = normalizeIdempotencyKey(rawIdem);
+
+    const intent = await stripe.paymentIntents.create(
+      {
+        amount: cents,
+        currency: "usd",
+        automatic_payment_methods: { enabled: true },
+        metadata: {
+          orderId: String(doc._id),
+          orderNo: String(doc.orderNo),
+          userId: String(doc.userId || ""),
+          intentKey: String(doc.payment?.intentKey || doc.payment?.idempotencyKey || ""),
+          amountCents: String(cents),
+          source: "intent-for-order",
+        },
+      },
+      { idempotencyKey: idemKey }
+    );
+
     // 写回订单
     doc.payment = doc.payment || {};
     doc.payment.method = "stripe";
@@ -366,6 +354,7 @@ const intent = await stripe.paymentIntents.create(
     return res.status(500).json({ success: false, message: err?.message || "创建 intent 失败" });
   }
 });
+
 // =========================
 // 2) 创建/复用订单 + PaymentIntent
 // POST /api/pay/stripe/order-intent
@@ -378,13 +367,16 @@ router.post("/order-intent", requireLogin, express.json(), async (req, res) => {
 
     const user = req.user;
     const payload = req.body || {};
+
     // ✅ 防止钱包/混合支付误走 Stripe 创建订单接口
-if (payload?.useWallet === true || payload?.payMethod === "wallet" || payload?.paymentMethod === "wallet") {
-  return res.status(400).json({
-    success: false,
-    message: "钱包/混合支付请先调用 /api/orders/checkout，然后用 /api/pay/stripe/intent-for-order 创建剩余款的 Stripe intent",
-  });
-}
+    if (payload?.useWallet === true || payload?.payMethod === "wallet" || payload?.paymentMethod === "wallet") {
+      return res.status(400).json({
+        success: false,
+        message:
+          "钱包/混合支付请先调用 /api/orders/checkout，然后用 /api/pay/stripe/intent-for-order 创建剩余款的 Stripe intent",
+      });
+    }
+
     const intentKey = String(payload.intentKey || "").trim();
     if (!intentKey) return res.status(400).json({ success: false, message: "缺少 intentKey（前端幂等键）" });
 
@@ -397,14 +389,9 @@ if (payload?.useWallet === true || payload?.payMethod === "wallet" || payload?.p
     const loginPhone10 = normPhone(loginPhoneRaw);
 
     const s = payload.shipping || {};
-        // ✅ 订单备注统一入口：支持 顶层 remark/note + shipping.note（用于后台订单/贴纸）
-    const orderNote = String(
-      payload?.remark ??
-        payload?.note ??
-        s?.remark ??
-        s?.note ??
-        ""
-    ).trim();
+    // ✅ 订单备注统一入口
+    const orderNote = String(payload?.remark ?? payload?.note ?? s?.remark ?? s?.note ?? "").trim();
+
     if (!s.firstName || !s.lastName || !s.phone || !s.street1 || !s.city || !s.state || !s.zip) {
       return res.status(400).json({ success: false, message: "收货信息不完整" });
     }
@@ -414,81 +401,52 @@ if (payload?.useWallet === true || payload?.payMethod === "wallet" || payload?.p
 
     const items = Array.isArray(payload.items) ? payload.items : [];
     if (!items.length) return res.status(400).json({ success: false, message: "items 不能为空" });
-    // ✅ 关键：Stripe 计算前补齐押金/整箱倍数
-payload.items = await hydrateItemsWithDeposit(items);
+
+    // ✅ Stripe 计算前补齐押金/整箱倍数/特价
+    payload.items = await hydrateItemsWithDeposit(items);
+
+    const mode = String(payload.mode || payload.deliveryMode || "normal").trim();
+
     const hasNonDeal = (payload.items || []).some((it) => !isDealLike(it));
-    if ((payload.mode || payload.deliveryMode) === "dealsDay" && hasNonDeal) {
+    if (mode === "dealsDay" && hasNonDeal) {
       return res.status(400).json({ success: false, message: "爆品日订单只能包含爆品商品" });
     }
-    // ✅ 把 items 统一成 computeTotalsFromPayload 需要的口径（至少要有 deposit）
-const cleanItems = (payload.items || []).map((it) => {
-  const qty = Math.max(1, Math.floor(safeNum(it.qty, 1)));
-  const unitCount = Math.max(1, Math.floor(safeNum(it.unitCount, 1))); // 前端没传就=1
-  const depositEach = safeNum(it.deposit ?? it.bottleDeposit ?? it.crv ?? 0, 0);
 
-  return {
-    ...it,
-    qty,
-    unitCount,
-    deposit: round2(depositEach),
-    taxable: isTruthy(it.taxable) || isTruthy(it.hasTax),
-    hasTax: isTruthy(it.taxable) || isTruthy(it.hasTax),
-  };
-});
+    // ✅ items 统一成 computeTotalsFromPayload 需要的口径
+    const cleanItems = (payload.items || []).map((it) => {
+      const qty = Math.max(1, Math.floor(safeNum(it.qty, 1)));
+      const unitCount = Math.max(1, Math.floor(safeNum(it.unitCount ?? it.unitCount ?? 1, 1)));
+      const depositEach = safeNum(it.deposit ?? it.bottleDeposit ?? it.crv ?? 0, 0);
 
-// ✅ 用 cleanItems 重新组 payload 给统一结算
-const payloadForTotals = {
-  ...payload,
-  items: cleanItems,
-};
-    const totals = computeTotalsFromPayload(payloadForTotals, {
-  payChannel: "stripe",
-  taxRateNY: Number(process.env.NY_TAX_RATE || 0.08875),
-  platformRate: 0.02,
-  platformFixed: 0.5,
-});
-// ✅ totals check 必须走统一结算（支持 specialQty=1 / N for $X）
-const totalsCheck = computeTotalsFromPayload(
-  {
-    items: (order.items || []).map((it) => ({
-      ...it,
-      // 保险：统一字段名
-      price: Number(it.price || 0),
-      qty: Number(it.qty || 1),
-      specialQty: Number(it.specialQty || 0),
-      specialTotalPrice: Number(it.specialTotalPrice || 0),
-      unitCount: Number(it.unitCount || 1),
-      deposit: Number(it.deposit || 0),
-      taxable: !!(it.taxable || it.hasTax),
-      hasTax: !!(it.taxable || it.hasTax),
-    })),
-    shipping: {
-      // 这里用 payment 里保存的税率兜底，避免没 state 导致税率变 0
-      state: "NY",
-    },
-    mode: order.deliveryMode,
-    pricing: {
-      tip: Number(order.tipFee || 0),
-      taxRate: Number(order.salesTaxRate || 0),
-    },
-  },
-  { payChannel: "stripe", taxRateNY: NY_TAX_RATE, platformRate: 0.02, platformFixed: 0.5 }
-);
+      return {
+        ...it,
+        qty,
+        unitCount,
+        deposit: round2(depositEach),
+        taxable: isTruthy(it.taxable) || isTruthy(it.hasTax),
+        hasTax: isTruthy(it.taxable) || isTruthy(it.hasTax),
 
-console.log("🧾 totals check:", {
-  totalAmount: totalsCheck.totalAmount,
-  depositTotal: totalsCheck.depositTotal,
-  salesTax: totalsCheck.salesTax,
-  shipping: totalsCheck.shipping,
-  subtotal: totalsCheck.subtotal,
-  items: (order.items || []).map((it) => ({
-    name: it.name,
-    price: it.price,
-    specialQty: it.specialQty,
-    specialTotalPrice: it.specialTotalPrice,
-    line: calcSpecialLineTotal(it, it.qty),
-  })),
-});
+        // ✅ 保底：特价字段必须是 number
+        specialQty: Math.max(0, Math.floor(safeNum(it.specialQty, 0))),
+        specialTotalPrice: round2(safeNum(it.specialTotalPrice, 0)),
+      };
+    });
+
+    const totals = computeTotalsFromPayload(
+      {
+        ...payload,
+        items: cleanItems,
+        shipping: s,
+        mode,
+      },
+      {
+        payChannel: "stripe",
+        taxRateNY: NY_TAX_RATE,
+        platformRate: 0.02,
+        platformFixed: 0.5,
+      }
+    );
+
     if (!totals.totalAmount || totals.totalAmount <= 0) {
       return res.status(400).json({ success: false, message: "金额异常" });
     }
@@ -496,8 +454,7 @@ console.log("🧾 totals check:", {
       return res.status(400).json({ success: false, message: "信用卡支付最低 $0.50，请增加金额或改用钱包" });
     }
 
-    // 最低消费
-    const mode = String(payload.mode || payload.deliveryMode || "normal").trim();
+    // 最低消费（按你原规则）
     if ((mode === "groupDay" || mode === "normal") && totals.subtotal < 49.99) {
       return res.status(400).json({ success: false, message: "未满足最低消费 $49.99，无法下单" });
     }
@@ -505,14 +462,14 @@ console.log("🧾 totals check:", {
       return res.status(400).json({ success: false, message: "未满足好友拼单最低消费 $29，无法下单" });
     }
 
-    // deliveryType / deliveryDate 必须
+    // deliveryType / deliveryDate
     const deliveryType = String(payload.deliveryType || "home").trim();
     const deliveryDate = payload.deliveryDate ? startOfDay(new Date(payload.deliveryDate)) : null;
     if (!deliveryType || !deliveryDate || Number.isNaN(deliveryDate.getTime())) {
       return res.status(400).json({ success: false, message: "缺少 deliveryType / deliveryDate" });
     }
 
-    // zone/fulfillment/dispatch（可选但建议写）
+    // zone/fulfillment/dispatch
     const { zoneKey, zoneName } = await resolveZoneFromPayload(payload, s);
     const batchKey = zoneKey ? buildBatchKey(deliveryDate, zoneKey) : "";
 
@@ -524,56 +481,52 @@ console.log("🧾 totals check:", {
       ? { zoneId: zoneKey, batchKey, batchName: zoneName || "" }
       : { zoneId: "", batchKey: "", batchName: "" };
 
-    // ---------- 2.1 查找幂等订单 ----------
+    // ---------- 2.1 查找幂等订单（只复用未 paid 的） ----------
     let doc = await Order.findOne({
       userId: user._id,
       "payment.method": "stripe",
       "payment.idempotencyKey": intentKey,
-       status: { $ne: "paid" }, // ✅ 只要没 paid，就复用
+      status: { $ne: "paid" },
     }).catch(() => null);
 
-    // ✅ 如果已存在 intentId：必须返回 clientSecret（Payment Element 需要）
-if (doc?.payment?.stripe?.intentId) {
-  const intentId = String(doc.payment.stripe.intentId || "").trim();
+    // ✅ 如果已存在 intentId：返回 clientSecret（Payment Element 需要）
+    if (doc?.payment?.stripe?.intentId) {
+      const intentId = String(doc.payment.stripe.intentId || "").trim();
 
-  let clientSecret = "";
-  try {
-    const pi = await stripe.paymentIntents.retrieve(intentId);
-    clientSecret = String(pi?.client_secret || "");
-  } catch (e) {
-    console.warn("⚠️ retrieve existing PaymentIntent failed:", intentId, e?.message);
-  }
+      let clientSecret = "";
+      try {
+        const pi = await stripe.paymentIntents.retrieve(intentId);
+        clientSecret = String(pi?.client_secret || "");
+      } catch (e) {
+        console.warn("⚠️ retrieve existing PaymentIntent failed:", intentId, e?.message);
+      }
 
-  // 如果拿不到 clientSecret，就别让前端继续挂载（否则一直“200 但失败”）
-  if (!clientSecret) {
-    return res.status(500).json({
-      success: false,
-      message: "已存在 PaymentIntent，但 clientSecret 读取失败（请稍后重试或联系管理员）",
-      paymentIntentId: intentId,
-      reused: true,
-    });
-  }
+      if (!clientSecret) {
+        return res.status(500).json({
+          success: false,
+          message: "已存在 PaymentIntent，但 clientSecret 读取失败（请稍后重试或联系管理员）",
+          paymentIntentId: intentId,
+          reused: true,
+        });
+      }
 
-  return res.json({
-    success: true,
-    orderId: String(doc._id),
-    orderNo: doc.orderNo,
-    clientSecret,
-    paymentIntentId: intentId,
-    reused: true,
-  });
-}
+      return res.json({
+        success: true,
+        orderId: String(doc._id),
+        orderNo: doc.orderNo,
+        clientSecret,
+        paymentIntentId: intentId,
+        reused: true,
+      });
+    }
+
     // ---------- 2.2 创建订单 ----------
     if (!doc) {
       doc = await Order.create({
         orderNo: genOrderNo(),
-
-        // ✅ 必须绑定 userId
         userId: user._id,
 
         customerName: [s.firstName, s.lastName].filter(Boolean).join(" ").trim(),
-
-        // ✅ 关键修复：归属手机号用登录手机号（没有就 fallback 收货手机号）
         customerPhone: (loginPhone10 || normPhone(s.phone) || String(s.phone || "")).trim(),
 
         deliveryType,
@@ -583,9 +536,8 @@ if (doc?.payment?.stripe?.intentId) {
         fulfillment,
         dispatch,
 
-        // 地址
         addressText: s.fullText || [s.street1, s.apt, s.city, s.state, s.zip].filter(Boolean).join(", "),
-               note: orderNote,
+        note: orderNote,
         address: {
           fullText: s.fullText || "",
           zip: s.zip || "",
@@ -594,7 +546,7 @@ if (doc?.payment?.stripe?.intentId) {
           lng: s.lng,
         },
 
-        // 金额（严格对齐 model）
+        // 金额（对齐 model）
         subtotal: totals.subtotal,
         deliveryFee: totals.shipping,
         taxableSubtotal: totals.taxableSubtotal,
@@ -606,7 +558,7 @@ if (doc?.payment?.stripe?.intentId) {
         discount: 0,
         totalAmount: totals.totalAmount,
 
-        // 支付块（严格对齐 model）
+        // 支付块（对齐 model）
         payment: {
           status: "unpaid",
           method: "stripe",
@@ -629,56 +581,86 @@ if (doc?.payment?.stripe?.intentId) {
 
         status: "pending",
 
-       items: cleanItems.map((it) => ({
-  productId: mongoose.Types.ObjectId.isValid(String(it.productId || "")) ? it.productId : undefined,
-  legacyProductId: String(it.legacyProductId || it.id || it._id || ""),
-  name: it.name || "",
-  sku: it.sku || "",
-  price: safeNum(it.price, 0),
-  qty: Math.max(1, safeNum(it.qty, 1)),
+        items: cleanItems.map((it) => ({
+          // 只在是 ObjectId 时写 productId，否则留空，用 legacyProductId 存自定义 id
+          productId: mongoose.Types.ObjectId.isValid(String(it.productId || "")) ? it.productId : undefined,
+          legacyProductId: String(it.legacyProductId || it.id || it._id || it.productId || ""),
+          name: it.name || "",
+          sku: it.sku || "",
+          price: safeNum(it.price, 0),
+          qty: Math.max(1, safeNum(it.qty, 1)),
 
-  // ✅ 押金/整箱倍数
-  unitCount: Math.max(1, safeNum(it.unitCount, 1)),
-  deposit: round2(safeNum(it.deposit, 0)),
+          unitCount: Math.max(1, safeNum(it.unitCount, 1)),
+          deposit: round2(safeNum(it.deposit, 0)),
 
-  // ✅✅✅ 特价字段落库（对账/重算都会用到）
-  specialQty: Math.max(0, Math.floor(safeNum(it.specialQty, 0))),
-  specialTotalPrice: round2(safeNum(it.specialTotalPrice, 0)),
+          // ✅✅✅ 特价字段落库（支持 specialQty=1）
+          specialQty: Math.max(0, Math.floor(safeNum(it.specialQty, 0))),
+          specialTotalPrice: round2(safeNum(it.specialTotalPrice, 0)),
 
-  image: it.image || "",
+          image: it.image || "",
 
-  // ✅ lineTotal 必须按特价口径
-  lineTotal: calcSpecialLineTotal(it, Math.max(1, safeNum(it.qty, 1))),
+          // ✅ lineTotal 按统一口径（checkout_pricing.js）
+          lineTotal: calcSpecialLineTotal(it, Math.max(1, safeNum(it.qty, 1))),
 
-  cost: safeNum(it.cost, 0),
-  hasTax: isTruthy(it.taxable) || isTruthy(it.hasTax),
-})),
+          cost: safeNum(it.cost, 0),
+          hasTax: isTruthy(it.taxable) || isTruthy(it.hasTax),
+          taxable: isTruthy(it.taxable) || isTruthy(it.hasTax),
+        })),
+      });
+
+      // ✅ 仅用于排查：确认单件特价能进统一结算（subtotal 应该=3.98 而不是 4.99）
+      const totalsCheck = computeTotalsFromPayload(
+        {
+          items: Array.isArray(doc.items) ? doc.items : [],
+          shipping: s,
+          mode: doc.deliveryMode,
+          pricing: { tip: Number(doc.tipFee || 0), taxRate: Number(doc.salesTaxRate || 0) },
+        },
+        { payChannel: "stripe", taxRateNY: NY_TAX_RATE, platformRate: 0.02, platformFixed: 0.5 }
+      );
+
+      console.log("🧾 totals check:", {
+        orderId: String(doc._id),
+        totalAmount: totalsCheck.totalAmount,
+        depositTotal: totalsCheck.depositTotal,
+        salesTax: totalsCheck.salesTax,
+        shipping: totalsCheck.shipping,
+        subtotal: totalsCheck.subtotal,
+        items: (doc.items || []).map((it) => ({
+          name: it.name,
+          qty: it.qty,
+          price: it.price,
+          specialQty: it.specialQty,
+          specialTotalPrice: it.specialTotalPrice,
+          line: calcSpecialLineTotal(it, it.qty),
+        })),
       });
     }
 
     // ---------- 2.3 创建 PaymentIntent ----------
     const cents = moneyToCents(totals.totalAmount);
 
-   // ✅ Stripe 幂等键：只绑定“这张订单 + 这次金额”
-// - 同一订单重复点支付：复用同一个 key（防重复创建）
-// - 不同订单即使同金额：orderId 不同 => key 不同（可正常下第二单）
-const rawIdem = `fb_pi_order_${String(doc._id)}__${cents}`;
-const idemKey = normalizeIdempotencyKey(rawIdem);
-const intent = await stripe.paymentIntents.create(
-  {
-    amount: cents,
-    currency: "usd",
-    automatic_payment_methods: { enabled: true },
-    metadata: {
-      orderId: String(doc._id),
-      orderNo: String(doc.orderNo),
-      userId: String(user._id),
-      intentKey,
-      amountCents: String(cents),
-    },
-  },
-  { idempotencyKey: idemKey }
-);
+    // ✅ Stripe 幂等键：只绑定“这张订单 + 这次金额”
+    const rawIdem = `fb_pi_order_${String(doc._id)}__${cents}`;
+    const idemKey = normalizeIdempotencyKey(rawIdem);
+
+    const intent = await stripe.paymentIntents.create(
+      {
+        amount: cents,
+        currency: "usd",
+        automatic_payment_methods: { enabled: true },
+        metadata: {
+          orderId: String(doc._id),
+          orderNo: String(doc.orderNo),
+          userId: String(user._id),
+          intentKey: String(intentKey),
+          amountCents: String(cents),
+          source: "order-intent",
+        },
+      },
+      { idempotencyKey: idemKey }
+    );
+
     // 写回 intentId
     doc.payment = doc.payment || {};
     doc.payment.method = "stripe";
@@ -705,7 +687,7 @@ const intent = await stripe.paymentIntents.create(
 // =========================
 // ✅ 2.9 前端支付成功后立即确认（强烈建议前端调用）
 // POST /api/pay/stripe/confirm
-// body: { orderId, paymentIntentId, paidCents? }
+// body: { orderId, paymentIntentId }
 // =========================
 router.post("/confirm", requireLogin, express.json(), async (req, res) => {
   try {
@@ -737,7 +719,6 @@ router.post("/confirm", requireLogin, express.json(), async (req, res) => {
       return res.json({ success: true, message: "already paid", orderNo: doc.orderNo });
     }
 
-    // 查询 Stripe 真相（更可靠）
     const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
     if (!pi) return res.status(400).json({ success: false, message: "paymentIntent not found" });
 
@@ -747,7 +728,6 @@ router.post("/confirm", requireLogin, express.json(), async (req, res) => {
 
     const paid = centsToMoney(pi.amount_received || pi.amount || 0);
 
-    // ✅ 标记 paid（严格对齐 model）
     const now = new Date();
     doc.status = "paid";
     doc.paidAt = now;
@@ -760,6 +740,7 @@ router.post("/confirm", requireLogin, express.json(), async (req, res) => {
     doc.payment.stripe = doc.payment.stripe || {};
     doc.payment.stripe.intentId = String(pi.id);
     doc.payment.stripe.paid = round2(paid);
+    doc.payment.stripePaymentIntentId = String(pi.id);
 
     await doc.save();
 
@@ -779,7 +760,7 @@ router.post("/confirm", requireLogin, express.json(), async (req, res) => {
 
 // =========================
 // 3) Webhook：支付成功后改 paid（兜底）
-// ⚠️ 注意：此路由必须拿到 raw body，且不要被全局 express.json 提前吃掉
+// ⚠️ 注意：此路由必须拿到 raw body
 // =========================
 router.post("/webhook", express.raw({ type: "application/json" }), async (req, res) => {
   try {
@@ -805,10 +786,7 @@ router.post("/webhook", express.raw({ type: "application/json" }), async (req, r
       const q = orderId
         ? { _id: orderId }
         : {
-            $or: [
-              { "payment.stripe.intentId": String(pi.id) },
-              { "payment.idempotencyKey": intentKey },
-            ],
+            $or: [{ "payment.stripe.intentId": String(pi.id) }, { "payment.idempotencyKey": intentKey }],
           };
 
       await Order.updateOne(q, {
@@ -819,6 +797,7 @@ router.post("/webhook", express.raw({ type: "application/json" }), async (req, r
           "payment.method": "stripe",
           "payment.paidTotal": round2(paid),
           "payment.stripe.intentId": String(pi.id),
+          "payment.stripePaymentIntentId": String(pi.id),
           "payment.stripe.paid": round2(paid),
         },
       });
@@ -834,10 +813,7 @@ router.post("/webhook", express.raw({ type: "application/json" }), async (req, r
       const q = orderId
         ? { _id: orderId }
         : {
-            $or: [
-              { "payment.stripe.intentId": String(pi.id) },
-              { "payment.idempotencyKey": intentKey },
-            ],
+            $or: [{ "payment.stripe.intentId": String(pi.id) }, { "payment.idempotencyKey": intentKey }],
           };
 
       await Order.updateOne(q, { $set: { "payment.status": "unpaid" } });
