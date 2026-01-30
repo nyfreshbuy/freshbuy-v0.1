@@ -76,20 +76,35 @@ function getAdminToken() {
   // ZIP 解析
   // =========================
   function parseZips() {
-    const raw = String(elZoneZips?.value || "");
-    const parts = raw.split(/[\s,;]+/).map((s) => s.trim()).filter(Boolean);
+  const raw = String(elZoneZips?.value || "").trim();
+  if (!raw) return [];
 
-    const seen = new Set();
-    const out = [];
-    for (const z of parts) {
-      if (!/^\d{5}$/.test(z)) continue;
-      if (seen.has(z)) continue;
-      seen.add(z);
-      out.push(z);
+  // 1) 正常情况：按分隔符切
+  let parts = raw
+    .split(/[\s,;]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  // 2) ✅ 兜底：如果用户输入成一串纯数字（比如 11362113601136111364）
+  //    就按每 5 位切分
+  if (parts.length === 1 && /^\d{10,}$/.test(parts[0])) {
+    const digits = parts[0];
+    parts = [];
+    for (let i = 0; i + 5 <= digits.length; i += 5) {
+      parts.push(digits.slice(i, i + 5));
     }
-    return out;
   }
 
+  const seen = new Set();
+  const out = [];
+  for (const z of parts) {
+    if (!/^\d{5}$/.test(z)) continue;
+    if (seen.has(z)) continue;
+    seen.add(z);
+    out.push(z);
+  }
+  return out;
+}
   // =========================
   // API
   // =========================

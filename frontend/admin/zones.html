@@ -148,25 +148,22 @@
             </div>
 
             <div class="zone-row">
-              <label>Zone 名称</label>
-              <input id="zoneName" placeholder="Fresh Meadows" autocomplete="off" />
-            </div>
+  <label>Zip（必填，用逗号或换行分隔，如 11365,11366）</label>
 
-            <div class="zone-row">
-              <label>Zip（必填，用逗号分隔，如 11365,11366）</label>
-              <input
-                id="zoneZips"
-                placeholder="11365,11366"
-                inputmode="numeric"
-                autocomplete="postal-code"
-              />
-              <div class="zone-hint" style="margin-top:8px;">
-                ZIP 模式说明：本页不使用地图/多边形。<br/>
-                系统只根据 Zip 白名单判断是否支持配送。<br/>
-                例：输入 11365,11366 保存后，前台查询 ZIP 命中即为支持。
-              </div>
-            </div>
+  <textarea
+    id="zoneZips"
+    placeholder="11365,11366&#10;11361&#10;11364"
+    autocomplete="postal-code"
+    style="min-height:110px;"
+  ></textarea>
 
+  <div class="zone-hint" style="margin-top:8px;">
+    ZIP 模式说明：<br/>
+    - 支持：逗号 / 空格 / 换行<br/>
+    - 每行一个 ZIP 最稳<br/>
+    - 系统会自动去重并校验 5 位 ZIP
+  </div>
+</div>
             <div class="zone-row">
               <label>备注（可选）</label>
               <textarea id="zoneNote" placeholder="例如：周五 5-9PM 配送"></textarea>
