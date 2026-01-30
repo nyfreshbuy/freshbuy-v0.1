@@ -31,8 +31,8 @@ function getAdminToken() {
   const elDeliveryDay = document.getElementById("zoneDeliveryDay");
   const elCutoffTime = document.getElementById("zoneCutoffTime");
     // ✅ 新增：成团展示字段（HTML 里必须已存在）
-  const elFakeJoinedOrders = document.getElementById("zoneFakeJoinedOrders");
-  const elNeedOrders = document.getElementById("zoneNeedOrders");
+  const elFakeJoinedOrders = document.getElementById("fakeJoinedOrders");
+const elNeedOrders = document.getElementById("needOrders");
   const elList = document.getElementById("zonesList");
   const btnSave = document.getElementById("btnSave");
   const btnNew = document.getElementById("btnNew");
@@ -196,9 +196,9 @@ function getAdminToken() {
 
   function startEditZone(zone) {
     editingZone = zone;
-    elZoneId.value = zone?.zoneId || "";
+    elZoneId.value = zone?.zoneId || zone?.id || "";
     elZoneName.value = zone?.name || "";
-    elZoneZips.value = (getZoneZipList(zone) || []).join("\n");
+    elZoneZips.value = (getZoneZipList(zone) || []).join(",");
     elZoneNote.value = zone?.note || "";
 
     // ✅ 回填配送字段
