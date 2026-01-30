@@ -1,8 +1,9 @@
 // backend/src/utils/checkout_pricing.js
 // =======================================================
 // ✅ 全站统一结算（算法与前端一致）
-// - 特价：N for $X
-// - ✅ 单件特价：salePrice / promoPrice / discountPrice / specialPrice(兼容)
+// - 特价：同一套字段支持：
+//    * N=1  => 单件特价（单价 = specialTotalPrice）
+//    * N>=2 => N for $X（买够 N 才触发；remainder 按原价）
 // - 运费：按 mode
 // - 税：NY 才收（默认 0.08875，可覆盖）
 // - 押金：deposit * qty * unitCount（或前端 override 总额）
@@ -23,66 +24,44 @@ export function isTruthy(v) {
   return v === true || v === "true" || v === 1 || v === "1";
 }
 
-/**
- * ✅ 取“单件有效价”（支持单件特价）
- * 优先级：
- * 1) salePrice / promoPrice / discountPrice / specialUnitPrice
- * 2) specialPrice（仅当不是 N for X 时才当单件特价，避免误判）
- * 3) priceNum / price
- */
-export function getEffectiveUnitPrice(it) {
-  const basePrice = safeNum(it?.priceNum ?? it?.price, 0);
-
-  // 第一梯队：明确语义的单件特价字段
-  const saleCandidate = safeNum(
-    it?.salePrice ?? it?.promoPrice ?? it?.discountPrice ?? it?.specialUnitPrice ?? NaN,
-    NaN
-  );
-
-  if (Number.isFinite(saleCandidate) && saleCandidate > 0 && saleCandidate < basePrice) {
-    return saleCandidate;
-  }
-
-  // 第二梯队：specialPrice 兼容（⚠️ 注意：specialPrice 很多人用来表示“单件特价”，
-  // 但也有人用来表示“N for X 的总价”。为了不串，我们只在“不是 N for X”时把它当单件特价）
-  const hasGroupDeal =
-    safeNum(it?.specialQty ?? it?.specialN ?? it?.specialCount ?? it?.dealQty, 0) > 0 &&
-    safeNum(it?.specialTotalPrice ?? it?.specialTotal ?? it?.dealTotalPrice ?? it?.dealPrice, 0) >
-      0;
-
-  if (!hasGroupDeal) {
-    const sp = safeNum(it?.specialPrice ?? NaN, NaN);
-    if (Number.isFinite(sp) && sp > 0 && sp < basePrice) return sp;
-  }
-
-  return basePrice;
-}
-
-// ✅ 特价：N for $X 行小计（前端口径） + ✅ 单件特价
+// ✅ 特价：N for $X 行小计（支持 N=1 单件特价 + N>=2 多件特价）
+// 规则：
+// - specialQty = 1：单个就特价（单价 = specialTotalPrice）
+// - specialQty >= 2：买够 N 才触发组价；remainder 按原价 basePrice
 export function calcSpecialLineTotal(it, qty) {
   const q = Math.max(0, Math.floor(safeNum(qty, 0)));
   if (!it || q <= 0) return 0;
 
-  const unitPrice = getEffectiveUnitPrice(it);
+  const basePrice = safeNum(it.priceNum ?? it.price, 0);
 
   const specialQty = safeNum(
     it.specialQty ?? it.specialN ?? it.specialCount ?? it.dealQty,
     0
   );
 
-  // ✅ 这里“只认” group total 的字段，不再把 specialPrice 塞进来
   const specialTotalPrice = safeNum(
-    it.specialTotalPrice ?? it.specialTotal ?? it.dealTotalPrice ?? it.dealPrice,
+    it.specialTotalPrice ??
+      it.specialTotal ??
+      it.dealTotalPrice ??
+      it.dealPrice ??
+      0,
     0
   );
 
-  if (specialQty > 0 && specialTotalPrice > 0 && q >= specialQty) {
-    const groups = Math.floor(q / specialQty);
-    const remainder = q % specialQty;
-    return round2(groups * specialTotalPrice + remainder * unitPrice);
+  // ✅ 1 for X：单件特价（立刻生效）
+  if (specialQty === 1 && specialTotalPrice > 0) {
+    return round2(q * specialTotalPrice);
   }
 
-  return round2(q * unitPrice);
+  // ✅ N for X（N>=2）：必须买够 N 才触发；多出来的按原价
+  if (specialQty >= 2 && specialTotalPrice > 0 && q >= specialQty) {
+    const groups = Math.floor(q / specialQty);
+    const remainder = q % specialQty;
+    return round2(groups * specialTotalPrice + remainder * basePrice);
+  }
+
+  // ✅ 无特价：原价
+  return round2(q * basePrice);
 }
 
 // ✅ 押金（deposit * qty * unitCount）
@@ -137,21 +116,14 @@ export function computeTotalsFromPayload(payload = {}, options = {}) {
   for (const it of items) {
     const qty = Math.max(1, Math.floor(safeNum(it.qty, 1)));
 
-    // ✅ Debug（你需要时就看这些字段有没有带到）
+    // ✅ Debug：确认 payload 里是否带了 specialQty/specialTotalPrice
     console.log("🧮 PRICING ITEM", {
       name: it?.name,
       qty,
       basePrice: it?.priceNum ?? it?.price,
-      // 单件特价字段
-      salePrice: it?.salePrice,
-      promoPrice: it?.promoPrice,
-      discountPrice: it?.discountPrice,
-      specialPrice: it?.specialPrice,
-      // N for X 字段
       specialQty: it?.specialQty ?? it?.specialN ?? it?.specialCount ?? it?.dealQty,
       specialTotalPrice:
         it?.specialTotalPrice ?? it?.specialTotal ?? it?.dealTotalPrice ?? it?.dealPrice,
-      effectiveUnitPrice: getEffectiveUnitPrice(it),
       lineTotal: calcSpecialLineTotal(it, qty),
     });
 
@@ -185,7 +157,7 @@ export function computeTotalsFromPayload(payload = {}, options = {}) {
 
   const salesTax = round2(taxableSubtotal * taxRate);
 
-  // 5) deposit（支持前端 override：pricing.bottleDeposit）
+  // 5) deposit（支持前端直接传“押金总额” override：pricing.bottleDeposit）
   const depositOverrideRaw =
     payload?.pricing?.bottleDeposit ??
     payload?.pricing?.depositTotal ??
@@ -222,7 +194,9 @@ export function computeTotalsFromPayload(payload = {}, options = {}) {
   const platformFixed = safeNum(options.platformFixed, 0.5);
 
   const platformFee =
-    payChannel === "stripe" ? Math.max(0, round2(platformFixed + subtotal * platformRate)) : 0;
+    payChannel === "stripe"
+      ? Math.max(0, round2(platformFixed + subtotal * platformRate))
+      : 0;
 
   // 8) total
   const totalAmount = round2(subtotal + shipping + salesTax + depositTotal + tipFee + platformFee);
