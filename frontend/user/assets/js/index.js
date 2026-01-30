@@ -220,8 +220,10 @@ function getZoneScheduleByZone(zoneObjOrName) {
 const deliveryStats = {
   "area-group": {
     areaName: "区域团",
-    joinedOrders: 36,
-    needOrders: 50,
+    joinedOrders: 0, // ✅ 不写死
+    needOrders: 50,  // ✅ 默认目标
+    realJoined: 0,
+    fakeJoined: 0,
   },
   "friend-group": {
     joinedUsers: 3,
@@ -293,7 +295,6 @@ el.textContent =
     clearInterval(countdownTimer);
   }
 }
-
 // 好友拼单倒计时到今晚 24:00
 function startFriendCountdownToMidnight() {
   if (friendCountdownTimer) clearInterval(friendCountdownTimer);
@@ -2484,7 +2485,7 @@ function getSavedZoneBrief() {
 }
 
 // ✅ 不再覆盖 #deliveryInfo，而是渲染到 #deliveryInfoBody，并且不强制切模式
-function applyZoneToUI(zip, payload) {
+async function applyZoneToUI(zip, payload) {
   const zipStatus = $("zipStatus");
   const deliveryHintEl = $("deliveryHint");
   const deliveryInfoBodyEl = $("deliveryInfoBody");
@@ -2527,7 +2528,16 @@ function applyZoneToUI(zip, payload) {
 };
 saveZone(briefZone);
   localStorage.setItem("freshbuy_zone_ok", "1");
-
+// ✅ 拉取“真实+虚假”拼单数据，更新显示
+try {
+  const stats = await fetchAreaGroupStats(zip);
+  if (stats) {
+    deliveryStats["area-group"].joinedOrders = Number(stats.joinedOrders || 0);
+    deliveryStats["area-group"].needOrders = Number(stats.needOrders || 50);
+    deliveryStats["area-group"].realJoined = Number(stats.realJoined || 0);
+    deliveryStats["area-group"].fakeJoined = Number(stats.fakeJoined || 0);
+  }
+} catch {}
   // ✅ 用户是否手动选过配送模式：选过就不强制切回区域团
   const userSelected = localStorage.getItem(MODE_USER_SELECTED_KEY) === "1";
 
@@ -2590,7 +2600,21 @@ async function resolveZoneByZipFromDB(zip) {
     return { ok: false, deliverable: false, zip: z, reason: "server error" };
   }
 }
+async function fetchAreaGroupStats(zip) {
+  const z = String(zip || "").trim();
+  if (!/^\d{5}$/.test(z)) return null;
 
+  try {
+    const r = await fetch(`/api/public/zones/group-stats?zip=${encodeURIComponent(z)}&ts=${Date.now()}`, {
+      cache: "no-store",
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!j?.success || !j?.supported || !j?.stats) return null;
+    return j.stats; // {realJoined,fakeJoined,joinedOrders,needOrders,remain}
+  } catch {
+    return null;
+  }
+}
 function getEffectiveZip(requestedZip) {
   const zipInput = $("zipInput");
   if (zipInput && zipInput.dataset.lockedByDefaultAddress === "1") {
