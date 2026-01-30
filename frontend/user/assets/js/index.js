@@ -285,7 +285,7 @@ const secs = totalSec % 60;
 
 // 显示：X天 XX小时 XX分钟 XX秒
 el.textContent =
-  `${days}天 ` +
+  (days > 0 ? `${days}天 ` : "") +
   `${String(hours).padStart(2, "0")}小时 ` +
   `${String(mins).padStart(2, "0")}分钟 ` +
   `${String(secs).padStart(2, "0")}秒`;
