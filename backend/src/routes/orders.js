@@ -418,10 +418,14 @@ if (maybeId && mongoose.Types.ObjectId.isValid(maybeId)) {
   productId = new mongoose.Types.ObjectId(maybeId);
 } else if (maybeId) {
   // 2) 自定义 id：p_176... （你的 Product 里字段名就是 id）
- const q2 = Product.findOne({ id: maybeId }).select(
-  "name sku price cost taxable deposit bottleDeposit containerDeposit crv image images stock allowZeroStock variants specialQty specialTotalPrice specialN specialTotal dealQty dealTotalPrice dealPrice"
-);
-  preFetchedProduct = session ? await q2.session(session) : await q2;
+ const q2 = Product.findOne({ id: maybeId })
+  .select(
+    "name sku price cost taxable deposit bottleDeposit containerDeposit crv image images stock allowZeroStock variants " +
+      "specialEnabled specialPrice specialQty specialTotalPrice specialN specialTotal dealQty dealTotalPrice dealPrice"
+  )
+  .lean();
+
+preFetchedProduct = session ? await q2.session(session) : await q2;
   if (preFetchedProduct?._id) productId = preFetchedProduct._id;
 }
 // ✅✅✅ 就在这里插入（解析 productId 完成后）
@@ -464,17 +468,22 @@ let v = null;      // ✅ FIX 2：提前声明（关键）
       0
     );
    if (productId) {
-   pdoc = preFetchedProduct ||
-    (session
-      ? await Product.findById(productId)
-          .select(
-            "name sku price cost taxable deposit bottleDeposit containerDeposit crv image images stock allowZeroStock variants specialQty specialTotalPrice specialN specialTotal dealQty dealTotalPrice dealPrice"
-          )
-          .session(session)
-      : await Product.findById(productId).select(
-          "name sku price cost taxable deposit bottleDeposit containerDeposit crv image images stock allowZeroStock variants specialQty specialTotalPrice specialN specialTotal dealQty dealTotalPrice dealPrice"
-        ));
-
+   pdoc =
+  preFetchedProduct ||
+  (session
+    ? await Product.findById(productId)
+        .select(
+          "name sku price cost taxable deposit bottleDeposit containerDeposit crv image images stock allowZeroStock variants " +
+            "specialEnabled specialPrice specialQty specialTotalPrice specialN specialTotal dealQty dealTotalPrice dealPrice"
+        )
+        .session(session)
+        .lean()
+    : await Product.findById(productId)
+        .select(
+          "name sku price cost taxable deposit bottleDeposit containerDeposit crv image images stock allowZeroStock variants " +
+            "specialEnabled specialPrice specialQty specialTotalPrice specialN specialTotal dealQty dealTotalPrice dealPrice"
+        )
+        .lean());
   if (!pdoc) {
     const e = new Error(`商品不存在（productId=${productId}）`);
     e.status = 400;
@@ -524,6 +533,7 @@ specialQty = safeNumber(
 
 specialTotalPrice = safeNumber(
   pdoc.specialTotalPrice ??
+   pdoc.specialPrice ??  
     pdoc.specialTotal ??
     pdoc.dealTotalPrice ??
     pdoc.dealPrice ??
