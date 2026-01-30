@@ -447,14 +447,48 @@ const payloadForTotals = {
   platformRate: 0.02,
   platformFixed: 0.5,
 });
-console.log("🧾 totals check:", {
-  subtotal: totals.subtotal,
-  shipping: totals.shipping,
-  salesTax: totals.salesTax,
-  depositTotal: totals.depositTotal,
-  totalAmount: totals.totalAmount,
-});
+// ✅ totals check 必须走统一结算（支持 specialQty=1 / N for $X）
+const totalsCheck = computeTotalsFromPayload(
+  {
+    items: (order.items || []).map((it) => ({
+      ...it,
+      // 保险：统一字段名
+      price: Number(it.price || 0),
+      qty: Number(it.qty || 1),
+      specialQty: Number(it.specialQty || 0),
+      specialTotalPrice: Number(it.specialTotalPrice || 0),
+      unitCount: Number(it.unitCount || 1),
+      deposit: Number(it.deposit || 0),
+      taxable: !!(it.taxable || it.hasTax),
+      hasTax: !!(it.taxable || it.hasTax),
+    })),
+    shipping: {
+      // 这里用 payment 里保存的税率兜底，避免没 state 导致税率变 0
+      state: "NY",
+    },
+    mode: order.deliveryMode,
+    pricing: {
+      tip: Number(order.tipFee || 0),
+      taxRate: Number(order.salesTaxRate || 0),
+    },
+  },
+  { payChannel: "stripe", taxRateNY: NY_TAX_RATE, platformRate: 0.02, platformFixed: 0.5 }
+);
 
+console.log("🧾 totals check:", {
+  totalAmount: totalsCheck.totalAmount,
+  depositTotal: totalsCheck.depositTotal,
+  salesTax: totalsCheck.salesTax,
+  shipping: totalsCheck.shipping,
+  subtotal: totalsCheck.subtotal,
+  items: (order.items || []).map((it) => ({
+    name: it.name,
+    price: it.price,
+    specialQty: it.specialQty,
+    specialTotalPrice: it.specialTotalPrice,
+    line: calcSpecialLineTotal(it, it.qty),
+  })),
+});
     if (!totals.totalAmount || totals.totalAmount <= 0) {
       return res.status(400).json({ success: false, message: "金额异常" });
     }

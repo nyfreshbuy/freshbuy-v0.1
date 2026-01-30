@@ -15,7 +15,9 @@ import mongoose from "mongoose";
 import Order from "../models/order.js";
 import Recharge from "../models/Recharge.js";
 import Wallet from "../models/Wallet.js";
-import { computeTotalsFromPayload } from "../utils/checkout_pricing.js";
+
+// ✅ FIX: 补充 calcSpecialLineTotal 用于对账打印每行特价小计
+import { computeTotalsFromPayload, calcSpecialLineTotal } from "../utils/checkout_pricing.js";
 
 const router = express.Router();
 
@@ -208,17 +210,43 @@ router.post("/webhook", express.raw({ type: "application/json" }), async (req, r
           return res.json({ received: true });
         }
 
-        // ✅ 用“订单落库 items”重算（这里 items 应该已包含 specialQty/specialTotalPrice）
+        // ✅ 关键：order.address 没有 state 时，税率会变 0，所以这里必须用订单保存的 salesTaxRate 覆盖
         const ship = order?.address || order?.shipping || {};
+        const taxRateFromOrder = Number(order?.salesTaxRate || order?.payment?.amountTaxRate || 0);
+
+        // ✅ 用“订单落库 items”重算（items 应该已包含 specialQty/specialTotalPrice）
         const totalsStripe = computeTotalsFromPayload(
           {
             items: Array.isArray(order?.items) ? order.items : [],
             shipping: ship,
             mode: order?.deliveryMode,
-            pricing: { tip: Number(order?.tipFee || 0) },
+            pricing: {
+              tip: Number(order?.tipFee || 0),
+              taxRate: Number.isFinite(taxRateFromOrder) ? taxRateFromOrder : 0, // ✅ FIX
+            },
           },
           { payChannel: "stripe", taxRateNY: NY_TAX_RATE, platformRate: 0.02, platformFixed: 0.5 }
         );
+
+        // ✅ 对账日志：你在 Render 里搜 “🧾 totals check” 就能看到特价行小计
+        console.log("🧾 totals check:", {
+          orderId,
+          pi: pi?.id,
+          totalAmount: totalsStripe.totalAmount,
+          depositTotal: totalsStripe.depositTotal,
+          salesTax: totalsStripe.salesTax,
+          shipping: totalsStripe.shipping,
+          subtotal: totalsStripe.subtotal,
+          taxRate: totalsStripe.taxRate,
+          items: (order.items || []).map((it) => ({
+            name: it.name,
+            qty: it.qty,
+            price: it.price,
+            specialQty: it.specialQty,
+            specialTotalPrice: it.specialTotalPrice,
+            line: calcSpecialLineTotal(it, it.qty),
+          })),
+        });
 
         // ✅ 混合支付累计：walletPaid + stripePaid(累计)
         const walletPaid = Number(order?.payment?.wallet?.paid || 0);
@@ -273,6 +301,7 @@ router.post("/webhook", express.raw({ type: "application/json" }), async (req, r
           walletPaid,
           paidTotal,
           totalAmount: totalsStripe.totalAmount,
+          subtotal: totalsStripe.subtotal,
         });
 
         return res.json({ received: true });
