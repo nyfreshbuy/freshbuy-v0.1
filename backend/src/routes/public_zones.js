@@ -9,12 +9,7 @@ router.use(express.json());
 
 // 小工具：统一 zone 的 zip 字段兼容（✅ 只取“非空数组”，避免 zips:[] 覆盖 zipWhitelist）
 function pickZips(z) {
-  const candidates = [
-    z.zips,
-    z.zipWhitelist,
-    z.zipWhiteList,
-    z.zipList,
-  ];
+  const candidates = [z.zips, z.zipWhitelist, z.zipWhiteList, z.zipList];
 
   for (const arr of candidates) {
     if (Array.isArray(arr) && arr.length > 0) {
@@ -23,8 +18,21 @@ function pickZips(z) {
   }
   return [];
 }
+
+// ✅ 小工具：deliveryDays 归一化（只保留 0..6）
+function pickDeliveryDays(z) {
+  const arr = Array.isArray(z.deliveryDays) ? z.deliveryDays : [];
+  const days = arr
+    .map((d) => Number(d))
+    .filter((d) => Number.isFinite(d) && d >= 0 && d <= 6);
+  // 去重
+  return Array.from(new Set(days));
+}
+
 function normalizeZone(z) {
   const zips = pickZips(z);
+  const deliveryDays = pickDeliveryDays(z);
+
   return {
     _id: String(z._id),
     id: String(z._id),
@@ -35,6 +43,11 @@ function normalizeZone(z) {
     isActive: typeof z.isActive === "boolean" ? z.isActive : true,
     serviceMode: z.serviceMode || z.deliveryMode || "groupDay",
     updatedAt: z.updatedAt || null,
+
+    // ✅ 新增：把配送字段带给前台
+    deliveryDays,
+    cutoffTime: String(z.cutoffTime || "").trim(),
+    deliveryModes: Array.isArray(z.deliveryModes) ? z.deliveryModes.map(String) : [],
   };
 }
 
@@ -43,14 +56,11 @@ router.get("/ping", (req, res) => {
   res.json({ ok: true, name: "public_zones", time: new Date().toISOString() });
 });
 
-// ✅ 新增：GET /api/public/zones/by-zip?zip=11357
+// ✅ GET /api/public/zones/by-zip?zip=11357
 router.get("/by-zip", async (req, res) => {
   const zip = String(req.query.zip || "").trim();
   if (!zip) {
-    return res.status(400).json({
-      success: false,
-      message: "Missing zip",
-    });
+    return res.status(400).json({ success: false, message: "Missing zip" });
   }
 
   try {
@@ -58,7 +68,7 @@ router.get("/by-zip", async (req, res) => {
     const docs = await Zone.find({}).sort({ updatedAt: -1 }).lean();
     const zones = docs.map(normalizeZone);
 
-    // 你也可以加上：只匹配 isActive=true 的 zone
+    // 只匹配 isActive != false 的 zone
     const hit = zones.find((z) => z.isActive !== false && z.zips.includes(zip));
 
     if (!hit) {
@@ -70,6 +80,7 @@ router.get("/by-zip", async (req, res) => {
       });
     }
 
+    // ✅ 关键：把 deliveryDays/cutoffTime 也返回给前台
     return res.json({
       success: true,
       supported: true,
@@ -79,6 +90,11 @@ router.get("/by-zip", async (req, res) => {
         name: hit.name,
         note: hit.note,
         serviceMode: hit.serviceMode,
+
+        // ✅ 新增字段
+        deliveryDays: hit.deliveryDays || [],
+        cutoffTime: hit.cutoffTime || "",
+        deliveryModes: hit.deliveryModes || [],
       },
     });
   } catch (err) {
