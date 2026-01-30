@@ -193,7 +193,36 @@
   <label>截单时间（例如 23:59）</label>
   <input id="zoneCutoffTime" placeholder="23:59" autocomplete="off" />
 </div>
+<!-- ✅ 新增：区域团成团统计（真实+虚假展示） -->
+<div class="zone-row">
+  <label>已拼单虚假加成（fakeJoinedOrders）</label>
+  <input
+    id="zoneFakeJoinedOrders"
+    type="number"
+    min="0"
+    step="1"
+    placeholder="例如：20（会在前台已拼单数上加 20）"
+    autocomplete="off"
+  />
+  <div class="zone-hint" style="margin-top:8px;">
+    前台显示：已拼 = 真实订单数 + 虚假加成（fakeJoinedOrders）
+  </div>
+</div>
 
+<div class="zone-row">
+  <label>成团目标（needOrders）</label>
+  <input
+    id="zoneNeedOrders"
+    type="number"
+    min="1"
+    step="1"
+    placeholder="例如：50"
+    autocomplete="off"
+  />
+  <div class="zone-hint" style="margin-top:8px;">
+    前台显示：还差 = needOrders - 已拼
+  </div>
+</div>
             <div class="zone-btns">
               <button class="zone-btn primary" id="btnSave">保存 / 更新</button>
               <button class="zone-btn ghost" id="btnNew">新建模式</button>

@@ -30,7 +30,9 @@ function getAdminToken() {
   // ✅ 新增字段（HTML 里必须已存在）
   const elDeliveryDay = document.getElementById("zoneDeliveryDay");
   const elCutoffTime = document.getElementById("zoneCutoffTime");
-
+    // ✅ 新增：成团展示字段（HTML 里必须已存在）
+  const elFakeJoinedOrders = document.getElementById("zoneFakeJoinedOrders");
+  const elNeedOrders = document.getElementById("zoneNeedOrders");
   const elList = document.getElementById("zonesList");
   const btnSave = document.getElementById("btnSave");
   const btnNew = document.getElementById("btnNew");
@@ -172,6 +174,8 @@ function getAdminToken() {
     elZoneNote.value = "";
     if (elDeliveryDay) elDeliveryDay.value = "";
     if (elCutoffTime) elCutoffTime.value = "";
+    if (elFakeJoinedOrders) elFakeJoinedOrders.value = "";
+    if (elNeedOrders) elNeedOrders.value = "";
     btnSave.textContent = "保存 / 更新";
   }
 
@@ -185,7 +189,9 @@ function getAdminToken() {
     // ✅ 回填配送字段
     if (elDeliveryDay) elDeliveryDay.value = getFirstDeliveryDay(zone);
     if (elCutoffTime) elCutoffTime.value = zone?.cutoffTime || "";
-
+        // ✅ 回填成团展示字段
+    if (elFakeJoinedOrders) elFakeJoinedOrders.value = String(zone?.fakeJoinedOrders ?? "");
+    if (elNeedOrders) elNeedOrders.value = String(zone?.needOrders ?? "");
     btnSave.textContent = "保存 / 更新（编辑中）";
   }
 
@@ -200,11 +206,13 @@ function getAdminToken() {
       const zips = getZoneZipList(z);
       const day = getFirstDeliveryDay(z);
       const cutoff = z?.cutoffTime || "";
+      const fakeJoined = Number(z?.fakeJoinedOrders || 0);
+      const need = Number(z?.needOrders || 50);
 
       const info = [];
       if (day !== "") info.push(`周${"日一二三四五六"[Number(day)]}配送`);
       if (cutoff) info.push(`截单 ${cutoff}`);
-
+      info.push(`成团：目标 ${need} · 虚假加成 +${fakeJoined}`);
       const div = document.createElement("div");
       div.className = "zone-card";
 
@@ -266,6 +274,9 @@ function getAdminToken() {
       deliveryDays: deliveryDayRaw !== "" ? [Number(deliveryDayRaw)] : [],
       cutoffTime: cutoffTime,
       deliveryModes: ["groupDay"],
+            // ✅ 新增：成团展示字段
+      fakeJoinedOrders: Number(elFakeJoinedOrders?.value || 0) || 0,
+      needOrders: Number(elNeedOrders?.value || 50) || 50,
     };
 
     let r;
