@@ -186,29 +186,81 @@ function clearIntentKey() {
   // =========================
   // ✅ 关键修复：把 "productId::variantKey" 拆开（否则后端无法识别 ObjectId，库存不扣）
   // =========================
-  function normalizeCheckoutItems(items) {
-    return (items || []).map((it) => {
-      let raw = String(it.productId || it._id || it.id || "").trim();
-      let pid = raw;
-      let variantKey = String(it.variantKey || it.variant || "").trim();
+  // =========================
+// ✅ 关键修复：把 "productId::variantKey" 拆开（否则后端无法识别 ObjectId，库存不扣）
+// ✅ NEW：把后台“特价数量/特价总价”字段带进 item 顶层（让 1for / 2for 都能算）
+// =========================
+function normalizeCheckoutItems(items) {
+  return (items || []).map((it) => {
+    const p = it?.product || it; // 兼容 {product, qty} 或扁平结构
 
-      if (raw.includes("::")) {
-        const parts = raw.split("::");
-        pid = String(parts[0] || "").trim();
-        if (!variantKey) variantKey = String(parts[1] || "").trim();
-      }
+    let raw = String(it.productId || it._id || it.id || p._id || p.id || "").trim();
+    let pid = raw;
+    let variantKey = String(it.variantKey || it.variant || p.variantKey || p.variant || "").trim();
 
-      const qty = Math.max(1, Math.floor(Number(it.qty || 1)));
+    if (raw.includes("::")) {
+      const parts = raw.split("::");
+      pid = String(parts[0] || "").trim();
+      if (!variantKey) variantKey = String(parts[1] || "").trim();
+    }
 
-      return {
-        ...it,
-        productId: pid, // ✅ 纯 24位 ObjectId
-        variantKey: variantKey || "single",
-        qty,
-      };
-    });
-  }
+    const qty = Math.max(1, Math.floor(Number(it.qty || 1)));
 
+    // ✅ 原价（后端用 it.priceNum/it.price）
+    const priceNum = (it.priceNum ?? p.priceNum);
+    const price = (it.price ?? p.price);
+
+    // ✅ 后台同一表格的特价字段（支持 N=1 单件特价 + N>=2 多件特价）
+    const specialQty =
+      Number(
+        it.specialQty ??
+          p.specialQty ??
+          it.specialN ??
+          p.specialN ??
+          it.specialCount ??
+          p.specialCount ??
+          it.dealQty ??
+          p.dealQty ??
+          0
+      ) || 0;
+
+    const specialTotalPrice =
+      Number(
+        it.specialTotalPrice ??
+          p.specialTotalPrice ??
+          it.specialTotal ??
+          p.specialTotal ??
+          it.dealTotalPrice ??
+          p.dealTotalPrice ??
+          it.dealPrice ??
+          p.dealPrice ??
+          0
+      ) || 0;
+
+    // ✅ 其他后端可能用到的字段也一起扁平化（税/押金/箱规）
+    const taxable = it.taxable ?? p.taxable;
+    const hasTax = it.hasTax ?? p.hasTax;
+    const deposit = it.deposit ?? p.deposit ?? it.bottleDeposit ?? p.bottleDeposit ?? p.crv ?? it.crv;
+    const unitCount = it.unitCount ?? p.unitCount;
+
+    return {
+      ...it,
+      productId: pid,
+      variantKey: variantKey || "single",
+      qty,
+
+      // ✅ 让后端结算能读到
+      priceNum,
+      price,
+      specialQty,
+      specialTotalPrice,
+      taxable,
+      hasTax,
+      deposit,
+      unitCount,
+    };
+  });
+}
   // =========================
   // 配置
   // =========================
@@ -232,33 +284,41 @@ function clearIntentKey() {
     return Number.isFinite(v) ? v : 0;
   }
 
-  function calcSubtotalFromItems(items) {
-    let subtotal = 0;
-    for (const it of items || []) {
-      const qty = Math.max(0, Number(it.qty || 0));
-      // 兼容字段：finalPrice / price / unitPrice / salePrice / dealPrice...
-      const priceCandidates = [
-        it.finalPrice,
-        it.priceFinal,
-        it.unitPrice,
-        it.price,
-        it.salePrice,
-        it.dealPrice,
-        it.specialPrice,
-        it.payPrice,
-      ];
-      let p = 0;
-      for (const c of priceCandidates) {
-        const v = Number(c);
-        if (Number.isFinite(v) && v >= 0) {
-          p = v;
-          break;
-        }
-      }
-      subtotal += p * qty;
+ function calcSubtotalFromItems(items) {
+  let subtotal = 0;
+
+  for (const it of items || []) {
+    const qty = Math.max(0, Number(it.qty || 0));
+
+    const basePrice = Number(it.priceNum ?? it.price ?? 0) || 0;
+
+    const specialQty = Number(
+      it.specialQty ?? it.specialN ?? it.specialCount ?? it.dealQty ?? 0
+    ) || 0;
+
+    const specialTotalPrice = Number(
+      it.specialTotalPrice ?? it.specialTotal ?? it.dealTotalPrice ?? it.dealPrice ?? 0
+    ) || 0;
+
+    // ✅ 1 for X：单件特价立刻生效（单价=specialTotalPrice）
+    if (specialQty === 1 && specialTotalPrice > 0) {
+      subtotal += qty * specialTotalPrice;
+      continue;
     }
-    return toMoney(subtotal);
+
+    // ✅ N for X（N>=2）：买够才生效；remainder 原价
+    if (specialQty >= 2 && specialTotalPrice > 0 && qty >= specialQty) {
+      const groups = Math.floor(qty / specialQty);
+      const remainder = qty % specialQty;
+      subtotal += groups * specialTotalPrice + remainder * basePrice;
+      continue;
+    }
+
+    subtotal += qty * basePrice;
   }
+
+  return toMoney(subtotal);
+}
 
   function calcBottleDeposit(items) {
     let dep = 0;
