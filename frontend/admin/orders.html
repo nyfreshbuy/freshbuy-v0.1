@@ -207,6 +207,10 @@
               <button class="admin-btn admin-btn-primary" id="btnSearch">查询</button>
 
               <button class="admin-btn admin-btn-ghost" id="btnPrintOrderList">打印筛选订单</button>
+              <button class="admin-btn admin-btn-ghost" id="btnPrintOrderList">打印筛选订单</button>
+<!-- ✅ 新增：批量删除 -->
+<button class="admin-btn admin-btn-ghost admin-btn-danger" id="btnBatchDelete">批量删除</button>
+
             </div>
           </section>
 
@@ -785,7 +789,14 @@ async function loadZoneNameMap() {
   <button class="admin-btn admin-btn-ghost" data-action="detail" data-id="${o._id || o.id || oid}">详情</button>
   <button class="admin-btn admin-btn-ghost" data-action="print"  data-id="${o._id || o.id || oid}">打印</button>
   <button class="admin-btn admin-btn-ghost" data-action="done"   data-id="${o._id || o.id || ""}">标记完成</button>
-</td>
+  <!-- ✅ 新增：删除 -->
+  <button class="admin-btn admin-btn-ghost admin-btn-danger"
+          data-action="delete"
+          data-id="${o._id || o.id || oid}"
+          data-order-no="${oid}">
+    删除
+  </button>
+  </td>
 
             `;
             tbody.appendChild(tr);
@@ -821,11 +832,113 @@ function bindOrderTableActions() {
     if (action === "detail") return viewOrderDetail(id);
     if (action === "print") return printOrder(id);
     if (action === "done") return markOrderCompleted(id);
+    if (action === "delete") return deleteOrder(id, btn);
   });
 
   console.log("✅ bindOrderTableActions: bound on document");
 }
-      // ✅ 拉取订单列表
+    // ✅ 删除单个订单
+async function deleteOrder(orderId, btn) {
+  if (!orderId) return alert("缺少订单 ID");
+
+  const orderNo = btn?.dataset?.orderNo || orderId;
+  if (!confirm(`确定删除订单：${orderNo} ？\n⚠️ 删除不可恢复`)) return;
+
+  try {
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "删除中...";
+    }
+
+    const res = await adminFetch("/api/admin/orders/" + encodeURIComponent(orderId), {
+      method: "DELETE",
+    });
+    const data = await res.json();
+
+    if (!data.success) {
+      alert("删除失败：" + (data.message || "未知错误"));
+      return;
+    }
+
+    // ✅ UI 移除该行
+    const tr = btn?.closest("tr");
+    if (tr) tr.remove();
+
+    // ✅ 同步缓存（避免详情还找得到）
+    currentOrdersCache = currentOrdersCache.filter(
+      (o) => (o._id || o.id || o.orderNo) !== orderId
+    );
+
+    alert("✅ 删除成功");
+  } catch (e) {
+    console.error(e);
+    alert("请求失败，请检查 DELETE /api/admin/orders/:id");
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "删除";
+    }
+  }
+}
+
+// ✅ 批量删除（当前页勾选）
+async function batchDeleteSelectedOrders() {
+  const ids = Array.from(document.querySelectorAll(".order-check:checked"))
+    .map((el) => el.getAttribute("data-id"))
+    .filter(Boolean);
+
+  if (!ids.length) {
+    alert("请先勾选要删除的订单（当前页）");
+    return;
+  }
+
+  if (!confirm(`确定批量删除 ${ids.length} 个订单？\n⚠️ 删除不可恢复`)) return;
+
+  const btn = document.getElementById("btnBatchDelete");
+  try {
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "批量删除中...";
+    }
+
+    const res = await adminFetch("/api/admin/orders/batch-delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderIds: ids }),
+    });
+    const data = await res.json();
+
+    if (!data.success) {
+      alert("批量删除失败：" + (data.message || "未知错误"));
+      return;
+    }
+
+    // ✅ UI 移除已删行
+    ids.forEach((id) => {
+      const rowCb = document.querySelector(`.order-check[data-id="${id}"]`);
+      const tr = rowCb?.closest("tr");
+      if (tr) tr.remove();
+    });
+
+    // ✅ 同步缓存
+    const idSet = new Set(ids);
+    currentOrdersCache = currentOrdersCache.filter((o) => {
+      const key = (o._id || o.id || o.orderNo);
+      return !idSet.has(String(key));
+    });
+
+    alert(`✅ 批量删除成功（${data.deletedCount || ids.length} 条）`);
+  } catch (e) {
+    console.error(e);
+    alert("请求失败，请检查 POST /api/admin/orders/batch-delete");
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "批量删除";
+    }
+  }
+}
+// ✅ 拉取订单列表
       async function loadOrders(page = 1) {
         currentPage = page;
         const tbody = document.getElementById("ordersTableBody");
@@ -1332,6 +1445,8 @@ function bindOrderTableActions() {
         if (btnOptimizeRoute) btnOptimizeRoute.addEventListener("click", optimizeRouteForCurrentPage);
       const btnPackBatch = document.getElementById("btnPackBatch");
 if (btnPackBatch) btnPackBatch.addEventListener("click", packSelectedOrders);
+const btnBatchDelete = document.getElementById("btnBatchDelete");
+if (btnBatchDelete) btnBatchDelete.addEventListener("click", batchDeleteSelectedOrders);
       });
     </script>
    <!-- ✅ 统一 sidebar 注入脚本（必须加） -->

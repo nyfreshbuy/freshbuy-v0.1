@@ -120,6 +120,58 @@ router.get("/test-ping", async (req, res) => {
   });
 });
 // =============================
+// ✅ C) 删除订单（单个）
+// DELETE /api/admin/orders/:id
+// =============================
+router.delete("/:id", requireAdmin, async (req, res) => {
+  try {
+    const id = String(req.params.id || "").trim();
+    if (!isValidObjectId(id)) {
+      return res.status(400).json({ success: false, message: "订单ID不合法" });
+    }
+
+    const deleted = await Order.findByIdAndDelete(new mongoose.Types.ObjectId(id)).lean();
+    if (!deleted) {
+      return res.status(404).json({ success: false, message: "订单不存在" });
+    }
+
+    return res.json({ success: true, deletedId: id });
+  } catch (err) {
+    console.error("DELETE /api/admin/orders/:id 出错:", err);
+    return res.status(500).json({ success: false, message: err.message || "服务器错误" });
+  }
+});
+
+// =============================
+// ✅ D) 删除订单（批量）
+// POST /api/admin/orders/batch-delete
+// body: { orderIds: [] }
+// =============================
+router.post("/batch-delete", requireAdmin, async (req, res) => {
+  try {
+    const { orderIds } = req.body || {};
+    if (!Array.isArray(orderIds) || orderIds.length === 0) {
+      return res.status(400).json({ success: false, message: "orderIds 不能为空" });
+    }
+
+    const validIds = orderIds.map(String).filter(isValidObjectId);
+    if (!validIds.length) {
+      return res.status(400).json({ success: false, message: "orderIds 都不合法" });
+    }
+
+    const objIds = validIds.map((x) => new mongoose.Types.ObjectId(x));
+    const r = await Order.deleteMany({ _id: { $in: objIds } });
+
+    return res.json({
+      success: true,
+      deletedCount: r.deletedCount ?? 0,
+    });
+  } catch (err) {
+    console.error("POST /api/admin/orders/batch-delete 出错:", err);
+    return res.status(500).json({ success: false, message: err.message || "服务器错误" });
+  }
+});
+// =============================
 // ✅ A) 批量打包（生成批次 packBatchId，并把订单状态改为 packing）
 // POST /api/admin/orders/batch-pack
 // body: { orderIds: [] }

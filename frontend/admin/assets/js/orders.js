@@ -276,7 +276,7 @@ function renderOrders() {
   if (pageItems.length === 0) {
     const tr = document.createElement("tr");
     const td = document.createElement("td");
-    td.colSpan = 10;
+    td.colSpan = 9;
     td.textContent = "暂无订单";
     td.style.textAlign = "center";
     tr.appendChild(td);
@@ -305,20 +305,29 @@ function renderOrders() {
     const serviceModeText = getServiceModeText(order);
 
     tr.innerHTML = `
-      <td>${id}</td>
-      <td>${escapeHtml(userName)}<br /><span style="font-size:11px;color:#9ca3af;">${escapeHtml(phone)}</span></td>
-      <td>$${amount.toFixed(2)}</td>
-      <td>${escapeHtml(deliveryType || "-")}</td>
-      <td>${escapeHtml(serviceModeText)}</td>
-      <td>${renderStatusTag(status)}</td>
-      <td>${formatDateTime(createdAt)}</td>
-      <td>
-        <div class="admin-table-actions">
-          <button class="admin-btn admin-btn-ghost admin-btn-sm" onclick="printOrder('${id}')">打印小票</button>
-        </div>
-      </td>
-    `;
+  <td style="width:46px;">
+    <input type="checkbox" class="order-check" data-id="${escapeHtml(id)}" />
+  </td>
 
+  <td>${escapeHtml(id)}</td>
+
+  <td>${escapeHtml(userName)}<br /><span style="font-size:11px;color:#9ca3af;">${escapeHtml(phone)}</span></td>
+  <td>$${amount.toFixed(2)}</td>
+  <td>${escapeHtml(deliveryType || "-")}</td>
+  <td>${escapeHtml(serviceModeText)}</td>
+  <td>${renderStatusTag(status)}</td>
+  <td>${formatDateTime(createdAt)}</td>
+
+  <td>
+    <div class="admin-table-actions">
+      <button class="admin-btn admin-btn-ghost admin-btn-sm" onclick="printOrder('${id}')">打印小票</button>
+      <button class="admin-btn admin-btn-ghost admin-btn-sm" onclick="deleteOrder('${id}')"
+              style="border-color:rgba(239,68,68,.6);color:#ef4444;">
+        删除
+      </button>
+    </div>
+  </td>
+`;
     tbody.appendChild(tr);
   });
 }
@@ -405,7 +414,91 @@ function orderMapClear() {
     if (Object.prototype.hasOwnProperty.call(orderMap, k)) delete orderMap[k];
   }
 }
+// ======================== 删除相关 ========================
 
+// 单个删除
+async function deleteOrder(orderId) {
+  if (!orderId) return alert("缺少订单ID");
+
+  if (!confirm(`确定删除订单：${orderId}？\n⚠️ 删除不可恢复`)) return;
+
+  try {
+    const token = localStorage.getItem("adminToken");
+    const res = await fetch("/api/admin/orders/" + encodeURIComponent(orderId), {
+      method: "DELETE",
+      headers: token ? { Authorization: "Bearer " + token } : {},
+    });
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok || !data.success) {
+      alert("删除失败：" + (data.message || ("HTTP " + res.status)));
+      return;
+    }
+
+    // ✅ 前端移除：从 allOrders / filteredOrders 里删掉
+    allOrders = allOrders.filter((o) => (o._id || o.id || "") !== orderId);
+    filteredOrders = filteredOrders.filter((o) => (o._id || o.id || "") !== orderId);
+
+    // ✅ 如果当前页被删空，向前翻页
+    const totalPages = Math.max(1, Math.ceil(filteredOrders.length / PAGE_SIZE));
+    if (currentPage > totalPages) currentPage = totalPages;
+
+    renderOrders();
+    renderPagination();
+
+    alert("✅ 删除成功");
+  } catch (e) {
+    console.error(e);
+    alert("请求失败，请检查 DELETE /api/admin/orders/:id");
+  }
+}
+
+function getSelectedOrderIds() {
+  return Array.from(document.querySelectorAll(".order-check:checked"))
+    .map((el) => el.getAttribute("data-id"))
+    .filter(Boolean);
+}
+
+// 批量删除
+async function batchDeleteSelected() {
+  const ids = getSelectedOrderIds();
+  if (!ids.length) return alert("请先勾选要删除的订单");
+
+  if (!confirm(`确定批量删除 ${ids.length} 个订单？\n⚠️ 删除不可恢复`)) return;
+
+  try {
+    const token = localStorage.getItem("adminToken");
+    const res = await fetch("/api/admin/orders/batch-delete", {
+      method: "POST",
+      headers: Object.assign(
+        { "Content-Type": "application/json" },
+        token ? { Authorization: "Bearer " + token } : {}
+      ),
+      body: JSON.stringify({ orderIds: ids }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.success) {
+      alert("批量删除失败：" + (data.message || ("HTTP " + res.status)));
+      return;
+    }
+
+    const idSet = new Set(ids);
+    allOrders = allOrders.filter((o) => !idSet.has(String(o._id || o.id || "")));
+    filteredOrders = filteredOrders.filter((o) => !idSet.has(String(o._id || o.id || "")));
+
+    const totalPages = Math.max(1, Math.ceil(filteredOrders.length / PAGE_SIZE));
+    if (currentPage > totalPages) currentPage = totalPages;
+
+    renderOrders();
+    renderPagination();
+
+    alert(`✅ 批量删除成功（${data.deletedCount ?? ids.length} 条）`);
+  } catch (e) {
+    console.error(e);
+    alert("请求失败，请检查 POST /api/admin/orders/batch-delete");
+  }
+}
 // ======================== 打印相关 ========================
 function printOrder(orderId) {
   const order = orderMap[orderId];
@@ -643,4 +736,6 @@ window.addEventListener("DOMContentLoaded", () => {
 
   const btnPrintList = document.getElementById("btnPrintOrderList");
   if (btnPrintList) btnPrintList.addEventListener("click", printOrderList);
+  const btnBatchDelete = document.getElementById("btnBatchDelete");
+if (btnBatchDelete) btnBatchDelete.addEventListener("click", batchDeleteSelected);
 });
