@@ -113,10 +113,14 @@ async function hydrateItemsWithDeposit(items = []) {
       mongoIds.length ? { _id: { $in: mongoIds } } : null,
       customIds.length ? { id: { $in: customIds } } : null,
     ].filter(Boolean),
-  })
-    .select("id deposit bottleDeposit containerDeposit crv variants")
+    })
+    .select(
+      "id deposit bottleDeposit containerDeposit crv " +
+      "specialEnabled specialQty specialTotalPrice specialPrice " +
+      "dealQty dealTotalPrice dealPrice " +
+      "variants"
+    )
     .lean();
-
   // ✅ map 说一次就够了（同时支持 _id 和 id）
   const pmap = new Map();
   for (const p of pdocs) {
@@ -143,11 +147,41 @@ async function hydrateItemsWithDeposit(items = []) {
     );
     const unitCount = Math.max(1, Math.floor(Number(v?.unitCount || it?.unitCount || 1)));
 
+       // ✅ 特价：先用 product 根字段（最常见）
+    let specialQty = safeNum(p.specialQty ?? p.dealQty ?? 0, 0);
+    let specialTotalPrice = safeNum(
+      p.specialTotalPrice ?? p.specialPrice ?? p.dealTotalPrice ?? p.dealPrice ?? 0,
+      0
+    );
+
+    // ✅ 再用 variant 覆盖（如果 variant 上未来也配置特价）
+    const vSpecialQty = safeNum(v?.specialQty ?? v?.dealQty ?? 0, 0);
+    const vSpecialTotal = safeNum(
+      v?.specialTotalPrice ?? v?.specialPrice ?? v?.dealTotalPrice ?? v?.dealPrice ?? 0,
+      0
+    );
+    if (vSpecialQty >= 2 && vSpecialTotal > 0) {
+      specialQty = vSpecialQty;
+      specialTotalPrice = vSpecialTotal;
+    }
+
+    // ✅ 无效特价一律清零（防止 undefined/脏值）
+    specialQty = Math.max(0, Math.floor(Number(specialQty || 0)));
+    specialTotalPrice = round2(Math.max(0, Number(specialTotalPrice || 0)));
+    if (!(specialQty >= 2 && specialTotalPrice > 0)) {
+      specialQty = 0;
+      specialTotalPrice = 0;
+    }
+
     return {
       ...it,
       variantKey,
       unitCount,
       deposit: round2(depositEach),
+
+      // ✅✅✅ 关键：把特价字段也补回 items，后面 computeTotalsFromPayload 才能算对
+      specialQty,
+      specialTotalPrice,
     };
   });
 }
@@ -561,7 +595,7 @@ if (doc?.payment?.stripe?.intentId) {
 
         status: "pending",
 
-        items: cleanItems.map((it) => ({
+       items: cleanItems.map((it) => ({
   productId: mongoose.Types.ObjectId.isValid(String(it.productId || "")) ? it.productId : undefined,
   legacyProductId: String(it.legacyProductId || it.id || it._id || ""),
   name: it.name || "",
@@ -569,12 +603,19 @@ if (doc?.payment?.stripe?.intentId) {
   price: safeNum(it.price, 0),
   qty: Math.max(1, safeNum(it.qty, 1)),
 
-  // ✅ 押金/整箱倍数写进订单明细（关键）
+  // ✅ 押金/整箱倍数
   unitCount: Math.max(1, safeNum(it.unitCount, 1)),
   deposit: round2(safeNum(it.deposit, 0)),
 
+  // ✅✅✅ 特价字段落库（对账/重算都会用到）
+  specialQty: Math.max(0, Math.floor(safeNum(it.specialQty, 0))),
+  specialTotalPrice: round2(safeNum(it.specialTotalPrice, 0)),
+
   image: it.image || "",
-  lineTotal: round2(safeNum(it.price, 0) * Math.max(1, safeNum(it.qty, 1))),
+
+  // ✅ lineTotal 必须按特价口径
+  lineTotal: calcSpecialLineTotal(it, Math.max(1, safeNum(it.qty, 1))),
+
   cost: safeNum(it.cost, 0),
   hasTax: isTruthy(it.taxable) || isTruthy(it.hasTax),
 })),
