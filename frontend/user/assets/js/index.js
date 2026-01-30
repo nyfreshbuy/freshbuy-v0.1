@@ -47,7 +47,7 @@ async function loadCategories() {
 
 const SECTION_LIMITS = {
   desktop: {
-    default: 8, // 电脑端所有区块默认 8
+    default: 12, // 电脑端所有区块默认 8
   },
   mobile: {
     Hot: 6, // 新客体验专区
