@@ -361,7 +361,7 @@ document.addEventListener("click", (e) => {
   pill.classList.add("active");
 
   const mode = pill.dataset.mode;
-
+ 
   localStorage.setItem(MODE_USER_SELECTED_KEY, "1");
   renderDeliveryInfo(mode);
 
@@ -2661,6 +2661,11 @@ window.addEventListener("DOMContentLoaded", async () => {
     if (btn) btn.click();
   } else {
     renderDeliveryInfo("area-group");
+  }
+    // 🚫 暂时隐藏/禁用：好友拼单按钮
+  const fg = document.querySelector('.delivery-pill[data-mode="friend-group"]');
+  if (fg) {
+    fg.style.display = "none"; // 或者 fg.disabled = true; 取决于你用的元素类型
   }
 });
 
