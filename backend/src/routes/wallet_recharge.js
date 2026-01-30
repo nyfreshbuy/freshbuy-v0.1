@@ -9,7 +9,7 @@ const router = express.Router();
 router.use(express.json());
 
 console.log("✅ wallet_recharge.js loaded");
-
+const MIN_RECHARGE_AMOUNT = 200;
 // Stripe 初始化
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
   apiVersion: "2023-10-16",
@@ -74,13 +74,13 @@ router.post("/create", requireLogin, async (req, res) => {
       });
     }
 
-    const amount = Number(req.body?.amount || 0);
-    if (!Number.isFinite(amount) || amount < 10) {
-      return res.status(400).json({
-        success: false,
-        message: "充值金额不合法（最低 $10）",
-      });
-    }
+const amount = Number(req.body?.amount || 0);
+if (!Number.isFinite(amount) || amount < MIN_RECHARGE_AMOUNT) {
+  return res.status(400).json({
+    success: false,
+    message: `充值金额不合法（最低 $${MIN_RECHARGE_AMOUNT}）`,
+  });
+}
 
     const FRONTEND = getFrontendBaseUrl();
 
@@ -179,14 +179,13 @@ router.post("/zelle", requireLogin, async (req, res) => {
     const userId = toObjectIdMaybe(req.user?.id || req.user?._id);
     if (!userId) return res.status(401).json({ success: false, message: "未登录" });
 
-    const amount = Number(req.body?.amount || 0);
-    if (!Number.isFinite(amount) || amount < 10) {
-      return res.status(400).json({
-        success: false,
-        message: "充值金额不合法（最低 $10）",
-      });
-    }
-
+   const amount = Number(req.body?.amount || 0);
+if (!Number.isFinite(amount) || amount < MIN_RECHARGE_AMOUNT) {
+  return res.status(400).json({
+    success: false,
+    message: `充值金额不合法（最低 $${MIN_RECHARGE_AMOUNT}）`,
+  });
+}
     const ref = String(req.body?.ref || "").trim();
     const memo = String(req.body?.memo || "").trim();
 

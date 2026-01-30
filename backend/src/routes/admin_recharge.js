@@ -1,3 +1,4 @@
+// backend/src/routes/admin_recharge.js
 import express from "express";
 import mongoose from "mongoose";
 import Recharge from "../models/Recharge.js";
@@ -9,6 +10,14 @@ const router = express.Router();
 router.use(express.json());
 
 console.log("✅ admin_recharge.js loaded");
+
+// ✅ 配置：Zelle 赠送比例
+const ZELLE_BONUS_RATE = 0.05;
+
+// ✅ 小工具：两位小数
+function round2(n) {
+  return Math.round(Number(n || 0) * 100) / 100;
+}
 
 // 工具：ObjectId 兜底
 function toObjectIdMaybe(v) {
@@ -23,7 +32,7 @@ function normalizePhone(p) {
 
 // 工具：admin 权限校验（你当前项目就是靠 req.user.role）
 function ensureAdmin(req, res) {
-  if (req.user?.role !== "admin") {
+  if (req.user?.role !== "admin" && req.user?.role !== "super") {
     res.status(403).json({ success: false, message: "无权限（仅管理员可操作）" });
     return false;
   }
@@ -40,16 +49,22 @@ router.get("/ping", requireLogin, (req, res) => {
 // POST /api/admin/recharge
 // body: { userId | phone, amount, bonus, remark }
 // ✅ 写 Recharge 流水 + 更新 Wallet.balance/totalRecharge
+// ✅ 余额入账 = amount + bonus（bonus 为后台手动输入）
 // ==================================================
 router.post("/", requireLogin, async (req, res) => {
   try {
     if (!ensureAdmin(req, res)) return;
 
-    const { userId, phone, amount, bonus = "", remark = "后台充值" } = req.body;
+    const { userId, phone, amount, bonus = 0, remark = "后台充值" } = req.body;
 
     const rechargeAmount = Number(amount);
     if (!Number.isFinite(rechargeAmount) || rechargeAmount <= 0) {
       return res.status(400).json({ success: false, message: "amount must be > 0" });
+    }
+
+    const bonusAmount = round2(Number(bonus || 0));
+    if (!Number.isFinite(bonusAmount) || bonusAmount < 0) {
+      return res.status(400).json({ success: false, message: "bonus must be >= 0" });
     }
 
     // 1) 找用户（优先 userId，其次 phone）
@@ -76,17 +91,21 @@ router.post("/", requireLogin, async (req, res) => {
     // 2) 写充值记录（流水）
     const record = await Recharge.create({
       userId: user._id,
-      amount: rechargeAmount,
-      bonus: String(bonus),
+      phone: user.phone || "",
+      amount: round2(rechargeAmount),
+      bonus: round2(bonusAmount),
       payMethod: "admin",
       status: "done",
       remark,
+      operatorId: req.user?.id || req.user?._id || null,
     });
 
-    // 3) ✅ 更新 Wallet（真实余额来源）
+    // 3) ✅ 更新 Wallet：后台手动充值 = amount + bonus（bonus 由后台输入）
+    const credited = round2(rechargeAmount + bonusAmount);
+
     const wallet = await Wallet.findOneAndUpdate(
       { userId: user._id },
-      { $inc: { balance: rechargeAmount, totalRecharge: rechargeAmount } },
+      { $inc: { balance: credited, totalRecharge: rechargeAmount } },
       { new: true, upsert: true }
     ).lean();
 
@@ -95,7 +114,9 @@ router.post("/", requireLogin, async (req, res) => {
     console.log("💳 [admin_recharge/post] OK", {
       userId: String(user._id),
       phone: user.phone,
-      inc: rechargeAmount,
+      amount: rechargeAmount,
+      bonus: bonusAmount,
+      credited,
       walletBalance,
       recordId: String(record._id),
     });
@@ -258,7 +279,8 @@ router.get("/pending", requireLogin, async (req, res) => {
 // ==================================================
 // POST /api/admin/recharge/:id/approve
 // body: { note? }
-// ✅ pending -> done + Wallet.balance/totalRecharge 加钱（只加一次）
+// ✅ Zelle：pending -> done + Wallet.balance 入账（含赠送5%）
+// ✅ 幂等：只处理 zelle + pending
 // ==================================================
 router.post("/:id/approve", requireLogin, async (req, res) => {
   try {
@@ -269,9 +291,9 @@ router.post("/:id/approve", requireLogin, async (req, res) => {
       return res.status(400).json({ success: false, message: "非法 id" });
     }
 
-    // ✅ 幂等：只处理 zelle + pending
     const note = String(req.body?.note || "").trim();
 
+    // ✅ 幂等：只处理 zelle + pending
     const rec = await Recharge.findOneAndUpdate(
       { _id: id, payMethod: "zelle", status: "pending" },
       { $set: { status: "done" } },
@@ -295,17 +317,26 @@ router.post("/:id/approve", requireLogin, async (req, res) => {
     const append = note ? ` | admin=${note}` : " | admin=approved";
     await Recharge.updateOne({ _id: id }, { $set: { remark: String(rec.remark || "") + append } });
 
-    // ✅ 更新 Wallet（真实余额来源）
+    // ✅ Zelle 赠送 5%
+    const bonus = round2(amount * ZELLE_BONUS_RATE);
+    const credited = round2(amount + bonus);
+
+    // ✅ 写回充值记录 bonus（用于用户中心展示/对账）
+    await Recharge.updateOne({ _id: id }, { $set: { bonus } });
+
+    // ✅ 更新 Wallet：余额加 credited；totalRecharge 只加 amount
     const wallet = await Wallet.findOneAndUpdate(
       { userId: rec.userId },
-      { $inc: { balance: amount, totalRecharge: amount } },
+      { $inc: { balance: credited, totalRecharge: amount } },
       { new: true, upsert: true }
     ).lean();
 
     return res.json({
       success: true,
-      message: "已确认入账",
+      message: `已确认入账（含赠送 $${bonus}）`,
       walletBalance: Number(wallet?.balance || 0),
+      credited,
+      bonus,
     });
   } catch (err) {
     console.error("POST /api/admin/recharge/:id/approve error:", err);
@@ -353,13 +384,14 @@ router.post("/:id/reject", requireLogin, async (req, res) => {
     return res.status(500).json({ success: false, message: "拒绝失败" });
   }
 });
+
 // ==================================================
 // GET /api/admin/recharge/reconcile?phone=xxx 或 ?userId=xxx
 // ✅ 对账：返回 Wallet.balance + Wallet.totalRecharge + done充值合计 + 最近充值记录
 // ==================================================
 router.get("/reconcile", requireLogin, async (req, res) => {
   try {
-    if (req.user?.role !== "admin") {
+    if (req.user?.role !== "admin" && req.user?.role !== "super") {
       return res.status(403).json({ success: false, message: "无权限（仅管理员可查看）" });
     }
 
@@ -380,16 +412,18 @@ router.get("/reconcile", requireLogin, async (req, res) => {
       // 同手机号多 user：优先选“有 Wallet 的 userId”
       const users = await User.find({
         $or: [{ phone: p0 }, { phone: pn }, { phone: { $regex: pn } }],
-      }).select("_id phone name").lean();
+      })
+        .select("_id phone name")
+        .lean();
 
       if (!users.length) {
         return res.json({ success: true, found: false, message: "用户不存在" });
       }
 
-      const ids = users.map(u => u._id);
+      const ids = users.map((u) => u._id);
       const w = await Wallet.findOne({ userId: { $in: ids } }).select("userId").lean();
       uid = w?.userId || users[0]._id;
-      user = users.find(u => String(u._id) === String(uid)) || users[0];
+      user = users.find((u) => String(u._id) === String(uid)) || users[0];
     } else {
       return res.status(400).json({ success: false, message: "请提供 phone 或 userId" });
     }
@@ -406,10 +440,7 @@ router.get("/reconcile", requireLogin, async (req, res) => {
     const doneSum = doneRows.reduce((s, r) => s + Number(r.amount || 0), 0);
 
     // 4) 最近 50 条充值记录
-    const list = await Recharge.find({ userId: uid })
-      .sort({ createdAt: -1 })
-      .limit(50)
-      .lean();
+    const list = await Recharge.find({ userId: uid }).sort({ createdAt: -1 }).limit(50).lean();
 
     // 5) 差额（对账重点）
     const diff = Number((walletBalance - doneSum).toFixed(2));
@@ -428,4 +459,5 @@ router.get("/reconcile", requireLogin, async (req, res) => {
     return res.status(500).json({ success: false, message: "对账失败" });
   }
 });
+
 export default router;
