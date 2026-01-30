@@ -993,15 +993,23 @@ if (idemKey) {
     await session.withTransaction(async () => {
       // ✅ 先在事务里构建订单 + 预扣库存 + 写 stockReserve
       const { orderDoc } = await buildOrderPayload(req, session);
-     console.log("🧩 ORDER ITEMS BEFORE PRICING", (orderDoc.items || []).map(it => ({
-  name: it.name,
-  qty: it.qty,
-  price: it.price,
-  specialQty: it.specialQty,
-  specialTotalPrice: it.specialTotalPrice,
-  variantKey: it.variantKey,
-  unitCount: it.unitCount,
-})));
+
+console.log(
+  "🧩 ORDER ITEMS BEFORE PRICING JSON=\n" +
+    JSON.stringify(
+      (orderDoc.items || []).map((it) => ({
+        name: it.name,
+        qty: it.qty,
+        price: it.price,
+        specialQty: it.specialQty,
+        specialTotalPrice: it.specialTotalPrice,
+        variantKey: it.variantKey,
+        unitCount: it.unitCount,
+      })),
+      null,
+      2
+    )
+);
       // ✅ 先按“钱包口径”总额（平台费=0）
       const ship = req.body?.shipping || req.body?.receiver || {};
 const totalsWallet = computeTotalsFromPayload(
