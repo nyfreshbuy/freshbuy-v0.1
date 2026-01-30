@@ -65,11 +65,11 @@ function sendErr(res, err, where = "") {
   }
 
   return res.status(500).json({
-    ok: false,
-    success: false,
-    message: "server error",
-    detail: err?.message || String(err),
-  });
+  ok: false,
+  success: false,
+  message: err?.message || "server error",   // ✅ 这里改
+  detail: err?.stack || String(err),
+});
 }
 
 // --------------------------

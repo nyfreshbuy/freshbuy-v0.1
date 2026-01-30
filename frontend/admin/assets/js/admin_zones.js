@@ -218,9 +218,12 @@ function getAdminToken() {
 
         const r = await apiDeleteZone(id);
         if (!(r.success || r.ok)) {
-          const http = r?._http ? `HTTP ${r._http.status}` : "";
-          return toast(`删除失败 ${http}\n${r.message || r.error || "unknown"}`);
-        }
+  const http = r?._http ? `HTTP ${r._http.status} ${r._http.statusText || ""}`.trim() : "HTTP ?";
+  const msg = r?.message || r?.error || "unknown";
+  const detail = r?.detail ? `\n${r.detail}` : "";
+  const raw = r?._raw ? `\n\n返回片段：\n${r._raw}` : "";
+  return toast(`删除失败：${http}\n${msg}${detail}${raw}`);
+}
         await reload();
       };
 
@@ -279,9 +282,12 @@ function getAdminToken() {
     else r = await apiCreateZone(body);
 
     if (!(r.success || r.ok)) {
-      const http = r?._http ? `HTTP ${r._http.status}` : "";
-      return toast(`保存失败 ${http}\n${r.message || r.error || "unknown"}`);
-    }
+  const http = r?._http ? `HTTP ${r._http.status} ${r._http.statusText || ""}`.trim() : "HTTP ?";
+  const msg = r?.message || r?.error || "unknown";
+  const detail = r?.detail ? `\n${r.detail}` : "";
+  const raw = r?._raw ? `\n\n返回片段：\n${r._raw}` : "";
+  return toast(`保存失败：${http}\n${msg}${detail}${raw}`);
+}
 
     toast("保存成功");
     resetForm();
