@@ -3,7 +3,9 @@ import mongoose from "mongoose";
 
 const zoneSchema = new mongoose.Schema(
   {
+    // 是否启用
     enabled: { type: Boolean, default: true },
+
     // 名称
     name: { type: String, default: "" },
     zoneName: { type: String, default: "" }, // 兼容旧字段
@@ -12,45 +14,63 @@ const zoneSchema = new mongoose.Schema(
     note: { type: String, default: "" },
     zoneNote: { type: String, default: "" }, // 兼容旧字段
 
+    // =========================
     // ZIP 白名单（主字段）
-    zips: { type: [String], default: [] },
-
-    // 兼容旧字段（如果你之前用过）
+    // =========================
     zipWhitelist: { type: [String], default: [] },
+
+    // =========================
+    // 兼容旧字段（全部同步）
+    // =========================
+    zips: { type: [String], default: [] },
     zipWhiteList: { type: [String], default: [] },
     zipList: { type: [String], default: [] },
 
-    // 可选：polygon（如果你 admin_zones 画过）
-    polygon: { type: Array, default: null }, // [[{lat,lng},...], ...] 或任意结构
+    // =========================
+    // 可选：多边形（ZIP-only 模式下允许为 null）
+    // =========================
+    polygon: { type: Array, default: null },
     polygonPaths: { type: Array, default: null },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+  }
 );
 
-// 让 zip 去重 + 规范化（只保留 5 位）
-function normZip(v) {
+// =========================
+// 工具：ZIP 规范化（只保留 5 位）
+// =========================
+function normalizeZip(v) {
   const s = String(v || "").trim();
   const m = s.match(/^(\d{5})/);
   return m ? m[1] : "";
 }
 
-zoneSchema.pre("save", function (next) {
-  const merge = []
-    .concat(this.zips || [])
+// =========================
+// ✅ 关键修复点：
+// - 不使用 next()
+// - 不使用 async
+// - 使用 function() 保证 this 正确
+// =========================
+zoneSchema.pre("save", function () {
+  const merged = []
     .concat(this.zipWhitelist || [])
+    .concat(this.zips || [])
     .concat(this.zipWhiteList || [])
     .concat(this.zipList || []);
 
-  const cleaned = merge.map(normZip).filter(Boolean);
+  const cleaned = merged.map(normalizeZip).filter(Boolean);
   const uniq = Array.from(new Set(cleaned));
 
-  this.zips = uniq;
-  // 兼容字段也同步（可选）
+  // 统一写回（主字段 + 兼容字段）
   this.zipWhitelist = uniq;
+  this.zips = uniq;
   this.zipWhiteList = uniq;
   this.zipList = uniq;
 
-  next();
+  // 名称顺手 trim（安全）
+  if (this.name) this.name = String(this.name).trim();
+  if (this.zoneName) this.zoneName = String(this.zoneName).trim();
 });
 
 const Zone = mongoose.models.Zone || mongoose.model("Zone", zoneSchema);
