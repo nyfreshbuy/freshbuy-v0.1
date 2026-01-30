@@ -525,7 +525,7 @@
     </main>
 
     <!-- ✅ 必须先加载 cart.js：否则结算页不更新配送费/区域团 -->
-    <script src="/assets/js/cart.js"></script>
+    <script src="/assets/js/cart.js?v=20"></script>
     <!-- Stripe.js（必须） -->
     <script src="https://js.stripe.com/v3/"></script>
 
@@ -611,11 +611,12 @@ function splitPidVariant(raw) {
   }
   return { pid, variantKey };
 }
-     function calcSpecialLineTotal(p, qty) {
+function calcSpecialLineTotal(p, qty) {
   const q = Number(qty || 0);
   if (!p || q <= 0) return 0;
 
-  const price = safeNum(p.priceNum ?? p.price, 0);
+  // ✅ 关键：优先用 regularPrice（原价单价），避免 price=平均价(0.66)污染
+  const price = safeNum(p.regularPrice ?? p.originalPrice ?? p.priceNum ?? p.price, 0);
 
   const specialQty = safeNum(
     p.specialQty ?? p.specialN ?? p.specialCount ?? p.dealQty,
@@ -886,6 +887,11 @@ function getItemsFromCart() {
 
     return {
       ...p,
+      // ✅ 关键：结算页统一使用原价单价（避免 price=平均价）
+// 如果 cart.js 已存 regularPrice，就用它；否则用 priceNum/price
+regularPrice: safeNum(p.regularPrice ?? p.originalPrice ?? p.priceNum ?? p.price, 0),
+priceNum: safeNum(p.priceNum ?? p.price, 0),
+price: safeNum(p.price ?? p.priceNum, 0),
       qty: Number(it.qty || p.qty || 1),
 
       taxable: truthyFlag(taxFlag),

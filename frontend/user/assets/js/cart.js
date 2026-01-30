@@ -525,10 +525,6 @@ if (spTotal > 0 && spTotal !== safeNum(p.specialTotalPrice, 0)) {
   p.specialTotalPrice = spTotal;
   changed = true;
 }
-        if (spTotal > 0 && spTotal !== safeNum(p.specialTotalPrice, 0)) {
-          p.specialTotalPrice = spTotal;
-          changed = true;
-        }
 
         // tag/type/isSpecial 也补一下，方便爆品逻辑稳定
         if (apiP.tag != null && apiP.tag !== p.tag) {
