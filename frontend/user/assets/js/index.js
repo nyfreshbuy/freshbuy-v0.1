@@ -159,31 +159,64 @@ const deliveryInfoBody = document.getElementById("deliveryInfoBody");
 // ✅ 用户是否“手动选择过配送模式”
 const MODE_USER_SELECTED_KEY = "freshbuy_user_selected_mode";
 
-// ✅ 区域团时间文案：按 zone.name 区分
-const ZONE_SCHEDULE = {
-  "白石镇/大学点地区": {
-    eta: "本周六 18:00 - 22:00",
-    cutoff: { weekday: 5, hour: 23, minute: 59, second: 59 },
-    cutoffText: "周五 23:59:59",
-  },
-  "新鲜草原地区": {
-    eta: "本周五 18:00 - 22:00",
-    cutoff: { weekday: 4, hour: 23, minute: 59, second: 59 },
-    cutoffText: "周四 23:59:59",
-  },
-};
-
-function getZoneSchedule(zoneName) {
-  const key = String(zoneName || "").trim();
-  return (
-    ZONE_SCHEDULE[key] || {
-      eta: "本周五 18:00 - 22:00",
-      cutoff: { weekday: 5, hour: 23, minute: 59, second: 59 },
-      cutoffText: "配送前一天 23:59:59 前",
-    }
-  );
+// ✅ 区域团时间文案（新）：优先用后端 zone.deliveryDays 自动生成
+function weekdayCN(n) {
+  return ["周日", "周一", "周二", "周三", "周四", "周五", "周六"][n] || "";
 }
 
+// deliveryDay: 0-6（0周日...6周六）
+function buildAreaGroupScheduleFromDeliveryDay(deliveryDay) {
+  const d = Number(deliveryDay);
+  if (!Number.isFinite(d) || d < 0 || d > 6) return null;
+
+  const eta = `本周${weekdayCN(d)} 18:00 - 22:00`;
+
+  // 截单默认：配送前一天 23:59:59
+  const cutoffWeekday = (d + 6) % 7; // 前一天
+  const cutoff = { weekday: cutoffWeekday, hour: 23, minute: 59, second: 59 };
+  const cutoffText = `${weekdayCN(cutoffWeekday)} 23:59:59`;
+
+  return { eta, cutoff, cutoffText };
+}
+
+// ✅ 统一取 schedule：优先 zone.deliveryDays[0]，否则才走“按名称兜底”
+function getZoneScheduleByZone(zoneObjOrName) {
+  // 1) 传进来的是 zone 对象（推荐）
+  if (zoneObjOrName && typeof zoneObjOrName === "object") {
+    const d0 = Array.isArray(zoneObjOrName.deliveryDays)
+      ? Number(zoneObjOrName.deliveryDays[0])
+      : NaN;
+
+    const s = buildAreaGroupScheduleFromDeliveryDay(d0);
+    if (s) return s;
+  }
+
+  // 2) 兜底：老逻辑按名称（防止旧数据没 deliveryDays）
+  const zoneName = typeof zoneObjOrName === "string" ? zoneObjOrName : "";
+  const key = String(zoneName || "").trim();
+
+  if (key === "白石镇/大学点地区") {
+    return {
+      eta: "本周六 18:00 - 22:00",
+      cutoff: { weekday: 5, hour: 23, minute: 59, second: 59 },
+      cutoffText: "周五 23:59:59",
+    };
+  }
+  if (key === "新鲜草原地区") {
+    return {
+      eta: "本周五 18:00 - 22:00",
+      cutoff: { weekday: 4, hour: 23, minute: 59, second: 59 },
+      cutoffText: "周四 23:59:59",
+    };
+  }
+
+  // 3) 最终兜底
+  return {
+    eta: "本周五 18:00 - 22:00",
+    cutoff: { weekday: 4, hour: 23, minute: 59, second: 59 },
+    cutoffText: "配送前一天 23:59:59 前",
+  };
+}
 const deliveryStats = {
   "area-group": {
     areaName: "区域团",
@@ -289,8 +322,7 @@ function renderDeliveryInfo(mode) {
 
   const z = getSavedZoneBrief();
   const zoneName = z?.name || deliveryStats["area-group"].areaName || "区域团";
-  const schedule = getZoneSchedule(zoneName);
-
+  const schedule = getZoneScheduleByZone(z || zoneName);
   if (mode === "area-group") {
     const st = deliveryStats["area-group"];
     const remain = Math.max(0, st.needOrders - st.joinedOrders);
@@ -2481,8 +2513,14 @@ function applyZoneToUI(zip, payload) {
     return;
   }
 
-  const briefZone = { id: zone.id || zone._id || "", name: zone.name || "" };
-  saveZone(briefZone);
+ const briefZone = {
+  id: zone.id || zone._id || "",
+  name: zone.name || "",
+  deliveryDays: Array.isArray(zone.deliveryDays) ? zone.deliveryDays : [],
+  deliveryModes: Array.isArray(zone.deliveryModes) ? zone.deliveryModes : [],
+  cutoffTime: zone.cutoffTime || "",
+};
+saveZone(briefZone);
   localStorage.setItem("freshbuy_zone_ok", "1");
 
   // ✅ 用户是否手动选过配送模式：选过就不强制切回区域团
