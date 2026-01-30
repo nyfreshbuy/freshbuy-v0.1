@@ -5,7 +5,7 @@ import bcrypt from "bcryptjs";
 import User from "../models/user.js";
 import Address from "../models/Address.js"; // ✅ 读取用户默认地址
 import Order from "../models/order.js"; // ✅ 新增：用于统计订单数/累计消费（如文件名不同请改这里）
-
+import Wallet from "../models/Wallet.js"; // ✅ 新增：读取钱包余额（注意文件名大小写）
 console.log("✅ admin_users_mongo.js 已加载");
 
 const router = express.Router();
@@ -86,7 +86,24 @@ router.get("/", async (req, res) => {
       .lean();
 
     const users = docs.map(normalizeUser);
+        // ✅ 批量补齐：钱包余额（来自 Wallet 集合）
+    if (users.length) {
+      const ids = users.map((u) => new mongoose.Types.ObjectId(String(u._id)));
 
+      const walletDocs = await Wallet.find({ userId: { $in: ids } })
+        .select("userId balance")
+        .lean();
+
+      const walletMap = {};
+      for (const w of walletDocs) {
+        walletMap[String(w.userId)] = Number(w.balance || 0);
+      }
+
+      for (const u of users) {
+        // 把 Wallet.balance 写回到 users.walletBalance（normalizeUser 已经会用它）
+        u.walletBalance = walletMap[String(u._id)] ?? 0;
+      }
+    }
     // ✅ 批量统计：订单数 + 累计消费（来自 Order 集合）
     if (users.length) {
       const ids = users.map((u) => new mongoose.Types.ObjectId(String(u._id)));
