@@ -276,14 +276,19 @@ function updateAreaCountdown() {
   const now = new Date();
   let diff = Math.max(0, groupEndTime - now);
 
-  const h = String(Math.floor(diff / 3600000)).padStart(2, "0");
-  diff %= 3600000;
-  const m = String(Math.floor(diff / 60000)).padStart(2, "0");
-  diff %= 60000;
-  const s = String(Math.floor(diff / 1000)).padStart(2, "0");
+  const totalSec = Math.floor(diff / 1000);
 
-  el.textContent = `${h}:${m}:${s}`;
+const days = Math.floor(totalSec / 86400);
+const hours = Math.floor((totalSec % 86400) / 3600);
+const mins = Math.floor((totalSec % 3600) / 60);
+const secs = totalSec % 60;
 
+// 显示：X天 XX小时 XX分钟 XX秒
+el.textContent =
+  `${days}天 ` +
+  `${String(hours).padStart(2, "0")}小时 ` +
+  `${String(mins).padStart(2, "0")}分钟 ` +
+  `${String(secs).padStart(2, "0")}秒`;
   if (groupEndTime <= now && countdownTimer) {
     clearInterval(countdownTimer);
   }
