@@ -13,7 +13,7 @@ const router = express.Router();
 router.use(express.json());
 
 console.log("🚀 orders.js (MongoDB版, MODEL-ALIGNED + STOCK_RESERVE) 已加载");
-
+console.log("🧪 orders.js version = 2026-01-30-01");
 // =========================
 // ping
 // =========================
