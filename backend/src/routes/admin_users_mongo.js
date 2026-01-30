@@ -172,8 +172,8 @@ router.get("/", async (req, res) => {
 
       const addrDocs = await Address.find({ userId: { $in: ids }, isDefault: true })
         .select(
-          "userId street line1 line2 address1 address2 apt unit city state zip formattedAddress"
-        )
+  "userId street1 street line1 line2 address1 address2 apt unit city state zip formattedAddress"
+)
         .lean();
 
       const addrMap = {};
@@ -189,18 +189,17 @@ router.get("/", async (req, res) => {
         }
 
         const line =
-          a.formattedAddress ||
-          [
-            a.street || a.line1 || a.address1 || "",
-            a.line2 || a.address2 || a.apt || a.unit || "",
-            a.city || "",
-            a.state || "",
-            a.zip || "",
-          ]
-            .filter(Boolean)
-            .join(" ")
-            .trim();
-
+  a.formattedAddress ||
+  [
+    a.street1 || a.street || a.line1 || a.address1 || "",
+    a.line2 || a.address2 || a.apt || a.unit || "",
+    a.city || "",
+    a.state || "",
+    a.zip || "",
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
         u.addressText = line || "";
       }
     }
