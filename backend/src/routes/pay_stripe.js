@@ -200,20 +200,24 @@ async function hydrateItemsWithDeposit(items = []) {
 // zone 解析（可选，给派单/路线用）
 // =========================
 async function resolveZoneFromPayload(payload, shipping) {
-  const zoneId = String(payload?.zoneId || payload?.zoneKey || shipping?.zoneId || shipping?.address?.zoneId || "").trim();
-  if (zoneId) return { zoneKey: zoneId, zoneName: "" };
+  const zoneId = String(
+    payload?.zoneId || payload?.zoneKey || shipping?.zoneId || shipping?.address?.zoneId || ""
+  ).trim();
+  if (zoneId) return { zoneKey: zoneId, zoneName: "", zoneMongoId: "" };
 
   const zip = String(shipping?.zip || shipping?.postalCode || "").trim();
-  if (!zip) return { zoneKey: "", zoneName: "" };
+  if (!zip) return { zoneKey: "", zoneName: "", zoneMongoId: "" };
 
   const doc =
-    (await Zone.findOne({ zips: zip }).select("key name zoneId code").lean()) ||
-    (await Zone.findOne({ zipWhitelist: zip }).select("key name zoneId code").lean());
+    (await Zone.findOne({ zips: zip }).select("_id key name zoneId code").lean()) ||
+    (await Zone.findOne({ zipWhitelist: zip }).select("_id key name zoneId code").lean());
 
-  if (!doc) return { zoneKey: "", zoneName: "" };
-  const zoneKey = String(doc.key || doc.code || doc.zoneId || "").trim();
+  if (!doc) return { zoneKey: "", zoneName: "", zoneMongoId: "" };
+
+  const zoneMongoId = String(doc._id || "").trim(); // ✅ Mongo _id
+  const zoneKey = String(doc.key || doc.code || doc.zoneId || "").trim(); // 业务key
   const zoneName = String(doc.name || "").trim();
-  return { zoneKey, zoneName };
+  return { zoneKey, zoneName, zoneMongoId };
 }
 
 // =========================
@@ -470,8 +474,9 @@ router.post("/order-intent", requireLogin, express.json(), async (req, res) => {
     }
 
     // zone/fulfillment/dispatch
-    const { zoneKey, zoneName } = await resolveZoneFromPayload(payload, s);
-    const batchKey = zoneKey ? buildBatchKey(deliveryDate, zoneKey) : "";
+    const { zoneKey, zoneName, zoneMongoId } = await resolveZoneFromPayload(payload, s);
+const zMongo = String(zoneMongoId || "").trim();
+const batchKey = zoneKey ? buildBatchKey(deliveryDate, zoneKey) : "";
 
     const fulfillment = zoneKey
       ? { groupType: "zone_group", zoneId: zoneKey, batchKey, batchName: zoneName || "" }
@@ -532,7 +537,9 @@ router.post("/order-intent", requireLogin, express.json(), async (req, res) => {
         deliveryType,
         deliveryMode: mode,
         deliveryDate,
-
+        // ✅✅✅ 插入这里：给统计用（Mongo zoneId）
+zoneId: zMongo || "",
+zone: zMongo ? { id: zMongo, name: zoneName || "" } : null,
         fulfillment,
         dispatch,
 
@@ -541,7 +548,8 @@ router.post("/order-intent", requireLogin, express.json(), async (req, res) => {
         address: {
           fullText: s.fullText || "",
           zip: s.zip || "",
-          zoneId: zoneKey || "",
+          zoneId: zoneKey || "",          // 业务key（你派单/批次继续用）
+          zoneMongoId: zMongo || "",      // ✅ Mongo _id（统计用）
           lat: s.lat,
           lng: s.lng,
         },

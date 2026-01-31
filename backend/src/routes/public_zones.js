@@ -186,32 +186,26 @@ router.get("/group-stats", async (req, res) => {
 
     // 2) 统计真实订单数（尽量兼容你 Order 里 zone 字段各种写法）
     //    条件：区域团(groupDay) + 已支付/已付款（你也可以按你的状态体系再收紧）
-    const realJoined = await Order.countDocuments({
-      $and: [
-        {
-          $or: [
-            { "zone.id": zoneId },
-            { "zone._id": zoneId },
-            { zoneId: zoneId },
-            { zone: zoneId },
-          ],
-        },
-        {
-          $or: [
-            { mode: "groupDay" },
-            { deliveryMode: "groupDay" },
-            { serviceMode: "groupDay" },
-          ],
-        },
-        {
-          $or: [
-            { paid: true },
-            { isPaid: true },
-            { status: { $in: ["paid", "packing", "shipping", "delivered"] } },
-          ],
-        },
+    // ✅ 按 ZIP 统计真实已拼（因为订单里没有 zoneId）
+const realJoined = await Order.countDocuments({
+  $and: [
+    // 订单属于这个 ZIP（优先用结构化字段，其次用 addressText）
+    {
+      $or: [
+        { "address.zip": zip },
+        { "address.postalCode": zip },
+        { addressZip: zip },
+        { addressText: { $regex: zip } }, // 兜底
       ],
-    });
+    },
+
+    // 只算区域团
+    { deliveryMode: "groupDay" },
+
+    // 只算已支付/有效
+    { status: { $in: ["paid", "packing", "shipping", "delivered"] } },
+  ],
+});
 
     // 3) 虚假加成 & 目标单（从 Zone 取，如果没字段就默认）
     const fakeJoined = Math.max(0, Math.floor(Number(hit.fakeJoinedOrders || 0) || 0));

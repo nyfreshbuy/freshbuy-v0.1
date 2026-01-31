@@ -224,20 +224,24 @@ function resolveDeliveryDate(mode, deliveryDate) {
  */
 async function resolveZoneFromPayload({ zoneId, ship, zip }) {
   const z0 = String(zoneId || ship?.zoneId || ship?.address?.zoneId || ship?.zone || "").trim();
-  if (z0) return { zoneKey: z0, zoneName: "" };
+  if (z0) {
+    // 这里 z0 可能是业务key，也可能是 mongoId；先原样返回
+    return { zoneKey: z0, zoneName: "", zoneMongoId: "" };
+  }
 
   const z = String(zip || "").trim();
-  if (!z) return { zoneKey: "", zoneName: "" };
+  if (!z) return { zoneKey: "", zoneName: "", zoneMongoId: "" };
 
   const doc =
-    (await Zone.findOne({ zips: z }).select("key name zoneId code").lean()) ||
-    (await Zone.findOne({ zipWhitelist: z }).select("key name zoneId code").lean());
+    (await Zone.findOne({ zips: z }).select("_id key name zoneId code").lean()) ||
+    (await Zone.findOne({ zipWhitelist: z }).select("_id key name zoneId code").lean());
 
-  if (!doc) return { zoneKey: "", zoneName: "" };
+  if (!doc) return { zoneKey: "", zoneName: "", zoneMongoId: "" };
 
-  const zoneKey = String(doc.key || doc.code || doc.zoneId || "").trim();
+  const zoneMongoId = String(doc._id || "").trim();               // ✅ Mongo ObjectId 字符串
+  const zoneKey = String(doc.key || doc.code || doc.zoneId || "").trim(); // 业务key（你派单/批次可能在用）
   const zoneName = String(doc.name || "").trim();
-  return { zoneKey, zoneName };
+  return { zoneKey, zoneName, zoneMongoId };
 }
 
 // ✅ 如果订单当初没走 checkout 预扣库存（stockReserve 为空），在支付确认时补扣
@@ -743,8 +747,9 @@ const discount = round2(
 const platformFee = 0;
   // zone
   const zip = String(ship.zip || ship.postalCode || "").trim();
-  const { zoneKey, zoneName } = await resolveZoneFromPayload({ zoneId, ship, zip });
-  const z = String(zoneKey || "").trim();
+const { zoneKey, zoneName, zoneMongoId } = await resolveZoneFromPayload({ zoneId, ship, zip });
+const z = String(zoneKey || "").trim();                // 业务key（你现有 dispatch/fulfillment 用它）
+const zMongo = String(zoneMongoId || "").trim();       // ✅ Mongo _id（用于统计）
 
   // deliveryDate + batch
   const finalDeliveryDate = resolveDeliveryDate(mode, deliveryDate);
@@ -782,7 +787,9 @@ const platformFee = 0;
     deliveryType: "home",
     deliveryMode: mode,
     deliveryDate: finalDeliveryDate,
-
+    // ✅✅✅ 插入这里（新增）
+zoneId: zMongo || "", // Mongo zoneId（用于拼团统计）
+zone: zMongo ? { id: zMongo, name: zoneName || "" } : null,
     fulfillment,
     dispatch: z ? { zoneId: z, batchKey, batchName: zoneName || "" } : { zoneId: "", batchKey: "", batchName: "" },
 
@@ -803,7 +810,7 @@ const platformFee = 0;
 
     addressText: String(addressText).trim(),
     note: orderNote,
-    address: { fullText, zip, zoneId: z, lat, lng },
+    address: { fullText, zip, zoneId: z, zoneMongoId: zMongo || "", lat, lng },
 
     items: cleanItems,
 
