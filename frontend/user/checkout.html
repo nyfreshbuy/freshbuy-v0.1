@@ -1778,7 +1778,10 @@ try {
         const extra = calcFinalAmount(snapshot);
         const { deliveryType, deliveryDate } = computeDeliveryMeta(snapshot.mode);
         const zoneKey = snapshot.zone?.zoneKey || snapshot.zone?.key || snapshot.zone?.id || "";
-
+        // ✅ [FIX] placeOrder() 内部必须定义 placeId/lat/lng（否则 placeId is not defined）
+const placeId = document.getElementById("addrPlaceId").value.trim();
+const lat = Number(document.getElementById("addrLat").value);
+const lng = Number(document.getElementById("addrLng").value);
         const payload = {
           checkoutKey: buildIntentKey(snapshot, extra), // ✅ 钱包也用同一套 key 做幂等
           payMethod: getPayMethod(),
