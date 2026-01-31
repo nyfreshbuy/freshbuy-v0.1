@@ -291,6 +291,64 @@
         position: relative;
         z-index: 10000;
       }
+            /* ✅ 强制下拉弹窗 + 输入框闪烁 */
+      .fb-flash {
+        outline: 3px solid rgba(34, 197, 94, 0.65);
+        box-shadow: 0 0 0 6px rgba(34, 197, 94, 0.15);
+        transition: all 0.2s;
+      }
+
+      .fb-modal {
+        display: none;
+        position: fixed;
+        inset: 0;
+        z-index: 9999999;
+      }
+      .fb-modal.open {
+        display: block;
+      }
+      .fb-modal-mask {
+        position: absolute;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.45);
+      }
+      .fb-modal-card {
+        position: absolute;
+        left: 50%;
+        top: 22%;
+        transform: translateX(-50%);
+        width: min(520px, calc(100% - 32px));
+        background: #fff;
+        border-radius: 16px;
+        padding: 18px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+      }
+      .fb-modal-title {
+        font-size: 18px;
+        font-weight: 700;
+        margin-bottom: 10px;
+      }
+      .fb-modal-text {
+        font-size: 14px;
+        color: #333;
+        line-height: 1.55;
+      }
+      .fb-modal-actions {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 14px;
+      }
+      .fb-btn {
+        border: 0;
+        border-radius: 12px;
+        padding: 10px 14px;
+        cursor: pointer;
+      }
+      .fb-btn-primary {
+        background: #22c55e;
+        color: #fff;
+        font-weight: 700;
+      }
     </style>
   </head>
 
@@ -367,7 +425,7 @@
               <div class="muted" style="margin: 4px 0">街道地址 (Street Address)</div>
               <input id="street" class="input" placeholder="例如：199-26 48th Ave" />
               <div class="muted" style="margin-top: 6px; display: flex; justify-content: space-between; gap: 10px">
-                <span>提示：请从下拉中选中地址（验证必需）。</span>
+                <span>提示：输入后请点选下拉建议里的地址，否则无法下单。</span>
                 <button class="mini" id="btnClearAddr" type="button">清空地址</button>
               </div>
             </div>
@@ -523,7 +581,21 @@
         </aside>
       </div>
     </main>
-
+    <!-- ✅ 强制：未从下拉选择地址的弹窗 -->
+<div id="addrHintModal" class="fb-modal">
+  <div class="fb-modal-mask"></div>
+  <div class="fb-modal-card" role="dialog" aria-modal="true">
+    <div class="fb-modal-title">请从下拉建议中选择地址</div>
+    <div class="fb-modal-text">
+      你已输入街道地址，但还没有从下拉建议里点选一个完整地址。
+      <br /><br />
+      请回到“街道地址”输入框，看到下拉建议后点选其中一条（门牌号 + 街道）。
+    </div>
+    <div class="fb-modal-actions">
+      <button id="addrHintBack" class="fb-btn fb-btn-primary" type="button">返回去选下拉</button>
+    </div>
+  </div>
+</div>
     <!-- ✅ 必须先加载 cart.js：否则结算页不更新配送费/区域团 -->
     <script src="/assets/js/cart.js?v=20"></script>
     <!-- Stripe.js（必须） -->
@@ -576,7 +648,41 @@
         const el = document.getElementById("topAlert");
         el.style.display = "none";
       }
+            // ✅ 强制：地址必须从下拉选中（弹窗 + 聚焦 + 高亮）
+      function flashEl(el) {
+        if (!el) return;
+        el.classList.add("fb-flash");
+        setTimeout(() => el.classList.remove("fb-flash"), 1200);
+      }
 
+      function openAddrHintModal() {
+        const modal = document.getElementById("addrHintModal");
+        const btnBack = document.getElementById("addrHintBack");
+        if (!modal || !btnBack) {
+          alert("请从下拉建议中选择地址后再下单。");
+          return;
+        }
+        modal.classList.add("open");
+        btnBack.onclick = () => modal.classList.remove("open");
+      }
+
+      function enforceDropdownPickOrStop() {
+        const placeId = document.getElementById("addrPlaceId").value.trim();
+        const lat = Number(document.getElementById("addrLat").value);
+        const lng = Number(document.getElementById("addrLng").value);
+
+        const ok = !!placeId && Number.isFinite(lat) && Number.isFinite(lng);
+        if (ok) return true;
+
+        const streetInput = document.getElementById("street");
+        if (streetInput) {
+          streetInput.scrollIntoView({ behavior: "smooth", block: "center" });
+          streetInput.focus();
+          flashEl(streetInput);
+        }
+        openAddrHintModal();
+        return false; // ✅ 强制阻止
+      }
       const LS_DEFAULT_ADDR_KEY = "defaultAddress_v2";
       const PREF_MODE_KEY = "freshbuy_pref_mode";
       const ZONE_LS_KEY = "freshbuy_zone";
@@ -1302,13 +1408,7 @@ ${
           showAlert("请完整填写：Street / City / State / ZIP。", false);
           return false;
         }
-        const lat = Number(document.getElementById("addrLat").value);
-        const lng = Number(document.getElementById("addrLng").value);
-        const placeId = document.getElementById("addrPlaceId").value.trim();
-        if (!placeId || !Number.isFinite(lat) || !Number.isFinite(lng)) {
-          showAlert("请在 Street Address 输入后，从下拉建议中选择一个地址（用于验证）。", false);
-          return false;
-        }
+        if (!enforceDropdownPickOrStop()) return false;
         const ok = await checkZipSupported(f.zip);
         if (!ok) {
           showAlert("该 ZIP 暂不支持配送。", false);
@@ -1658,14 +1758,7 @@ lastStripePaymentIntentId = String(data.paymentIntentId || data.payment_intent |
         if (!f.firstName || !f.lastName || !f.phone) return showAlert("请填写 First Name / Last Name / Phone。", false);
         if (!f.street1 || !f.city || !f.state || !f.zip) return showAlert("请完整填写 Street / City / State / ZIP。", false);
 
-       const lat = Number(document.getElementById("addrLat").value);
-const lng = Number(document.getElementById("addrLng").value);
-const placeId = document.getElementById("addrPlaceId").value.trim();
-
-if (!placeId || !Number.isFinite(lat) || !Number.isFinite(lng)) {
-  return showAlert("请在 Street Address 输入后，从下拉建议中选择一个地址（需要 placeId + 坐标）。", false);
-}
-
+       if (!enforceDropdownPickOrStop()) return;
 // ✅ 真正下单/支付前再做 ZIP 支持校验（只在这里做，别在切换支付方式时做）
 try {
   const okZip = await checkZipSupported((document.getElementById("zip").value || "").trim());

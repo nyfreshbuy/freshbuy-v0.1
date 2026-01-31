@@ -82,6 +82,40 @@ function clearIntentKey() {
   // =========================
   // UI 读取
   // =========================
+    // =========================
+  // ✅ 强制：必须从下拉选中地址（placeId + lat/lng）
+  // =========================
+  function flashStreet() {
+    const street = document.getElementById("street") || document.getElementById("street1");
+    if (!street) return;
+    street.classList.add("fb-flash");
+    street.scrollIntoView({ behavior: "smooth", block: "center" });
+    street.focus();
+    setTimeout(() => street.classList.remove("fb-flash"), 1200);
+  }
+
+  function openAddrHintModal() {
+    const modal = document.getElementById("addrHintModal");
+    const btnBack = document.getElementById("addrHintBack");
+    if (!modal || !btnBack) {
+      alert("请在 Street Address 输入后，从下拉建议中选择一个地址（验证必需）。");
+      return;
+    }
+    modal.classList.add("open");
+    btnBack.onclick = () => modal.classList.remove("open");
+  }
+
+  function enforceDropdownPickOrStop(shipping) {
+    const placeId = String(shipping?.placeId || "").trim();
+    const latOk = Number.isFinite(Number(shipping?.lat));
+    const lngOk = Number.isFinite(Number(shipping?.lng));
+
+    if (placeId && latOk && lngOk) return true;
+
+    flashStreet();
+    openAddrHintModal();
+    return false; // ✅ 强制阻止
+  }
   function readPayMethod() {
     const el =
       document.querySelector('input[name="payMethod"]:checked') ||
@@ -112,14 +146,23 @@ function clearIntentKey() {
     const state = (document.getElementById("state")?.value || "NY").trim();
     const zip = (document.getElementById("zip")?.value || "").trim();
 
-    const lat = Number(document.getElementById("lat")?.value);
-    const lng = Number(document.getElementById("lng")?.value);
+        const lat = Number(
+      document.getElementById("addrLat")?.value ?? document.getElementById("lat")?.value
+    );
+    const lng = Number(
+      document.getElementById("addrLng")?.value ?? document.getElementById("lng")?.value
+    );
 
+    const placeId = (
+      document.getElementById("addrPlaceId")?.value ||
+      document.getElementById("placeId")?.value ||
+      ""
+    ).trim();
     const fullText =
       (document.getElementById("addressText")?.value || "").trim() ||
       [street1, apt, city, state, zip].filter(Boolean).join(", ");
 
-    return {
+       return {
       firstName,
       lastName,
       phone,
@@ -129,6 +172,7 @@ function clearIntentKey() {
       state,
       zip,
       fullText,
+      placeId, // ✅ NEW：强制用它判断是否选了下拉
       lat: Number.isFinite(lat) ? lat : undefined,
       lng: Number.isFinite(lng) ? lng : undefined,
       note: (document.getElementById("orderNote")?.value || "").trim(),
@@ -499,6 +543,7 @@ function normalizeCheckoutItems(items) {
   // ✅ 提交订单（钱包优先，剩余走 Stripe）
   // =========================
   async function submitCheckout() {
+  
     const token = getToken();
     if (!token) {
       alert("请先登录再下单");
@@ -512,6 +557,8 @@ function normalizeCheckoutItems(items) {
     }
 
     const shipping = buildShippingPayload();
+      // ✅ 强制：必须从下拉选中地址，否则阻止下单
+    if (!enforceDropdownPickOrStop(shipping)) return;
     const tipAmount = readTip();
     const payMethodRaw = readPayMethod(); // wallet / stripe
 
