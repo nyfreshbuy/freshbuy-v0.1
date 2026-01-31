@@ -334,22 +334,6 @@
       .page-main {
         min-width: 0;
       }
-
-      /* 顶部横幅 */
-      .banner-carousel {
-        position: relative;
-        overflow: hidden;
-        border-radius: var(--radius-lg);
-        box-shadow: var(--shadow-sm);
-        margin-bottom: 18px;
-        background: #22c55e;
-        min-height: 220px;
-        color: #f9fafb;
-        padding: 22px 22px 16px;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-      }
       /* =========================
    ✅ 多横幅轮播（图片可点击）
    ========================= */
@@ -1901,6 +1885,7 @@
 
         window.addEventListener("resize", rafSet, { passive: true });
         window.addEventListener("orientationchange", rafSet, { passive: true });
+        window.addEventListener("scroll", rafSet, { passive: true });
 
         var userArea = document.querySelector(".user-area");
         if (userArea && window.MutationObserver) {

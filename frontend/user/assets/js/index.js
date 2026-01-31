@@ -2714,8 +2714,12 @@ async function loadHomepageBanner() {
     const r = await fetch(API_BASE + "/api/banners/homepage_main");
     const j = await r.json();
 
-    // 没配置/禁用 => 不覆盖（保留默认写死的）
-    if (!j || j.success !== true || !j.banner) return;
+    // ✅ 没配置/接口失败/禁用 => 直接隐藏 banner（避免显示前台写死内容）
+if (!j || j.success !== true || !j.banner) {
+  const box = document.getElementById("homepageBanner");
+  if (box) box.style.display = "none";
+  return;
+}
 
     const b = j.banner;
 
