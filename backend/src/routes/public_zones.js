@@ -64,6 +64,10 @@ router.get("/ping", (req, res) => {
 // ✅ GET /api/public/zones/by-zip?zip=11357
 // 返回 zone 基本信息 + deliveryDays/cutoffTime/deliveryModes
 // =======================================================
+// =======================================================
+// ✅ GET /api/public/zones/by-zip?zip=11357
+// 返回：zone 基本信息 + 配送字段 + 拼团统计（真实+虚假）
+// =======================================================
 router.get("/by-zip", async (req, res) => {
   const zip = String(req.query.zip || "").trim();
   if (!zip) return res.status(400).json({ success: false, message: "Missing zip" });
@@ -79,6 +83,43 @@ router.get("/by-zip", async (req, res) => {
       return res.json({ success: true, supported: false, zip, zone: null });
     }
 
+    const zoneId = String(hit.id);
+
+    // ✅ 统计真实订单数（区域团 + 已支付/有效订单）
+    const realJoined = await Order.countDocuments({
+      $and: [
+        {
+          $or: [
+            { "zone.id": zoneId },
+            { "zone._id": zoneId },
+            { zoneId: zoneId },
+            { zone: zoneId },
+          ],
+        },
+        {
+          $or: [
+            { mode: "groupDay" },
+            { deliveryMode: "groupDay" },
+            { serviceMode: "groupDay" },
+          ],
+        },
+        {
+          $or: [
+            { paid: true },
+            { isPaid: true },
+            { status: { $in: ["paid", "packing", "shipping", "delivered"] } },
+          ],
+        },
+      ],
+    });
+
+    // ✅ 虚假加成 & 目标单
+    const fakeJoined = Math.max(0, Math.floor(Number(hit.fakeJoinedOrders || 0) || 0));
+    const needOrders = Math.max(1, Math.floor(Number(hit.needOrders || 50) || 50));
+
+    const joinedTotal = realJoined + fakeJoined;
+    const remainOrders = Math.max(0, needOrders - joinedTotal);
+
     return res.json({
       success: true,
       supported: true,
@@ -89,10 +130,17 @@ router.get("/by-zip", async (req, res) => {
         note: hit.note,
         serviceMode: hit.serviceMode,
 
-        // ✅ 新增字段
+        // 配送字段
         deliveryDays: hit.deliveryDays || [],
         cutoffTime: hit.cutoffTime || "",
         deliveryModes: hit.deliveryModes || [],
+
+        // ✅ 拼团字段（首页直接展示用这些）
+        realJoinedOrders: realJoined,
+        fakeJoinedOrders: fakeJoined,
+        needOrders,
+        joinedTotal,
+        remainOrders,
       },
     });
   } catch (err) {
@@ -104,7 +152,6 @@ router.get("/by-zip", async (req, res) => {
     });
   }
 });
-
 // =======================================================
 // ✅ 新增：GET /api/public/zones/group-stats?zip=11365
 // 返回：真实订单数 + 虚假加成 + 目标单数 + 还差多少
