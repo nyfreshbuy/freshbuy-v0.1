@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>后台 - 横幅广告编辑</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="assets/css/admin.css" />
+  <style>
+    .wrap{max-width:980px;margin:18px auto;padding:0 14px;}
+    .card{background:rgba(15,23,42,.55);border:1px solid rgba(148,163,184,.16);border-radius:16px;padding:14px;}
+    .row{display:flex;gap:12px;flex-wrap:wrap}
+    .field{flex:1;min-width:260px}
+    label{display:block;color:#cbd5e1;font-size:13px;margin:10px 0 6px}
+    input,textarea,select{width:100%;padding:10px 12px;border-radius:12px;border:1px solid rgba(148,163,184,.18);background:rgba(2,6,23,.35);color:#e5e7eb;outline:none}
+    textarea{min-height:90px;resize:vertical}
+    .btn{cursor:pointer;border:0;border-radius:12px;padding:10px 14px;background:#22c55e;color:#052e16;font-weight:700}
+    .btn2{cursor:pointer;border:1px solid rgba(148,163,184,.22);border-radius:12px;padding:10px 14px;background:transparent;color:#e5e7eb}
+    .actions{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}
+    .hint{color:#94a3b8;font-size:12px}
+    .preview{
+      border-radius:18px;margin-top:14px;overflow:hidden;border:1px solid rgba(148,163,184,.16)
+    }
+    .banner{
+      padding:26px 26px; min-height:150px; position:relative;
+      color:#fff;
+      background:#22c55e;
+    }
+    .banner .t{font-size:30px;font-weight:900;letter-spacing:.5px}
+    .banner .s{margin-top:10px;max-width:760px;color:rgba(255,255,255,.92);line-height:1.55}
+    .chips{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+    .chip{
+      display:inline-flex;align-items:center;gap:6px;
+      padding:8px 12px;border-radius:999px;
+      background:rgba(0,0,0,.18);border:1px solid rgba(255,255,255,.2);
+      color:#fff;text-decoration:none;font-weight:700;font-size:13px
+    }
+    .bgimg{
+      position:absolute;inset:0;background-size:cover;background-position:center;opacity:.25
+    }
+    .banner-inner{position:relative;z-index:1}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h2 style="color:#e5e7eb;margin:10px 0 12px;">横幅广告编辑（首页主横幅）</h2>
+
+    <div class="card">
+      <div class="row">
+        <div class="field">
+          <label>Banner Key（固定）</label>
+          <input id="key" value="homepage_main" readonly />
+          <div class="hint">用户端首页会拉取这个 key 的配置</div>
+        </div>
+        <div class="field">
+          <label>启用</label>
+          <select id="enabled">
+            <option value="true">启用</option>
+            <option value="false">禁用（用户端回退默认横幅）</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>排序（可选）</label>
+          <input id="sort" type="number" value="0" />
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="field">
+          <label>标题</label>
+          <input id="title" placeholder="例如：周五爆品日 · 只卖真正的爆品" />
+        </div>
+        <div class="field">
+          <label>背景色</label>
+          <input id="bgColor" placeholder="#22c55e" />
+          <div class="hint">纯色背景（你截图的大绿底）</div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="field" style="min-width:520px;flex:2">
+          <label>副标题</label>
+          <textarea id="subtitle" placeholder="例如：每周五集中上线爆款单品，搭配区域团拼单配送 / 好友拼单配送..."></textarea>
+        </div>
+        <div class="field">
+          <label>背景图 URL（可选）</label>
+          <input id="imageUrl" placeholder="https://..." />
+          <div class="hint">填了会显示淡淡背景图（不填就是纯色）</div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="field" style="min-width:520px;flex:2">
+          <label>按钮（JSON 数组）</label>
+          <textarea id="buttons" placeholder='[{"label":"周五爆品日","link":"#dealsDay"},{"label":"家庭必备专区","link":"#family"}]'></textarea>
+          <div class="hint">label 必填；link 可用 #锚点 / /user/xxx.html / https://xxx</div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="btn" id="btnSave">保存</button>
+        <button class="btn2" id="btnLoad">刷新读取</button>
+        <span class="hint" id="msg"></span>
+      </div>
+
+      <div class="preview" id="preview">
+        <div class="banner" id="pvBanner">
+          <div class="bgimg" id="pvBg"></div>
+          <div class="banner-inner">
+            <div class="t" id="pvTitle">（预览标题）</div>
+            <div class="s" id="pvSubtitle">（预览副标题）</div>
+            <div class="chips" id="pvBtns"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="assets/js/banner_edit.js"></script>
+</body>
+</html>

@@ -350,7 +350,120 @@
         flex-direction: column;
         justify-content: center;
       }
+      /* =========================
+   ✅ 多横幅轮播（图片可点击）
+   ========================= */
+.banner-carousel {
+  padding: 0;              /* 轮播自己控制内边距 */
+  background: transparent; /* 用图片 */
+  min-height: unset;
+}
 
+.fb-carousel {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  background: #111827;
+  min-height: 220px;
+}
+
+.fb-carousel-track {
+  display: flex;
+  width: 100%;
+  transform: translateX(0);
+  transition: transform 0.35s ease;
+}
+
+.fb-slide {
+  flex: 0 0 100%;
+  position: relative;
+  min-height: 220px;
+}
+
+.fb-slide a {
+  display: block;
+  width: 100%;
+  height: 100%;
+  color: inherit;
+}
+
+.fb-slide img {
+  width: 100%;
+  height: 260px;
+  object-fit: cover;
+  display: block;
+}
+
+@media (max-width: 900px) {
+  .fb-slide img { height: 220px; }
+}
+
+/* 可选：图片上叠一层文字 */
+.fb-slide-overlay {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 14px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(6px);
+  color: #f9fafb;
+}
+
+.fb-slide-title {
+  font-size: 18px;
+  font-weight: 800;
+  margin: 0 0 4px;
+}
+
+.fb-slide-sub {
+  font-size: 12px;
+  opacity: 0.95;
+  margin: 0;
+}
+
+/* 左右按钮 */
+.fb-carousel-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: none;
+  background: rgba(15, 23, 42, 0.55);
+  color: #fff;
+  cursor: pointer;
+  z-index: 2;
+}
+.fb-carousel-btn.prev { left: 10px; }
+.fb-carousel-btn.next { right: 10px; }
+.fb-carousel-btn:active { transform: translateY(-50%) scale(0.98); }
+
+/* 小圆点 */
+.fb-carousel-dots {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 10px;
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  z-index: 2;
+}
+.fb-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  border: none;
+  cursor: pointer;
+  background: rgba(255,255,255,0.45);
+}
+.fb-dot.active {
+  background: rgba(255,255,255,0.95);
+}
       .banner-title {
         font-size: 24px;
         font-weight: 700;
@@ -1388,7 +1501,7 @@
       <a class="side-rail-item" href="/user/recharge.html">
       <span>💰</span><span>充值入口</span>
       </a>
-      <button class="side-rail-item" data-scroll="#hotpotSection" type="button">
+      <button class="side-rail-item" data-scroll="#homepageBanner" type="button">
         <span>🔥</span><span>火锅</span>
       </button>
 
@@ -1414,19 +1527,26 @@
       <div class="page-layout">
         <div class="page-main">
           <!-- 顶部横幅 -->
-          <section class="banner-carousel" id="hotpotSection">
-            <div class="banner-title">周五爆品日 · 只卖真正的爆品</div>
-            <div class="banner-sub">
-              每周五集中上线爆款单品，搭配区域团拼单配送 / 好友拼单配送，帮你把家庭日常消费做到更低。
-            </div>
-            <div class="banner-tags">
-              <span class="banner-tag">周五爆品日</span>
-              <span class="banner-tag">家庭必备专区</span>
-              <span class="banner-tag">畅销 TOP 50</span>
-              <span class="banner-tag">新品一周上新</span>
-            </div>
-          </section>
+          <section class="banner-carousel" id="homepageBanner" aria-label="首页横幅">
+  <!-- ✅ 兼容你之前 loadHomepageBanner 需要的几个 id（不想显示也没关系） -->
+  <div style="display:none">
+    <div id="bannerTitle"></div>
+    <div id="bannerSubtitle"></div>
+    <div id="bannerBtns"></div>
+  </div>
 
+  <!-- ✅ 轮播主体 -->
+  <div class="fb-carousel" id="fbCarousel">
+    <div class="fb-carousel-track" id="fbCarouselTrack"></div>
+
+    <!-- 左右按钮（可选） -->
+    <button class="fb-carousel-btn prev" id="fbCarouselPrev" type="button" aria-label="上一张">‹</button>
+    <button class="fb-carousel-btn next" id="fbCarouselNext" type="button" aria-label="下一张">›</button>
+
+    <!-- 小圆点 -->
+    <div class="fb-carousel-dots" id="fbCarouselDots" aria-label="轮播导航"></div>
+  </div>
+</section>
           <!-- 配送方式模块 -->
           <section class="delivery-mode">
             <div class="delivery-left">
@@ -1826,6 +1946,7 @@
 </script>
    <script src="/user/assets/js/auth_client.js?v=20260122a"></script>
 <script src="/user/assets/js/cart.js?v=20260122"></script>
+<script src="/user/assets/js/banner_carousel.js?v=20260130"></script>
 <script src="/user/assets/js/index.js?v=20260122"></script>
 <!-- footer -->
 <script src="/user/components/footer.js"></script>

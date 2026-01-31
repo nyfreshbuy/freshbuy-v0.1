@@ -2700,12 +2700,65 @@ async function initZipAutoZone() {
     });
   }
 }
+// ✅ 首页横幅：从后台读取 Banner（key=homepage_main）
+// 需要你的 index.html 里有：
+// #homepageBanner  容器
+// #bannerTitle #bannerSubtitle #bannerBtns 这些元素（下面第 6 步我给你 index.html 要加的结构）
+async function loadHomepageBanner() {
+  try {
+    const API_BASE =
+      window.API_BASE ||
+      localStorage.getItem("API_BASE") ||
+      "";
 
+    const r = await fetch(API_BASE + "/api/banners/homepage_main");
+    const j = await r.json();
+
+    // 没配置/禁用 => 不覆盖（保留默认写死的）
+    if (!j || j.success !== true || !j.banner) return;
+
+    const b = j.banner;
+
+    const box = document.getElementById("homepageBanner");
+    if (box) {
+      box.style.background = b.bgColor || "#22c55e";
+      if (b.imageUrl) {
+        box.style.backgroundImage = `linear-gradient(rgba(0,0,0,.08), rgba(0,0,0,.08)), url(${b.imageUrl})`;
+        box.style.backgroundSize = "cover";
+        box.style.backgroundPosition = "center";
+      } else {
+        box.style.backgroundImage = "";
+      }
+    }
+
+    const t = document.getElementById("bannerTitle");
+    const s = document.getElementById("bannerSubtitle");
+    if (t) t.textContent = b.title || "";
+    if (s) s.textContent = b.subtitle || "";
+
+    const btns = Array.isArray(b.buttons) ? b.buttons : [];
+    const wrap = document.getElementById("bannerBtns");
+    if (wrap) {
+      wrap.innerHTML = btns
+        .filter((x) => x && x.label)
+        .slice(0, 10)
+        .map(
+          (x) =>
+            `<a class="banner-chip" href="${x.link || "#"}">${x.label}</a>`
+        )
+        .join("");
+    }
+  } catch (e) {
+    // 安静失败：不影响首页
+    console.warn("loadHomepageBanner failed:", e);
+  }
+}
 /* ====== 下一段从：页面最终初始化（DOMContentLoaded 主入口）开始 ====== */
 // =========================
 // 4) 页面完成后初始化（主入口）
 // =========================
 window.addEventListener("DOMContentLoaded", async () => {
+  loadHomepageBanner();
   loadCategories();
   await loadHomeProductsFromSimple();
   bindGlobalSearch();

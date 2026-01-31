@@ -63,6 +63,8 @@ import authVerifyResetPasswordRouter from "./routes/auth_verify_reset_password.j
 import driverDispatchRoutes from "./routes/driver_dispatch.js";
 import resetPwdRouter from "./routes/auth_reset_password.js";
 import zonesPublicListRouter from "./routes/zones_public_list.js";
+import bannersRouter from "./routes/banners.js";
+import adminBannersRouter from "./routes/admin_banners.js";
 // =======================
 // ESM 环境下的 __dirname
 // =======================
@@ -203,7 +205,8 @@ app.use("/api/site-config", siteConfigRouter);
 // 后台：管理员充值
 app.use("/api/admin/recharge", adminRechargeRouter);
 console.log("✅ admin_recharge 已挂载到 /api/admin/recharge");
-
+app.use("/api/banners", bannersRouter);
+app.use("/api/admin/banners", adminBannersRouter);
 // 营销中心
 app.use("/api/admin", adminMarketingRouter);
 console.log("✅ admin_marketing 已挂载到 /api/admin");
