@@ -5,67 +5,119 @@ import { requireLogin } from "../middlewares/auth.js";
 
 const router = express.Router();
 router.use(express.json());
+router.use(requireLogin);
 
-console.log("✅ admin_banners.js loaded ✅");
-
+// ✅ 你项目里通常用 req.user.role === "admin"
 function requireAdmin(req, res, next) {
   if (!req.user) return res.status(401).json({ success: false, message: "未登录" });
   if (req.user.role !== "admin") return res.status(403).json({ success: false, message: "需要管理员权限" });
   next();
 }
 
-// 所有接口都要求登录 + 管理员
-router.use(requireLogin, requireAdmin);
+router.use(requireAdmin);
 
-// GET /api/admin/banners/list
-router.get("/list", async (req, res) => {
-  const list = await Banner.find({}).sort({ sort: 1, updatedAt: -1 }).lean();
-  res.json({ success: true, list });
+// ✅ 列表：GET /api/admin/banners
+router.get("/", async (req, res) => {
+  try {
+    const list = await Banner.find({})
+      .sort({ sort: 1, updatedAt: -1 })
+      .select("key enabled title subtitle sort updatedAt createdAt")
+      .lean();
+
+    return res.json({ success: true, list: list || [] });
+  } catch (e) {
+    console.error("GET /api/admin/banners error:", e);
+    return res.status(500).json({ success: false, message: "server error" });
+  }
 });
 
-// GET /api/admin/banners/:key
+// ✅ 读取：GET /api/admin/banners/:key
 router.get("/:key", async (req, res) => {
-  const key = String(req.params.key || "").trim();
-  const doc = await Banner.findOne({ key }).lean();
-  res.json({ success: true, banner: doc || null });
+  try {
+    const key = String(req.params.key || "").trim();
+    if (!key) return res.status(400).json({ success: false, message: "missing key" });
+
+    const banner = await Banner.findOne({ key }).lean();
+    return res.json({ success: true, banner: banner || null });
+  } catch (e) {
+    console.error("GET /api/admin/banners/:key error:", e);
+    return res.status(500).json({ success: false, message: "server error" });
+  }
 });
 
-// POST /api/admin/banners/upsert
-router.post("/upsert", async (req, res) => {
-  const payload = req.body || {};
-  const key = String(payload.key || "").trim();
-  if (!key) return res.status(400).json({ success: false, message: "key 必填" });
+// ✅ 新建：POST /api/admin/banners
+router.post("/", async (req, res) => {
+  try {
+    const key = String(req.body.key || "").trim();
+    if (!key) return res.status(400).json({ success: false, message: "key required" });
 
-  const cleanButtons = Array.isArray(payload.buttons)
-    ? payload.buttons
-        .map((b) => ({
-          label: String(b?.label || "").trim(),
-          link: String(b?.link || "").trim(),
-        }))
-        .filter((b) => b.label)
-    : [];
+    const exists = await Banner.findOne({ key }).lean();
+    if (exists) return res.status(409).json({ success: false, message: "key already exists" });
 
-  const update = {
-    key,
-    enabled: payload.enabled !== false,
-    title: String(payload.title || ""),
-    subtitle: String(payload.subtitle || ""),
-    bgColor: String(payload.bgColor || "#22c55e"),
-    imageUrl: String(payload.imageUrl || ""),
-    buttons: cleanButtons,
-    sort: Number(payload.sort || 0),
-  };
+    const doc = await Banner.create({
+      key,
+      enabled: true,
+      title: "",
+      subtitle: "",
+      bgColor: "#22c55e",
+      imageUrl: "",
+      buttons: [],
+      slides: [],
+      sort: 0,
+    });
 
-  const doc = await Banner.findOneAndUpdate({ key }, update, { upsert: true, new: true });
-  res.json({ success: true, banner: doc });
+    return res.json({ success: true, banner: doc });
+  } catch (e) {
+    console.error("POST /api/admin/banners error:", e);
+    return res.status(500).json({ success: false, message: "server error" });
+  }
 });
 
-// POST /api/admin/banners/delete
-router.post("/delete", async (req, res) => {
-  const key = String(req.body?.key || "").trim();
-  if (!key) return res.status(400).json({ success: false, message: "key 必填" });
-  await Banner.deleteOne({ key });
-  res.json({ success: true });
+// ✅ 保存/更新：PUT /api/admin/banners/:key
+router.put("/:key", async (req, res) => {
+  try {
+    const key = String(req.params.key || "").trim();
+    if (!key) return res.status(400).json({ success: false, message: "missing key" });
+
+    const payload = req.body || {};
+
+    // ✅ 只允许这些字段（避免乱写）
+    const update = {
+      enabled: payload.enabled !== false,
+      title: String(payload.title || ""),
+      subtitle: String(payload.subtitle || ""),
+      bgColor: String(payload.bgColor || "#22c55e"),
+      imageUrl: String(payload.imageUrl || ""),
+      sort: Number(payload.sort || 0),
+      buttons: Array.isArray(payload.buttons) ? payload.buttons : [],
+      slides: Array.isArray(payload.slides) ? payload.slides : [],
+    };
+
+    const doc = await Banner.findOneAndUpdate(
+      { key },
+      { $set: update },
+      { new: true, upsert: true } // 没有就创建
+    ).lean();
+
+    return res.json({ success: true, banner: doc });
+  } catch (e) {
+    console.error("PUT /api/admin/banners/:key error:", e);
+    return res.status(500).json({ success: false, message: "server error" });
+  }
+});
+
+// ✅ 删除：DELETE /api/admin/banners/:key
+router.delete("/:key", async (req, res) => {
+  try {
+    const key = String(req.params.key || "").trim();
+    if (!key) return res.status(400).json({ success: false, message: "missing key" });
+
+    await Banner.deleteOne({ key });
+    return res.json({ success: true });
+  } catch (e) {
+    console.error("DELETE /api/admin/banners/:key error:", e);
+    return res.status(500).json({ success: false, message: "server error" });
+  }
 });
 
 export default router;

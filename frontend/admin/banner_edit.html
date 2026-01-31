@@ -2,119 +2,139 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <title>后台 - 横幅广告编辑</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="stylesheet" href="assets/css/admin.css" />
+  <title>后台 - 横幅广告编辑</title>
+  <link rel="stylesheet" href="/admin/assets/css/admin.css" />
   <style>
-    .wrap{max-width:980px;margin:18px auto;padding:0 14px;}
-    .card{background:rgba(15,23,42,.55);border:1px solid rgba(148,163,184,.16);border-radius:16px;padding:14px;}
-    .row{display:flex;gap:12px;flex-wrap:wrap}
-    .field{flex:1;min-width:260px}
-    label{display:block;color:#cbd5e1;font-size:13px;margin:10px 0 6px}
-    input,textarea,select{width:100%;padding:10px 12px;border-radius:12px;border:1px solid rgba(148,163,184,.18);background:rgba(2,6,23,.35);color:#e5e7eb;outline:none}
-    textarea{min-height:90px;resize:vertical}
-    .btn{cursor:pointer;border:0;border-radius:12px;padding:10px 14px;background:#22c55e;color:#052e16;font-weight:700}
-    .btn2{cursor:pointer;border:1px solid rgba(148,163,184,.22);border-radius:12px;padding:10px 14px;background:transparent;color:#e5e7eb}
-    .actions{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}
-    .hint{color:#94a3b8;font-size:12px}
-    .preview{
-      border-radius:18px;margin-top:14px;overflow:hidden;border:1px solid rgba(148,163,184,.16)
+    .wrap { max-width: 1100px; margin: 18px auto; padding: 0 14px; }
+    .card { background: rgba(2,6,23,.55); border: 1px solid rgba(148,163,184,.16); border-radius: 16px; padding: 14px; }
+    .row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+    .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+    .field label { display:block; font-size:12px; color:#cbd5e1; margin-bottom:6px;}
+    .field input, .field textarea, .field select {
+      width: 100%; border-radius: 12px; border:1px solid rgba(148,163,184,.22);
+      background: rgba(15,23,42,.45); color:#e5e7eb; padding:10px 12px; outline:none;
     }
-    .banner{
-      padding:26px 26px; min-height:150px; position:relative;
-      color:#fff;
-      background:#22c55e;
-    }
-    .banner .t{font-size:30px;font-weight:900;letter-spacing:.5px}
-    .banner .s{margin-top:10px;max-width:760px;color:rgba(255,255,255,.92);line-height:1.55}
-    .chips{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
-    .chip{
-      display:inline-flex;align-items:center;gap:6px;
-      padding:8px 12px;border-radius:999px;
-      background:rgba(0,0,0,.18);border:1px solid rgba(255,255,255,.2);
-      color:#fff;text-decoration:none;font-weight:700;font-size:13px
-    }
-    .bgimg{
-      position:absolute;inset:0;background-size:cover;background-position:center;opacity:.25
-    }
-    .banner-inner{position:relative;z-index:1}
+    .field textarea { min-height: 88px; resize: vertical; }
+    .actions { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top: 10px; }
+    .btn { padding:10px 14px; border-radius: 999px; border:1px solid rgba(148,163,184,.22); background:#0b1220; color:#e5e7eb; cursor:pointer; font-weight:700; }
+    .btn.primary { background: #22c55e; border-color: transparent; color:#052e12; }
+    .btn.danger { background:#ef4444; border-color: transparent; color:#fff; }
+    .muted { color:#94a3b8; font-size:12px; }
+    .divider { height:1px; background: rgba(148,163,184,.16); margin: 14px 0; }
+
+    .slides-head { display:flex; justify-content:space-between; align-items:end; gap:10px; flex-wrap:wrap; }
+    .slides-table { width:100%; border-collapse: collapse; margin-top: 10px; }
+    .slides-table th, .slides-table td { border-bottom:1px solid rgba(148,163,184,.16); padding: 8px; vertical-align: top; }
+    .slides-table th { font-size:12px; color:#cbd5e1; text-align:left; }
+    .slides-table td input { width: 100%; }
+    .mini { font-size:12px; padding:7px 10px; border-radius:999px; }
+    .chk { display:flex; align-items:center; gap:6px; font-size:12px; color:#cbd5e1; }
+    .preview { margin-top: 12px; border-radius: 16px; overflow:hidden; border:1px solid rgba(148,163,184,.16); }
+    .preview iframe { width:100%; height: 320px; border:none; background:#fff; }
   </style>
 </head>
+
 <body>
   <div class="wrap">
-    <h2 style="color:#e5e7eb;margin:10px 0 12px;">横幅广告编辑（首页主横幅）</h2>
+    <h1 style="color:#e5e7eb; margin: 6px 0 12px;">横幅广告编辑（支持多 Banner + 多 Slides）</h1>
 
     <div class="card">
       <div class="row">
         <div class="field">
-          <label>Banner Key（固定）</label>
-          <input id="key" value="homepage_main" readonly />
-          <div class="hint">用户端首页会拉取这个 key 的配置</div>
+          <label>选择 Banner（key）</label>
+          <select id="bannerKeySelect"></select>
+          <div class="muted">支持多个 key：例如 homepage_main / homepage_secondary / deals_day ...</div>
         </div>
+
         <div class="field">
           <label>启用</label>
-          <select id="enabled">
+          <select id="enabledSelect">
             <option value="true">启用</option>
-            <option value="false">禁用（用户端回退默认横幅）</option>
+            <option value="false">停用</option>
           </select>
         </div>
+
         <div class="field">
           <label>排序（可选）</label>
-          <input id="sort" type="number" value="0" />
+          <input id="sortInput" type="number" value="0" />
         </div>
       </div>
 
-      <div class="row">
+      <div class="row2">
         <div class="field">
           <label>标题</label>
-          <input id="title" placeholder="例如：周五爆品日 · 只卖真正的爆品" />
+          <input id="titleInput" type="text" placeholder="例如：在鲜购1月31日正式上线啦" />
         </div>
         <div class="field">
           <label>背景色</label>
-          <input id="bgColor" placeholder="#22c55e" />
-          <div class="hint">纯色背景（你截图的大绿底）</div>
+          <input id="bgColorInput" type="text" placeholder="#22c55e" />
+          <div class="muted">当 slide 没图片时可用 bgColor 兜底</div>
         </div>
       </div>
 
-      <div class="row">
-        <div class="field" style="min-width:520px;flex:2">
+      <div class="row2">
+        <div class="field">
           <label>副标题</label>
-          <textarea id="subtitle" placeholder="例如：每周五集中上线爆款单品，搭配区域团拼单配送 / 好友拼单配送..."></textarea>
+          <textarea id="subtitleInput" placeholder="例如：第一周前200名下单用户享受10%返现优惠"></textarea>
         </div>
         <div class="field">
           <label>背景图 URL（可选）</label>
-          <input id="imageUrl" placeholder="https://..." />
-          <div class="hint">填了会显示淡淡背景图（不填就是纯色）</div>
+          <input id="imageUrlInput" type="text" placeholder="https://... 或 /user/assets/..." />
+          <div class="muted">单横幅模式用；多轮播优先使用 slides</div>
         </div>
       </div>
 
-      <div class="row">
-        <div class="field" style="min-width:520px;flex:2">
-          <label>按钮（JSON 数组）</label>
-          <textarea id="buttons" placeholder='[{"label":"周五爆品日","link":"#dealsDay"},{"label":"家庭必备专区","link":"#family"}]'></textarea>
-          <div class="hint">label 必填；link 可用 #锚点 / /user/xxx.html / https://xxx</div>
+      <div class="field">
+        <label>按钮（JSON 数组，兼容旧版）</label>
+        <textarea id="buttonsInput">[]</textarea>
+        <div class="muted">格式示例：[{ "label":"去充值", "link":"/user/recharge.html" }]</div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="slides-head">
+        <div>
+          <div style="color:#e5e7eb;font-weight:800;">Slides（多张轮播）</div>
+          <div class="muted">你想要的“后台可编辑多张 banner”就在这里。保存后前台轮播会优先用 slides。</div>
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="btn mini" id="addSlideBtn" type="button">+ 添加一张</button>
+          <button class="btn mini" id="importSlidesBtn" type="button">导入 JSON</button>
+          <button class="btn mini" id="exportSlidesBtn" type="button">导出 JSON</button>
         </div>
       </div>
+
+      <table class="slides-table" id="slidesTable">
+        <thead>
+          <tr>
+            <th style="width:70px;">启用</th>
+            <th style="width:70px;">sort</th>
+            <th>imageUrl</th>
+            <th>link</th>
+            <th style="width:160px;">title</th>
+            <th style="width:180px;">subtitle</th>
+            <th style="width:120px;">bgColor</th>
+            <th style="width:80px;">操作</th>
+          </tr>
+        </thead>
+        <tbody id="slidesTbody"></tbody>
+      </table>
 
       <div class="actions">
-        <button class="btn" id="btnSave">保存</button>
-        <button class="btn2" id="btnLoad">刷新读取</button>
-        <span class="hint" id="msg"></span>
+        <button class="btn primary" id="saveBtn" type="button">保存</button>
+        <button class="btn" id="reloadBtn" type="button">刷新读取</button>
+        <button class="btn" id="newBtn" type="button">新建 Banner</button>
+        <button class="btn danger" id="deleteBtn" type="button">删除当前 Banner</button>
+        <span class="muted" id="statusText">Ready</span>
       </div>
 
-      <div class="preview" id="preview">
-        <div class="banner" id="pvBanner">
-          <div class="bgimg" id="pvBg"></div>
-          <div class="banner-inner">
-            <div class="t" id="pvTitle">（预览标题）</div>
-            <div class="s" id="pvSubtitle">（预览副标题）</div>
-            <div class="chips" id="pvBtns"></div>
-          </div>
-        </div>
+      <div class="preview">
+        <iframe src="/user/index.html" title="前台预览（刷新可看到轮播变化）"></iframe>
       </div>
     </div>
   </div>
 
-  <script src="assets/js/banner_edit.js"></script>
+  <script src="/admin/assets/js/banner_edit.js?v=20260131a"></script>
 </body>
 </html>
