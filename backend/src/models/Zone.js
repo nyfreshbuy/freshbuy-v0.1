@@ -1,14 +1,82 @@
-// backend/src/routes/zones.js
-import express from "express";
-import Zone from "../models/Zone.js";
+// backend/src/models/Zone.js
+import mongoose from "mongoose";
 
-const router = express.Router();
-router.use(express.json());
+const zoneSchema = new mongoose.Schema(
+  {
+    // 是否启用
+    enabled: { type: Boolean, default: true },
 
-console.log("✅ zones.js LOADED:", import.meta.url);
+    // 名称
+    name: { type: String, default: "" },
+    zoneName: { type: String, default: "" }, // 兼容旧字段
+
+    // 备注
+    note: { type: String, default: "" },
+    zoneNote: { type: String, default: "" }, // 兼容旧字段
+
+    // =========================
+    // ZIP 白名单（主字段）
+    // =========================
+    zipWhitelist: { type: [String], default: [] },
+
+    // =========================
+    // 兼容旧字段（全部同步）
+    // =========================
+    zips: { type: [String], default: [] },
+    zipWhiteList: { type: [String], default: [] },
+    zipList: { type: [String], default: [] },
+
+    // =========================
+    // 可选：多边形（ZIP-only 模式下允许为 null）
+    // =========================
+    polygon: { type: Array, default: null },
+    polygonPaths: { type: Array, default: null },
+
+    // =========================
+    // ✅ 配送配置（给 admin_zones.js 用）
+    // - deliveryDays: [0..6] 0=周日 ... 6=周六
+    // - cutoffTime:  "23:59" 这种字符串
+    // - deliveryModes: ["groupDay","normal"] 之类（可选）
+    // =========================
+    deliveryModes: { type: [String], default: [] },
+    cutoffTime: { type: String, default: "" },
+    deliveryDays: { type: [Number], default: [] },
+
+    // =========================
+    // ✅ 旧字段兼容（你 admin_zones.js 里 select 了）
+    // =========================
+    zoneId: { type: String, default: "" },
+    slug: { type: String, default: "" },
+
+    // =========================
+    // 配送配置（区域团 / groupDay）
+    // =========================
+    groupDay: {
+      enabled: { type: Boolean, default: false },
+      // 0=周日 1=周一 ... 6=周六
+      shipWeekday: { type: Number, default: null },
+      // 预计送达时间
+      etaStart: { type: String, default: "18:00" },
+      etaEnd: { type: String, default: "22:00" },
+      // 截单 = 配送日前 N 天（通常 1 天）
+      cutoffOffsetDays: { type: Number, default: 1 },
+    },
+
+    // =========================
+    // ✅ 成团展示（前台“已拼/还差”）
+    // - fakeJoinedOrders: 虚假加成（存库）
+    // - needOrders: 成团目标（存库）
+    // =========================
+    fakeJoinedOrders: { type: Number, default: 0 },
+    needOrders: { type: Number, default: 50 },
+  },
+  {
+    timestamps: true,
+  }
+);
 
 // =========================
-// 工具：ZIP 规范化（只取前 5 位）
+// 工具：ZIP 规范化（只保留 5 位）
 // =========================
 function normalizeZip(v) {
   const s = String(v || "").trim();
@@ -17,143 +85,37 @@ function normalizeZip(v) {
 }
 
 // =========================
-// 工具：判断 zone 是否包含 zip
-// （兼容 zipWhitelist / zips / zipWhiteList / zipList）
+// ✅ 关键修复点：
+// - 不使用 next()
+// - 不使用 async
+// - 使用 function() 保证 this 正确
 // =========================
-function zoneHasZip(zone, zip) {
-  const lists = []
-    .concat(zone.zipWhitelist || [])
-    .concat(zone.zips || [])
-    .concat(zone.zipWhiteList || [])
-    .concat(zone.zipList || []);
+zoneSchema.pre("save", function () {
+  const merged = []
+    .concat(this.zipWhitelist || [])
+    .concat(this.zips || [])
+    .concat(this.zipWhiteList || [])
+    .concat(this.zipList || []);
 
-  const set = new Set(lists.map(normalizeZip).filter(Boolean));
-  return set.has(zip);
-}
+  const cleaned = merged.map(normalizeZip).filter(Boolean);
+  const uniq = Array.from(new Set(cleaned));
 
-// =========================
-// 工具：把 Zone 转成前台需要的结构（并附带拼单进度）
-// =========================
-function toPublicZone(zone) {
-  // ✅ 成团展示字段（真实 + 虚假）
-  const needOrders = Number(zone.needOrders || 0);
-  const fakeJoinedOrders = Number(zone.fakeJoinedOrders || 0);
+  // 统一写回（主字段 + 兼容字段）
+  this.zipWhitelist = uniq;
+  this.zips = uniq;
+  this.zipWhiteList = uniq;
+  this.zipList = uniq;
 
-  // 你当前 Zone model 里没有 joinedOrders 字段，这里兜底为 0
-  const joinedOrders = Number(zone.joinedOrders || 0);
+  // 名称顺手 trim（安全）
+  if (this.name) this.name = String(this.name).trim();
+  if (this.zoneName) this.zoneName = String(this.zoneName).trim();
 
-  const joinedTotal = joinedOrders + fakeJoinedOrders;
-  const remainOrders = Math.max(0, needOrders - joinedTotal);
-
-  // serviceMode：尽量保持你前台已有字段
-  // - 如果你库里有 serviceMode，就用
-  // - 否则优先看 deliveryModes 是否包含 groupDay
-  // - 再不行看 groupDay.enabled
-  let serviceMode = zone.serviceMode;
-  if (!serviceMode) {
-    const modes = zone.deliveryModes || [];
-    if (Array.isArray(modes) && modes.includes("groupDay")) serviceMode = "groupDay";
-    else if (zone.groupDay?.enabled) serviceMode = "groupDay";
-    else serviceMode = "normal";
-  }
-
-  return {
-    id: String(zone._id),
-    name: zone.name || zone.zoneName || "",
-    note: zone.note || zone.zoneNote || "",
-
-    // 你 Console 里能看到的字段（保持一致）
-    cutoffTime: zone.cutoffTime || "",
-    deliveryDays: Array.isArray(zone.deliveryDays) ? zone.deliveryDays : [],
-    deliveryModes: Array.isArray(zone.deliveryModes) ? zone.deliveryModes : [],
-    serviceMode,
-
-    // ✅ 前台“已拼/还差”相关字段（新增）
-    needOrders,
-    fakeJoinedOrders,
-    joinedOrders,
-    joinedTotal,
-    remainOrders,
-  };
-}
-
-// =========================
-// ping
-// =========================
-router.get("/ping", (req, res) => {
-  res.json({ ok: true, name: "zones", time: new Date().toISOString() });
+  // ✅ 数字字段兜底（防止被字符串污染）
+  this.fakeJoinedOrders = Number.isFinite(Number(this.fakeJoinedOrders))
+    ? Number(this.fakeJoinedOrders)
+    : 0;
+  this.needOrders = Number.isFinite(Number(this.needOrders)) ? Number(this.needOrders) : 50;
 });
 
-// =========================
-// GET /api/zones/by-zip?zip=11360
-// - 给前台首页用：通过 zip 找到对应 zone
-// - 返回：{success, supported, zip, zone:{...}}
-// =========================
-router.get("/by-zip", async (req, res) => {
-  try {
-    const zip = normalizeZip(req.query.zip);
-
-    // ✅ 防缓存（避免你“更新了虚假订单但前台不变”）
-    res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
-    res.set("Pragma", "no-cache");
-    res.set("Expires", "0");
-
-    if (!zip) {
-      return res.json({
-        success: true,
-        supported: false,
-        zip: "",
-        zone: null,
-        message: "zip missing",
-      });
-    }
-
-    // 只拿启用的 zones
-    const zones = await Zone.find({ enabled: true }).lean();
-
-    // 找到命中 zip 的 zone
-    const hit = zones.find((z) => zoneHasZip(z, zip));
-
-    if (!hit) {
-      return res.json({
-        success: true,
-        supported: false,
-        zip,
-        zone: null,
-      });
-    }
-
-    // lean 出来的是 plain object，没有 _id->String？我们自己处理
-    // 这里复用 toPublicZone，但 toPublicZone 期望 zone._id 存在
-    // lean 的 _id 也存在（ObjectId），String() OK
-    return res.json({
-      success: true,
-      supported: true,
-      zip,
-      zone: toPublicZone(hit),
-    });
-  } catch (err) {
-    console.error("❌ zones/by-zip error:", err);
-    return res.status(500).json({ success: false, message: "server error" });
-  }
-});
-
-// =========================
-// （可选）公开列表：方便你调试
-// GET /api/zones/list
-// =========================
-router.get("/list", async (req, res) => {
-  try {
-    const zones = await Zone.find({ enabled: true }).sort({ updatedAt: -1 }).lean();
-    res.set("Cache-Control", "no-store");
-    return res.json({
-      success: true,
-      zones: zones.map((z) => toPublicZone(z)),
-    });
-  } catch (err) {
-    console.error("❌ zones/list error:", err);
-    return res.status(500).json({ success: false, message: "server error" });
-  }
-});
-
-export default router;
+const Zone = mongoose.models.Zone || mongoose.model("Zone", zoneSchema);
+export default Zone;
