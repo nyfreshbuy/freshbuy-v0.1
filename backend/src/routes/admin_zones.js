@@ -84,7 +84,7 @@ router.get("/", requireLogin, async (req, res) => {
 
     const docs = await Zone.find({})
       .sort({ createdAt: -1 })
-      .select("_id name zipWhitelist zips note deliveryModes cutoffTime deliveryDays polygon createdAt updatedAt zoneId slug");
+      .select("_id name zipWhitelist zips note deliveryModes cutoffTime deliveryDays polygon createdAt updatedAt zoneId slug fakeJoinedOrders needOrders");
 
     const zones = docs.map((z) => {
       const whitelist = Array.isArray(z.zipWhitelist) ? z.zipWhitelist : [];
@@ -102,6 +102,8 @@ router.get("/", requireLogin, async (req, res) => {
         polygon: z.polygon || null,
         zoneId: z.zoneId || "",
         slug: z.slug || "",
+        fakeJoinedOrders: Number(z.fakeJoinedOrders ?? 0) || 0,
+        needOrders: Number(z.needOrders ?? 50) || 50,
         createdAt: z.createdAt,
         updatedAt: z.updatedAt,
       };
@@ -145,6 +147,8 @@ router.get("/:id", requireLogin, async (req, res) => {
         polygon: doc.polygon || null,
         zoneId: doc.zoneId || "",
         slug: doc.slug || "",
+        fakeJoinedOrders: Number(doc.fakeJoinedOrders ?? 0) || 0,
+        needOrders: Number(doc.needOrders ?? 50) || 50,
       },
     });
   } catch (err) {
@@ -163,7 +167,7 @@ router.post("/", requireLogin, async (req, res) => {
       return res.status(403).json({ ok: false, success: false, message: "forbidden" });
     }
 
-    const { name, note, deliveryModes, cutoffTime, deliveryDays, polygon } = req.body || {};
+    const { name, note, deliveryModes, cutoffTime, deliveryDays, polygon, fakeJoinedOrders, needOrders } = req.body || {};
     if (!name || typeof name !== "string") {
       return res.status(400).json({ ok: false, success: false, message: "name required" });
     }
@@ -186,6 +190,8 @@ router.post("/", requireLogin, async (req, res) => {
       deliveryModes: Array.isArray(deliveryModes) ? deliveryModes : [],
       cutoffTime: String(cutoffTime || ""),
       deliveryDays: Array.isArray(deliveryDays) ? deliveryDays : [],
+      fakeJoinedOrders: Math.max(0, Math.floor(Number(fakeJoinedOrders ?? 0) || 0)),
+      needOrders: Math.max(1, Math.floor(Number(needOrders ?? 50) || 50)),
       polygon: polygon || null,
     });
 
@@ -205,7 +211,7 @@ router.patch("/:id", requireLogin, async (req, res) => {
       return res.status(403).json({ ok: false, success: false, message: "forbidden" });
     }
 
-    const { name, note, deliveryModes, cutoffTime, deliveryDays, polygon } = req.body || {};
+    const { name, note, deliveryModes, cutoffTime, deliveryDays, polygon, fakeJoinedOrders, needOrders } = req.body || {};
 
     const update = {};
     if (typeof name === "string" && name.trim()) update.name = name.trim();
@@ -214,7 +220,15 @@ router.patch("/:id", requireLogin, async (req, res) => {
     if (cutoffTime !== undefined) update.cutoffTime = String(cutoffTime || "");
     if (deliveryDays !== undefined) update.deliveryDays = Array.isArray(deliveryDays) ? deliveryDays : [];
     if (polygon !== undefined) update.polygon = polygon || null;
+    // ✅ 已拼虚假加成
+if (fakeJoinedOrders !== undefined) {
+  update.fakeJoinedOrders = Math.max(0, Math.floor(Number(fakeJoinedOrders ?? 0) || 0));
+}
 
+// ✅ 成团目标
+if (needOrders !== undefined) {
+  update.needOrders = Math.max(1, Math.floor(Number(needOrders ?? 50) || 50));
+}
     // ✅ zipWhitelist 兼容写入
     if (req.body?.zipWhitelist !== undefined || req.body?.zips !== undefined) {
       const wl = pickZipWhitelist(req.body);
