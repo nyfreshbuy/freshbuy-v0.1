@@ -2890,13 +2890,26 @@ function doSearch(keyword) {
 // =========================
 function bindGlobalSearch() {
   const input = document.getElementById("globalSearchInput");
-  if (!input) {
-    console.warn("❌ 未找到 #globalSearchInput");
-    return;
-  }
+  if (!input) return;
 
   console.log("✅ 搜索栏已绑定");
 
+  // 👉 进入搜索模式
+  input.addEventListener("focus", () => {
+    document.body.classList.add("search-active");
+  });
+
+  // 👉 退出搜索模式
+  input.addEventListener("blur", () => {
+    // 给一点延迟，避免点结果瞬间闪
+    setTimeout(() => {
+      if (!input.value.trim()) {
+        document.body.classList.remove("search-active");
+      }
+    }, 120);
+  });
+
+  // Enter 搜索
   input.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
@@ -2904,6 +2917,7 @@ function bindGlobalSearch() {
     }
   });
 
+  // 清空时恢复
   input.addEventListener("input", () => {
     if (!input.value.trim()) {
       doSearch("");

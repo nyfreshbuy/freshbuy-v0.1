@@ -1716,3 +1716,21 @@ html, body {
   margin-right:10px;
 }
 .banner-chip:hover{ opacity:.92; }
+/* =========================
+   Banner 可点击标签/按钮（带链接）
+   放 main.css 最底部
+   ========================= */
+.banner-chip{
+  display:inline-flex;
+  align-items:center;
+  padding:8px 12px;
+  border-radius:999px;
+  background: rgba(0,0,0,.18);
+  border: 1px solid rgba(255,255,255,.22);
+  color:#fff;
+  text-decoration:none;
+  font-weight:700;
+  font-size:13px;
+  margin-right:10px;
+}
+.banner-chip:hover{ opacity:.92; }
