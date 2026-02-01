@@ -172,6 +172,18 @@ body.use-vvh #app {
   font-size: 13px;
   line-height: 1.2;
 }
+/* ✅ FIX: iOS 输入搜索时文字看不到（强制 text color） */
+.search-input{
+  color: #111827 !important;
+  caret-color: #111827 !important;
+  -webkit-text-fill-color: #111827 !important; /* iOS 关键 */
+  opacity: 1 !important;
+}
+
+.search-input::placeholder{
+  color: #9ca3af !important;
+  -webkit-text-fill-color: #9ca3af !important;
+}
 
 @media (max-width: 768px) {
   .search-input {
@@ -1696,7 +1708,13 @@ iframe {
 #zipInputRight {
   font-size: 16px !important;
 }
-
+/* ✅ 终极兜底：如果 input 用的是 id=globalSearchInput */
+#globalSearchInput{
+  color:#111827 !important;
+  caret-color:#111827 !important;
+  -webkit-text-fill-color:#111827 !important;
+  opacity:1 !important;
+}
 /* ✅ 防止键盘/滚动引起横向溢出 */
 html, body {
   overflow-x: hidden;
