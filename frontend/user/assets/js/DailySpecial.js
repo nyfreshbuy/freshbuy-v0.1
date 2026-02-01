@@ -70,8 +70,12 @@ let currentFilter = "all"; // pills 选中值
 // ============================
 // 特价判定（DailySpecial=所有特价）
 // ============================
+// ============================
+// ✅ 家庭必备判定（与 index.js 完全一致）
+// 家庭必备 = 非爆品 && isSpecialDeal(p)
+// ============================
 function isTrueFlag(v) {
-  return v === true || v === "true" || v === 1 || v === "1";
+  return v === true || v === "true" || v === 1 || v === "1" || v === "yes";
 }
 
 function hasKeywordSimple(p, keyword) {
@@ -95,23 +99,38 @@ function hasKeywordSimple(p, keyword) {
   return false;
 }
 
-function isDailySpecialProduct(p) {
-  return (
-    isTrueFlag(p?.hasSpecial) ||
-    isTrueFlag(p?.isSpecial) ||
-    isTrueFlag(p?.isSpecialDeal) ||
-    isTrueFlag(p?.specialDeal) ||
-    Number(p?.specialPrice || 0) > 0 ||
-    Number(p?.specialQty || 0) > 0 ||
-    Number(p?.specialTotalPrice || 0) > 0 ||
-    hasKeywordSimple(p, "special") ||
-    hasKeywordSimple(p, "deal") ||
-    hasKeywordSimple(p, "特价") ||
-    hasKeywordSimple(p, "家庭必备") ||
-    hasKeywordSimple(p, "daily")
-  );
+// ✅ 与 index.js 一致：只要满足“促销/特价”任意条件就算家庭必备
+function isSpecialDeal(p) {
+  // A) 直接布尔字段
+  if (
+    isTrueFlag(p.isSpecial) ||
+    isTrueFlag(p.isDailySpecial) ||
+    isTrueFlag(p.onSale) ||
+    isTrueFlag(p.isSale)
+  )
+    return true;
+
+  // B) basePrice vs salePrice（salePrice 更低）
+  const basePrice = Number(p.price ?? p.regularPrice ?? p.originPrice ?? 0);
+  const salePrice = Number(p.salePrice ?? p.specialPrice ?? p.discountPrice ?? p.flashPrice ?? 0);
+  if (basePrice > 0 && salePrice > 0 && salePrice < basePrice) return true;
+
+  // C) originPrice > price
+  const origin = Number(p.originPrice ?? p.originalPrice ?? 0);
+  const price = Number(p.price ?? 0);
+  if (origin > 0 && price > 0 && origin > price) return true;
+
+  // D) 折扣字段
+  const discount = Number(p.discount ?? p.discountPercent ?? 0);
+  if (discount > 0) return true;
+
+  return false;
 }
 
+// ✅ 家庭必备 = isSpecialDeal（保持与你首页一致）
+function isFamilyProduct(p) {
+  return isSpecialDeal(p);
+}
 // ============================
 // ✅ 爆品识别（DailySpecial 需要排除爆品）
 // 跟 New/Best 统一：字段 + 关键词
@@ -294,7 +313,8 @@ async function loadDailySpecialProducts() {
 
     // ✅ 只保留特价，并且 ✅ 排除爆品
     // 关键改动在这里：
-    productsRaw = cleaned.filter((p) => isDailySpecialProduct(p) && !isHotProduct(p));
+    // ✅ 家庭必备：非爆品 && 特价（与首页一致）
+productsRaw = cleaned.filter((p) => !isHotProduct(p) && isFamilyProduct(p));
 
     // ✅ 拆卡：单卖/整箱两张
     productsViewAll = window.FBCard.expand(productsRaw);
