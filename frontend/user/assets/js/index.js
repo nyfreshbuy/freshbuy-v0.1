@@ -1628,24 +1628,26 @@ function kbSetVvh() {
 }
 
 function kbLockForInput() {
-  // 如果登录弹窗已经锁了，不重复锁
   if (document.body.classList.contains("modal-open")) return;
   if (__kbLocked) return;
 
-  __kbLocked = true;
-  __kbScrollY = window.scrollY || 0;
+  // ✅ 关键：延迟到下一帧，避免 iOS Safari 失焦
+  requestAnimationFrame(() => {
+    if (__kbLocked) return;
+    __kbLocked = true;
+    __kbScrollY = window.scrollY || 0;
 
-  document.body.classList.add("kb-open");
-  document.body.style.position = "fixed";
-  document.body.style.top = `-${__kbScrollY}px`;
-  document.body.style.left = "0";
-  document.body.style.right = "0";
-  document.body.style.width = "100%";
-  document.body.style.overflow = "hidden";
+    document.body.classList.add("kb-open");
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${__kbScrollY}px`;
+    document.body.style.left = "0";
+    document.body.style.right = "0";
+    document.body.style.width = "100%";
+    document.body.style.overflow = "hidden";
 
-  kbSetVvh();
+    kbSetVvh();
+  });
 }
-
 function kbUnlockForInput() {
   if (!__kbLocked) return;
   __kbLocked = false;
@@ -1687,11 +1689,29 @@ function bindKbSafeInput(selector) {
 }
 
 // 初始化绑定（✅ 必须 DOMReady 后再绑，避免输入框还没渲染导致没绑定上）
-function bindKbInputs() {
-  // 🔍 顶部搜索
-  bindKbSafeInput("#globalSearchInput");
+function bindKbSafeInputLite(selector) {
+  const el = document.querySelector(selector);
+  if (!el) return;
 
-  // 📦 ZIP（左 / 右）
+  // ✅ 只更新 --vvh，不锁 body（Safari 顶部固定搜索栏最容易被 lock 搞丢焦点）
+  el.addEventListener("focus", () => {
+    kbSetVvh();
+  });
+
+  el.addEventListener("blur", () => {
+    // 轻微延迟，避免 iOS blur/focus 抖动
+    setTimeout(() => {
+      document.documentElement.style.removeProperty("--vvh");
+    }, 120);
+  });
+}
+
+// 初始化绑定（✅ 必须 DOMReady 后再绑）
+function bindKbInputs() {
+  // 🔍 顶部搜索：不要锁 body（关键修复）
+  bindKbSafeInputLite("#globalSearchInput");
+
+  // 📦 ZIP（左 / 右）：可以继续用“锁 body”方案
   bindKbSafeInput("#zipInput");
   bindKbSafeInput("#zipInputRight");
 
@@ -1706,7 +1726,6 @@ function bindKbInputs() {
     });
   }
 }
-
 // ✅ DOM 完成后再绑定（最关键）
 window.addEventListener("DOMContentLoaded", bindKbInputs);
 
