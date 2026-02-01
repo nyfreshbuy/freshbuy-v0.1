@@ -4,6 +4,15 @@
     <meta charset="UTF-8" />
     <title>在鲜购拼好货 - 首页</title>
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <!-- ✅ PWA -->
+<link rel="manifest" href="/user/manifest.webmanifest" />
+<meta name="theme-color" content="#22c55e" />
+
+<!-- ✅ iOS 添加到主屏幕 -->
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="在鲜购" />
+<link rel="apple-touch-icon" href="/user/assets/icons/icon-192.png" />
     <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-KP7J1LKVFJ"></script>
 <script>
@@ -1960,5 +1969,13 @@
     </script>
     <!--End of Tawk.to Script-->
     <script src="/assets/js/tawk_custom.js"></script>
+    <!-- ✅ PWA: register service worker -->
+<script>
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("/user/service-worker.js").catch(console.error);
+    });
+  }
+</script>
   </body>
 </html>
