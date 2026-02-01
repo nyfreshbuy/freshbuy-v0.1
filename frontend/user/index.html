@@ -1158,6 +1158,9 @@
           <button class="link-btn" id="loginBtn">登录</button>
           <button class="link-btn primary" id="registerBtn">注册</button>
           <button
+          <button class="link-btn" id="btnInstallPWA" type="button" style="display:none;">
+  📲 下载App
+</button>
             id="mobileTawkBtn"
             class="link-btn"
             type="button"
@@ -1515,7 +1518,12 @@
         <span>🆕</span><span>新品</span>
       </button>
 
-      <button class="side-rail-item" data-scroll="#appDownloadSection" type="button">
+      <button
+  class="side-rail-item"
+  data-scroll="#appDownloadSection"
+  type="button"
+  id="btnInstallPWASide"
+>
         <span>📲</span><span>App 下载</span>
       </button>
 
@@ -1729,12 +1737,27 @@
             id="appDownloadSection"
             style="margin-top:24px;padding:12px 14px;border-radius:12px;background:#fff;border:1px dashed #d1d5db;font-size:13px;color:#6b7280;"
           >
-            <div style="font-size:14px;font-weight:700;margin-bottom:4px;color:#111827;">
-              在鲜购拼好货 · App 下载
-            </div>
-            <p style="margin:0;">
-              即将上线 iOS / Android 客户端，可提前预留下载按钮、二维码区域。也可以放微信小程序码。
-            </p>
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">
+  <div style="flex:1;min-width:220px;">
+    <div style="font-size:14px;font-weight:700;margin-bottom:4px;color:#111827;">
+      在鲜购拼好货 · App 下载
+    </div>
+    <p style="margin:0;color:#6b7280;line-height:1.5;">
+      把在鲜购添加到手机桌面，打开更快、像 App 一样全屏使用。
+    </p>
+    <div id="pwaInstallHint" style="margin-top:6px;font-size:12px;color:#6b7280;"></div>
+  </div>
+
+  <div style="display:flex;gap:8px;align-items:center;">
+    <button
+      id="btnInstallPWASection"
+      type="button"
+      style="display:none;padding:10px 14px;border-radius:999px;border:none;background:#22c55e;color:#fff;font-weight:800;cursor:pointer;"
+    >
+      📲 添加到桌面
+    </button>
+  </div>
+</div>
           </section>
         </div>
       </div>
@@ -1950,6 +1973,7 @@
    <script src="/user/assets/js/auth_client.js?v=20260122a"></script>
 <script src="/user/assets/js/cart.js?v=20260122"></script>
 <script src="/user/assets/js/banner_carousel.js?v=20260130"></script>
+<script src="/user/assets/js/pwa_install.js?v=20260131"></script>
 <script src="/user/assets/js/index.js?v=20260122"></script>
 <!-- footer -->
 <script src="/user/components/footer.js"></script>
