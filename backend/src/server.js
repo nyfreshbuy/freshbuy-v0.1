@@ -86,6 +86,16 @@ console.log("🔥 当前运行的 server.js 来自 =====> ", url.fileURLToPath(i
 // 创建 app
 // =======================
 const app = express();
+
+const userStaticDir = path.join(__dirname, "../../frontend/user");
+app.use("/user", express.static(userStaticDir));
+// ✅ 兜底：根路径 favicon（iOS/Chrome/收藏夹会默认请求）
+app.get("/favicon.ico", (req, res) => {
+  res.sendFile(path.join(userStaticDir, "assets/icons/favicon.ico"));
+});
+// 然后才是这些
+app.use("/api/orders", ordersRouter);
+app.use("/api/products", productsRouter);
 app.use("/api/wallet/recharge", walletRechargeRouter);
 app.use("/api/stripe", stripeWebhookRouter);
 
