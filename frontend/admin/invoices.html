@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>Invoice 开票 - Margarita Market</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <style>
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+        "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+      background: #f3f4f6;
+      color: #111827;
+    }
+
+    .wrap {
+      max-width: 1100px;
+      margin: 20px auto;
+      padding: 0 14px 60px;
+    }
+
+    h1, h2, h3 {
+      margin: 0 0 10px;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 14px;
+      padding: 16px;
+      margin-bottom: 14px;
+      box-shadow: 0 6px 18px rgba(0,0,0,.06);
+    }
+
+    .row {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+
+    .col {
+      flex: 1;
+      min-width: 240px;
+    }
+
+    label {
+      display: block;
+      font-size: 12px;
+      color: #6b7280;
+      margin: 10px 0 4px;
+    }
+
+    input, textarea, select {
+      width: 100%;
+      padding: 10px;
+      border-radius: 10px;
+      border: 1px solid #d1d5db;
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+
+    textarea { min-height: 72px; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 8px;
+    }
+
+    th, td {
+      border-bottom: 1px solid #e5e7eb;
+      padding: 8px;
+      font-size: 13px;
+      vertical-align: top;
+    }
+
+    th {
+      text-align: left;
+      color: #374151;
+    }
+
+    .btn {
+      padding: 10px 14px;
+      border-radius: 10px;
+      border: none;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    .btn-primary {
+      background: #22c55e;
+      color: #fff;
+    }
+
+    .btn-ghost {
+      background: #f3f4f6;
+    }
+
+    .btn-danger {
+      background: #ef4444;
+      color: #fff;
+    }
+
+    .top-actions {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .totals {
+      max-width: 360px;
+      margin-left: auto;
+      margin-top: 12px;
+    }
+
+    .totals .line {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 6px;
+    }
+
+    .totals .grand {
+      font-size: 18px;
+      font-weight: bold;
+    }
+
+    .muted {
+      font-size: 12px;
+      color: #6b7280;
+    }
+  </style>
+</head>
+
+<body>
+<div class="wrap">
+
+  <!-- 顶部 -->
+  <div class="top-actions">
+    <h1>Invoice / 发票开具</h1>
+    <div>
+      <button class="btn btn-ghost" id="btnNew">新建</button>
+      <button class="btn btn-primary" id="btnSave">保存并扣库存</button>
+      <button class="btn btn-ghost" id="btnPrint" disabled>打印 PDF</button>
+    </div>
+  </div>
+
+  <div class="muted" id="hint"></div>
+
+  <!-- 基本信息 -->
+  <div class="card">
+    <div class="row">
+      <div class="col">
+        <label>Invoice Date</label>
+        <input type="date" id="invDate">
+      </div>
+      <div class="col">
+        <label>Invoice No</label>
+        <input id="invNo" placeholder="YYYYMMDD-001">
+      </div>
+      <div class="col">
+        <label>Account #</label>
+        <input id="accountNo">
+      </div>
+      <div class="col">
+        <label>Sales Rep</label>
+        <input id="salesRep">
+      </div>
+      <div class="col">
+        <label>Terms</label>
+        <input id="terms">
+      </div>
+    </div>
+  </div>
+
+  <!-- Sold / Ship -->
+  <div class="card">
+    <div class="row">
+      <div class="col">
+        <h3>Sold To</h3>
+        <label>选择用户</label>
+        <select id="userSelect"></select>
+
+        <label>姓名</label>
+        <input id="soldName">
+        <label>电话</label>
+        <input id="soldPhone">
+        <label>地址</label>
+        <textarea id="soldAddr"></textarea>
+      </div>
+
+      <div class="col">
+        <h3>Ship To</h3>
+        <label>
+          <input type="checkbox" id="sameAsSold" checked>
+          同 Sold To
+        </label>
+
+        <label>姓名</label>
+        <input id="shipName">
+        <label>电话</label>
+        <input id="shipPhone">
+        <label>地址</label>
+        <textarea id="shipAddr"></textarea>
+      </div>
+    </div>
+  </div>
+
+  <!-- 商品 -->
+  <div class="card">
+    <div class="top-actions">
+      <h3>商品明细</h3>
+      <button class="btn btn-ghost" id="btnAddRow">+ 添加</button>
+    </div>
+
+    <table>
+      <thead>
+      <tr>
+        <th>商品</th>
+        <th>规格</th>
+        <th>Description</th>
+        <th>Qty</th>
+        <th>Unit Price</th>
+        <th>Total</th>
+        <th></th>
+      </tr>
+      </thead>
+      <tbody id="itemsTbody"></tbody>
+    </table>
+
+    <div class="totals">
+      <div class="line"><span>Subtotal</span><span id="subTotal">$0.00</span></div>
+      <div class="line grand"><span>Total</span><span id="grandTotal">$0.00</span></div>
+    </div>
+  </div>
+
+  <!-- Statement -->
+  <div class="card">
+    <h3>Statement</h3>
+    <div class="row">
+      <div class="col">
+        <label>From</label>
+        <input type="date" id="stFrom">
+      </div>
+      <div class="col">
+        <label>To</label>
+        <input type="date" id="stTo">
+      </div>
+      <div class="col">
+        <label>User ID（可选）</label>
+        <input id="stUserId">
+      </div>
+      <div class="col" style="display:flex;align-items:flex-end">
+        <button class="btn btn-ghost" id="btnStatement">生成</button>
+      </div>
+    </div>
+    <pre id="stResult"></pre>
+  </div>
+
+</div>
+
+<!-- JS -->
+<script src="./assets/js/admin_invoices.js"></script>
+</body>
+</html>
