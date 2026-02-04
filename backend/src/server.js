@@ -64,6 +64,7 @@ import resetPwdRouter from "./routes/auth_reset_password.js";
 import zonesPublicListRouter from "./routes/zones_public_list.js";
 import bannersRouter from "./routes/banners.js";
 import adminBannersRouter from "./routes/admin_banners.js";
+import initAdminRouter from "./routes/init_admin.js";
 // =======================
 // ESM 环境下的 __dirname
 // =======================
@@ -98,6 +99,7 @@ app.use("/api/products", productsRouter);
 app.use("/api/wallet/recharge", walletRechargeRouter);
 app.use("/api/stripe", stripeWebhookRouter);
 app.use("/api/admin", adminInvoicesRouter);
+app.use("/api", initAdminRouter);
 /**
  * Stripe Webhook 必须 RAW BODY，且必须在 express.json() 之前
  *
@@ -119,49 +121,6 @@ app.use("/api/pay/stripe", stripePayRouter);
 // 其它 API 才用 json
 app.use(express.json());
 // ✅ STAGING ONLY：一次性创建管理员（带密钥）
-// 使用方法：GET /api/__init_admin?key=你的密钥
-app.get("/api/__init_admin", async (req, res) => {
-  try {
-    const key = String(req.query.key || "");
-    if (!process.env.ADMIN_INIT_KEY) {
-      return res.status(500).json({ ok: false, message: "ADMIN_INIT_KEY not set" });
-    }
-    if (key !== String(process.env.ADMIN_INIT_KEY)) {
-      return res.status(403).json({ ok: false, message: "forbidden" });
-    }
-
-    const User = (await import("./models/user.js")).default;
-    const bcrypt = (await import("bcryptjs")).default;
-
-    const phone = "7184195531";
-    const password = "1234567";
-
-    const exists = await User.findOne({ phone }).select("_id role phone name");
-    if (exists) {
-      return res.json({ ok: true, message: "admin already exists", user: exists });
-    }
-
-    const hash = await bcrypt.hash(password, 10);
-    const admin = await User.create({
-      name: "Admin",
-      phone,
-      role: "admin",
-      status: "active",
-      isActive: true,
-      password: hash,
-    });
-
-    return res.json({
-      ok: true,
-      message: "admin created",
-      login: { phone, password },
-      userId: admin._id,
-    });
-  } catch (e) {
-    console.error("❌ __init_admin error:", e);
-    return res.status(500).json({ ok: false, message: e.message || "error" });
-  }
-});
 // ✅ DEBUG：确认新代码已部署（浏览器打开这个地址必须看到 ok:true）
 app.get("/api/__debug_server_version", (req, res) => {
   res.json({ ok: true, ts: new Date().toISOString(), file: "backend/src/server.js" });
