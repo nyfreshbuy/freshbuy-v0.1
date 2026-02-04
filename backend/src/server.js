@@ -64,7 +64,6 @@ import resetPwdRouter from "./routes/auth_reset_password.js";
 import zonesPublicListRouter from "./routes/zones_public_list.js";
 import bannersRouter from "./routes/banners.js";
 import adminBannersRouter from "./routes/admin_banners.js";
-import initAdminRouter from "./routes/init_admin.js";
 // =======================
 // ESM 环境下的 __dirname
 // =======================
@@ -98,8 +97,8 @@ app.use("/api/orders", ordersRouter);
 app.use("/api/products", productsRouter);
 app.use("/api/wallet/recharge", walletRechargeRouter);
 app.use("/api/stripe", stripeWebhookRouter);
-app.use("/api/admin", adminInvoicesRouter);
-app.use("/api", initAdminRouter);
+// ✅ 重要：不要占用 /api/admin 总入口，否则会吃掉 /api/admin/users 等
+app.use("/api/admin/invoices", adminInvoicesRouter);
 /**
  * Stripe Webhook 必须 RAW BODY，且必须在 express.json() 之前
  *
