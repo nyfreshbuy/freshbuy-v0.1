@@ -3,7 +3,6 @@ import path from "path";
 import * as url from "url";
 import PDFDocument from "pdfkit";
 import mongoose from "mongoose";
-
 import Invoice from "../models/Invoice.js";
 import product from "../models/product.js";
 import { requireLogin } from "../middlewares/auth.js";

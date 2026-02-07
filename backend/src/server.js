@@ -97,7 +97,7 @@ app.use("/api/orders", ordersRouter);
 app.use("/api/products", productsRouter);
 app.use("/api/wallet/recharge", walletRechargeRouter);
 app.use("/api/stripe", stripeWebhookRouter);
-app.use("/api/admin", adminInvoicesRouter);
+app.use("/api/admin/invoices", adminInvoicesRouter);
 /**
  * Stripe Webhook 必须 RAW BODY，且必须在 express.json() 之前
  *
