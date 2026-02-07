@@ -4,7 +4,7 @@ import * as url from "url";
 import PDFDocument from "pdfkit";
 import mongoose from "mongoose";
 import Invoice from "../models/Invoice.js";
-import product from "../models/product.js";
+import Product from "../models/product.js";
 import { requireLogin } from "../middlewares/auth.js";
 
 const router = express.Router();
@@ -130,7 +130,7 @@ async function revertStock(invoiceDoc, session) {
 // =====================
 // POST /api/admin/invoices
 // =====================
-router.post("/invoices", async (req, res) => {
+router.post("/", async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
   try {
@@ -171,7 +171,7 @@ router.post("/invoices", async (req, res) => {
 // PUT /api/admin/invoices/:id
 // 回滚旧库存 -> DB 校正 -> 重新扣库存
 // =====================
-router.put("/invoices/:id", async (req, res) => {
+router.put("/:id", async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
   try {
@@ -216,11 +216,11 @@ router.put("/invoices/:id", async (req, res) => {
 });
 
 // 列表/详情
-router.get("/invoices", async (req, res) => {
+router.get("/", async (req, res) => {
   const list = await Invoice.find({}).sort({ createdAt: -1 }).limit(300);
   res.json({ success: true, invoices: list });
 });
-router.get("/invoices/:id", async (req, res) => {
+router.get("/:id", async (req, res) => {
   const inv = await Invoice.findById(req.params.id);
   if (!inv) return res.status(404).json({ success: false, message: "not found" });
   res.json({ success: true, invoice: inv });
@@ -230,7 +230,7 @@ router.get("/invoices/:id", async (req, res) => {
 // PDF：按你指定版式（不显示 unitCount/variantKey）
 // GET /api/admin/invoices/:id/pdf
 // =====================
-router.get("/invoices/:id/pdf", async (req, res) => {
+router.get("/:id/pdf", async (req, res) => {
   const inv = await Invoice.findById(req.params.id);
   if (!inv) return res.status(404).end();
 
