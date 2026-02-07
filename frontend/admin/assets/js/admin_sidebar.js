@@ -7,6 +7,7 @@
       section: "业务管理",
       items: [
         { text: "订单管理", href: "/admin/orders.html", icon: "□" },
+        { text: "发票管理", href: "/admin/invoices.html", icon: "🧾" },
         { text: "商品管理", href: "/admin/products.html", icon: "◆" },
         { text: "用户管理", href: "/admin/users.html", icon: "👤" },
         { text: "团长管理", href: "/admin/leaders.html", icon: "团" },

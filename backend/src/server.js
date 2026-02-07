@@ -97,8 +97,7 @@ app.use("/api/orders", ordersRouter);
 app.use("/api/products", productsRouter);
 app.use("/api/wallet/recharge", walletRechargeRouter);
 app.use("/api/stripe", stripeWebhookRouter);
-// ✅ 重要：不要占用 /api/admin 总入口，否则会吃掉 /api/admin/users 等
-app.use("/api/admin/invoices", adminInvoicesRouter);
+app.use("/api/admin", adminInvoicesRouter);
 /**
  * Stripe Webhook 必须 RAW BODY，且必须在 express.json() 之前
  *
@@ -119,7 +118,6 @@ app.use("/api/pay/stripe", stripePayRouter);
 
 // 其它 API 才用 json
 app.use(express.json());
-// ✅ STAGING ONLY：一次性创建管理员（带密钥）
 // ✅ DEBUG：确认新代码已部署（浏览器打开这个地址必须看到 ok:true）
 app.get("/api/__debug_server_version", (req, res) => {
   res.json({ ok: true, ts: new Date().toISOString(), file: "backend/src/server.js" });

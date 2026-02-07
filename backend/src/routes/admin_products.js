@@ -9,10 +9,8 @@
 // - PATCH  /api/admin/products/:id/toggle-status
 // - GET    /api/admin/products/:id/purchase-batches
 // - POST   /api/admin/products/:id/purchase-batches
-
 import express from "express";
 import multer from "multer";
-
 import Product from "../models/product.js";
 import ProductPurchaseBatch from "../models/ProductPurchaseBatch.js";
 import { toClient, toClientList } from "../utils/toClient.js";
