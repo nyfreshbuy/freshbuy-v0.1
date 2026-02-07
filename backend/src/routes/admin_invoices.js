@@ -277,7 +277,7 @@ router.get("/:id/pdf", async (req, res) => {
   doc.pipe(res);
 
   // ✅✅✅ 中文字体（解决“在鲜购”乱码）
-  const fontSC = path.resolve(__dirname, "../assets/fonts/NotoSansSC-Regular.ttf");
+  const fontSC = path.resolve(__dirname, "../../assets/fonts/NotoSansSC-Regular.ttf");
   try {
     doc.registerFont("SC", fontSC);
     doc.font("SC"); // 默认全程用中文字体（姓名/地址/商品名有中文也稳）
@@ -287,7 +287,7 @@ router.get("/:id/pdf", async (req, res) => {
 
   // ✅ logo：放这里
   // frontend/admin/assets/images/invoice_logo.png
-  const logoPath = path.resolve(__dirname, "../../frontend/admin/assets/images/invoice_logo.png");
+  const logoPath = path.resolve(__dirname, "../../../frontend/admin/assets/images/invoice_logo.png");
   try {
     doc.image(logoPath, 36, 26, { width: 58 });
   } catch {}
