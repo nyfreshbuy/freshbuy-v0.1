@@ -590,13 +590,39 @@
     }
   }
 
-  function printInvoice() {
-    if (!currentInvoiceId) {
-      alert("请先保存发票，再打印。");
+  async function printInvoice() {
+  if (!currentInvoiceId) {
+    alert("请先保存发票，再打印。");
+    return;
+  }
+
+  try {
+    const tk = getAdminToken();
+    if (!tk) {
+      alert("未登录：没有 token，请重新登录后台。");
       return;
     }
-    window.open(`/api/admin/invoices/${currentInvoiceId}/pdf`, "_blank");
+
+    const res = await fetch(`/api/admin/invoices/${currentInvoiceId}/pdf`, {
+      headers: { Authorization: "Bearer " + tk },
+    });
+
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      alert("打印失败：" + (txt || res.status));
+      return;
+    }
+
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank");
+    // 可选：过一会释放
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  } catch (e) {
+    alert("打印失败：" + (e?.message || e));
   }
+}
+
 
   // =========================
   // Statement
@@ -618,8 +644,7 @@
 
     stResult.textContent = "⏳ 生成中…";
 
-    const { res, data } = await apiFetch(`/api/admin/statements?${qs.toString()}`);
-
+   const { res, data } = await apiFetch(`/api/admin/invoices/statements?${qs.toString()}`);
     if (!res.ok || !data?.success) {
       stResult.textContent = "❌ 失败：" + (data?.message || res.status);
       return;
