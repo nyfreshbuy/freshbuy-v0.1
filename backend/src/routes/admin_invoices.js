@@ -13,6 +13,14 @@ router.use(requireLogin);
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 
+// ✅ 清理控制字符（避免出现 \u0 / NUL 导致 PDF 奇怪字符）
+function cleanText(s) {
+  return String(s || "")
+    .replace(/\\u0/g, "")   // 清掉字面量 "\u0"
+    .replace(/\u0000/g, "") // 清掉真正的 NUL 字符
+    .trim();
+}
+
 // ---------- 金额计算 ----------
 function computeTotals(items = []) {
   let subtotal = 0;
@@ -220,100 +228,8 @@ router.get("/", async (req, res) => {
   const list = await Invoice.find({}).sort({ createdAt: -1 }).limit(300);
   res.json({ success: true, invoices: list });
 });
-router.get("/:id", async (req, res) => {
-  const inv = await Invoice.findById(req.params.id);
-  if (!inv) return res.status(404).json({ success: false, message: "not found" });
-  res.json({ success: true, invoice: inv });
-});
 
-// =====================
-// PDF：按你指定版式（不显示 unitCount/variantKey）
-// GET /api/admin/invoices/:id/pdf
-// =====================
-router.get("/:id/pdf", async (req, res) => {
-  const inv = await Invoice.findById(req.params.id);
-  if (!inv) return res.status(404).end();
-
-  res.setHeader("Content-Type", "application/pdf");
-  res.setHeader("Content-Disposition", `inline; filename="${inv.invoiceNo}.pdf"`);
-
-  const doc = new PDFDocument({ margin: 36 });
-  doc.pipe(res);
-
-  // ✅ logo：放这里
-  // frontend/admin/assets/images/invoice_logo.png
-  const logoPath = path.resolve(__dirname, "../../frontend/admin/assets/images/invoice_logo.png");
-  try {
-    doc.image(logoPath, 36, 26, { width: 58 });
-  } catch {}
-
-  // 抬头居中（中文大字 + 英文 + 地址电话）
-  doc.fontSize(22).text("在鲜购", 0, 22, { align: "center" });
-  doc.fontSize(12).text("margarita market inc", { align: "center" });
-  doc.fontSize(10).text("19926 48th ave freshmeadows ny11365", { align: "center" });
-  doc.fontSize(10).text("tel 9297070098", { align: "center" });
-
-  doc.moveDown(1.2);
-
-  // Sold To / Ship To 两列
-  const leftX = 36;
-  const rightX = 320;
-  const topY = doc.y;
-
-  doc.fontSize(10).text("SOLD TO:", leftX, topY);
-  doc.text(inv.soldTo?.name || "", leftX, topY + 14);
-  doc.text(inv.soldTo?.phone || "", leftX, topY + 28);
-  doc.text(inv.soldTo?.address || "", leftX, topY + 42, { width: 260 });
-
-  doc.text("SHIP TO:", rightX, topY);
-  doc.text(inv.shipTo?.name || "", rightX, topY + 14);
-  doc.text(inv.shipTo?.phone || "", rightX, topY + 28);
-  doc.text(inv.shipTo?.address || "", rightX, topY + 42, { width: 240 });
-
-  doc.y = topY + 82;
-
-  // account / sales rep / terms / date / invoice#
-  const infoY = doc.y;
-  const d = new Date(inv.date || inv.createdAt || Date.now());
-
-  doc.fontSize(10).text(`ACCOUNT #: ${inv.accountNo || ""}`, leftX, infoY);
-  doc.text(`SALES REP: ${inv.salesRep || ""}`, leftX + 180, infoY);
-  doc.text(`TERMS: ${inv.terms || ""}`, leftX + 360, infoY);
-
-  doc.text(`INVOICE #: ${inv.invoiceNo}`, leftX, infoY + 14);
-  doc.text(`DATE: ${d.toLocaleDateString()}`, leftX + 360, infoY + 14);
-
-  doc.moveDown(2);
-
-  // 表头
-  const y0 = doc.y;
-  doc.fontSize(10).text("QTY", 36, y0, { width: 40 });
-  doc.text("PRDT CODE", 76, y0, { width: 90 });
-  doc.text("DESCRIPTION", 166, y0, { width: 220 });
-  doc.text("U.PRICE", 386, y0, { width: 80, align: "right" });
-  doc.text("TOTAL", 466, y0, { width: 100, align: "right" });
-
-  doc.moveDown(0.5);
-  doc.moveTo(36, doc.y).lineTo(566, doc.y).stroke();
-  doc.moveDown(0.4);
-
-  // 明细（✅ 不打印 unitCount/variantKey）
-  for (const it of inv.items || []) {
-    const yy = doc.y;
-    doc.text(String(it.qty ?? 0), 36, yy, { width: 40 });
-    doc.text(it.productCode || "", 76, yy, { width: 90 });
-    doc.text(it.description || "", 166, yy, { width: 220 });
-    doc.text(`$${Number(it.unitPrice || 0).toFixed(2)}`, 386, yy, { width: 80, align: "right" });
-    doc.text(`$${Number(it.lineTotal || 0).toFixed(2)}`, 466, yy, { width: 100, align: "right" });
-    doc.moveDown(0.9);
-  }
-
-  doc.moveDown(1);
-  doc.fontSize(14).text(`TOTAL: $${Number(inv.total || 0).toFixed(2)}`, 0, doc.y, { align: "right" });
-
-  doc.end();
-});
-// GET /api/admin/statements?from=2026-02-01&to=2026-02-29&userId=xxx(可选)
+// ✅✅✅ 重要：/statements 必须放在 /:id 之前，否则会被当作 id="statements"
 router.get("/statements", async (req, res) => {
   const { from, to, userId } = req.query;
 
@@ -338,6 +254,109 @@ router.get("/statements", async (req, res) => {
     total: Math.round(total * 100) / 100,
     invoices: list,
   });
+});
+
+router.get("/:id", async (req, res) => {
+  const inv = await Invoice.findById(req.params.id);
+  if (!inv) return res.status(404).json({ success: false, message: "not found" });
+  res.json({ success: true, invoice: inv });
+});
+
+// =====================
+// PDF：按你指定版式（不显示 unitCount/variantKey）
+// GET /api/admin/invoices/:id/pdf
+// =====================
+router.get("/:id/pdf", async (req, res) => {
+  const inv = await Invoice.findById(req.params.id);
+  if (!inv) return res.status(404).end();
+
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `inline; filename="${inv.invoiceNo}.pdf"`);
+
+  const doc = new PDFDocument({ margin: 36 });
+  doc.pipe(res);
+
+  // ✅✅✅ 中文字体（解决“在鲜购”乱码）
+  const fontSC = path.resolve(__dirname, "../assets/fonts/NotoSansSC-Regular.ttf");
+  try {
+    doc.registerFont("SC", fontSC);
+    doc.font("SC"); // 默认全程用中文字体（姓名/地址/商品名有中文也稳）
+  } catch (e) {
+    console.warn("⚠️ registerFont SC failed:", e?.message || e);
+  }
+
+  // ✅ logo：放这里
+  // frontend/admin/assets/images/invoice_logo.png
+  const logoPath = path.resolve(__dirname, "../../frontend/admin/assets/images/invoice_logo.png");
+  try {
+    doc.image(logoPath, 36, 26, { width: 58 });
+  } catch {}
+
+  // 抬头居中（中文大字 + 英文 + 地址电话）
+  doc.fontSize(22).text("在鲜购", 0, 22, { align: "center" });
+  doc.fontSize(12).text("margarita market inc", { align: "center" });
+  doc.fontSize(10).text("19926 48th ave freshmeadows ny11365", { align: "center" });
+  doc.fontSize(10).text("tel 9297070098", { align: "center" });
+
+  doc.moveDown(1.2);
+
+  // Sold To / Ship To 两列
+  const leftX = 36;
+  const rightX = 320;
+  const topY = doc.y;
+
+  doc.fontSize(10).text("SOLD TO:", leftX, topY);
+  doc.text(cleanText(inv.soldTo?.name), leftX, topY + 14);
+  doc.text(cleanText(inv.soldTo?.phone), leftX, topY + 28);
+  doc.text(cleanText(inv.soldTo?.address), leftX, topY + 42, { width: 260 });
+
+  doc.text("SHIP TO:", rightX, topY);
+  doc.text(cleanText(inv.shipTo?.name), rightX, topY + 14);
+  doc.text(cleanText(inv.shipTo?.phone), rightX, topY + 28);
+  doc.text(cleanText(inv.shipTo?.address), rightX, topY + 42, { width: 240 });
+
+  doc.y = topY + 82;
+
+  // account / sales rep / terms / date / invoice#
+  const infoY = doc.y;
+  const d = new Date(inv.date || inv.createdAt || Date.now());
+
+  doc.fontSize(10).text(`ACCOUNT #: ${cleanText(inv.accountNo)}`, leftX, infoY);
+  doc.text(`SALES REP: ${cleanText(inv.salesRep)}`, leftX + 180, infoY);
+  doc.text(`TERMS: ${cleanText(inv.terms)}`, leftX + 360, infoY);
+
+  doc.text(`INVOICE #: ${cleanText(inv.invoiceNo)}`, leftX, infoY + 14);
+  doc.text(`DATE: ${d.toLocaleDateString()}`, leftX + 360, infoY + 14);
+
+  doc.moveDown(2);
+
+  // 表头
+  const y0 = doc.y;
+  doc.fontSize(10).text("QTY", 36, y0, { width: 40 });
+  doc.text("PRDT CODE", 76, y0, { width: 90 });
+  doc.text("DESCRIPTION", 166, y0, { width: 220 });
+  doc.text("U.PRICE", 386, y0, { width: 80, align: "right" });
+  doc.text("TOTAL", 466, y0, { width: 100, align: "right" });
+
+  doc.moveDown(0.5);
+  doc.moveTo(36, doc.y).lineTo(566, doc.y).stroke();
+  doc.moveDown(0.4);
+
+  // 明细（✅ 不打印 unitCount/variantKey）
+  for (const it of inv.items || []) {
+    const yy = doc.y;
+    doc.text(String(it.qty ?? 0), 36, yy, { width: 40 });
+    doc.text(cleanText(it.productCode), 76, yy, { width: 90 });
+    doc.text(cleanText(it.description), 166, yy, { width: 220 });
+    doc.text(`$${Number(it.unitPrice || 0).toFixed(2)}`, 386, yy, { width: 80, align: "right" });
+    doc.text(`$${Number(it.lineTotal || 0).toFixed(2)}`, 466, yy, { width: 100, align: "right" });
+    doc.moveDown(0.9);
+  }
+
+  doc.moveDown(1);
+  doc.fontSize(14).text(`TOTAL: $${Number(inv.total || 0).toFixed(2)}`, 0, doc.y, { align: "right" });
+
+  doc.end();
 });
 
 export default router;
