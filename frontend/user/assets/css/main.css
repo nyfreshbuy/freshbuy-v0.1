@@ -1358,7 +1358,30 @@ body.use-vvh #app {
   font-size: 14px;
   color: #64748b;
 }
+/* =========================
+   ✅ FIX: 登录/注册小眼睛永远可点（防被按钮/输入框盖住）
+   ========================= */
+#authBackdrop .auth-input-wrap{
+  position: relative !important;
+}
 
+/* 让眼睛按钮在最上层，且点击区域够大 */
+#authBackdrop .auth-eye{
+  z-index: 99999 !important;
+  pointer-events: auto !important;
+  -webkit-tap-highlight-color: transparent !important;
+}
+
+/* ✅ 默认所有密码输入框右侧预留眼睛空间 */
+#authBackdrop input[type="password"].auth-input,
+#authBackdrop input[type="text"].auth-input{
+  padding-right: 56px !important;
+}
+
+/* ✅ 但验证码 regCode 右边是“获取验证码”按钮，要更大空间 */
+#authBackdrop #regCode.auth-input{
+  padding-right: 130px !important;
+}
 #authBackdrop .auth-eye:active {
   transform: translateY(1px);
 }
@@ -1720,24 +1743,6 @@ html, body {
   overflow-x: hidden;
   max-width: 100%;
 }
-.banner-chip{
-  display:inline-flex;
-  align-items:center;
-  padding:8px 12px;
-  border-radius:999px;
-  background: rgba(0,0,0,.18);
-  border: 1px solid rgba(255,255,255,.22);
-  color:#fff;
-  text-decoration:none;
-  font-weight:700;
-  font-size:13px;
-  margin-right:10px;
-}
-.banner-chip:hover{ opacity:.92; }
-/* =========================
-   Banner 可点击标签/按钮（带链接）
-   放 main.css 最底部
-   ========================= */
 .banner-chip{
   display:inline-flex;
   align-items:center;
