@@ -225,10 +225,47 @@ router.put("/:id", async (req, res) => {
 
 // 列表/详情
 router.get("/", async (req, res) => {
-  const list = await Invoice.find({}).sort({ createdAt: -1 }).limit(300);
-  res.json({ success: true, invoices: list });
-});
+  try {
+    const { q, from, to, userId, page = "1", pageSize = "50" } = req.query;
 
+    const filter = {};
+
+    if (from || to) {
+      filter.date = {};
+      if (from) filter.date.$gte = new Date(String(from) + "T00:00:00.000Z");
+      if (to) filter.date.$lte = new Date(String(to) + "T23:59:59.999Z");
+    }
+
+    if (userId) filter["soldTo.userId"] = String(userId);
+
+    if (q) {
+      const kw = String(q).trim();
+      const rx = new RegExp(kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+      filter.$or = [
+        { invoiceNo: rx },
+        { "soldTo.name": rx },
+        { "soldTo.phone": rx },
+        { "shipTo.name": rx },
+        { "shipTo.phone": rx },
+        { "items.description": rx },
+        { "items.productCode": rx },
+      ];
+    }
+
+    const p = Math.max(1, parseInt(page, 10) || 1);
+    const ps = Math.min(200, Math.max(1, parseInt(pageSize, 10) || 50));
+    const skip = (p - 1) * ps;
+
+    const [items, total] = await Promise.all([
+      Invoice.find(filter).sort({ date: -1, createdAt: -1 }).skip(skip).limit(ps),
+      Invoice.countDocuments(filter),
+    ]);
+
+    res.json({ success: true, page: p, pageSize: ps, total, invoices: items });
+  } catch (e) {
+    res.status(400).json({ success: false, message: e.message || "search failed" });
+  }
+});
 // ✅✅✅ 重要：/statements 必须放在 /:id 之前，否则会被当作 id="statements"
 router.get("/statements", async (req, res) => {
   const { from, to, userId } = req.query;
@@ -254,6 +291,123 @@ router.get("/statements", async (req, res) => {
     total: Math.round(total * 100) / 100,
     invoices: list,
   });
+});
+// =====================
+// Statement PDF（像你图那种表格）
+// GET /api/admin/invoices/statements/pdf?from=YYYY-MM-DD&to=YYYY-MM-DD&userId=xxx(可选)
+// =====================
+router.get("/statements/pdf", async (req, res) => {
+  const { from, to, userId } = req.query;
+
+  if (!from || !to) {
+    return res.status(400).json({ success: false, message: "from/to required" });
+  }
+
+  // 1) 查询
+  const q = {};
+  q.date = {
+    $gte: new Date(String(from) + "T00:00:00.000Z"),
+    $lte: new Date(String(to) + "T23:59:59.999Z"),
+  };
+  if (userId) q["soldTo.userId"] = String(userId);
+
+  const list = await Invoice.find(q).sort({ date: 1, createdAt: 1 });
+
+  // 2) PDF 输出
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `inline; filename="statement_${from}_${to}.pdf"`);
+
+  const doc = new PDFDocument({ margin: 36, size: "LETTER" });
+  doc.pipe(res);
+
+  // ✅ 中文字体（跟你 invoice pdf 一样）
+  const fontSC = path.resolve(__dirname, "../../assets/fonts/NotoSansSC-Regular.ttf");
+  try {
+    doc.registerFont("SC", fontSC);
+    doc.font("SC");
+  } catch {}
+
+  const customerName = userId
+    ? cleanText(list?.[0]?.soldTo?.name || "")
+    : "";
+
+  // Header
+  doc.fontSize(16).text("Margarita Market Inc", { align: "center" });
+  doc.fontSize(14).text("Customer Open Balance", { align: "center" });
+  doc.fontSize(10).text(`${from}  ~  ${to}`, { align: "center" });
+  doc.moveDown(0.6);
+
+  if (customerName) {
+    doc.fontSize(11).text(`Customer: ${customerName}`, 36, doc.y);
+    doc.moveDown(0.3);
+  }
+
+  // 表头（按你图那样）
+  const col = {
+    type: 36,
+    date: 92,
+    num: 160,
+    memo: 220,
+    due: 360,
+    open: 440,
+    amt: 520,
+  };
+
+  const yHead = doc.y + 6;
+  doc.fontSize(9);
+  doc.text("Type", col.type, yHead);
+  doc.text("Date", col.date, yHead);
+  doc.text("Num", col.num, yHead);
+  doc.text("Memo", col.memo, yHead);
+  doc.text("Due Date", col.due, yHead);
+  doc.text("Open Balance", col.open, yHead, { width: 70, align: "right" });
+  doc.text("Amount", col.amt, yHead, { width: 70, align: "right" });
+
+  doc.moveTo(36, yHead + 14).lineTo(576, yHead + 14).stroke();
+  doc.y = yHead + 18;
+
+  // 行
+  let running = 0;
+  let total = 0;
+
+  for (const inv of list) {
+    const dt = new Date(inv.date || inv.createdAt || Date.now());
+    const dateStr = dt.toLocaleDateString();
+    const dueStr = dateStr; // 你想做 terms 也可以后面加
+
+    const amount = Number(inv.total || 0);
+    running += amount;
+    total += amount;
+
+    const y = doc.y;
+
+    doc.fontSize(9);
+    doc.text("Invoice", col.type, y);
+    doc.text(dateStr, col.date, y);
+    doc.text(cleanText(inv.invoiceNo || ""), col.num, y);
+    doc.text("", col.memo, y); // memo 你想放备注可改
+    doc.text(dueStr, col.due, y);
+
+    doc.text(running.toFixed(2), col.open, y, { width: 70, align: "right" });
+    doc.text(amount.toFixed(2), col.amt, y, { width: 70, align: "right" });
+
+    doc.moveDown(1.1);
+
+    // 自动换页
+    if (doc.y > 740) {
+      doc.addPage();
+      doc.font("SC").fontSize(9);
+    }
+  }
+
+  // Total
+  doc.moveDown(0.4);
+  doc.moveTo(36, doc.y).lineTo(576, doc.y).stroke();
+  doc.moveDown(0.4);
+  doc.fontSize(11).text("TOTAL", 36, doc.y);
+  doc.fontSize(11).text(total.toFixed(2), col.amt, doc.y, { width: 70, align: "right" });
+
+  doc.end();
 });
 
 router.get("/:id", async (req, res) => {

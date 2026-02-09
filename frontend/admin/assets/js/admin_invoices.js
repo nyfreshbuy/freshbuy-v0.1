@@ -3,8 +3,11 @@
 // - 选用户自动带出 name/phone/address
 // - 选商品/规格（variants）自动填描述/价格，并携带 unitCount（扣库存用，打印不显示）
 // - 保存：POST /api/admin/invoices（后端扣库存）
-// - 打印：GET /api/admin/invoices/:id/pdf
-// - Statement：GET /api/admin/statements?from&to&userId
+// - 打印：GET /api/admin/invoices/:id/pdf（✅ 用 fetch+token+blob 打开，避免缺少 token）
+// - Statement：
+//    JSON: GET /api/admin/invoices/statements?from&to&userId
+//    PDF : GET /api/admin/invoices/statements/pdf?from&to&userId（✅ 用 fetch+token+blob 打开）
+// - 搜索发票：GET /api/admin/invoices?q&from&to&userId（后端需支持这些 query）
 
 (function () {
   // =========================
@@ -23,7 +26,6 @@
 
   async function apiFetch(url, options = {}) {
     const headers = Object.assign({}, options.headers || {});
-    // 允许上传/下载等场景覆盖
     if (!headers["Content-Type"] && options.body && typeof options.body === "string") {
       headers["Content-Type"] = "application/json";
     }
@@ -43,6 +45,29 @@
       }
     }
     return { res, data };
+  }
+
+  async function authedDownloadOpen(url) {
+    const tk = getAdminToken();
+    if (!tk) {
+      alert("未登录：没有 token，请重新登录后台。");
+      return;
+    }
+
+    const res = await fetch(url, {
+      headers: { Authorization: "Bearer " + tk },
+    });
+
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      alert("打开失败：" + (txt || res.status));
+      return;
+    }
+
+    const blob = await res.blob();
+    const objUrl = URL.createObjectURL(blob);
+    window.open(objUrl, "_blank");
+    setTimeout(() => URL.revokeObjectURL(objUrl), 60_000);
   }
 
   // =========================
@@ -79,7 +104,18 @@
   const stTo = document.getElementById("stTo");
   const stUserId = document.getElementById("stUserId");
   const btnStatement = document.getElementById("btnStatement");
+  const btnStatementPdf = document.getElementById("btnStatementPdf"); // ✅ 新增
   const stResult = document.getElementById("stResult");
+
+  // ✅ 搜索区（可选：只有你的 invoices.html 有这些 id 才生效）
+  const sQ = document.getElementById("sQ");
+  const sFrom = document.getElementById("sFrom");
+  const sTo = document.getElementById("sTo");
+  const sUserId = document.getElementById("sUserId");
+  const btnSearch = document.getElementById("btnSearch");
+  const btnSearchReset = document.getElementById("btnSearchReset");
+  const searchHint = document.getElementById("searchHint");
+  const searchList = document.getElementById("searchList");
 
   // =========================
   // State
@@ -150,7 +186,6 @@
   // Load users
   // =========================
   function normalizeUserFromApi(u) {
-    // 你 admin_users_mongo.js 已经 normalizeUser 过，但这里再兜底
     return {
       _id: u?._id || u?.id || "",
       name: u?.name || "",
@@ -160,6 +195,7 @@
   }
 
   function renderUserSelect() {
+    if (!userSelect) return;
     userSelect.innerHTML = "";
 
     const opt0 = document.createElement("option");
@@ -243,7 +279,6 @@
       return;
     }
 
-    // 你的 admin_products.js 返回 { success:true, list: toClientList(list) }
     const list = data.list || data.products || data.items || data.data || [];
     products = Array.isArray(list) ? list.map(normalizeProductFromApi) : [];
 
@@ -260,6 +295,7 @@
   // =========================
   function recalcTotals() {
     let sub = 0;
+    if (!itemsTbody) return;
 
     const trs = itemsTbody.querySelectorAll("tr");
     for (const tr of trs) {
@@ -305,7 +341,6 @@
         ? product.variants
         : [{ key: "single", label: "单个", unitCount: 1, price: null, enabled: true, sortOrder: 0 }];
 
-    // sort by sortOrder
     const sorted = [...vars].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
 
     for (const v of sorted) {
@@ -323,6 +358,7 @@
   }
 
   function addRow(preset = {}) {
+    if (!itemsTbody) return;
     const tr = document.createElement("tr");
 
     // 商品
@@ -388,7 +424,6 @@
     tdX.appendChild(btnDel);
     tr.appendChild(tdX);
 
-    // --- 规格选择（随商品变化刷新） ---
     function refreshVariantUI(productId) {
       tdV.innerHTML = "";
       const p = productId ? getProduct(productId) : null;
@@ -407,9 +442,7 @@
       const vs = makeVariantSelect(p);
       tdV.appendChild(vs);
 
-      // preset
       if (preset.variantKey) vs.value = preset.variantKey;
-
       return vs;
     }
 
@@ -418,22 +451,18 @@
       const p = pid ? getProduct(pid) : null;
       const varSel = tdV.querySelector('select[data-k="variantKey"]');
 
-      // 手填：不自动覆盖你已经填的内容
       if (!p) {
         recalcTotals();
         return;
       }
 
-      // Description：为空时填商品名
       if (!inpDesc.value) inpDesc.value = p.name || "";
 
-      // 单价：优先规格价 -> 产品价（你产品 price 已可能是特价后的单价）
       if (varSel && varSel.selectedOptions && varSel.selectedOptions[0]) {
         const opt = varSel.selectedOptions[0];
         const vp = opt.dataset.variantPrice;
         const auto = vp !== "" ? parseNum(vp, p.price) : p.price;
 
-        // 只有当你没输入或是 0 才自动填，避免覆盖手改
         if (!inpPrice.value || parseNum(inpPrice.value, 0) === 0) {
           inpPrice.value = String(auto || 0);
         }
@@ -446,33 +475,26 @@
       recalcTotals();
     }
 
-    // events
     selP.onchange = () => {
       const varSel = refreshVariantUI(selP.value);
-      // 规格切换也要自动填价格
-      if (varSel) {
-        varSel.onchange = autofillByProductAndVariant;
-      }
+      if (varSel) varSel.onchange = autofillByProductAndVariant;
       autofillByProductAndVariant();
     };
 
     inpQty.oninput = recalcTotals;
     inpPrice.oninput = recalcTotals;
 
-    // 初始渲染规格
     const initialVarSel = refreshVariantUI(selP.value);
-    if (initialVarSel) {
-      initialVarSel.onchange = autofillByProductAndVariant;
-    }
-    itemsTbody.appendChild(tr);
+    if (initialVarSel) initialVarSel.onchange = autofillByProductAndVariant;
 
-    // 初始自动填
+    itemsTbody.appendChild(tr);
     autofillByProductAndVariant();
     recalcTotals();
   }
 
   function collectItemsPayload() {
     const items = [];
+    if (!itemsTbody) return items;
 
     const trs = itemsTbody.querySelectorAll("tr");
     for (const tr of trs) {
@@ -482,17 +504,13 @@
       const qty = parseNum(tr.querySelector('[data-k="qty"]')?.value, 0);
       const unitPrice = parseNum(tr.querySelector('[data-k="unitPrice"]')?.value, 0);
 
-      // unitCount：前端可传（扣库存用），但后端必须以 DB 校正为准
       let unitCount = 1;
       const varSel = tr.querySelector('select[data-k="variantKey"]');
       if (varSel && varSel.selectedOptions && varSel.selectedOptions[0]) {
         unitCount = Math.max(1, Math.floor(parseNum(varSel.selectedOptions[0].dataset.unitCount, 1)));
       }
 
-      // 空行跳过
       if (!productId && !description) continue;
-
-      // qty=0 也跳过
       if (!qty || qty <= 0) continue;
 
       items.push({
@@ -501,7 +519,7 @@
         description: String(description || "").trim(),
         qty,
         unitPrice,
-        unitCount, // ✅ 仅用于扣库存（打印不显示）
+        unitCount,
       });
     }
 
@@ -531,8 +549,8 @@
     };
 
     return {
-      invoiceNo: (invNo.value || "").trim(), // 后端可覆盖/生成
-      date: dateStr, // 用 YYYY-MM-DD 传更直观
+      invoiceNo: (invNo.value || "").trim(),
+      date: dateStr,
       accountNo: (accountNo.value || "").trim(),
       salesRep: (salesRep.value || "").trim(),
       terms: (terms.value || "").trim(),
@@ -554,12 +572,11 @@
       return;
     }
 
-    // 前端预览 invoiceNo
     if (!payload.invoiceNo) {
       payload.invoiceNo = genInvoiceNoPreview(payload.date);
     }
 
-    btnSave.disabled = true;
+    btnSave && (btnSave.disabled = true);
     setHint("⏳ 正在保存发票…（保存成功会扣库存）");
 
     try {
@@ -580,57 +597,30 @@
       const inv = data.invoice || data.data || data.item || null;
       currentInvoiceId = inv?._id || data?._id || currentInvoiceId;
 
-      // 以后台为准
       if (inv?.invoiceNo) invNo.value = inv.invoiceNo;
 
-      btnPrint.disabled = !currentInvoiceId;
+      if (btnPrint) btnPrint.disabled = !currentInvoiceId;
       setHint(`✅ 已保存：${invNo.value || "(no)"}（库存已按 qty*unitCount 扣减）`);
     } finally {
-      btnSave.disabled = false;
+      btnSave && (btnSave.disabled = false);
     }
   }
 
   async function printInvoice() {
-  if (!currentInvoiceId) {
-    alert("请先保存发票，再打印。");
-    return;
-  }
-
-  try {
-    const tk = getAdminToken();
-    if (!tk) {
-      alert("未登录：没有 token，请重新登录后台。");
+    if (!currentInvoiceId) {
+      alert("请先保存发票，再打印。");
       return;
     }
-
-    const res = await fetch(`/api/admin/invoices/${currentInvoiceId}/pdf`, {
-      headers: { Authorization: "Bearer " + tk },
-    });
-
-    if (!res.ok) {
-      const txt = await res.text().catch(() => "");
-      alert("打印失败：" + (txt || res.status));
-      return;
-    }
-
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    window.open(url, "_blank");
-    // 可选：过一会释放
-    setTimeout(() => URL.revokeObjectURL(url), 60_000);
-  } catch (e) {
-    alert("打印失败：" + (e?.message || e));
+    await authedDownloadOpen(`/api/admin/invoices/${currentInvoiceId}/pdf`);
   }
-}
-
 
   // =========================
   // Statement
   // =========================
   async function runStatement() {
-    const from = (stFrom.value || "").trim();
-    const to = (stTo.value || "").trim();
-    const uid = (stUserId.value || "").trim();
+    const from = (stFrom?.value || "").trim();
+    const to = (stTo?.value || "").trim();
+    const uid = (stUserId?.value || "").trim();
 
     if (!from || !to) {
       alert("Statement 需要选择 From / To 日期。");
@@ -642,15 +632,14 @@
     qs.set("to", to);
     if (uid) qs.set("userId", uid);
 
-    stResult.textContent = "⏳ 生成中…";
+    if (stResult) stResult.textContent = "⏳ 生成中…";
 
-   const { res, data } = await apiFetch(`/api/admin/invoices/statements?${qs.toString()}`);
+    const { res, data } = await apiFetch(`/api/admin/invoices/statements?${qs.toString()}`);
     if (!res.ok || !data?.success) {
-      stResult.textContent = "❌ 失败：" + (data?.message || res.status);
+      if (stResult) stResult.textContent = "❌ 失败：" + (data?.message || res.status);
       return;
     }
 
-    // 兼容后端各种返回
     const invoices = data.invoices || data.list || data.items || [];
     const out = {
       from: data.from || from,
@@ -668,7 +657,124 @@
         : [],
     };
 
-    stResult.textContent = JSON.stringify(out, null, 2);
+    if (stResult) stResult.textContent = JSON.stringify(out, null, 2);
+  }
+
+  async function printStatementPdf() {
+    const from = (stFrom?.value || "").trim();
+    const to = (stTo?.value || "").trim();
+    const uid = (stUserId?.value || "").trim();
+
+    if (!from || !to) {
+      alert("Statement 需要选择 From / To 日期。");
+      return;
+    }
+
+    const qs = new URLSearchParams();
+    qs.set("from", from);
+    qs.set("to", to);
+    if (uid) qs.set("userId", uid);
+
+    // ✅ 用 fetch+token，避免 requireLogin 拦截
+    await authedDownloadOpen(`/api/admin/invoices/statements/pdf?${qs.toString()}`);
+  }
+
+  // =========================
+  // Search invoices (optional UI)
+  // =========================
+  function setSearchHint(msg) {
+    if (!searchHint) return;
+    searchHint.textContent = msg || "";
+  }
+
+  function clearSearchList() {
+    if (!searchList) return;
+    searchList.innerHTML = "";
+  }
+
+  function addSearchItem(inv) {
+    if (!searchList) return;
+
+    const id = inv?._id || "";
+    const invoiceNoX = inv?.invoiceNo || "";
+    const name = inv?.soldTo?.name || "";
+    const phone = inv?.soldTo?.phone || "";
+    const date = inv?.date || inv?.createdAt || "";
+    const total = money(inv?.total || 0);
+
+    const row = document.createElement("div");
+    row.className = "result-item";
+
+    const left = document.createElement("div");
+    left.className = "result-left";
+
+    const title = document.createElement("div");
+    title.className = "result-title";
+    title.textContent = `${invoiceNoX || "(no)"}  ·  ${total}`;
+
+    const sub = document.createElement("div");
+    sub.className = "result-sub";
+    sub.textContent = `${name} ${phone}  ·  ${date}`;
+
+    left.appendChild(title);
+    left.appendChild(sub);
+
+    const right = document.createElement("div");
+    right.className = "result-right";
+
+    const btnOpen = document.createElement("button");
+    btnOpen.className = "btn btn-ghost";
+    btnOpen.textContent = "打开详情";
+    btnOpen.onclick = () => window.open(`/api/admin/invoices/${id}`, "_blank");
+
+    const btnPdf = document.createElement("button");
+    btnPdf.className = "btn btn-dark";
+    btnPdf.textContent = "打印PDF";
+    btnPdf.onclick = () => authedDownloadOpen(`/api/admin/invoices/${id}/pdf`);
+
+    right.appendChild(btnOpen);
+    right.appendChild(btnPdf);
+
+    row.appendChild(left);
+    row.appendChild(right);
+    searchList.appendChild(row);
+  }
+
+  async function runSearchInvoices() {
+    if (!btnSearch) return;
+
+    const q = (sQ?.value || "").trim();
+    const from = (sFrom?.value || "").trim();
+    const to = (sTo?.value || "").trim();
+    const uid = (sUserId?.value || "").trim();
+
+    const qs = new URLSearchParams();
+    if (q) qs.set("q", q);
+    if (from) qs.set("from", from);
+    if (to) qs.set("to", to);
+    if (uid) qs.set("userId", uid);
+
+    setSearchHint("⏳ 搜索中...");
+    clearSearchList();
+
+    const { res, data } = await apiFetch(`/api/admin/invoices?${qs.toString()}`);
+    if (!res.ok || !data?.success) {
+      setSearchHint("❌ 搜索失败：" + (data?.message || res.status));
+      return;
+    }
+
+    const list = data.invoices || data.list || data.items || [];
+    setSearchHint(`✅ 找到 ${list.length} 条`);
+    for (const inv of list) addSearchItem(inv);
+  }
+
+  function resetSearchInvoices() {
+    if (sQ) sQ.value = "";
+    if (sFrom) sFrom.value = "";
+    if (sTo) sTo.value = "";
+    if (sUserId) sUserId.value = "";
+    setSearchHint("");
+    clearSearchList();
   }
 
   // =========================
@@ -676,37 +782,38 @@
   // =========================
   function resetForm() {
     currentInvoiceId = "";
-    btnPrint.disabled = true;
+    if (btnPrint) btnPrint.disabled = true;
 
-    invDate.value = todayLocalInput();
-    invNo.value = genInvoiceNoPreview(invDate.value);
+    if (invDate) invDate.value = todayLocalInput();
+    if (invNo) invNo.value = genInvoiceNoPreview(invDate?.value);
 
-    accountNo.value = "";
-    salesRep.value = "";
-    terms.value = "";
+    if (accountNo) accountNo.value = "";
+    if (salesRep) salesRep.value = "";
+    if (terms) terms.value = "";
 
-    userSelect.value = "";
-    soldName.value = "";
-    soldPhone.value = "";
-    soldAddr.value = "";
+    if (userSelect) userSelect.value = "";
+    if (soldName) soldName.value = "";
+    if (soldPhone) soldPhone.value = "";
+    if (soldAddr) soldAddr.value = "";
 
-    sameAsSold.checked = true;
+    if (sameAsSold) sameAsSold.checked = true;
     setShipDisabled(true);
-    shipName.value = "";
-    shipPhone.value = "";
-    shipAddr.value = "";
+    if (shipName) shipName.value = "";
+    if (shipPhone) shipPhone.value = "";
+    if (shipAddr) shipAddr.value = "";
 
-    itemsTbody.innerHTML = "";
-    addRow({ qty: 1, unitPrice: 0 });
+    if (itemsTbody) {
+      itemsTbody.innerHTML = "";
+      addRow({ qty: 1, unitPrice: 0 });
+    }
 
     // statement 默认区间：本月到今天
     const now = new Date();
     const first = new Date(now.getFullYear(), now.getMonth(), 1);
-    stFrom.value = toDateInputValue(first);
-    stTo.value = toDateInputValue(now);
-    stUserId.value = "";
-
-    stResult.textContent = "";
+    if (stFrom) stFrom.value = toDateInputValue(first);
+    if (stTo) stTo.value = toDateInputValue(now);
+    if (stUserId) stUserId.value = "";
+    if (stResult) stResult.textContent = "";
 
     recalcTotals();
   }
@@ -714,32 +821,34 @@
   // =========================
   // Events
   // =========================
-  userSelect.onchange = () => {
-    const opt = userSelect.selectedOptions && userSelect.selectedOptions[0];
-    if (!opt || !userSelect.value) return;
+  if (userSelect) {
+    userSelect.onchange = () => {
+      const opt = userSelect.selectedOptions && userSelect.selectedOptions[0];
+      if (!opt || !userSelect.value) return;
 
-    soldName.value = opt.dataset.name || "";
-    soldPhone.value = opt.dataset.phone || "";
-    soldAddr.value = opt.dataset.addr || "";
+      soldName.value = opt.dataset.name || "";
+      soldPhone.value = opt.dataset.phone || "";
+      soldAddr.value = opt.dataset.addr || "";
 
-    syncShipFromSold();
-
-    // Statement 快捷填 userId
-    stUserId.value = userSelect.value || "";
-  };
-
-  sameAsSold.onchange = () => {
-    if (sameAsSold.checked) {
-      setShipDisabled(true);
       syncShipFromSold();
-    } else {
-      setShipDisabled(false);
-    }
-  };
+      if (stUserId) stUserId.value = userSelect.value || "";
+    };
+  }
 
-  soldName.oninput = syncShipFromSold;
-  soldPhone.oninput = syncShipFromSold;
-  soldAddr.oninput = syncShipFromSold;
+  if (sameAsSold) {
+    sameAsSold.onchange = () => {
+      if (sameAsSold.checked) {
+        setShipDisabled(true);
+        syncShipFromSold();
+      } else {
+        setShipDisabled(false);
+      }
+    };
+  }
+
+  if (soldName) soldName.oninput = syncShipFromSold;
+  if (soldPhone) soldPhone.oninput = syncShipFromSold;
+  if (soldAddr) soldAddr.oninput = syncShipFromSold;
 
   if (btnAddRow) btnAddRow.onclick = () => addRow({ qty: 1, unitPrice: 0 });
   if (btnSave) btnSave.onclick = saveInvoice;
@@ -747,14 +856,29 @@
   if (btnNew) btnNew.onclick = resetForm;
   if (btnStatement) btnStatement.onclick = runStatement;
 
-  invDate.onchange = () => {
-    // 如果用户没有手动改 invNo，则跟随日期更新预览
-    const cur = (invNo.value || "").trim();
-    const auto = genInvoiceNoPreview(invDate.value);
-    if (!cur || /^\d{8}-\d{3}$/.test(cur)) {
-      invNo.value = auto;
-    }
-  };
+  // ✅ 绑定 Statement 打印按钮
+  if (btnStatementPdf) btnStatementPdf.onclick = printStatementPdf;
+
+  if (btnSearch) btnSearch.onclick = runSearchInvoices;
+  if (btnSearchReset) btnSearchReset.onclick = resetSearchInvoices;
+
+  if (invDate) {
+    invDate.onchange = () => {
+      const cur = (invNo?.value || "").trim();
+      const auto = genInvoiceNoPreview(invDate.value);
+      if (!cur || /^\d{8}-\d{3}$/.test(cur)) {
+        invNo.value = auto;
+      }
+    };
+  }
+
+  // Enter 触发搜索
+  [sQ, sFrom, sTo, sUserId].forEach((el) => {
+    if (!el) return;
+    el.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") runSearchInvoices();
+    });
+  });
 
   // =========================
   // Boot
@@ -763,14 +887,13 @@
     resetForm();
     setHint("⏳ 正在加载用户/商品…");
 
-    // 先拉商品，再渲染行（否则行里商品下拉为空）
     await loadProducts("");
-    // 重建默认行（让商品下拉生效）
-    itemsTbody.innerHTML = "";
-    addRow({ qty: 1, unitPrice: 0 });
+    if (itemsTbody) {
+      itemsTbody.innerHTML = "";
+      addRow({ qty: 1, unitPrice: 0 });
+    }
 
     await loadUsers("");
-
     setHint("✅ 已加载用户/商品。可选择用户、选择商品/规格，保存后扣库存，打印 PDF。");
   })();
 })();

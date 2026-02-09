@@ -85,21 +85,13 @@
       border: none;
       cursor: pointer;
       font-size: 14px;
+      white-space: nowrap;
     }
 
-    .btn-primary {
-      background: #22c55e;
-      color: #fff;
-    }
-
-    .btn-ghost {
-      background: #f3f4f6;
-    }
-
-    .btn-danger {
-      background: #ef4444;
-      color: #fff;
-    }
+    .btn-primary { background: #22c55e; color: #fff; }
+    .btn-ghost { background: #f3f4f6; }
+    .btn-danger { background: #ef4444; color: #fff; }
+    .btn-dark { background: #111827; color: #fff; }
 
     .top-actions {
       display: flex;
@@ -130,6 +122,78 @@
       font-size: 12px;
       color: #6b7280;
     }
+
+    pre {
+      background: #0b1020;
+      color: #e5e7eb;
+      padding: 12px;
+      border-radius: 12px;
+      overflow: auto;
+      max-height: 380px;
+      font-size: 12px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: #f3f4f6;
+      font-size: 12px;
+      color: #374151;
+    }
+
+    .actions-inline {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .result-list {
+      margin-top: 10px;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .result-item {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 12px;
+      border-bottom: 1px solid #e5e7eb;
+      align-items: center;
+    }
+    .result-item:last-child { border-bottom: none; }
+    .result-left {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+    .result-title {
+      font-weight: 600;
+      font-size: 13px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 700px;
+    }
+    .result-sub {
+      font-size: 12px;
+      color: #6b7280;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 700px;
+    }
+    .result-right {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
   </style>
 </head>
 
@@ -139,7 +203,7 @@
   <!-- 顶部 -->
   <div class="top-actions">
     <h1>Invoice / 发票开具</h1>
-    <div>
+    <div class="actions-inline">
       <button class="btn btn-ghost" id="btnNew">新建</button>
       <button class="btn btn-primary" id="btnSave">保存并扣库存</button>
       <button class="btn btn-ghost" id="btnPrint" disabled>打印 PDF</button>
@@ -237,7 +301,11 @@
 
   <!-- Statement -->
   <div class="card">
-    <h3>Statement</h3>
+    <div class="top-actions">
+      <h3>Statement</h3>
+      <span class="pill">像你图那样表格 + 可打印</span>
+    </div>
+
     <div class="row">
       <div class="col">
         <label>From</label>
@@ -249,18 +317,190 @@
       </div>
       <div class="col">
         <label>User ID（可选）</label>
-        <input id="stUserId">
+        <input id="stUserId" placeholder="不填=全部客户">
       </div>
-      <div class="col" style="display:flex;align-items:flex-end">
-        <button class="btn btn-ghost" id="btnStatement">生成</button>
+      <div class="col" style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-ghost" id="btnStatement">生成(JSON)</button>
+        <button class="btn btn-dark" id="btnStatementPdf">打印(PDF)</button>
       </div>
     </div>
+
     <pre id="stResult"></pre>
+  </div>
+
+  <!-- 查找/搜索 -->
+  <div class="card">
+    <div class="top-actions">
+      <h3>查找发票/订单</h3>
+      <span class="pill">支持：单号 / 姓名 / 电话 / 日期范围 / userId</span>
+    </div>
+
+    <div class="row">
+      <div class="col">
+        <label>关键词（invoiceNo / name / phone）</label>
+        <input id="sQ" placeholder="例如：20260206-001 / 张三 / 917...">
+      </div>
+      <div class="col">
+        <label>From（可选）</label>
+        <input type="date" id="sFrom">
+      </div>
+      <div class="col">
+        <label>To（可选）</label>
+        <input type="date" id="sTo">
+      </div>
+      <div class="col">
+        <label>User ID（可选）</label>
+        <input id="sUserId" placeholder="可直接粘贴用户ID">
+      </div>
+      <div class="col" style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-ghost" id="btnSearch">搜索</button>
+        <button class="btn btn-ghost" id="btnSearchReset">重置</button>
+      </div>
+    </div>
+
+    <div class="muted" id="searchHint"></div>
+    <div id="searchList" class="result-list"></div>
   </div>
 
 </div>
 
 <!-- JS -->
 <script src="./assets/js/admin_invoices.js"></script>
+
+<!-- ✅ 页面级：搜索 UI（不改你原 admin_invoices.js 也能用） -->
+<script>
+(function(){
+  // 这些 API 都会自动带 token（因为 admin_invoices.js 里 apiFetch 带 token）
+  // 但这里我们不直接复用它（避免耦合）。简单版：直接 fetch + 读 token。
+  function getAdminToken() {
+    return (
+      localStorage.getItem("freshbuy_admin_token") ||
+      localStorage.getItem("freshbuy_token") ||
+      localStorage.getItem("admin_token") ||
+      localStorage.getItem("token") ||
+      localStorage.getItem("jwt") ||
+      ""
+    );
+  }
+
+  async function apiGet(url) {
+    const headers = {};
+    const tk = getAdminToken();
+    if (tk) headers.Authorization = "Bearer " + tk;
+    const res = await fetch(url, { headers });
+    let data = null;
+    try { data = await res.json(); } catch {}
+    return { res, data };
+  }
+
+  const sQ = document.getElementById("sQ");
+  const sFrom = document.getElementById("sFrom");
+  const sTo = document.getElementById("sTo");
+  const sUserId = document.getElementById("sUserId");
+  const btnSearch = document.getElementById("btnSearch");
+  const btnSearchReset = document.getElementById("btnSearchReset");
+  const searchHint = document.getElementById("searchHint");
+  const searchList = document.getElementById("searchList");
+
+  function setSearchHint(msg){ if(searchHint) searchHint.textContent = msg || ""; }
+
+  function money(n){
+    const x = Number(n||0);
+    return "$" + (Number.isFinite(x) ? x.toFixed(2) : "0.00");
+  }
+
+  function clearList(){ if(searchList) searchList.innerHTML = ""; }
+
+  function addItem(inv){
+    const id = inv?._id || "";
+    const invoiceNo = inv?.invoiceNo || "";
+    const name = inv?.soldTo?.name || "";
+    const phone = inv?.soldTo?.phone || "";
+    const date = inv?.date || inv?.createdAt || "";
+    const total = money(inv?.total || 0);
+
+    const row = document.createElement("div");
+    row.className = "result-item";
+
+    const left = document.createElement("div");
+    left.className = "result-left";
+    const title = document.createElement("div");
+    title.className = "result-title";
+    title.textContent = `${invoiceNo || "(no)"}  ·  ${total}`;
+    const sub = document.createElement("div");
+    sub.className = "result-sub";
+    sub.textContent = `${name} ${phone}  ·  ${date}`;
+    left.appendChild(title);
+    left.appendChild(sub);
+
+    const right = document.createElement("div");
+    right.className = "result-right";
+
+    const btnOpen = document.createElement("button");
+    btnOpen.className = "btn btn-ghost";
+    btnOpen.textContent = "打开详情";
+    btnOpen.onclick = () => window.open(`/api/admin/invoices/${id}`, "_blank");
+
+    const btnPdf = document.createElement("button");
+    btnPdf.className = "btn btn-dark";
+    btnPdf.textContent = "打印PDF";
+    btnPdf.onclick = () => window.open(`/api/admin/invoices/${id}/pdf`, "_blank");
+
+    right.appendChild(btnOpen);
+    right.appendChild(btnPdf);
+
+    row.appendChild(left);
+    row.appendChild(right);
+    searchList.appendChild(row);
+  }
+
+  async function runSearch(){
+    const qs = new URLSearchParams();
+    const q = (sQ.value||"").trim();
+    const from = (sFrom.value||"").trim();
+    const to = (sTo.value||"").trim();
+    const uid = (sUserId.value||"").trim();
+
+    if (q) qs.set("q", q);
+    if (from) qs.set("from", from);
+    if (to) qs.set("to", to);
+    if (uid) qs.set("userId", uid);
+
+    setSearchHint("⏳ 搜索中...");
+    clearList();
+
+    const { res, data } = await apiGet(`/api/admin/invoices?${qs.toString()}`);
+
+    if (!res.ok || !data?.success) {
+      setSearchHint("❌ 搜索失败：" + (data?.message || res.status));
+      return;
+    }
+
+    const list = data.invoices || data.list || data.items || [];
+    setSearchHint(`✅ 找到 ${list.length} 条`);
+    for (const inv of list) addItem(inv);
+  }
+
+  function resetSearch(){
+    sQ.value = "";
+    sFrom.value = "";
+    sTo.value = "";
+    sUserId.value = "";
+    setSearchHint("");
+    clearList();
+  }
+
+  if(btnSearch) btnSearch.onclick = runSearch;
+  if(btnSearchReset) btnSearchReset.onclick = resetSearch;
+
+  // Enter 触发搜索
+  [sQ, sFrom, sTo, sUserId].forEach(el=>{
+    if(!el) return;
+    el.addEventListener("keydown", (e)=>{
+      if(e.key === "Enter") runSearch();
+    });
+  });
+})();
+</script>
 </body>
 </html>
