@@ -83,45 +83,132 @@ function normalizeUSPhone(input) {
 }
 
 // =========================
+// ✅ 小工具：生成请求ID，方便 Render 对照日志
+// =========================
+function makeReqId() {
+  return (
+    Date.now().toString(36) +
+    "-" +
+    Math.random().toString(36).slice(2, 8)
+  );
+}
+
+// =========================
 // 注册（POST /api/auth/register）
 // =========================
 router.post("/register", async (req, res) => {
+  const reqId = makeReqId();
+
+  // ✅ 任何返回前统一打一个收尾日志（能看到 status）
+  res.on("finish", () => {
+    console.log("🧾 REGISTER OUT", {
+      reqId,
+      status: res.statusCode,
+    });
+  });
+
   try {
-    const body =
-      typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
+    // ✅ body 解析：兼容偶发 req.body 是 string
+    let body = req.body || {};
+    if (typeof body === "string") {
+      try {
+        body = JSON.parse(body || "{}");
+      } catch (e) {
+        console.warn("❌ REGISTER BAD JSON", {
+          reqId,
+          contentType: req.headers["content-type"],
+          err: e?.message,
+        });
+        return res.status(400).json({
+          success: false,
+          msg: "请求格式错误（JSON 解析失败）",
+          message: "请求格式错误（JSON 解析失败）",
+          reqId,
+        });
+      }
+    }
 
-    const name = String(body.name || "").trim();
-
-    // ✅ 改：统一手机号格式（10位->补1，11位以1开头->原样）
+    // ✅ 统一手机号格式（10位->补1，11位以1开头->原样）
     const phoneRaw = String(body.phone || "");
     const phone = normalizeUSPhone(phoneRaw);
 
     const password = String(body.password || "");
     const signupToken = body.signupToken;
 
-    if (!name || !phone || !password) {
+    // ✅ name 不强制：客人没填也能注册（自动生成“用户xxxx”）
+    const name =
+      String(body.name || "").trim() || ("用户" + String(phone || "").slice(-4));
+
+    // ✅ 命中日志（不打印密码/验证码内容，只打印长度）
+    console.log("🧾 REGISTER HIT", {
+      reqId,
+      ip: req.headers["x-forwarded-for"] || req.socket?.remoteAddress,
+      ua: body.ua || req.headers["user-agent"] || "",
+      contentType: req.headers["content-type"] || "",
+      phoneRawTail: phoneRaw ? phoneRaw.slice(-4) : "",
+      phoneTail: phone ? phone.slice(-4) : "",
+      phoneLen: phone ? phone.length : 0,
+      hasName: !!String(body.name || "").trim(),
+      passwordLen: password ? password.length : 0,
+      hasSignupToken: !!signupToken,
+      signupTokenLen: signupToken ? String(signupToken).length : 0,
+      hasCode: !!body.code,
+      codeLen: body.code ? String(body.code).length : 0,
+      requireSms: process.env.REQUIRE_SMS_SIGNUP === "1",
+      mongoDb: process.env.MONGODB_URI ? "set" : "missing",
+    });
+
+    // ✅ 参数校验：只强制 phone + password
+    if (!phone || !password) {
+      console.warn("❌ REGISTER REJECT", {
+        reqId,
+        reason: "缺少参数（手机号/密码）",
+        phoneOk: !!phone,
+        passwordOk: !!password,
+      });
+
       return res.status(400).json({
         success: false,
-        message: "缺少参数",
+        msg: "缺少参数（手机号/密码）",
+        message: "缺少参数（手机号/密码）",
+        reqId,
       });
     }
 
-    // ✅ 方案A：上线期先不强制短信（用环境变量开关控制）
+    // ✅ 是否强制短信验证（开关）
     const REQUIRE_SMS = process.env.REQUIRE_SMS_SIGNUP === "1";
 
     if (REQUIRE_SMS) {
       const v = verifySignupToken(signupToken, phone);
       if (!v.ok) {
-        // 语义上更像参数/验证未完成，用 400 更直观
-        return res.status(400).json({ success: false, message: v.message });
+        console.warn("❌ REGISTER REJECT", {
+          reqId,
+          reason: "短信验证未通过",
+          detail: v.message,
+        });
+
+        return res.status(400).json({
+          success: false,
+          msg: v.message,
+          message: v.message,
+          reqId,
+        });
       }
     }
 
     const exists = await User.findOne({ phone });
     if (exists) {
+      console.warn("❌ REGISTER REJECT", {
+        reqId,
+        reason: "手机号已注册",
+        phoneTail: phone.slice(-4),
+      });
+
       return res.status(400).json({
         success: false,
+        msg: "手机号已注册",
         message: "手机号已注册",
+        reqId,
       });
     }
 
@@ -134,6 +221,12 @@ router.post("/register", async (req, res) => {
 
     const token = signToken(user);
 
+    console.log("✅ REGISTER OK", {
+      reqId,
+      userId: String(user._id),
+      phoneTail: phone.slice(-4),
+    });
+
     return res.json({
       success: true,
       token,
@@ -143,12 +236,40 @@ router.post("/register", async (req, res) => {
         phone: user.phone,
         role: user.role,
       },
+      reqId,
     });
   } catch (err) {
-    console.error("❌ POST /api/auth/register error:", err);
+    // ✅ Mongo 重复键（比如 phone unique）兜底成友好提示
+    if (err && (err.code === 11000 || String(err.message || "").includes("E11000"))) {
+      console.warn("❌ REGISTER REJECT", {
+        reqId,
+        reason: "Mongo duplicate key（手机号已注册）",
+        code: err.code,
+        msg: err.message,
+      });
+
+      return res.status(400).json({
+        success: false,
+        msg: "手机号已注册",
+        message: "手机号已注册",
+        reqId,
+      });
+    }
+
+    // ✅ 这里把真实错误完整打印到 Render
+    console.error("❌ REGISTER FAIL", {
+      reqId,
+      msg: err?.message,
+      code: err?.code,
+      name: err?.name,
+    });
+    if (err?.stack) console.error("❌ REGISTER STACK", err.stack);
+
     return res.status(500).json({
       success: false,
+      msg: "注册失败",
       message: "注册失败",
+      reqId,
     });
   }
 });
@@ -161,7 +282,6 @@ router.post("/login", async (req, res) => {
     const body =
       typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
 
-    // ✅ 改：统一手机号格式（10位->补1，11位以1开头->原样）
     const phoneRaw = String(body.phone || "");
     const phone = normalizeUSPhone(phoneRaw);
 
@@ -170,15 +290,16 @@ router.post("/login", async (req, res) => {
     if (!phone || !password) {
       return res.status(400).json({
         success: false,
+        msg: "缺少参数",
         message: "缺少参数",
       });
     }
 
-    // ⚠️ password 通常是 select:false，这里必须 +password
     const user = await User.findOne({ phone }).select("+password");
     if (!user || !(await user.comparePassword(password))) {
       return res.status(401).json({
         success: false,
+        msg: "账号或密码错误",
         message: "账号或密码错误",
       });
     }
@@ -186,6 +307,7 @@ router.post("/login", async (req, res) => {
     if (user.isActive === false) {
       return res.status(403).json({
         success: false,
+        msg: "账号已禁用",
         message: "账号已禁用",
       });
     }
@@ -206,6 +328,7 @@ router.post("/login", async (req, res) => {
     console.error("❌ POST /api/auth/login error:", err);
     return res.status(500).json({
       success: false,
+      msg: "登录失败",
       message: "登录失败",
     });
   }
@@ -219,7 +342,6 @@ router.post("/admin-login", async (req, res) => {
     const body =
       typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
 
-    // ✅ 改：统一手机号格式（10位->补1，11位以1开头->原样）
     const phoneRaw = String(body.phone || "");
     const phone = normalizeUSPhone(phoneRaw);
 
@@ -228,6 +350,7 @@ router.post("/admin-login", async (req, res) => {
     if (!phone || !password) {
       return res.status(400).json({
         success: false,
+        msg: "缺少参数",
         message: "缺少参数",
       });
     }
@@ -236,6 +359,7 @@ router.post("/admin-login", async (req, res) => {
     if (!user || !(await user.comparePassword(password))) {
       return res.status(401).json({
         success: false,
+        msg: "账号或密码错误",
         message: "账号或密码错误",
       });
     }
@@ -243,6 +367,7 @@ router.post("/admin-login", async (req, res) => {
     if (user.role !== "admin") {
       return res.status(403).json({
         success: false,
+        msg: "非管理员账号",
         message: "非管理员账号",
       });
     }
@@ -263,6 +388,7 @@ router.post("/admin-login", async (req, res) => {
     console.error("❌ POST /api/auth/admin-login error:", err);
     return res.status(500).json({
       success: false,
+      msg: "管理员登录失败",
       message: "管理员登录失败",
     });
   }

@@ -5,14 +5,14 @@
     <title>服务条款 | 在鲜购拼好货 Freshbuy</title>
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <!-- Google tag (gtag.js) -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-KP7J1LKVFJ"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-KP7J1LKVFJ"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-KP7J1LKVFJ');
+    </script>
 
-  gtag('config', 'G-KP7J1LKVFJ');
-</script>
     <style>
       :root {
         --primary: #22c55e;
@@ -23,9 +23,7 @@
         --border: #e5e7eb;
       }
 
-      * {
-        box-sizing: border-box;
-      }
+      * { box-sizing: border-box; }
 
       body {
         margin: 0;
@@ -59,10 +57,7 @@
         gap: 6px;
       }
 
-      .lang-switch {
-        display: inline-flex;
-        gap: 6px;
-      }
+      .lang-switch { display: inline-flex; gap: 6px; }
 
       .lang-btn {
         border: 1px solid var(--border);
@@ -94,10 +89,7 @@
         padding: 18px 18px 22px;
       }
 
-      h1 {
-        font-size: 20px;
-        margin: 0 0 6px;
-      }
+      h1 { font-size: 20px; margin: 0 0 6px; }
 
       .updated {
         font-size: 12px;
@@ -105,29 +97,36 @@
         margin-bottom: 14px;
       }
 
-      h2 {
-        font-size: 15px;
-        margin: 18px 0 6px;
-      }
+      h2 { font-size: 15px; margin: 18px 0 6px; }
 
-      p,
-      li {
+      p, li {
         font-size: 13px;
         line-height: 1.7;
         color: var(--text-main);
       }
 
-      ul {
-        padding-left: 18px;
-        margin: 6px 0;
+      ul { padding-left: 18px; margin: 6px 0; }
+
+      a { color: #2563eb; text-decoration: none; }
+      a:hover { text-decoration: underline; }
+
+      .note {
+        font-size: 12px;
+        color: var(--text-sub);
+        margin-top: 8px;
       }
 
-      .lang {
-        display: none;
-      }
+      .lang { display: none; }
+      .lang.active { display: block; }
 
-      .lang.active {
-        display: block;
+      .pill {
+        display: inline-block;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 2px 8px;
+        font-size: 12px;
+        color: var(--text-sub);
+        margin-right: 6px;
       }
     </style>
   </head>
@@ -135,9 +134,7 @@
   <body>
     <!-- 顶部栏 -->
     <div class="topbar">
-      <button class="back-btn" onclick="goBack()">
-        ← 返回
-      </button>
+      <button class="back-btn" onclick="goBack()">← 返回</button>
 
       <div class="lang-switch">
         <button class="lang-btn active" data-lang="zh">中文</button>
@@ -196,7 +193,37 @@
             <li>不得从事任何违法行为。</li>
           </ul>
 
-          <h2>七、法律适用</h2>
+          <!-- ✅ 新增：SMS 条款（A2P/CTIA 必须） -->
+          <h2>七、短信条款（SMS Terms）</h2>
+          <p><span class="pill">Program Name</span> Freshbuy SMS Notifications</p>
+          <p>
+            当您在注册或下单过程中提供手机号码并勾选短信同意框后，您同意接收来自 Freshbuy 的短信通知。
+          </p>
+          <ul>
+            <li>
+              短信类型可能包括：登录验证码（OTP）、订单确认、配送更新、送达通知（含送达照片链接）、钱包/充值通知，以及与生鲜购物相关的促销信息。
+            </li>
+            <li><b>发送频率：</b>不固定（Message frequency varies）。</li>
+            <li><b>费用：</b>可能产生短信与数据费用（Message &amp; data rates may apply）。</li>
+            <li><b>退订：</b>回复 <b>STOP</b> 可随时退订。</li>
+            <li><b>帮助：</b>回复 <b>HELP</b> 获取帮助，或联系 <b>support@nyfreshbuy.com</b>。</li>
+          </ul>
+          <p class="note">
+            我们不会将您的短信同意信息（SMS consent）或手机号出售、出租或提供给第三方用于营销目的。
+          </p>
+
+          <!-- ✅ 新增：隐私政策链接（Twilio 会查） -->
+          <h2>八、隐私政策</h2>
+          <p>
+            我们会按照隐私政策处理您的个人信息。请查看：
+            <a href="/user/privacy.html" target="_blank" rel="noopener">隐私政策 / Privacy Policy</a>
+          </p>
+
+          <!-- ✅ 新增：联系方式（Twilio 会查 support contact） -->
+          <h2>九、联系我们</h2>
+          <p>如需帮助，请联系：<b>support@nyfreshbuy.com</b></p>
+
+          <h2>十、法律适用</h2>
           <p>
             本条款适用美国纽约州法律。
             因本平台服务产生的争议，提交纽约州有管辖权的法院处理。
@@ -252,7 +279,38 @@
             <li>No illegal activities.</li>
           </ul>
 
-          <h2>7. Governing Law</h2>
+          <!-- ✅ New: SMS Terms (A2P/CTIA required) -->
+          <h2>7. SMS Terms</h2>
+          <p><span class="pill">Program Name</span> Freshbuy SMS Notifications</p>
+          <p>
+            By providing your mobile number and checking the SMS consent box during registration and/or checkout,
+            you consent to receive SMS messages from Freshbuy.
+          </p>
+          <ul>
+            <li>
+              Message types may include: one-time passcodes (OTP), order confirmations, delivery updates,
+              delivery confirmation (including proof-of-delivery photo links), wallet/recharge notifications,
+              and occasional promotional offers related to grocery purchases.
+            </li>
+            <li><b>Message frequency:</b> Message frequency varies.</li>
+            <li><b>Rates:</b> Message &amp; data rates may apply.</li>
+            <li><b>Opt-out:</b> Reply <b>STOP</b> to opt out at any time.</li>
+            <li><b>Help:</b> Reply <b>HELP</b> for help, or contact <b>support@nyfreshbuy.com</b>.</li>
+          </ul>
+          <p class="note">
+            We do not sell, rent, or share your SMS consent (or phone number) with third parties for marketing purposes.
+          </p>
+
+          <h2>8. Privacy Policy</h2>
+          <p>
+            We handle personal information in accordance with our Privacy Policy:
+            <a href="/user/privacy.html" target="_blank" rel="noopener">Privacy Policy</a>
+          </p>
+
+          <h2>9. Contact</h2>
+          <p>Support: <b>support@nyfreshbuy.com</b></p>
+
+          <h2>10. Governing Law</h2>
           <p>
             These Terms are governed by the laws of the State of New York, USA.
           </p>
@@ -261,16 +319,11 @@
     </main>
 
     <script>
-      // 返回按钮：优先 history.back，否则回首页
       function goBack() {
-        if (window.history.length > 1) {
-          window.history.back();
-        } else {
-          window.location.href = "/";
-        }
+        if (window.history.length > 1) window.history.back();
+        else window.location.href = "/";
       }
 
-      // 语言切换
       const btns = document.querySelectorAll(".lang-btn");
       const langs = document.querySelectorAll(".lang");
 
@@ -280,9 +333,7 @@
           btn.classList.add("active");
 
           const lang = btn.dataset.lang;
-          langs.forEach((el) => {
-            el.classList.toggle("active", el.id === "lang-" + lang);
-          });
+          langs.forEach((el) => el.classList.toggle("active", el.id === "lang-" + lang));
         });
       });
     </script>
