@@ -321,14 +321,23 @@ async function markDeliveredCore(req, res) {
 
   await o.save();
 
-  // 最新照片（可没有）
-  const proofArr = Array.isArray(o.proofPhotos) ? o.proofPhotos : [];
+    // ✅ 送达后再从 DB 重新读一次（确保拿到最新 proofPhotos）
+  const fresh = await Order.findById(o._id).select("proofPhotos").lean();
+
+  const proofArr = Array.isArray(fresh?.proofPhotos) ? fresh.proofPhotos : [];
   const last = proofArr.length ? proofArr[proofArr.length - 1] : null;
+
+  // ✅ 强制要求先上传送达照片，否则不允许标记送达（保证短信一定带链接）
+  if (!last) {
+    return res.status(400).json({
+      success: false,
+      message: "请先上传送达照片，再点击已送达（短信会自动带照片链接）",
+    });
+  }
 
   // 兼容 last 可能是 string 或 {url:...}
   const lastUrl = typeof last === "string" ? last : (last?.url || "");
   const photoUrl = absUrl(lastUrl);
-
   // 客户手机号（兼容字段）
   const rawPhone =
     o?.user?.phone ||
@@ -355,12 +364,11 @@ async function markDeliveredCore(req, res) {
       "";
 
     const text =
-      `【在鲜购 Freshbuy】您的订单已送达 ✅\n` +
-      `订单号：${orderNo}\n` +
-      (addr ? `地址：${addr}\n` : "") +
-      (photoUrl ? `送达照片：${photoUrl}\n` : "") +
-      `如有问题请回复本短信。`;
-
+  `【在鲜购 Freshbuy】您的订单已送达 ✅\n` +
+  `订单号：${orderNo}\n` +
+  (addr ? `地址：${addr}\n` : "") +
+  (photoUrl ? `送达照片：${photoUrl}\n` : "") +
+  `回复 STOP 退订，HELP 获取帮助。Msg&Data rates may apply.`;
     try {
       await twilioClient.messages.create({
         from: TWILIO_FROM,
