@@ -295,7 +295,28 @@ const orderSchema = new mongoose.Schema(
     },
 
     deliveredAt: { type: Date, index: true },
+    // ✅ 送达照片（司机上传）
+proofPhotos: {
+  type: [
+    {
+      url: { type: String, default: "" },
+      uploadedAt: { type: Date },
+      uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    },
+  ],
+  default: [],
+},
 
+// ✅ 送达操作者/备注
+deliveredBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", index: true },
+deliveryNote: { type: String, default: "" },
+
+// ✅ 送达短信记录（mark-delivered 里会写）
+deliverySms: {
+  sentAt: { type: Date },
+  to: { type: String, default: "" },
+  photoUrl: { type: String, default: "" },
+},
     settlementGenerated: { type: Boolean, default: false, index: true },
     settlementId: { type: mongoose.Schema.Types.ObjectId, ref: "Settlement", index: true },
   },
