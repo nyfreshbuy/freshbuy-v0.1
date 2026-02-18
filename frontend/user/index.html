@@ -5,7 +5,7 @@
     <title>在鲜购拼好货 - 首页</title>
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <!-- ✅ PWA -->
-<link rel="manifest" href="/user/manifest.json" />
+<link rel="manifest" href="/user/manifest.webmanifest" />
 <meta name="theme-color" content="#22c55e" />
 <!-- ✅ favicon（解决黑箱子） -->
 <link rel="icon" href="/user/assets/icons/favicon.ico" />
@@ -1316,13 +1316,15 @@
                 <span class="auth-ico-out">💬</span>
                 <div class="auth-input-wrap">
                   <input
-                    id="regCode"
-                    type="text"
-                    class="auth-input"
-                    inputmode="numeric"
-                    maxlength="10"
-                    placeholder="请输入短信验证码"
-                  />
+  id="regCode"
+  type="text"
+  class="auth-input"
+  inputmode="numeric"
+  autocomplete="one-time-code"
+  pattern="[0-9]{4,8}"
+  maxlength="8"
+  placeholder="请输入短信验证码"
+/>
                   <button
                     id="regSendCodeBtn"
                     type="button"
@@ -1440,7 +1442,15 @@
               <div class="auth-field" style="display:grid; grid-template-columns: 1fr 140px; gap:10px; align-items:end;">
                 <div>
                   <div class="auth-label">验证码</div>
-                  <input id="fpCode" class="auth-input" placeholder="4-8 位数字" inputmode="numeric" />
+                 <input
+  id="fpCode"
+  class="auth-input"
+  placeholder="4-8 位数字"
+  inputmode="numeric"
+  autocomplete="one-time-code"
+  pattern="[0-9]{4,8}"
+  maxlength="8"
+/>
                 </div>
 
                 <button
@@ -1993,7 +2003,7 @@
       })();
     </script>
     <!--End of Tawk.to Script-->
-    <script src="/assets/js/tawk_custom.js"></script>
+    <script src="/user/assets/js/tawk_custom.js"></script>
     <!-- ✅ PWA: register service worker -->
 <script>
   if ("serviceWorker" in navigator) {

@@ -31,8 +31,72 @@ function normalizeToE164US(input) {
   return p;
 }
 
-// ✅ POST /api/auth/reset-password
+// ✅ 兼容 DB 里 phone 可能存：+1718... / 1718... / 718...
+function buildPhoneCandidates(e164Phone) {
+  const phone = String(e164Phone || "").trim();
+  const digits = phone.replace(/[^\d]/g, ""); // 17184195531
+  const last10 = digits.length >= 10 ? digits.slice(-10) : digits; // 7184195531
+  return Array.from(new Set([phone, digits, last10, `1${last10}`, `+1${last10}`]));
+}
+
+function requireTwilioConfigured(res) {
+  if (!tw || !TWILIO_VERIFY_SERVICE_SID) {
+    res.status(500).json({
+      success: false,
+      message: "短信服务未配置（TWILIO_VERIFY_SERVICE_SID 缺失）",
+    });
+    return false;
+  }
+  return true;
+}
+
+// =========================================================
+// ✅ 1) 忘记密码：发送验证码
+// POST /api/auth/forgot-send
+// body: { phone }
+// =========================================================
+router.post("/forgot-send", async (req, res) => {
+  try {
+    const phone = normalizeToE164US(req.body?.phone);
+
+    if (!phone) return res.status(400).json({ success: false, message: "缺少手机号" });
+    if (!phone.startsWith("+")) {
+      return res.status(400).json({
+        success: false,
+        message: "手机号格式错误，请输入美国手机号（10位或+1开头）",
+      });
+    }
+
+    // ✅ 可选：先确认用户存在（避免给未注册手机号发短信）
+    const candidates = buildPhoneCandidates(phone);
+    const u = await User.findOne({ phone: { $in: candidates } }).select("_id phone");
+    if (!u) {
+      return res.status(404).json({ success: false, message: "该手机号未注册" });
+    }
+
+    if (!requireTwilioConfigured(res)) return;
+
+    await tw.verify.v2
+      .services(TWILIO_VERIFY_SERVICE_SID)
+      .verifications.create({ to: phone, channel: "sms" });
+
+    return res.json({ success: true, message: "验证码已发送" });
+  } catch (err) {
+    console.error("POST /api/auth/forgot-send error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "发送失败，请稍后再试",
+      // ✅ 你调试用；如果不想暴露给前端可删掉 detail
+      detail: err?.message || String(err),
+    });
+  }
+});
+
+// =========================================================
+// ✅ 2) 忘记密码：验证验证码并重置密码
+// POST /api/auth/reset-password
 // body: { phone, code, newPassword }
+// =========================================================
 router.post("/reset-password", async (req, res) => {
   try {
     const phone = normalizeToE164US(req.body?.phone);
@@ -45,19 +109,15 @@ router.post("/reset-password", async (req, res) => {
       return res.status(400).json({ success: false, message: "新密码至少 6 位" });
     }
     if (!phone.startsWith("+")) {
-      return res
-        .status(400)
-        .json({ success: false, message: "手机号格式错误，请输入美国手机号（10位或+1开头）" });
-    }
-
-    // 1) 校验验证码
-    if (!tw || !TWILIO_VERIFY_SERVICE_SID) {
-      return res.status(500).json({
+      return res.status(400).json({
         success: false,
-        message: "短信服务未配置（TWILIO_VERIFY_SERVICE_SID 缺失）",
+        message: "手机号格式错误，请输入美国手机号（10位或+1开头）",
       });
     }
 
+    if (!requireTwilioConfigured(res)) return;
+
+    // 1) 校验验证码
     const check = await tw.verify.v2
       .services(TWILIO_VERIFY_SERVICE_SID)
       .verificationChecks.create({ to: phone, code });
@@ -66,10 +126,8 @@ router.post("/reset-password", async (req, res) => {
       return res.status(400).json({ success: false, message: "验证码不正确或已过期" });
     }
 
-    // 2) 找用户（兼容 DB 里 phone 可能不带 +1）
-    const digits = phone.replace(/[^\d]/g, ""); // 17184195531
-    const last10 = digits.length >= 10 ? digits.slice(-10) : digits; // 7184195531
-    const candidates = Array.from(new Set([phone, digits, last10, `1${last10}`, `+1${last10}`]));
+    // 2) 找用户（兼容 DB 里 phone 存法）
+    const candidates = buildPhoneCandidates(phone);
 
     const u = await User.findOne({ phone: { $in: candidates } }).select(
       "+password +passwordHash _id phone"
@@ -82,6 +140,7 @@ router.post("/reset-password", async (req, res) => {
     // 3) 写新密码
     const hashed = await bcrypt.hash(newPassword, 10);
 
+    // ✅ 兼容你历史字段：passwordHash / password
     if (u.passwordHash !== undefined) u.passwordHash = hashed;
     if (u.password !== undefined) u.password = hashed;
 
@@ -90,7 +149,12 @@ router.post("/reset-password", async (req, res) => {
     return res.json({ success: true, message: "密码已重置" });
   } catch (err) {
     console.error("POST /api/auth/reset-password error:", err);
-    return res.status(500).json({ success: false, message: "重置失败，请稍后再试" });
+    return res.status(500).json({
+      success: false,
+      message: "重置失败，请稍后再试",
+      // ✅ 你调试用；如果不想暴露给前端可删掉 detail
+      detail: err?.message || String(err),
+    });
   }
 });
 

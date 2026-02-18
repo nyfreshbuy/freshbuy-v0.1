@@ -4,6 +4,7 @@ import twilio from "twilio";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import User from "../models/user.js";
+import SmsRateLimit from "../models/SmsRateLimit.js";
 
 const router = express.Router();
 router.use(express.json());
@@ -23,13 +24,39 @@ const client =
 // 至少 8 位，必须包含字母 + 数字（你原来的规则）
 const PW_RE = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,}$/;
 
-function normUSPhone(phone) {
-  const digits = String(phone || "").replace(/\D/g, "");
-  if (!digits) return "";
-  if (digits.length === 10) return "+1" + digits;
-  if (digits.length === 11 && digits.startsWith("1")) return "+" + digits;
-  if (String(phone).startsWith("+")) return String(phone);
-  return "+" + digits;
+// ✅ 限流配置（稳定版：MongoDB 按天计数 + TTL 自动过期）
+const SEND_COOLDOWN_MS = 60 * 1000; // 60秒冷却（跨实例有效：用DB lastSendAt）
+const DAILY_MAX_PER_PHONE = 8; // 每个号码每天最多发 8 次（你可改 5/10）
+
+// ✅ 微信防脏手机号：去空白/不可见字符/全角+，统一 E.164
+function normUSPhone(raw) {
+  let s = String(raw ?? "").trim();
+  if (!s) return "";
+
+  // 全角＋ -> 半角+
+  s = s.replace(/＋/g, "+");
+
+  // 去掉所有空白（包含不可见空白）
+  s = s.replace(/\s+/g, "");
+
+  // 只保留 + 和数字
+  s = s.replace(/[^\d+]/g, "");
+
+  // 如果有多个 +，只保留开头那个
+  if (s.includes("+")) {
+    s = "+" + s.replace(/\+/g, "");
+  }
+
+  // ✅ 如果用户只填了 10 位美国手机号，补 +1
+  if (/^\d{10}$/.test(s)) s = "+1" + s;
+
+  // ✅ 如果是 11 位且以 1 开头，也补 +
+  if (/^1\d{10}$/.test(s)) s = "+" + s;
+
+  // ✅ E.164 基本校验（Twilio 要这个）
+  if (!/^\+[1-9]\d{1,14}$/.test(s)) return "";
+
+  return s;
 }
 
 function signToken(user) {
@@ -97,9 +124,9 @@ router.post("/verify-register", async (req, res) => {
 
     // ✅ 读取请求数据（不泄露 password / code 内容）
     const phone = normUSPhone(req.body.phone);
-    const code = String(req.body.code || "").trim();
-    const name = String(req.body.name || "").trim();
-    const password = String(req.body.password || "");
+    const code = String(req.body.code ?? "").trim(); // ✅ 始终按字符串（防 0 开头丢失）
+    const name = String(req.body.name ?? "").trim();
+    const password = String(req.body.password ?? "");
     const autoLogin = req.body.autoLogin === true || req.body.autoLogin === "true";
 
     console.log("🧾 VERIFY-REGISTER HIT", {
@@ -115,6 +142,8 @@ router.post("/verify-register", async (req, res) => {
       passwordLen: password ? password.length : 0,
       autoLogin,
       verifySidTail: (TWILIO_VERIFY_SERVICE_SID || "").slice(-6),
+      dailyMax: DAILY_MAX_PER_PHONE,
+      cooldownSec: Math.floor(SEND_COOLDOWN_MS / 1000),
     });
 
     if (!phone) {
@@ -131,6 +160,48 @@ router.post("/verify-register", async (req, res) => {
     // =====================================================
     if (!code) {
       try {
+        // =========================
+        // ✅ MongoDB 稳定限流：同号 60 秒冷却 + 每日上限
+        // =========================
+        const now = new Date();
+
+        // 当天 00:00（服务器时区；你在纽约运行通常OK）
+        const dayStart = new Date(now);
+        dayStart.setHours(0, 0, 0, 0);
+
+        // 次日 00:00（TTL 到点自动清理）
+        const expiresAt = new Date(dayStart);
+        expiresAt.setDate(expiresAt.getDate() + 1);
+
+        // upsert：拿到当天的计数记录
+        const doc = await SmsRateLimit.findOneAndUpdate(
+          { phone, dayStart },
+          { $setOnInsert: { phone, dayStart, expiresAt, count: 0 } },
+          { new: true, upsert: true }
+        );
+
+        // ✅ 60 秒冷却（跨实例也有效）
+        if (doc.lastSendAt && now - doc.lastSendAt < SEND_COOLDOWN_MS) {
+          const left = Math.ceil(
+            (SEND_COOLDOWN_MS - (now - doc.lastSendAt)) / 1000
+          );
+          return res.status(429).json({
+            success: false,
+            msg: `验证码已发送，请${left}秒后再试`,
+            reqId,
+          });
+        }
+
+        // ✅ 每日次数上限
+        if (doc.count >= DAILY_MAX_PER_PHONE) {
+          return res.status(429).json({
+            success: false,
+            msg: "今天验证码请求次数过多，请明天再试或联系客服",
+            reqId,
+          });
+        }
+
+        // ✅ Twilio 发送
         const r = await client.verify.v2
           .services(TWILIO_VERIFY_SERVICE_SID)
           .verifications.create({ to: phone, channel: "sms" });
@@ -142,6 +213,12 @@ router.post("/verify-register", async (req, res) => {
           sidTail: r?.sid ? String(r.sid).slice(-6) : "",
           channel: r?.channel,
         });
+
+        // ✅ 发送成功才计数（避免 Twilio 失败也占次数）
+        await SmsRateLimit.updateOne(
+          { phone, dayStart },
+          { $inc: { count: 1 }, $set: { lastSendAt: now } }
+        );
 
         return res.json({ success: true, msg: "验证码已发送", reqId });
       } catch (e) {
@@ -158,7 +235,8 @@ router.post("/verify-register", async (req, res) => {
     // =====================================================
     // ✅ B) 有 code：当作“校验验证码并注册”
     // =====================================================
-    if (!/^\d{3,10}$/.test(code)) {
+    // ✅ 建议收紧为 4-6 位（常见Verify长度），减少异常输入
+    if (!/^\d{4,6}$/.test(code)) {
       console.warn("❌ VERIFY-REGISTER REJECT", {
         reqId,
         reason: "验证码格式不正确",
@@ -204,6 +282,16 @@ router.post("/verify-register", async (req, res) => {
       });
     } catch (e) {
       logTwilioError("check_verification", reqId, e);
+
+      // ✅ Twilio 20404/404：记录不存在/过期/次数到顶 -> 当成验证码失效
+      if (e?.status === 404 && e?.code === 20404) {
+        return res.status(401).json({
+          success: false,
+          msg: "验证码已失效，请重新获取",
+          reqId,
+        });
+      }
+
       return res.status(500).json({
         success: false,
         msg: "验证码校验失败（Twilio）",
@@ -227,7 +315,18 @@ router.post("/verify-register", async (req, res) => {
     }
 
     // 已注册则提示登录
-    const existing = await User.findOne({ phone });
+   // ✅ 兼容 DB 里 phone 可能存：+1718... / 1718... / 718...
+function buildPhoneCandidates(e164Phone) {
+  const p = String(e164Phone || "").trim();
+  const digits = p.replace(/[^\d]/g, ""); // 1718...
+  const last10 = digits.length >= 10 ? digits.slice(-10) : digits; // 718...
+  return Array.from(new Set([p, digits, last10, `1${last10}`, `+1${last10}`]));
+}
+
+// 已注册则提示登录（兼容旧数据）
+const candidates = buildPhoneCandidates(phone);
+const existing = await User.findOne({ phone: { $in: candidates } });
+
     if (existing) {
       console.warn("❌ VERIFY-REGISTER REJECT", {
         reqId,
@@ -243,13 +342,14 @@ router.post("/verify-register", async (req, res) => {
 
     // ✅ 注册写库
     const hashed = await bcrypt.hash(password, 10);
-    const user = await User.create({
-      phone,
-      name,
-      password: hashed,
-      role: "customer",
-    });
+    const phoneDigits = String(phone).replace(/[^\d]/g, "");
 
+const user = await User.create({
+  phone: phoneDigits,
+  name,
+  password: hashed,
+  role: "customer",
+});
     const token = autoLogin ? signToken(user) : null;
 
     console.log("✅ VERIFY-REGISTER OK", {
