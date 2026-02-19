@@ -3,6 +3,11 @@
   // ✅ 统一 token key（你别的页面基本都用 freshbuy_token）
   const KEY = "freshbuy_token";
 
+  // ✅ 建议：把“注册发验证码”独立成 /api/auth/send-code
+  // 如果你后端实际路径不同，只需要改这 2 个常量
+  const API_SEND_REGISTER_CODE = "/api/auth/send-code";     // ✅ 只发验证码（注册）
+  const API_VERIFY_REGISTER = "/api/auth/verify-register";  // ✅ 校验验证码 + 注册
+
   const CLEAR_KEYS = [
     "token",
     "freshbuy_token",
@@ -31,6 +36,15 @@
   // - 处理微信粘贴带空格/全角+等
   // - 统一成 E.164（美国默认补 +1）
   // =========================================================
+  function requireSmsOptIn() {
+  const cb = document.getElementById("smsOptIn");
+  if (!cb) return true; // 理论上应该存在，兜底不阻断
+  if (cb.checked) return true;
+
+  alert("请先勾选同意接收短信条款（SMS consent）后再获取验证码/注册。");
+  cb.scrollIntoView({ behavior: "smooth", block: "center" });
+  return false;
+}
   function normalizePhoneToE164_US(raw) {
     let s = String(raw ?? "").trim();
     if (!s) return "";
@@ -234,20 +248,15 @@
         throw new Error("手机号格式不正确");
       }
 
-      const r = await apiPostJson(
-        "/api/auth/login",
-        { phone: p, password },
-        { timeoutMs: 15000 }
-      );
-      if (!r.ok) {
-        throw new Error(formatApiError(r.data, "登录失败"));
-      }
+      const r = await apiPostJson("/api/auth/login", { phone: p, password }, { timeoutMs: 15000 });
+      if (!r.ok) throw new Error(formatApiError(r.data, "登录失败"));
+
       this.setToken(r.data.token);
       showAuthMsg("登录成功", "ok");
       return r.data.user;
     },
 
-    // ✅ 注册：必须走 /api/auth/verify-register（后端一体化：send+check+register）
+    // ✅ 注册：校验验证码 + 注册（只走 verify-register）
     // ✅ 验证码/手机号/密码都按字符串处理
     async register(name, phone, password, code) {
       showAuthMsg("");
@@ -259,14 +268,12 @@
         throw new Error("请先勾选并同意服务条款与隐私政策");
       }
 
-      // ✅ 手机号统一清洗（send + check 保持一致）
       const p = normalizePhoneToE164_US(phone);
       if (!p) {
         showAuthMsg("手机号格式不正确（请用美国手机号，例如 646xxxxxxx 或 +1646xxxxxxx）");
         throw new Error("手机号格式不正确");
       }
 
-      // ✅ 读取密码（以输入框为准）+ 确认密码校验
       const pwEl = document.getElementById("regPassword");
       const pw2El = document.getElementById("regPasswordConfirm");
 
@@ -288,7 +295,6 @@
         }
       }
 
-      // ✅ 读取短信验证码（一定按字符串，不转 Number / parseInt）
       const codeEl =
         document.getElementById("regCode") ||
         document.getElementById("regSmsCode") ||
@@ -300,19 +306,15 @@
         throw new Error("请输入短信验证码");
       }
 
-      // ✅ 读取姓名（你首页弹窗里没放姓名输入框的话，给一个兜底，避免后端报“请填写姓名”）
       const nameEl =
         document.getElementById("regName") ||
         document.getElementById("regNickname") ||
         document.getElementById("regUserName");
 
       let finalName = String(name || (nameEl ? nameEl.value : "") || "").trim();
-      if (!finalName) {
-        // 兜底：用户 + 尾号
-        finalName = "用户" + String(p).slice(-4);
-      }
+      if (!finalName) finalName = "用户" + String(p).slice(-4);
 
-      // ✅ 防重复提交（微信里很重要）
+      // ✅ 防重复提交（任何环境只允许一次 in-flight）
       if (window.__REGISTERING__) return;
       window.__REGISTERING__ = true;
 
@@ -325,9 +327,8 @@
       }
 
       try {
-        // ✅ 关键：注册必须走 verify-register（后端统一：check + create user + token）
         const r = await apiPostJson(
-          "/api/auth/verify-register",
+          API_VERIFY_REGISTER,
           {
             phone: p,
             code: smsCode,
@@ -338,11 +339,8 @@
           { timeoutMs: 15000 }
         );
 
-        if (!r.ok) {
-          throw new Error(formatApiError(r.data, "注册失败（服务器拒绝）"));
-        }
+        if (!r.ok) throw new Error(formatApiError(r.data, "注册失败（服务器拒绝）"));
 
-        // ✅ 存 token（注册并登录）
         if (r.data && r.data.token) this.setToken(r.data.token);
 
         showAuthMsg("注册成功", "ok");
@@ -373,7 +371,7 @@
       }
     },
 
-    // ✅ 发送验证码（注册）
+    // ✅ 发送验证码（注册）——只打“发送验证码”接口，不再打 verify-register
     async sendRegisterCode(phone) {
       showAuthMsg("");
 
@@ -383,42 +381,38 @@
         throw new Error("手机号不正确");
       }
 
-      const r = await apiPostJson(
-        "/api/auth/verify-register",
-        { phone: p },
-        { timeoutMs: 15000 }
-      );
-      if (!r.ok) {
-        throw new Error(formatApiError(r.data, "发送验证码失败"));
+      // ✅ 防重复触发：同一时刻只允许一个发送请求
+      if (window.__SENDING_REG_CODE__) return;
+      window.__SENDING_REG_CODE__ = true;
+
+      try {
+        const r = await apiPostJson(API_SEND_REGISTER_CODE, { phone: p }, { timeoutMs: 15000 });
+        if (!r.ok) throw new Error(formatApiError(r.data, "发送验证码失败"));
+
+        showAuthMsg("验证码已发送，请查收短信。", "ok");
+        return true;
+      } finally {
+        window.__SENDING_REG_CODE__ = false;
       }
+    },
+
+    // ✅ 忘记密码：发送验证码
+    async sendForgotCode(phone) {
+      showAuthMsg("");
+
+      const p = normalizePhoneToE164_US(phone);
+      if (!p) {
+        showAuthMsg("请先输入正确的手机号（例如 646xxxxxxx 或 +1646xxxxxxx）");
+        throw new Error("手机号不正确");
+      }
+
+      const r = await apiPostJson("/api/auth/forgot-send", { phone: p }, { timeoutMs: 15000 });
+      if (!r.ok) throw new Error(formatApiError(r.data, "发送验证码失败"));
 
       showAuthMsg("验证码已发送，请查收短信。", "ok");
       return true;
     },
 
-   // ✅ 忘记密码：发送验证码
-async sendForgotCode(phone) {
-  showAuthMsg("");
-
-  const p = normalizePhoneToE164_US(phone);
-  if (!p) {
-    showAuthMsg("请先输入正确的手机号（例如 646xxxxxxx 或 +1646xxxxxxx）");
-    throw new Error("手机号不正确");
-  }
-
-  // ✅ 这里必须是“发送验证码”的接口
-  const r = await apiPostJson(
-    "/api/auth/forgot-send",
-    { phone: p },
-    { timeoutMs: 15000 }
-  );
-  if (!r.ok) {
-    throw new Error(formatApiError(r.data, "发送验证码失败"));
-  }
-
-  showAuthMsg("验证码已发送，请查收短信。", "ok");
-  return true;
-},
     // ✅ 忘记密码：校验验证码并重置
     async resetPassword(phone, code, newPassword) {
       showAuthMsg("");
@@ -446,9 +440,7 @@ async sendForgotCode(phone) {
         { phone: p, code: c, newPassword: np },
         { timeoutMs: 15000 }
       );
-      if (!r.ok) {
-        throw new Error(formatApiError(r.data, "重置密码失败"));
-      }
+      if (!r.ok) throw new Error(formatApiError(r.data, "重置密码失败"));
 
       showAuthMsg("密码已重置，请返回登录。", "ok");
       return true;
@@ -562,21 +554,33 @@ async sendForgotCode(phone) {
   // =========================================================
   // ✅ “获取验证码”（注册 regSendCodeBtn）
   // - 增加 60s 倒计时，避免狂点触发后端429
+  // - 增加“只绑定一次”锁，防脚本重复加载导致重复 addEventListener
   // =========================================================
   (function () {
     function init() {
+      if (window.__FB_REG_SEND_BOUND__) return;
+      window.__FB_REG_SEND_BOUND__ = true;
+
       const btn = document.getElementById("regSendCodeBtn");
       if (!btn) return;
 
       btn.addEventListener("click", async () => {
-        const phoneRaw = String(document.getElementById("regPhone")?.value || "").trim();
-        try {
-          await window.Auth.sendRegisterCode(phoneRaw);
-          startCountdown(btn, 60, "获取验证码");
+  if (btn.dataset.busy === "1") return;
+  btn.dataset.busy = "1";
+
+  // ✅ 必须勾选 SMS consent 才允许发验证码（Twilio 30896关键）
+  if (!requireSmsOptIn()) { btn.dataset.busy = "0"; return; }
+
+  const phoneRaw = String(document.getElementById("regPhone")?.value || "").trim();
+  try {
+    await window.Auth.sendRegisterCode(phoneRaw);
+    startCountdown(btn, 60, "获取验证码");
         } catch (e) {
-          // 失败则恢复按钮
           btn.disabled = false;
           btn.style.opacity = "";
+        } finally {
+          // 倒计时中本来就 disabled，不影响；失败时要解锁
+          btn.dataset.busy = "0";
         }
       });
     }
@@ -590,21 +594,30 @@ async sendForgotCode(phone) {
 
   // =========================================================
   // ✅ “注册并登录”（registerSubmitBtn）
+  // - 增加“只绑定一次”锁，防脚本重复加载导致重复 addEventListener
   // =========================================================
   (function () {
     function init() {
+      if (window.__FB_REG_SUBMIT_BOUND__) return;
+      window.__FB_REG_SUBMIT_BOUND__ = true;
+
       const btn = document.getElementById("registerSubmitBtn");
       if (!btn) return;
 
       btn.addEventListener("click", async () => {
+        // ✅ 双击/重复触发保护（和 Auth.register 的 __REGISTERING__ 双保险）
+        if (btn.dataset.busy === "1") return;
+        btn.dataset.busy = "1";
+
         try {
           const phone = String(document.getElementById("regPhone")?.value || "").trim();
           // 你首页没有姓名输入框，这里传空让 Auth.register 兜底生成“用户尾号”
           await window.Auth.register("", phone, "", "");
-          // 注册成功后可触发页面刷新登录态（如果 index.js 监听 storage/me）
           window.dispatchEvent(new Event("storage"));
         } catch (e) {
           // showAuthMsg 已经做了
+        } finally {
+          btn.dataset.busy = "0";
         }
       });
     }
@@ -615,74 +628,77 @@ async sendForgotCode(phone) {
       init();
     }
   })();
+
   // =========================================================
-// ✅ 登录 / 注册 / 忘记密码 面板切换控制
-// =========================================================
-(function () {
-  function $(id) {
-    return document.getElementById(id);
-  }
+  // ✅ 登录 / 注册 / 忘记密码 面板切换控制
+  // =========================================================
+  (function () {
+    if (window.__FB_AUTH_TABS_BOUND__) return;
+    window.__FB_AUTH_TABS_BOUND__ = true;
 
-  function show(name) {
-    const login = $("loginPanel");
-    const reg = $("registerPanel");
-    const fp = $("forgotPanel");
-    if (!login || !reg || !fp) return;
-
-    login.style.display = name === "login" ? "" : "none";
-    reg.style.display = name === "register" ? "" : "none";
-    fp.style.display = name === "forgot" ? "" : "none";
-
-    const title = $("authTitle");
-    if (title) {
-      title.textContent =
-        name === "forgot"
-          ? "忘记密码"
-          : name === "register"
-          ? "注册"
-          : "登录";
+    function $(id) {
+      return document.getElementById(id);
     }
 
-    const tabLogin = $("tabLogin");
-    const tabRegister = $("tabRegister");
+    function show(name) {
+      const login = $("loginPanel");
+      const reg = $("registerPanel");
+      const fp = $("forgotPanel");
+      if (!login || !reg || !fp) return;
 
-    if (tabLogin && tabRegister) {
-      tabLogin.classList.toggle("active", name === "login");
-      tabRegister.classList.toggle("active", name === "register");
+      login.style.display = name === "login" ? "" : "none";
+      reg.style.display = name === "register" ? "" : "none";
+      fp.style.display = name === "forgot" ? "" : "none";
+
+      const title = $("authTitle");
+      if (title) {
+        title.textContent = name === "forgot" ? "忘记密码" : name === "register" ? "注册" : "登录";
+      }
+
+      const tabLogin = $("tabLogin");
+      const tabRegister = $("tabRegister");
+      if (tabLogin && tabRegister) {
+        tabLogin.classList.toggle("active", name === "login");
+        tabRegister.classList.toggle("active", name === "register");
+      }
     }
-  }
 
-  function init() {
-    const forgot = $("forgotPwdLink");     // 忘记密码？
-    const back = $("backToLoginBtn");      // ← 返回登录
-    const tabLogin = $("tabLogin");        // 登录 tab
-    const tabReg = $("tabRegister");       // 注册 tab
+    function init() {
+      const forgot = $("forgotPwdLink");
+      const back = $("backToLoginBtn");
+      const tabLogin = $("tabLogin");
+      const tabReg = $("tabRegister");
 
-    if (forgot) forgot.addEventListener("click", () => show("forgot"));
-    if (back) back.addEventListener("click", () => show("login"));
+      if (forgot) forgot.addEventListener("click", () => show("forgot"));
+      if (back) back.addEventListener("click", () => show("login"));
+      if (tabLogin) tabLogin.addEventListener("click", () => show("login"));
+      if (tabReg) tabReg.addEventListener("click", () => show("register"));
+    }
 
-    if (tabLogin) tabLogin.addEventListener("click", () => show("login"));
-    if (tabReg) tabReg.addEventListener("click", () => show("register"));
-  }
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", init);
-  } else {
-    init();
-  }
+    window.__fb_showAuthPanel = show;
+  })();
 
-  // 给外部调用（可选）
-  window.__fb_showAuthPanel = show;
-})();
   // =========================================================
   // ✅ 忘记密码：发送验证码 fpSendCodeBtn（60s 倒计时）
   // =========================================================
   (function () {
     function init() {
+      if (window.__FB_FP_SEND_BOUND__) return;
+      window.__FB_FP_SEND_BOUND__ = true;
+
       const btn = document.getElementById("fpSendCodeBtn");
       if (!btn) return;
 
       btn.addEventListener("click", async () => {
+        if (btn.dataset.busy === "1") return;
+        btn.dataset.busy = "1";
+
         const phoneRaw = String(document.getElementById("fpPhone")?.value || "").trim();
         try {
           await window.Auth.sendForgotCode(phoneRaw);
@@ -690,6 +706,8 @@ async sendForgotCode(phone) {
         } catch (e) {
           btn.disabled = false;
           btn.style.opacity = "";
+        } finally {
+          btn.dataset.busy = "0";
         }
       });
     }
@@ -703,10 +721,12 @@ async sendForgotCode(phone) {
 
   // =========================================================
   // ✅ 忘记密码：验证并重置 fpResetBtn
-  // - 验证码按字符串（防 0 开头）
   // =========================================================
   (function () {
     function init() {
+      if (window.__FB_FP_RESET_BOUND__) return;
+      window.__FB_FP_RESET_BOUND__ = true;
+
       const btn = document.getElementById("fpResetBtn");
       if (!btn) return;
 
