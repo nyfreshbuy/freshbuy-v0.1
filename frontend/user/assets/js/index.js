@@ -1737,123 +1737,17 @@ try { bindKbInputs(); } catch {}
 // =========================
 
 // ✅ 统一 token 读取/写入（兼容 auth_client.js 的 "token" + 你这份 index.js 的 "freshbuy_token"）
-const AUTH_TOKEN_KEYS = ["token", "freshbuy_token", "jwt", "auth_token", "access_token"];
+const FreshAuth = window.FreshAuth;
+const getToken = FreshAuth.getToken;
+const setToken = FreshAuth.setToken;
+const clearToken = FreshAuth.clearToken;
 
-function getToken() {
-  for (const k of AUTH_TOKEN_KEYS) {
-    const v = localStorage.getItem(k);
-    if (v && String(v).trim()) return String(v).trim();
-  }
-  return "";
-}
-
-function setToken(token) {
-  const t = String(token || "").trim();
-  if (!t) return;
-  // ✅ 统一写到 "token"（让 auth_client.js 和全站一致）
-  localStorage.setItem("token", t);
-  // ✅ 顺便把旧 key 也同步（避免历史代码只读 freshbuy_token）
-  localStorage.setItem("freshbuy_token", t);
-}
-
-function clearToken() {
-  // ✅ 退出时必须把所有 token key 都清掉
-  for (const k of AUTH_TOKEN_KEYS) localStorage.removeItem(k);
-
-  // ✅ 同时清理你项目里会导致“游客也显示登录信息”的缓存
-  localStorage.removeItem("freshbuy_is_logged_in");
-  localStorage.removeItem("freshbuy_login_phone");
-  localStorage.removeItem("freshbuy_login_nickname");
-  localStorage.removeItem("freshbuy_default_address");
-  localStorage.removeItem("freshbuy_wallet_balance");
-}
-
-async function apiFetch(url, options = {}) {
-  const headers = Object.assign({}, options.headers || {});
-  const token = getToken();
-  if (token) headers.Authorization = "Bearer " + token;
-
-  const res = await fetch(url, { ...options, headers });
-  let data = null;
-  try {
-    data = await res.json();
-  } catch {
-    data = null;
-  }
-
-  // 401 或后端明确提示未登录 → 清 token
-  if (res.status === 401 || (data && data.success === false && (data.msg === "未登录" || data.message === "未登录"))) {
-    clearToken();
-  }
-
-  return { res, data };
-}
-
-async function apiLogin(phone, password) {
-  const { res, data } = await apiFetch("/api/auth/login", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ phone, password }),
-  });
-
-  const ok = data?.success === true || data?.ok === true || typeof data?.token === "string";
-  if (!res.ok || !ok) throw new Error(data?.msg || data?.message || "登录失败");
-  if (data?.token) setToken(data.token);
-
-  return data.user || null;
-}
-
-// ✅ 发送短信验证码（Twilio Verify）
-async function apiSendSmsCode(phone) {
-  const { res, data } = await apiFetch("/api/sms/send-code", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ phone }),
-  });
-  if (!res.ok || !data?.success) throw new Error(data?.message || "发送验证码失败");
-  return data;
-}
-
-// ✅ 注册：验证码校验 + 创建账号 + 返回 token（后端接口）
-async function apiVerifyRegister({ phone, code, password, name }) {
-  const { res, data } = await apiFetch("/api/auth/verify-register", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ phone, code, password, name, autoLogin: true }),
-  });
-
-  const ok = data?.success === true && typeof data?.token === "string";
-  if (!res.ok || !ok) throw new Error(data?.message || "注册失败");
-
-  setToken(data.token);
-  return data.user || null;
-}
-
-// 轻量 me（只有 id/role/phone）
-async function apiMe() {
-  const token = getToken();
-  if (!token) return null;
-  const { res, data } = await apiFetch("/api/auth/me");
-  if (!res.ok || !data?.success) return null;
-  return data.user || null;
-}
-
-// ✅✅✅ 正确来源：从 Address 集合拿默认地址（唯一正确来源）
-async function apiGetDefaultAddress() {
-  const token = getToken();
-  if (!token) return null;
-
-  try {
-    const { res, data } = await apiFetch("/api/addresses/my", { cache: "no-store" });
-    console.log("[apiGetDefaultAddress]", res.status, data);
-
-    if (!res.ok || !data?.success) return null;
-    return data.defaultAddress || null;
-  } catch (e) {
-    console.error("apiGetDefaultAddress error", e);
-    return null;
-  }
-}
+const apiFetch = FreshAuth.apiFetch;
+const apiLogin = FreshAuth.apiLogin;
+const apiSendSmsCode = FreshAuth.apiSendSmsCode;
+const apiVerifyRegister = FreshAuth.apiVerifyRegister;
+const apiMe = FreshAuth.apiMe;
+const apiGetDefaultAddress = FreshAuth.apiGetDefaultAddress;
 
 // =========================
 // DOM refs（登录/注册弹窗）
@@ -2112,25 +2006,10 @@ if (tabRegister) tabRegister.addEventListener("click", () => switchAuthMode("reg
     true
   );
 })();
-// ====== 注册发送验证码 ======
-if (regSendCodeBtn) {
-  regSendCodeBtn.addEventListener("click", async () => {
-    const phone = (regPhone && regPhone.value.trim()) || "";
-    if (!phone) return alert("请先输入手机号");
-
-    try {
-      await apiSendSmsCode(phone);
-      alert("验证码已发送");
-    } catch (e) {
-      alert(e.message || "发送失败");
-    }
-  });
-}
-
 // ====== 登录提交 ======
 if (loginSubmitBtn) {
   loginSubmitBtn.addEventListener("click", async () => {
-    const phone = (loginPhone && loginPhone.value.trim()) || "";
+    const phone = FreshAuth.normalizeUSPhone((loginPhone && loginPhone.value) || "");
     const pwd = (loginPassword && loginPassword.value) || "";
     if (!phone || !pwd) return alert("请填写手机号和密码");
 
@@ -2162,7 +2041,7 @@ function isStrongPassword(pwd) {
 // ====== 注册提交 ======
 if (registerSubmitBtn) {
   registerSubmitBtn.addEventListener("click", async () => {
-    const phone = (regPhone && regPhone.value.trim()) || "";
+    const phone = FreshAuth.normalizeUSPhone((regPhone && regPhone.value) || "");
     const pwd = (regPassword && regPassword.value) || "";
     const code = (regCode && regCode.value.trim()) || "";
 
@@ -2279,7 +2158,7 @@ if (backToLoginBtn) {
 // 3) 发送验证码（复用 /api/sms/send-code）
 if (fpSendCodeBtn) {
   fpSendCodeBtn.addEventListener("click", async () => {
-    const phone = (fpPhone?.value || "").trim();
+    const phone = normalizeUSPhone(fpPhone?.value || "");
     if (!isValidPhoneLoose(phone)) return setFpMsg("请输入正确手机号（建议带 +1）", false);
 
     setFpMsg("");

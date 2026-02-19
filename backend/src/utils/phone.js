@@ -1,23 +1,29 @@
 // backend/src/utils/phone.js
-export function normalizePhoneToE164(raw) {
-  const s = String(raw ?? "").trim();
+export function normalizeUSPhone(raw) {
+  let s = String(raw ?? "").trim();
+  if (!s) return "";
 
-  // 去掉所有空白（包含不可见空白）
-  const noWs = s.replace(/\s+/g, "");
+  // 全角＋ -> 半角+
+  s = s.replace(/＋/g, "+");
+
+  // 去掉所有空白
+  s = s.replace(/\s+/g, "");
 
   // 只保留 + 和数字
-  const cleaned = noWs.replace(/[^\d+]/g, "");
+  s = s.replace(/[^\d+]/g, "");
 
-  let e164 = cleaned;
+  // 如果有多个 +，只保留开头那个
+  if (s.includes("+")) s = "+" + s.replace(/\+/g, "");
 
-  // ✅ 如果用户只填了 10 位美国手机号，补 +1
-  if (/^\d{10}$/.test(e164)) e164 = "+1" + e164;
+  // 10位：补 +1
+  if (/^\d{10}$/.test(s)) return "+1" + s;
 
-  // ✅ 如果是 11 位且以 1 开头，也补 +
-  if (/^1\d{10}$/.test(e164)) e164 = "+" + e164;
+  // 11位且以1开头：补 +
+  if (/^1\d{10}$/.test(s)) return "+" + s;
 
-  // E.164 基本格式校验
-  if (!/^\+[1-9]\d{1,14}$/.test(e164)) return "";
+  // 已经是 + 开头：必须是 +1XXXXXXXXXX（只接受美国）
+  if (/^\+1\d{10}$/.test(s)) return s;
 
-  return e164;
+  // 其它一律拒绝（例如 +646...）
+  return "";
 }
