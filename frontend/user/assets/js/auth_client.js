@@ -5,7 +5,7 @@
 
   // ✅ 建议：把“注册发验证码”独立成 /api/auth/send-code
   // 如果你后端实际路径不同，只需要改这 2 个常量
-  const API_SEND_REGISTER_CODE = "/api/auth/send-code";     // ✅ 只发验证码（注册）
+  const API_SEND_REGISTER_CODE = "/api/sms/send-code";     // ✅ 只发验证码（注册）
   const API_VERIFY_REGISTER = "/api/auth/verify-register";  // ✅ 校验验证码 + 注册
 
   const CLEAR_KEYS = [
@@ -32,19 +32,26 @@
   }
 
   // =========================================================
+  // ✅ Twilio 30896：必须有“短信同意（SMS opt-in）”且可验证
+  // - smsOptIn 勾选后，才允许：获取验证码 / 注册
+  // =========================================================
+  function requireSmsOptIn() {
+    const cb = document.getElementById("smsOptIn");
+    if (!cb) return true; // ⚠️ 兜底不阻断，但你页面必须加 smsOptIn 才能过审
+    if (cb.checked) return true;
+
+    alert("请先勾选同意接收短信条款（SMS consent）后再获取验证码/注册。");
+    try {
+      cb.scrollIntoView({ behavior: "smooth", block: "center" });
+    } catch {}
+    return false;
+  }
+
+  // =========================================================
   // ✅ 统一清洗手机号（前端兜底，后端也会再清洗一遍）
   // - 处理微信粘贴带空格/全角+等
   // - 统一成 E.164（美国默认补 +1）
   // =========================================================
-  function requireSmsOptIn() {
-  const cb = document.getElementById("smsOptIn");
-  if (!cb) return true; // 理论上应该存在，兜底不阻断
-  if (cb.checked) return true;
-
-  alert("请先勾选同意接收短信条款（SMS consent）后再获取验证码/注册。");
-  cb.scrollIntoView({ behavior: "smooth", block: "center" });
-  return false;
-}
   function normalizePhoneToE164_US(raw) {
     let s = String(raw ?? "").trim();
     if (!s) return "";
@@ -69,7 +76,7 @@
     // 11 位且以 1 开头：补 +
     if (/^1\d{10}$/.test(s)) s = "+" + s;
 
-    // 基本 E.164 校验（不通过就原样返回空，让 UI 提示）
+    // 基本 E.164 校验
     if (!/^\+[1-9]\d{1,14}$/.test(s)) return "";
 
     return s;
@@ -257,7 +264,6 @@
     },
 
     // ✅ 注册：校验验证码 + 注册（只走 verify-register）
-    // ✅ 验证码/手机号/密码都按字符串处理
     async register(name, phone, password, code) {
       showAuthMsg("");
 
@@ -266,6 +272,13 @@
       if (agreeEl && !agreeEl.checked) {
         showAuthMsg("请先勾选并同意服务条款与隐私政策");
         throw new Error("请先勾选并同意服务条款与隐私政策");
+      }
+
+      // ✅ SMS consent 勾选（Twilio 30896关键：不可绕过）
+      const smsEl = document.getElementById("smsOptIn");
+      if (smsEl && !smsEl.checked) {
+        showAuthMsg("请先勾选同意接收短信条款（SMS consent）");
+        throw new Error("请先勾选同意接收短信条款（SMS consent）");
       }
 
       const p = normalizePhoneToE164_US(phone);
@@ -314,7 +327,6 @@
       let finalName = String(name || (nameEl ? nameEl.value : "") || "").trim();
       if (!finalName) finalName = "用户" + String(p).slice(-4);
 
-      // ✅ 防重复提交（任何环境只允许一次 in-flight）
       if (window.__REGISTERING__) return;
       window.__REGISTERING__ = true;
 
@@ -363,7 +375,11 @@
         window.__REGISTERING__ = false;
 
         if (btn) {
-          const ok = !!(agreeEl && agreeEl.checked);
+          // ✅ 注册按钮启用条件：regAgree + smsOptIn 同时勾选
+          const aok = !!(agreeEl && agreeEl.checked);
+          const sok = !!(document.getElementById("smsOptIn")?.checked);
+          const ok = aok && sok;
+
           btn.disabled = !ok;
           btn.style.opacity = ok ? "1" : "0.55";
           btn.textContent = oldText || "注册并登录";
@@ -371,7 +387,7 @@
       }
     },
 
-    // ✅ 发送验证码（注册）——只打“发送验证码”接口，不再打 verify-register
+    // ✅ 发送验证码（注册）
     async sendRegisterCode(phone) {
       showAuthMsg("");
 
@@ -381,7 +397,6 @@
         throw new Error("手机号不正确");
       }
 
-      // ✅ 防重复触发：同一时刻只允许一个发送请求
       if (window.__SENDING_REG_CODE__) return;
       window.__SENDING_REG_CODE__ = true;
 
@@ -396,7 +411,6 @@
       }
     },
 
-    // ✅ 忘记密码：发送验证码
     async sendForgotCode(phone) {
       showAuthMsg("");
 
@@ -413,7 +427,6 @@
       return true;
     },
 
-    // ✅ 忘记密码：校验验证码并重置
     async resetPassword(phone, code, newPassword) {
       showAuthMsg("");
 
@@ -423,7 +436,7 @@
         throw new Error("手机号格式不正确");
       }
 
-      const c = String(code || "").trim(); // ✅ 字符串，防 0 开头丢失
+      const c = String(code || "").trim();
       if (!c) {
         showAuthMsg("请输入验证码");
         throw new Error("请输入验证码");
@@ -554,7 +567,7 @@
   // =========================================================
   // ✅ “获取验证码”（注册 regSendCodeBtn）
   // - 增加 60s 倒计时，避免狂点触发后端429
-  // - 增加“只绑定一次”锁，防脚本重复加载导致重复 addEventListener
+  // - 加：未勾选 smsOptIn 直接拦截（Twilio 30896关键）
   // =========================================================
   (function () {
     function init() {
@@ -565,21 +578,23 @@
       if (!btn) return;
 
       btn.addEventListener("click", async () => {
-  if (btn.dataset.busy === "1") return;
-  btn.dataset.busy = "1";
+        if (btn.dataset.busy === "1") return;
+        btn.dataset.busy = "1";
 
-  // ✅ 必须勾选 SMS consent 才允许发验证码（Twilio 30896关键）
-  if (!requireSmsOptIn()) { btn.dataset.busy = "0"; return; }
+        // ✅ 必须先同意短信
+        if (!requireSmsOptIn()) {
+          btn.dataset.busy = "0";
+          return;
+        }
 
-  const phoneRaw = String(document.getElementById("regPhone")?.value || "").trim();
-  try {
-    await window.Auth.sendRegisterCode(phoneRaw);
-    startCountdown(btn, 60, "获取验证码");
+        const phoneRaw = String(document.getElementById("regPhone")?.value || "").trim();
+        try {
+          await window.Auth.sendRegisterCode(phoneRaw);
+          startCountdown(btn, 60, "获取验证码");
         } catch (e) {
           btn.disabled = false;
           btn.style.opacity = "";
         } finally {
-          // 倒计时中本来就 disabled，不影响；失败时要解锁
           btn.dataset.busy = "0";
         }
       });
@@ -594,7 +609,7 @@
 
   // =========================================================
   // ✅ “注册并登录”（registerSubmitBtn）
-  // - 增加“只绑定一次”锁，防脚本重复加载导致重复 addEventListener
+  // - 加：未勾选 smsOptIn 直接拦截（Twilio 30896关键）
   // =========================================================
   (function () {
     function init() {
@@ -605,13 +620,17 @@
       if (!btn) return;
 
       btn.addEventListener("click", async () => {
-        // ✅ 双击/重复触发保护（和 Auth.register 的 __REGISTERING__ 双保险）
         if (btn.dataset.busy === "1") return;
         btn.dataset.busy = "1";
 
+        // ✅ 必须先同意短信
+        if (!requireSmsOptIn()) {
+          btn.dataset.busy = "0";
+          return;
+        }
+
         try {
           const phone = String(document.getElementById("regPhone")?.value || "").trim();
-          // 你首页没有姓名输入框，这里传空让 Auth.register 兜底生成“用户尾号”
           await window.Auth.register("", phone, "", "");
           window.dispatchEvent(new Event("storage"));
         } catch (e) {
@@ -929,21 +948,24 @@
 
 /* =========================================================
  * ✅ 注册必选框：未勾选不能点“注册并登录”
+ * - 升级：regAgree + smsOptIn 都必须勾选
  * ========================================================= */
 (function () {
   function init() {
     const agree = document.getElementById("regAgree");
+    const sms = document.getElementById("smsOptIn");
     const btn = document.getElementById("registerSubmitBtn");
     if (!agree || !btn) return;
 
     const sync = () => {
-      const ok = !!agree.checked;
+      const ok = !!agree.checked && (!!sms ? !!sms.checked : true);
       btn.disabled = !ok;
       btn.style.opacity = ok ? "1" : "0.55";
       btn.style.cursor = ok ? "pointer" : "not-allowed";
     };
 
     agree.addEventListener("change", sync);
+    if (sms) sms.addEventListener("change", sync);
     sync();
   }
 
