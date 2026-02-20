@@ -57,11 +57,28 @@ function logTwilioError(tag, reqId, e) {
   if (e?.stack) console.error("❌ TWILIO STACK", e.stack);
 }
 
+// ✅ 兼容旧数据：把一个 E164 手机号展开成多种可能存库格式
+function buildPhoneCandidates(e164Phone) {
+  const p = String(e164Phone || "").trim();
+  const digits = p.replace(/[^\d]/g, ""); // 1xxxxxxxxxx
+  const last10 = digits.length >= 10 ? digits.slice(-10) : digits;
+  return Array.from(new Set([p, digits, last10, `1${last10}`, `+1${last10}`]));
+}
+
+async function findUserByPhoneAnyFormat(e164Phone) {
+  const candidates = buildPhoneCandidates(e164Phone);
+  return await User.findOne({ phone: { $in: candidates } }).select("_id").lean();
+}
+
 // =====================================================
 // ✅ 发送验证码（共用函数）
 // =====================================================
 async function handleSendCode({ reqId, phone }, res) {
   try {
+    if (!client || !TWILIO_VERIFY_SERVICE_SID) {
+      return res.status(500).json({ success: false, msg: "Twilio 未配置", reqId });
+    }
+
     const now = new Date();
 
     // 当天 00:00
@@ -127,8 +144,42 @@ async function handleSendCode({ reqId, phone }, res) {
 }
 
 // =====================================================
+// ✅ GET /api/auth/check-phone-registered?phone=...
+// 返回：{ success:true, registered:true/false, reqId }
+// 用于前端按钮点击前检查
+// =====================================================
+router.get("/check-phone-registered", async (req, res) => {
+  const reqId = makeReqId();
+
+  try {
+    const phone = normalizeUSPhone(req.query.phone);
+
+    if (!phone) {
+      return res.json({ success: true, registered: false, reqId });
+    }
+
+    const exist = await findUserByPhoneAnyFormat(phone);
+
+    return res.json({
+      success: true,
+      registered: !!exist,
+      reqId,
+    });
+  } catch (e) {
+    return res.json({
+      success: false,
+      registered: false,
+      msg: "check failed",
+      detail: e?.message || String(e),
+      reqId,
+    });
+  }
+});
+
+// =====================================================
 // ✅ POST /api/auth/send-code
 // body: { phone }
+// 规则：已注册 => 409，不发送验证码
 // =====================================================
 router.post("/send-code", async (req, res) => {
   const reqId = makeReqId();
@@ -171,26 +222,17 @@ router.post("/send-code", async (req, res) => {
         reqId,
       });
     }
-        // ✅ 已注册就不发“注册验证码”
-    // 你数据库里 phone 存的是纯数字（比如 1646xxxxxxx / 646xxxxxxx），
-    // normalizeUSPhone 返回可能是 +1646xxxxxxx，所以这里做兼容匹配
-   const digits = String(phone).replace(/[^\d]/g, ""); // 1646xxxxxxx
-// 你注册写库就是存 phoneDigits（1+10位），所以这里直接查 digits 就够
-const exist = await User.findOne({ phone: digits }).select("_id").lean();
-if (exist) {
-  return res.status(409).json({
-    success: false,
-    msg: "该手机号已注册，请直接登录",
-    reqId,
-  });
-}
+
+    // ✅ 已注册就不发“注册验证码”（兼容旧数据格式）
+    const exist = await findUserByPhoneAnyFormat(phone);
     if (exist) {
       return res.status(409).json({
         success: false,
-        msg: "该手机号已注册，请直接登录",
+        msg: "该手机号已注册，请直接登录或使用忘记密码",
         reqId,
       });
     }
+
     return handleSendCode({ reqId, phone }, res);
   } catch (e) {
     console.error("❌ SEND-CODE FAIL", {
@@ -329,17 +371,8 @@ router.post("/verify-register", async (req, res) => {
       });
     }
 
-    // ✅ 兼容旧数据（DB里可能存了各种格式）
-    function buildPhoneCandidates(e164Phone) {
-      const p = String(e164Phone || "").trim();
-      const digits = p.replace(/[^\d]/g, ""); // 1xxxxxxxxxx
-      const last10 = digits.length >= 10 ? digits.slice(-10) : digits;
-      return Array.from(new Set([p, digits, last10, `1${last10}`, `+1${last10}`]));
-    }
-
-    const candidates = buildPhoneCandidates(phone);
-    const existing = await User.findOne({ phone: { $in: candidates } });
-
+    // ✅ 再次确认是否已注册（兼容旧数据）
+    const existing = await findUserByPhoneAnyFormat(phone);
     if (existing) {
       return res.status(409).json({
         success: false,
@@ -348,9 +381,9 @@ router.post("/verify-register", async (req, res) => {
       });
     }
 
-    // ✅ 注册写库
+    // ✅ 注册写库（统一存纯数字：1 + 10位）
     const hashed = await bcrypt.hash(password, 10);
-    const phoneDigits = String(phone).replace(/[^\d]/g, ""); // 存成纯数字
+    const phoneDigits = String(phone).replace(/[^\d]/g, ""); // 1xxxxxxxxxx
 
     const user = await User.create({
       phone: phoneDigits,
