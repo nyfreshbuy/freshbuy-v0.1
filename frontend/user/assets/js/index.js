@@ -21,7 +21,39 @@
 // ✅ 15) 整箱显示「仅剩 X 箱」
 // ✅ 16) 去掉数量输入框：只保留 +/-（防止用户乱输）
 // =======================================================
+// ✅✅✅ 1) 禁用 index.js 里所有旧版 auth 逻辑（防止重复发送验证码/重复注册）
+window.__DISABLE_LEGACY_AUTH__ = true;
 
+// ✅✅✅ 2) 兜底：如果 index.js 里还有旧逻辑偷偷 fetch auth 接口，这里直接拦掉
+(function blockLegacyAuthRequests() {
+  if (window.__FB_BLOCK_AUTH_FETCH__) return;
+  window.__FB_BLOCK_AUTH_FETCH__ = true;
+
+  const BLOCK = [
+    "/api/auth/send-code",
+    "/api/auth/verify-register",
+    "/api/auth/login",
+  ];
+
+  const _fetch = window.fetch;
+  window.fetch = async function (input, init) {
+    try {
+      const url = typeof input === "string" ? input : (input && input.url) || "";
+      const path = url.startsWith("http") ? new URL(url).pathname : url;
+
+      // 只拦 index.js 产生的重复请求：你真正的注册逻辑在 auth_client.js/auth_core.js
+      // 所以这里用 “开关” 控制，想撤掉也容易
+      if (window.__DISABLE_LEGACY_AUTH__ && BLOCK.some((p) => path.startsWith(p))) {
+        console.warn("🛑 blocked legacy auth fetch from index.js:", path);
+        return new Response(
+          JSON.stringify({ success: false, msg: "legacy auth blocked (index.js)" }),
+          { status: 409, headers: { "Content-Type": "application/json" } }
+        );
+      }
+    } catch {}
+    return _fetch.apply(this, arguments);
+  };
+})();
 console.log("✅ index.js UPDATED AT:", new Date().toISOString());
 console.log("Freshbuy index main script loaded (db-zones version)");
 
