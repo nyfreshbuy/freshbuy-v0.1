@@ -2507,3 +2507,30 @@ window.addEventListener("focusin", (e) => {
     window.scrollTo(0, window.scrollY);
   }
 });
+// ================================
+// ✅ 绑定登录注册按钮
+// ================================
+document.addEventListener("DOMContentLoaded", () => {
+  const btnLogin = document.getElementById("btnLogin");
+  const btnRegister = document.getElementById("btnRegister");
+
+  if (btnLogin) {
+    btnLogin.addEventListener("click", () => {
+      if (window.Auth?.openLoginModal) {
+        window.Auth.openLoginModal();
+      } else {
+        window.location.href = "/user/login.html";
+      }
+    });
+  }
+
+  if (btnRegister) {
+    btnRegister.addEventListener("click", () => {
+      if (window.Auth?.openRegisterModal) {
+        window.Auth.openRegisterModal();
+      } else {
+        window.location.href = "/user/register.html";
+      }
+    });
+  }
+});
