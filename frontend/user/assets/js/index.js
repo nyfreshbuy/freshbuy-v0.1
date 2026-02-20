@@ -21,39 +21,7 @@
 // ✅ 15) 整箱显示「仅剩 X 箱」
 // ✅ 16) 去掉数量输入框：只保留 +/-（防止用户乱输）
 // =======================================================
-// ✅✅✅ 1) 禁用 index.js 里所有旧版 auth 逻辑（防止重复发送验证码/重复注册）
-window.__DISABLE_LEGACY_AUTH__ = true;
 
-// ✅✅✅ 2) 兜底：如果 index.js 里还有旧逻辑偷偷 fetch auth 接口，这里直接拦掉
-(function blockLegacyAuthRequests() {
-  if (window.__FB_BLOCK_AUTH_FETCH__) return;
-  window.__FB_BLOCK_AUTH_FETCH__ = true;
-
-  const BLOCK = [
-    "/api/auth/send-code",
-    "/api/auth/verify-register",
-    "/api/auth/login",
-  ];
-
-  const _fetch = window.fetch;
-  window.fetch = async function (input, init) {
-    try {
-      const url = typeof input === "string" ? input : (input && input.url) || "";
-      const path = url.startsWith("http") ? new URL(url).pathname : url;
-
-      // 只拦 index.js 产生的重复请求：你真正的注册逻辑在 auth_client.js/auth_core.js
-      // 所以这里用 “开关” 控制，想撤掉也容易
-      if (window.__DISABLE_LEGACY_AUTH__ && BLOCK.some((p) => path.startsWith(p))) {
-        console.warn("🛑 blocked legacy auth fetch from index.js:", path);
-        return new Response(
-          JSON.stringify({ success: false, msg: "legacy auth blocked (index.js)" }),
-          { status: 409, headers: { "Content-Type": "application/json" } }
-        );
-      }
-    } catch {}
-    return _fetch.apply(this, arguments);
-  };
-})();
 console.log("✅ index.js UPDATED AT:", new Date().toISOString());
 console.log("Freshbuy index main script loaded (db-zones version)");
 
@@ -2151,14 +2119,89 @@ if (!j || j.success !== true || !j.banner) {
     console.warn("loadHomepageBanner failed:", e);
   }
 }
+// =====================================================
+// ✅ TOP-RIGHT AUTH UI 兜底（防止 applyLoggedOutUI / applyLoggedInUI 未定义导致整页 JS 崩）
+// 放在 initTopRightAuthUI() 之前
+// =====================================================
+if (typeof window.applyLoggedOutUI !== "function") {
+  window.applyLoggedOutUI = function () {
+    try {
+      // 常见：登录/注册按钮（按你页面实际 id 调整）
+      const btnLogin = document.getElementById("btnLogin") || document.getElementById("loginBtn");
+      const btnRegister = document.getElementById("btnRegister") || document.getElementById("registerBtn");
+
+      // 常见：右上角用户入口
+      const userProfile = document.getElementById("userProfile");
+
+      if (btnLogin) btnLogin.style.display = "";
+      if (btnRegister) btnRegister.style.display = "";
+      if (userProfile) userProfile.style.display = "none";
+    } catch (e) {
+      console.warn("applyLoggedOutUI fallback failed:", e);
+    }
+  };
+}
+
+if (typeof window.applyLoggedInUI !== "function") {
+  window.applyLoggedInUI = function (phone) {
+    try {
+      const btnLogin = document.getElementById("btnLogin") || document.getElementById("loginBtn");
+      const btnRegister = document.getElementById("btnRegister") || document.getElementById("registerBtn");
+      const userProfile = document.getElementById("userProfile");
+
+      if (btnLogin) btnLogin.style.display = "none";
+      if (btnRegister) btnRegister.style.display = "none";
+
+      if (userProfile) {
+        userProfile.style.display = "";
+        // 可选：显示尾号
+        const tail = String(phone || "").slice(-4);
+        userProfile.textContent = tail ? `我 · 尾号${tail}` : "我的";
+      }
+    } catch (e) {
+      console.warn("applyLoggedInUI fallback failed:", e);
+    }
+  };
+}
 async function initTopRightAuthUI() {
   try {
     const me = await (window.Auth?.me ? window.Auth.me() : null);
-    if (me && me.phone) applyLoggedInUI(me.phone);
-    else applyLoggedOutUI();
+
+    if (me && me.phone) {
+      // ✅ 如果全局有函数就用，没有就降级
+      if (typeof window.applyLoggedInUI === "function") window.applyLoggedInUI(me.phone);
+      else {
+        const up = document.getElementById("userProfile");
+        if (up) {
+          up.style.display = "inline-flex";
+          up.textContent = "我 / " + String(me.phone).slice(-4);
+        }
+        const btnLogin = document.getElementById("btnLogin");
+        const btnRegister = document.getElementById("btnRegister");
+        if (btnLogin) btnLogin.style.display = "none";
+        if (btnRegister) btnRegister.style.display = "none";
+      }
+    } else {
+      if (typeof window.applyLoggedOutUI === "function") window.applyLoggedOutUI();
+      else {
+        const btnLogin = document.getElementById("btnLogin");
+        const btnRegister = document.getElementById("btnRegister");
+        if (btnLogin) btnLogin.style.display = "";
+        if (btnRegister) btnRegister.style.display = "";
+        const up = document.getElementById("userProfile");
+        if (up) up.style.display = "none";
+      }
+    }
+
     return me || null;
-  } catch {
-    applyLoggedOutUI();
+  } catch (e) {
+    // ✅ 出错也不要炸页面
+    const btnLogin = document.getElementById("btnLogin");
+    const btnRegister = document.getElementById("btnRegister");
+    if (btnLogin) btnLogin.style.display = "";
+    if (btnRegister) btnRegister.style.display = "";
+    const up = document.getElementById("userProfile");
+    if (up) up.style.display = "none";
     return null;
   }
 }
