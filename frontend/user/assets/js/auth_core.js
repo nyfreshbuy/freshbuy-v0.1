@@ -22,7 +22,6 @@
   function setToken(token) {
     const t = String(token || "").trim();
     if (!t) return;
-    // ✅ 统一写到 token，同时同步 freshbuy_token（兼容旧代码）
     localStorage.setItem("token", t);
     localStorage.setItem("freshbuy_token", t);
   }
@@ -30,7 +29,6 @@
   function clearToken() {
     for (const k of AUTH_TOKEN_KEYS) localStorage.removeItem(k);
 
-    // 你项目里常用的登录缓存一起清掉（避免游客也显示登录态）
     [
       "freshbuy_is_logged_in",
       "freshbuy_login_phone",
@@ -55,10 +53,15 @@
       data = null;
     }
 
-    // 401 或后端明确未登录 => 清 token
-    if (res.status === 401 || (data && data.success === false && (data.msg === "未登录" || data.message === "未登录"))) {
+    if (
+      res.status === 401 ||
+      (data &&
+        data.success === false &&
+        (data.msg === "未登录" || data.message === "未登录"))
+    ) {
       clearToken();
     }
+
     return { res, data };
   }
 
@@ -69,20 +72,32 @@
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ phone: p, password }),
     });
-    const ok = data?.success === true || data?.ok === true || typeof data?.token === "string";
-    if (!res.ok || !ok) throw new Error(data?.msg || data?.message || "登录失败");
+
+    const ok =
+      data?.success === true ||
+      data?.ok === true ||
+      typeof data?.token === "string";
+
+    if (!res.ok || !ok)
+      throw new Error(data?.msg || data?.message || "登录失败");
+
     if (data?.token) setToken(data.token);
+
     return data.user || null;
   }
 
+  // ✅ 已修改为走 /api/auth/send-code（带60秒冷却 + 已注册拦截）
   async function apiSendSmsCode(phone) {
     const p = normalizeUSPhone(phone);
-    const { res, data } = await apiFetch("/api/sms/send-code", {
+    const { res, data } = await apiFetch("/api/auth/send-code", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ phone: p }),
     });
-    if (!res.ok || !data?.success) throw new Error(data?.message || "发送验证码失败");
+
+    if (!res.ok || !data?.success)
+      throw new Error(data?.msg || data?.message || "发送验证码失败");
+
     return data;
   }
 
@@ -91,35 +106,55 @@
     const { res, data } = await apiFetch("/api/auth/verify-register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone: p, code, password, name, autoLogin: true }),
+      body: JSON.stringify({
+        phone: p,
+        code,
+        password,
+        name,
+        autoLogin: true,
+      }),
     });
-    const ok = data?.success === true && typeof data?.token === "string";
-    if (!res.ok || !ok) throw new Error(data?.message || "注册失败");
+
+    const ok =
+      data?.success === true &&
+      typeof data?.token === "string";
+
+    if (!res.ok || !ok)
+      throw new Error(data?.msg || data?.message || "注册失败");
+
     setToken(data.token);
+
     return data.user || null;
   }
 
   async function apiMe() {
     const token = getToken();
     if (!token) return null;
+
     const { res, data } = await apiFetch("/api/auth/me");
+
     if (!res.ok || !data?.success) return null;
+
     return data.user || null;
   }
 
   async function apiGetDefaultAddress() {
     const token = getToken();
     if (!token) return null;
+
     try {
-      const { res, data } = await apiFetch("/api/addresses/my", { cache: "no-store" });
+      const { res, data } = await apiFetch("/api/addresses/my", {
+        cache: "no-store",
+      });
+
       if (!res.ok || !data?.success) return null;
+
       return data.defaultAddress || null;
     } catch {
       return null;
     }
   }
 
-  // ✅ 挂到全局，给 index.js / auth_client.js 共用
   window.FreshAuth = {
     normalizeUSPhone,
     getToken,

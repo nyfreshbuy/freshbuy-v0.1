@@ -171,7 +171,26 @@ router.post("/send-code", async (req, res) => {
         reqId,
       });
     }
-
+        // ✅ 已注册就不发“注册验证码”
+    // 你数据库里 phone 存的是纯数字（比如 1646xxxxxxx / 646xxxxxxx），
+    // normalizeUSPhone 返回可能是 +1646xxxxxxx，所以这里做兼容匹配
+   const digits = String(phone).replace(/[^\d]/g, ""); // 1646xxxxxxx
+// 你注册写库就是存 phoneDigits（1+10位），所以这里直接查 digits 就够
+const exist = await User.findOne({ phone: digits }).select("_id").lean();
+if (exist) {
+  return res.status(409).json({
+    success: false,
+    msg: "该手机号已注册，请直接登录",
+    reqId,
+  });
+}
+    if (exist) {
+      return res.status(409).json({
+        success: false,
+        msg: "该手机号已注册，请直接登录",
+        reqId,
+      });
+    }
     return handleSendCode({ reqId, phone }, res);
   } catch (e) {
     console.error("❌ SEND-CODE FAIL", {

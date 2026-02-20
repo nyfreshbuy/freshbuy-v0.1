@@ -1258,76 +1258,11 @@ function createProductCard(p, extraBadgeText) {
   const newMaxText = unitCount > 1 ? `仅剩 ${Math.max(0, maxQty)} 箱` : `仅剩 ${Math.max(0, maxQty)}`;
   if (qtyHint) qtyHint.textContent = maxQty <= 0 ? "已售罄" : newMaxText;
 
-  const overlayAdd = article.querySelector('.overlay-btn.add[data-add-pid]');
-  const fixedAdd = article.querySelector('.product-add-fixed[data-add-pid]');
+  const overlayAdd = article.querySelector(`.overlay-btn.add[data-add-pid="${pid}"]`);
+const fixedAdd = article.querySelector(`.product-add-fixed[data-add-pid="${pid}"]`);
   if (overlayAdd) overlayAdd.disabled = maxQty <= 0;
   if (fixedAdd) fixedAdd.disabled = maxQty <= 0;
 }
-  function doAdd(ev) {
-    ev.stopPropagation();
-
-    const cartApi =
-      (window.FreshCart && typeof window.FreshCart.addItem === "function" && window.FreshCart) ||
-      (window.Cart && typeof window.Cart.addItem === "function" && window.Cart) ||
-      null;
-
-    if (!cartApi) {
-      alert("购物车模块暂未启用（请确认 cart.js 已加载）");
-      return;
-    }
-
-    // ✅ 无输入框：直接用 selectedQty
-    const wantQty = 1; // ✅ 点击“加入购物车”只加 1
-    if (wantQty <= 0) {
-      alert("该商品已售罄");
-      return;
-    }
-
-    // ✅ 加购单价：默认 basePrice；单个规格优先用单个原价（你的旧逻辑保持）
-    let cartUnitPrice = basePrice;
-    if (isSingleVariant && originUnit > 0) cartUnitPrice = originUnit;
-
-    const normalized = {
-      id: pid, // cartKey（productId::variantKey）
-      productId: productId,
-      variantKey: variantKey,
-      name: displayName || "商品",
-      price: cartUnitPrice,
-      priceNum: cartUnitPrice,
-      image: p.image || imageUrl,
-      tag: p.tag || "",
-      type: p.type || "",
-      isSpecial: isHotProduct(p),
-      isDeal: isHotProduct(p),
-    };
-
-    cartApi.addItem(normalized, wantQty);
-
-    // ✅✅✅ 加购后立刻显示徽章：但永不超过 card.__maxQty（强兜底）
-    try {
-      const badge = article.querySelector(`.product-qty-badge[data-pid="${pid}"]`);
-      const cur = Number((badge?.textContent || "").replace("+", "")) || 0;
-      const cap0 = Number(article.__maxQty);
-      const cap = Number.isFinite(cap0) ? Math.max(0, Math.floor(cap0)) : 999999;
-      const next = Math.min(cur + wantQty, cap);
-      if (badge) {
-        badge.textContent = next >= 99 ? "99+" : String(next);
-        badge.style.display = next > 0 ? "flex" : "none";
-      }
-    } catch {}
-
-    // ✅ 通知全站：购物车已更新（delta=wantQty）
-    try {
-      window.dispatchEvent(new CustomEvent("freshbuy:cartUpdated", { detail: { pid, delta: wantQty } }));
-    } catch {}
-
-    setTimeout(() => {
-      try {
-        scheduleBadgeSync();
-      } catch {}
-    }, 150);
-  }
-
   const favBtn = article.querySelector(".overlay-btn.fav");
   if (favBtn) {
     favBtn.addEventListener("click", (ev) => {
@@ -1731,495 +1666,6 @@ window.addEventListener("DOMContentLoaded", bindKbInputs);
 
 // ✅ 兜底：如果脚本本来就在 body 最后加载，也允许立刻绑定一次
 try { bindKbInputs(); } catch {}
-/* ====== 下一段从：登录/注册/鉴权（AUTH_TOKEN_KEYS...）开始 ====== */
-// =========================
-// 3) 登录 / 注册弹窗 + 顶部头像（✅ Mongo 真实接口版）
-// =========================
-
-// ✅ 统一 token 读取/写入（兼容 auth_client.js 的 "token" + 你这份 index.js 的 "freshbuy_token"）
-const FreshAuth = window.FreshAuth;
-const getToken = FreshAuth.getToken;
-const setToken = FreshAuth.setToken;
-const clearToken = FreshAuth.clearToken;
-
-const apiFetch = FreshAuth.apiFetch;
-const apiLogin = FreshAuth.apiLogin;
-const apiSendSmsCode = FreshAuth.apiSendSmsCode;
-const apiVerifyRegister = FreshAuth.apiVerifyRegister;
-const apiMe = FreshAuth.apiMe;
-const apiGetDefaultAddress = FreshAuth.apiGetDefaultAddress;
-
-// =========================
-// DOM refs（登录/注册弹窗）
-// =========================
-const authBackdrop = document.getElementById("authBackdrop");
-const authCloseBtn = document.getElementById("authCloseBtn");
-const loginBtn = document.getElementById("loginBtn");
-const registerBtn = document.getElementById("registerBtn");
-
-const tabLogin = document.getElementById("tabLogin");
-const tabRegister = document.getElementById("tabRegister");
-const authTitle = document.getElementById("authTitle");
-
-const loginPanel = document.getElementById("loginPanel");
-const registerPanel = document.getElementById("registerPanel");
-
-// ✅ 新增：找回密码面板（你 index.html 里要有）
-const forgotPanel = document.getElementById("forgotPanel");
-
-const loginPhone = document.getElementById("loginPhone");
-const loginPassword = document.getElementById("loginPassword");
-const loginRemember = document.getElementById("loginRemember");
-
-const regPhone = document.getElementById("regPhone");
-const regPassword = document.getElementById("regPassword");
-const regCode = document.getElementById("regCode");
-const regSendCodeBtn = document.getElementById("regSendCodeBtn");
-
-const loginSubmitBtn = document.getElementById("loginSubmitBtn");
-const registerSubmitBtn = document.getElementById("registerSubmitBtn");
-
-const userProfile = document.getElementById("userProfile");
-const userNameLabel = document.getElementById("userNameLabel");
-const userAvatar = document.getElementById("userAvatar");
-
-function applyLoggedInUI(phone) {
-  if (!phone) return;
-  if (loginBtn) loginBtn.style.display = "none";
-  if (registerBtn) registerBtn.style.display = "none";
-  if (userProfile) userProfile.style.display = "flex";
-
-  const tail = String(phone).slice(-4);
-  if (userNameLabel) userNameLabel.textContent = tail ? "尾号 " + tail : "我的账户";
-  if (userAvatar) userAvatar.textContent = "我";
-}
-
-function applyLoggedOutUI() {
-  if (loginBtn) loginBtn.style.display = "";
-  if (registerBtn) registerBtn.style.display = "";
-  if (userProfile) userProfile.style.display = "none";
-}
-
-// ================================
-// ✅ 强制退出：不管你之前用哪个 key，都能退出
-// ================================
-function hardLogout() {
-  // 1) 清 token（两套系统都清）
-  const tokenKeys = ["token", "freshbuy_token", "jwt", "auth_token", "access_token"];
-  tokenKeys.forEach((k) => localStorage.removeItem(k));
-
-  // 2) 清登录态/用户缓存
-  const miscKeys = [
-    "freshbuy_is_logged_in",
-    "freshbuy_login_phone",
-    "freshbuy_login_nickname",
-    "freshbuy_default_address",
-    "freshbuy_wallet_balance",
-    "user",
-    "freshbuy_user",
-  ];
-  miscKeys.forEach((k) => localStorage.removeItem(k));
-
-  try {
-    sessionStorage.clear();
-  } catch {}
-
-  // 3) 立刻切 UI
-  applyLoggedOutUI();
-  unlockZipInputForGuest();
-
-  // 4) 提示 + 回首页（防止其它初始化又把 UI 改回去）
-  alert("已退出登录");
-  location.href = "/user/index.html";
-}
-
-// ✅ 事件委托：只要你点的元素里出现这些文字/属性，就当成退出
-document.addEventListener("click", (e) => {
-  const el = e.target.closest("button,a,div,span");
-  if (!el) return;
-
-  const text = (el.textContent || "").trim();
-  const id = (el.id || "").toLowerCase();
-  const cls = (el.className || "").toString().toLowerCase();
-
-  const hit =
-    text === "退出" ||
-    text === "退出登录" ||
-    text === "登出" ||
-    id.includes("logout") ||
-    id.includes("signout") ||
-    cls.includes("logout") ||
-    cls.includes("signout") ||
-    el.getAttribute("data-action") === "logout";
-
-  if (hit) {
-    e.preventDefault();
-    e.stopPropagation();
-    hardLogout();
-  }
-});
-
-async function initAuthUIFromStorage() {
-  const me = await apiMe();
-  if (me && me.phone) applyLoggedInUI(me.phone);
-  else applyLoggedOutUI();
-  return me || null;
-}
-
-/* ====== 下一段从：openAuthModal / switchAuthMode / 登录注册按钮绑定 / 忘记密码开始 ====== */
-function openAuthModal(mode = "login") {
-  if (!authBackdrop) return;
-  lockBodyScroll(); // ✅ 新增：打开弹窗就锁 body，防止 iOS 键盘把页面顶飞
-  authBackdrop.classList.add("active");
-  switchAuthMode(mode);
- 
-  const savedPhone = localStorage.getItem("freshbuy_login_phone") || "";
-  if (savedPhone && loginPhone && loginRemember) {
-    loginPhone.value = savedPhone;
-    loginRemember.checked = true;
-  }
-}
-
-function closeAuthModal() {
-  if (!authBackdrop) return;
-  authBackdrop.classList.remove("active");
-  document.body.classList.remove("modal-open");
-  unlockBodyScroll(); // ✅ 新增：关闭弹窗恢复滚动位置
-}
-
-function setAuthTitle(t) {
-  if (authTitle) authTitle.textContent = t || "登录";
-}
-
-// ✅✅✅ 关键：支持 forgot 模式
-function switchAuthMode(mode) {
-  if (!tabLogin || !tabRegister || !loginPanel || !registerPanel || !authTitle) return;
-
-  // 全部先隐藏
-  loginPanel.style.display = "none";
-  registerPanel.style.display = "none";
-  if (forgotPanel) forgotPanel.style.display = "none";
-
-  // tabs
-  tabLogin.classList.remove("active");
-  tabRegister.classList.remove("active");
-
-  if (mode === "register") {
-    tabRegister.classList.add("active");
-    registerPanel.style.display = "";
-    setAuthTitle("注册");
-    return;
-  }
-
-  if (mode === "forgot") {
-    setAuthTitle("找回密码");
-    if (forgotPanel) forgotPanel.style.display = "";
-    return;
-  }
-
-  // 默认 login
-  tabLogin.classList.add("active");
-  loginPanel.style.display = "";
-  setAuthTitle("登录");
-}
-
-if (loginBtn) loginBtn.addEventListener("click", () => openAuthModal("login"));
-if (registerBtn) registerBtn.addEventListener("click", () => openAuthModal("register"));
-if (authCloseBtn) authCloseBtn.addEventListener("click", closeAuthModal);
-
-if (authBackdrop) {
-  authBackdrop.addEventListener("click", (e) => {
-    if (e.target === authBackdrop) closeAuthModal();
-  });
-}
-if (tabLogin) tabLogin.addEventListener("click", () => switchAuthMode("login"));
-if (tabRegister) tabRegister.addEventListener("click", () => switchAuthMode("register"));
-// =========================
-// ✅ iOS 键盘：弹窗不溢出（不改 top，只更新高度 + 让输入框在弹窗内可见）
-// =========================
-(function bindAuthModalNoOverflowFix() {
-  const vv = window.visualViewport;
-  if (!vv) return;
-
-  function getAuthModalEl() {
-    return (
-      document.querySelector("#authBackdrop .login-modal") ||
-      document.querySelector("#authBackdrop .auth-modal") ||
-      document.querySelector("#authBackdrop .auth-card") ||
-      document.querySelector("#authBackdrop [data-auth-modal]")
-    );
-  }
-
-  function isAuthOpen() {
-    return authBackdrop && authBackdrop.classList.contains("active");
-  }
-
-  function updateModalMaxHeight() {
-    if (!isAuthOpen()) return;
-    // 只更新变量，CSS 决定 max-height，不再改 modal.style.top
-    const h = vv.height || window.innerHeight;
-    document.documentElement.style.setProperty("--vvh", `${h}px`);
-  }
-
-  vv.addEventListener("resize", updateModalMaxHeight);
-  vv.addEventListener("scroll", updateModalMaxHeight);
-
-  // 弹窗打开瞬间刷新一次
-  document.addEventListener("click", (e) => {
-    const hit = e.target.closest("#loginBtn,#registerBtn");
-    if (hit) setTimeout(updateModalMaxHeight, 0);
-  });
-
-  // ✅ 输入框聚焦时：只滚动弹窗内部，不滚页面
-  document.addEventListener(
-    "focusin",
-    (e) => {
-      if (!isAuthOpen()) return;
-      const t = e.target;
-      if (!t || (t.tagName !== "INPUT" && t.tagName !== "TEXTAREA")) return;
-
-      const modal = getAuthModalEl();
-      if (!modal) return;
-
-      // 找弹窗内部可滚动容器（你没有 modal-body 就退化到 modal 自己）
-      const scroller =
-        modal.querySelector(".modal-body") ||
-        modal.querySelector(".content") ||
-        modal.querySelector(".body") ||
-        modal;
-
-      // 给 iOS 一点时间更新 viewport，再滚到中间
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          try {
-            t.scrollIntoView({ block: "center", behavior: "smooth" });
-          } catch {}
-          try {
-            const r1 = t.getBoundingClientRect();
-            const r2 = scroller.getBoundingClientRect();
-            if (r1.bottom > r2.bottom - 12) scroller.scrollTop += r1.bottom - (r2.bottom - 12);
-            if (r1.top < r2.top + 12) scroller.scrollTop -= (r2.top + 12) - r1.top;
-          } catch {}
-        });
-      });
-    },
-    true
-  );
-})();
-// ====== 登录提交 ======
-if (loginSubmitBtn) {
-  loginSubmitBtn.addEventListener("click", async () => {
-    const phone = FreshAuth.normalizeUSPhone((loginPhone && loginPhone.value) || "");
-    const pwd = (loginPassword && loginPassword.value) || "";
-    if (!phone || !pwd) return alert("请填写手机号和密码");
-
-    try {
-      await apiLogin(phone, pwd);
-
-      if (loginRemember && loginRemember.checked) {
-        localStorage.setItem("freshbuy_login_phone", phone);
-      } else {
-        localStorage.removeItem("freshbuy_login_phone");
-      }
-
-      applyLoggedInUI(phone);
-      await applyZipFromDefaultAddressIfLoggedIn();
-
-      alert("登录成功");
-      closeAuthModal();
-    } catch (err) {
-      alert(err.message || "登录失败");
-    }
-  });
-}
-
-function isStrongPassword(pwd) {
-  // 至少8位，且必须包含字母+数字
-  return /^(?=.*[A-Za-z])(?=.*\d).{8,}$/.test(String(pwd || ""));
-}
-
-// ====== 注册提交 ======
-if (registerSubmitBtn) {
-  registerSubmitBtn.addEventListener("click", async () => {
-    const phone = FreshAuth.normalizeUSPhone((regPhone && regPhone.value) || "");
-    const pwd = (regPassword && regPassword.value) || "";
-    const code = (regCode && regCode.value.trim()) || "";
-
-    if (!phone) return alert("请填写手机号");
-    if (!code) return alert("请填写验证码");
-    if (!pwd) return alert("请填写密码");
-    if (!isStrongPassword(pwd)) return alert("密码至少8位，且必须包含字母和数字");
-
-    const name = "用户" + String(phone).slice(-4);
-
-    try {
-      await apiVerifyRegister({ phone, code, password: pwd, name });
-
-      localStorage.setItem("freshbuy_login_phone", phone);
-      applyLoggedInUI(phone);
-
-      await applyZipFromDefaultAddressIfLoggedIn();
-
-      alert("注册成功，已自动登录");
-      closeAuthModal();
-    } catch (err) {
-      alert(err.message || "注册失败");
-    }
-  });
-}
-
-// =========================
-// ✅ 忘记密码：弹窗内切换面板（不跳新页）
-// 依赖：已有 apiSendSmsCode() + 新接口 POST /api/auth/reset-password
-// =========================
-const forgotPwdLink = document.getElementById("forgotPwdLink");
-const fpPhone = document.getElementById("fpPhone");
-const fpCode = document.getElementById("fpCode");
-const fpNewPwd = document.getElementById("fpNewPwd");
-const fpNewPwd2 = document.getElementById("fpNewPwd2");
-const fpSendCodeBtn = document.getElementById("fpSendCodeBtn");
-const fpResetBtn = document.getElementById("fpResetBtn");
-const fpMsg = document.getElementById("fpMsg");
-const backToLoginBtn = document.getElementById("backToLoginBtn");
-
-function setFpMsg(text, ok = false) {
-  if (!fpMsg) return;
-  fpMsg.textContent = text || "";
-  fpMsg.style.color = ok ? "#16a34a" : "#ef4444";
-}
-
-function isValidPhoneLoose(phone) {
-  const s = String(phone || "").trim();
-  const digits = s.replace(/[^\d]/g, "");
-  return digits.length >= 8;
-}
-function isValidCodeLoose(code) {
-  return /^\d{4,8}$/.test(String(code || "").trim());
-}
-
-let fpCooldownTimer = null;
-let fpCooldownLeft = 0;
-
-function startFpCooldown(sec = 60) {
-  if (!fpSendCodeBtn) return;
-  fpCooldownLeft = sec;
-  fpSendCodeBtn.disabled = true;
-  fpSendCodeBtn.textContent = `已发送(${fpCooldownLeft}s)`;
-
-  if (fpCooldownTimer) clearInterval(fpCooldownTimer);
-  fpCooldownTimer = setInterval(() => {
-    fpCooldownLeft -= 1;
-    if (fpCooldownLeft <= 0) {
-      clearInterval(fpCooldownTimer);
-      fpCooldownTimer = null;
-      fpSendCodeBtn.disabled = false;
-      fpSendCodeBtn.textContent = "发送验证码";
-      return;
-    }
-    fpSendCodeBtn.textContent = `已发送(${fpCooldownLeft}s)`;
-  }, 1000);
-}
-
-async function postJson(url, body) {
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
-    body: JSON.stringify(body || {}),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || data?.success === false) {
-    throw new Error(data?.message || data?.msg || `请求失败(${res.status})`);
-  }
-  return data;
-}
-
-// 1) 点击“忘记密码？” -> 切面板
-if (forgotPwdLink) {
-  forgotPwdLink.addEventListener("click", () => {
-    setFpMsg("");
-    // 默认带上登录框手机号（有的话）
-    try {
-      const p = (loginPhone && loginPhone.value.trim()) || "";
-      if (fpPhone && p && !fpPhone.value.trim()) fpPhone.value = p;
-    } catch {}
-    switchAuthMode("forgot");
-  });
-}
-
-// 2) 返回登录
-if (backToLoginBtn) {
-  backToLoginBtn.addEventListener("click", () => {
-    setFpMsg("");
-    switchAuthMode("login");
-  });
-}
-
-// 3) 发送验证码（复用 /api/sms/send-code）
-if (fpSendCodeBtn) {
-  fpSendCodeBtn.addEventListener("click", async () => {
-    const phone = normalizeUSPhone(fpPhone?.value || "");
-    if (!isValidPhoneLoose(phone)) return setFpMsg("请输入正确手机号（建议带 +1）", false);
-
-    setFpMsg("");
-    fpSendCodeBtn.disabled = true;
-
-    try {
-      await apiSendSmsCode(phone);
-      setFpMsg("✅ 验证码已发送，请查收短信", true);
-      startFpCooldown(60);
-    } catch (e) {
-      fpSendCodeBtn.disabled = false;
-      setFpMsg("发送失败：" + (e.message || ""), false);
-    }
-  });
-}
-
-// 4) 重置密码（调用后端 /api/auth/reset-password）
-if (fpResetBtn) {
-  fpResetBtn.addEventListener("click", async () => {
-    const phone = (fpPhone?.value || "").trim();
-    const code = (fpCode?.value || "").trim();
-    const newPassword = (fpNewPwd?.value || "").trim();
-    const newPassword2 = (fpNewPwd2?.value || "").trim();
-
-    if (!isValidPhoneLoose(phone)) return setFpMsg("请输入正确手机号（建议带 +1）", false);
-    if (!isValidCodeLoose(code)) return setFpMsg("请输入短信验证码（4-8 位数字）", false);
-    if (!newPassword || newPassword.length < 6) return setFpMsg("新密码至少 6 位", false);
-    if (newPassword !== newPassword2) return setFpMsg("两次输入的新密码不一致", false);
-
-    setFpMsg("");
-    fpResetBtn.disabled = true;
-    fpResetBtn.textContent = "提交中...";
-
-    try {
-      await postJson("/api/auth/reset-password", { phone, code, newPassword });
-      setFpMsg("✅ 密码已重置成功！请用新密码登录。", true);
-
-      // 切回登录并自动填手机号
-      setTimeout(() => {
-        try {
-          if (loginPhone) loginPhone.value = phone;
-          if (loginPassword) loginPassword.value = "";
-        } catch {}
-        switchAuthMode("login");
-      }, 600);
-    } catch (e) {
-      setFpMsg("重置失败：" + (e.message || ""), false);
-    } finally {
-      fpResetBtn.disabled = false;
-      fpResetBtn.textContent = "验证并重置密码";
-    }
-  });
-}
-
-// 输入优化：验证码只保留数字
-if (fpCode) {
-  fpCode.addEventListener("input", () => {
-    fpCode.value = String(fpCode.value || "").replace(/[^\d]/g, "").slice(0, 8);
-  });
-}
-
 /* ====== 下一段从：ZIP 锁定/解锁（hardLockInput/lockZipInputToDefaultAddress/unlockZipInputForGuest/...）开始 ====== */
 // ===============================
 // ✅ ZIP 锁定/解锁（左右同步）仅锁 ZIP 输入框，不影响其它按钮
@@ -2323,7 +1769,25 @@ function unlockZipInputForGuest() {
   if (rightClearBtn) rightClearBtn.disabled = false;
   if (rightTip) rightTip.textContent = "";
 }
+function getToken() {
+  return window.Auth?.getToken ? window.Auth.getToken() : (localStorage.getItem("freshbuy_token") || "");
+}
 
+async function apiGetDefaultAddress() {
+  // 推荐：auth_client.js 统一实现这个函数并挂到 window.Auth
+  if (window.Auth?.getDefaultAddress) return window.Auth.getDefaultAddress();
+
+  // 兜底：如果你暂时还没在 auth_client.js 做，就用这里的最小 fallback（后面可删）
+  const tk = getToken();
+  if (!tk) return null;
+
+  const r = await fetch("/api/addresses/my.defaultAddress", {
+    headers: { Authorization: "Bearer " + tk },
+    cache: "no-store",
+  });
+  const j = await r.json().catch(() => ({}));
+  return j?.success ? j.address : (j?.defaultAddress || null);
+}
 async function applyZipFromDefaultAddressIfLoggedIn() {
   const zipInput = document.getElementById("zipInput");
   if (!zipInput) return;
@@ -2655,6 +2119,17 @@ if (!j || j.success !== true || !j.banner) {
     console.warn("loadHomepageBanner failed:", e);
   }
 }
+async function initTopRightAuthUI() {
+  try {
+    const me = await (window.Auth?.me ? window.Auth.me() : null);
+    if (me && me.phone) applyLoggedInUI(me.phone);
+    else applyLoggedOutUI();
+    return me || null;
+  } catch {
+    applyLoggedOutUI();
+    return null;
+  }
+}
 /* ====== 下一段从：页面最终初始化（DOMContentLoaded 主入口）开始 ====== */
 // =========================
 // 4) 页面完成后初始化（主入口）
@@ -2664,7 +2139,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   loadCategories();
   await loadHomeProductsFromSimple();
   bindGlobalSearch();
-  await initAuthUIFromStorage();
+  await initTopRightAuthUI();
   await applyZipFromDefaultAddressIfLoggedIn();
 
   // ✅ FIX：只用 window.FreshCart，避免 ReferenceError: FreshCart is not defined
@@ -2803,27 +2278,6 @@ function bindGlobalSearch() {
     }
   });
 }
-
-/* ====== 下一段从：密码眼睛切换 + 右上角用户中心点击 + 徽章同步（freshbuy:cartUpdated/storage）开始 ====== */
-// ===== 密码显示/隐藏（登录 & 注册）=====
-(function bindPasswordEyeToggle() {
-  document.addEventListener("click", (e) => {
-    const btn = e.target.closest(".auth-eye[data-eye-for]");
-    if (!btn) return;
-
-    const inputId = btn.getAttribute("data-eye-for");
-    const input = document.getElementById(inputId);
-    if (!input) return;
-
-    const isPwd = input.getAttribute("type") === "password";
-    input.setAttribute("type", isPwd ? "text" : "password");
-
-    btn.classList.toggle("is-on", isPwd);
-    btn.setAttribute("aria-label", isPwd ? "隐藏密码" : "显示密码");
-    btn.textContent = isPwd ? "🙈" : "👁";
-  });
-})();
-
 // ================================
 // ✅ FIX: 登录后右上角“我/尾号xxxx”点击无反应
 // ================================

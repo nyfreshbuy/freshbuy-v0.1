@@ -3,6 +3,11 @@
 // ✅ 单一架构版（UI层）
 // - 本文件只做：UI绑定/提示/倒计时/勾选校验/iOS弹窗锁滚动/眼睛/密码一致提示
 // - 所有 Auth API / token / 手机号规范化：统一转发 window.FreshAuth
+//
+// ✅ 本次新增：
+// 1) 倒计时保留（startCountdown）
+// 2) 注册过的用户不再发送验证码：sendRegisterCode 前先检查手机号是否已注册
+// 3) 每天最多发送几次限制：前端软限制 + 建议后端硬限制
 // =========================================================
 (function () {
   "use strict";
@@ -39,7 +44,6 @@
       null;
     if (!card) return null;
 
-    // 优先插入到 .auth-body 里，否则插入到卡片顶部
     const body = card.querySelector(".auth-body") || card;
 
     el = document.createElement("div");
@@ -82,7 +86,7 @@
   // ---------------------------------------------------------
   function requireSmsOptIn() {
     const cb = document.getElementById("smsOptIn");
-    if (!cb) return true; // 页面没放就不阻断（但你要过审建议一定放）
+    if (!cb) return true;
     if (cb.checked) return true;
 
     showAuthMsg("请先勾选同意接收短信条款（SMS consent）");
@@ -130,6 +134,79 @@
   }
 
   // ---------------------------------------------------------
+  // ✅ 3.1) 发送次数限制（前端软限制兜底）
+  // 说明：
+  // - 真正防刷一定要后端硬限制（手机号+IP+设备指纹等）
+  // - 前端这里只做“体验+兜底”：同一浏览器每天最多 N 次
+  // ---------------------------------------------------------
+  const SMS_DAILY_LIMIT = 5; // ✅ 你要改每天最多几次，改这里
+  const SMS_DAILY_KEY_PREFIX = "freshbuy_sms_send_count_"; // 每天一个key
+
+  function getTodayKey() {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }
+
+  function getSmsCountToday() {
+    const k = SMS_DAILY_KEY_PREFIX + getTodayKey();
+    const n = Number(localStorage.getItem(k) || "0");
+    return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
+  }
+
+  function incSmsCountToday() {
+    const k = SMS_DAILY_KEY_PREFIX + getTodayKey();
+    const cur = getSmsCountToday();
+    localStorage.setItem(k, String(cur + 1));
+    return cur + 1;
+  }
+
+  function checkSmsQuotaOrThrow() {
+    const used = getSmsCountToday();
+    if (used >= SMS_DAILY_LIMIT) {
+      showAuthMsg(
+        `今日验证码发送次数已达上限（${SMS_DAILY_LIMIT} 次）。请明天再试，或联系客服微信 nyfreshbuy。`
+      );
+      throw new Error("SMS quota exceeded");
+    }
+  }
+
+  // ---------------------------------------------------------
+  // ✅ 3.2) 注册过的用户不再发送验证码：手机号是否已注册检查
+  // 优先：FreshAuth.apiCheckPhoneRegistered(phone) -> 返回 boolean
+  // fallback：GET /api/auth/check-phone-registered?phone=+1xxxx
+  // 你后端若没有这个接口，至少要返回：
+  // { success:true, registered:true/false, message?:string }
+  // ---------------------------------------------------------
+  async function checkPhoneRegistered(phoneE164) {
+    const A = getCore();
+
+    // ① 优先走 FreshAuth
+    try {
+      if (A && typeof A.apiCheckPhoneRegistered === "function") {
+        const r = await A.apiCheckPhoneRegistered(phoneE164);
+        return r === true;
+      }
+    } catch (e) {
+      // 不阻断，继续走 fallback
+    }
+
+    // ② fallback：走后端接口
+    try {
+      const url =
+        "/api/auth/check-phone-registered?phone=" + encodeURIComponent(phoneE164) + "&ts=" + Date.now();
+      const res = await fetch(url, { cache: "no-store" });
+      const j = await res.json().catch(() => ({}));
+      if (j && j.success === true) return j.registered === true;
+    } catch {}
+
+    // ③ 如果检查失败（接口不存在/网络问题），为了不误杀用户：默认认为“未注册”
+    return false;
+  }
+
+  // ---------------------------------------------------------
   // 4) window.Auth（UI层暴露一个兼容对象，但内部全部转发 FreshAuth）
   // ---------------------------------------------------------
   window.Auth = window.Auth || {};
@@ -152,7 +229,6 @@
   window.Auth.clearAll = function () {
     const A = getCore();
     if (A && typeof A.clearToken === "function") A.clearToken();
-    // 兜底清理
     ["token", "freshbuy_token", "jwt", "auth_token", "access_token"].forEach((k) =>
       localStorage.removeItem(k)
     );
@@ -186,7 +262,10 @@
 
     showAuthMsg("");
 
-    const p = typeof A.normalizeUSPhone === "function" ? A.normalizeUSPhone(phone) : String(phone || "").trim();
+    const p =
+      typeof A.normalizeUSPhone === "function"
+        ? A.normalizeUSPhone(phone)
+        : String(phone || "").trim();
     if (!p) {
       showAuthMsg("手机号格式不正确（请用美国手机号，例如 646xxxxxxx 或 +1646xxxxxxx）");
       throw new Error("手机号格式不正确");
@@ -202,23 +281,50 @@
     }
   };
 
+  // ---------------------------------------------------------
+  // ✅ 发送注册验证码：新增“已注册不发” + “每日次数限制”
+  // ---------------------------------------------------------
   window.Auth.sendRegisterCode = async function (phone) {
     const A = ensureCoreOrToast();
-    if (!A || typeof A.apiSendSmsCode !== "function") throw new Error("FreshAuth.apiSendSmsCode 缺失");
+    if (!A || typeof A.apiSendSmsCode !== "function")
+      throw new Error("FreshAuth.apiSendSmsCode 缺失");
 
     showAuthMsg("");
 
+    // ✅ 1) 必须勾选短信同意
     if (!requireSmsOptIn()) throw new Error("请先勾选短信同意");
 
-    const p = typeof A.normalizeUSPhone === "function" ? A.normalizeUSPhone(phone) : String(phone || "").trim();
+    // ✅ 2) 前端软限制：每日次数
+    checkSmsQuotaOrThrow();
+
+    // ✅ 3) 规范化手机号
+    const p =
+      typeof A.normalizeUSPhone === "function"
+        ? A.normalizeUSPhone(phone)
+        : String(phone || "").trim();
     if (!p) {
       showAuthMsg("请先输入正确的手机号（例如 646xxxxxxx 或 +1646xxxxxxx）");
       throw new Error("手机号不正确");
     }
 
+    // ✅ 4) 已注册用户不再发送验证码
+    const registered = await checkPhoneRegistered(p);
+    if (registered) {
+      showAuthMsg("该手机号已注册，请直接登录或使用“忘记密码”找回。");
+      throw new Error("phone already registered");
+    }
+
+    // ✅ 5) 发送验证码
     try {
       await A.apiSendSmsCode(p);
-      showAuthMsg("验证码已发送，请查收短信。", "ok");
+
+      // ✅ 成功才计数（避免失败也占次数）
+      const used = incSmsCountToday();
+
+      showAuthMsg(
+        `验证码已发送，请查收短信。（今日已发送 ${used}/${SMS_DAILY_LIMIT} 次）`,
+        "ok"
+      );
       return true;
     } catch (e) {
       showAuthMsg(e?.message || "发送验证码失败");
@@ -228,14 +334,18 @@
 
   window.Auth.register = async function ({ phone, code, password, name }) {
     const A = ensureCoreOrToast();
-    if (!A || typeof A.apiVerifyRegister !== "function") throw new Error("FreshAuth.apiVerifyRegister 缺失");
+    if (!A || typeof A.apiVerifyRegister !== "function")
+      throw new Error("FreshAuth.apiVerifyRegister 缺失");
 
     showAuthMsg("");
 
     if (!requireRegAgree()) throw new Error("请先勾选条款同意");
     if (!requireSmsOptIn()) throw new Error("请先勾选短信同意");
 
-    const p = typeof A.normalizeUSPhone === "function" ? A.normalizeUSPhone(phone) : String(phone || "").trim();
+    const p =
+      typeof A.normalizeUSPhone === "function"
+        ? A.normalizeUSPhone(phone)
+        : String(phone || "").trim();
     if (!p) {
       showAuthMsg("手机号格式不正确（请用美国手机号，例如 646xxxxxxx 或 +1646xxxxxxx）");
       throw new Error("手机号格式不正确");
@@ -279,7 +389,6 @@
       return user;
     } catch (e) {
       const msg = String(e?.message || "注册失败");
-      // 微信内常见提示
       if (msg.includes("Failed to fetch") || msg.includes("NetworkError")) {
         showAuthMsg("微信内网络不稳定，建议点击右上角“...”选择在浏览器打开后再注册");
       } else {
@@ -289,10 +398,11 @@
     } finally {
       window.__REGISTERING__ = false;
       if (btn) {
-        // 按钮是否可点：regAgree + smsOptIn 同时勾选
         const agreeEl = document.getElementById("regAgree");
         const smsEl = document.getElementById("smsOptIn");
-        const ok = !!(agreeEl ? agreeEl.checked : true) && !!(smsEl ? smsEl.checked : true);
+        const ok =
+          !!(agreeEl ? agreeEl.checked : true) &&
+          !!(smsEl ? smsEl.checked : true);
 
         btn.disabled = !ok;
         btn.style.opacity = ok ? "1" : "0.55";
@@ -398,7 +508,7 @@
   })();
 
   // ---------------------------------------------------------
-  // 7) 绑定：注册获取验证码 regSendCodeBtn（60s倒计时 + smsOptIn 必选）
+  // 7) 绑定：注册获取验证码 regSendCodeBtn（60s倒计时 + smsOptIn 必选 + 已注册不发 + 每日次数限制）
   // ---------------------------------------------------------
   (function bindRegSendCode() {
     if (window.__FB_REG_SEND_BOUND__) return;
@@ -415,6 +525,8 @@
         try {
           const phone = String(document.getElementById("regPhone")?.value || "").trim();
           await window.Auth.sendRegisterCode(phone);
+
+          // ✅ 发送成功才倒计时
           startCountdown(btn, 60, "获取验证码");
         } catch (_) {
           // showAuthMsg 已提示
@@ -465,7 +577,6 @@
 
           await window.Auth.register({ phone, code, password: pw1, name });
 
-          // 注册成功后，通知其它模块刷新（如右上角“我”、默认地址等）
           try {
             window.dispatchEvent(new Event("storage"));
           } catch {}
@@ -538,7 +649,7 @@
     }
 
     function preventScroll(e) {
-      if (card && card.contains(e.target)) return; // 允许弹窗内部滚动
+      if (card && card.contains(e.target)) return;
       e.preventDefault();
     }
 
