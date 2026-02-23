@@ -274,7 +274,7 @@
     try {
       const user = await A.apiLogin(p, password);
 showAuthMsg("登录成功", "ok");
-applyLoggedInUI(user);              // ✅ 新增
+window.applyLoggedInUI && window.applyLoggedInUI(user);
 return user;
     } catch (e) {
       showAuthMsg(e?.message || "登录失败");
@@ -578,7 +578,8 @@ return user;
 
           await window.Auth.register({ phone, code, password: pw1, name });
 // ✅ 立刻显示头像
-applyLoggedInUI(await window.Auth.me().catch(() => null) || { phone });          
+const me = await window.Auth.me().catch(() => null);
+window.applyLoggedInUI && window.applyLoggedInUI(me || { phone });
 // ✅ 1) 关闭弹窗
 const back = document.getElementById("authBackdrop");
 if (back) back.classList.remove("active");
@@ -763,7 +764,135 @@ location.reload();
 
     syncLock();
   })();
+    // ---------------------------------------------------------
+  // ✅ 11) 首页顶部按钮/弹窗/头像UI 绑定（必须有）
+  // ---------------------------------------------------------
+  (function bindTopAuthUI() {
+    if (window.__FB_TOP_AUTH_UI_BOUND__) return;
+    window.__FB_TOP_AUTH_UI_BOUND__ = true;
 
+    const backdrop = document.getElementById("authBackdrop");
+    const loginBtnTop = document.getElementById("loginBtn");
+    const registerBtnTop = document.getElementById("registerBtn");
+
+    const tabLogin = document.getElementById("tabLogin");
+    const tabRegister = document.getElementById("tabRegister");
+    const authTitle = document.getElementById("authTitle");
+
+    const loginPanel = document.getElementById("loginPanel");
+    const registerPanel = document.getElementById("registerPanel");
+    const forgotPanel = document.getElementById("forgotPanel");
+
+    const closeBtn = document.getElementById("authCloseBtn");
+    const loginSubmitBtn = document.getElementById("loginSubmitBtn");
+
+    const profile = document.getElementById("userProfile");
+    const avatar = document.getElementById("userAvatar");
+    const nameLabel = document.getElementById("userNameLabel");
+
+    function setMode(mode) {
+      if (authTitle) authTitle.textContent = mode === "register" ? "注册" : mode === "forgot" ? "找回密码" : "登录";
+      if (loginPanel) loginPanel.style.display = mode === "login" ? "" : "none";
+      if (registerPanel) registerPanel.style.display = mode === "register" ? "" : "none";
+      if (forgotPanel) forgotPanel.style.display = mode === "forgot" ? "" : "none";
+      if (tabLogin) tabLogin.classList.toggle("active", mode === "login");
+      if (tabRegister) tabRegister.classList.toggle("active", mode === "register");
+    }
+
+    function openModal(mode) {
+      if (!backdrop) return;
+      setMode(mode || "login");
+      backdrop.classList.add("active");
+      try { showAuthMsg(""); } catch {}
+    }
+
+    function closeModal() {
+      if (!backdrop) return;
+      backdrop.classList.remove("active");
+      try { showAuthMsg(""); } catch {}
+    }
+
+    // ✅ 统一挂到 window，避免 undefined
+    window.applyLoggedInUI = window.applyLoggedInUI || function (user) {
+      if (loginBtnTop) loginBtnTop.style.display = "none";
+      if (registerBtnTop) registerBtnTop.style.display = "none";
+      if (profile) profile.style.display = "inline-flex";
+
+      const nickname =
+        (user && (user.nickname || user.name || user.username)) ||
+        (user && user.phone ? ("用户" + String(user.phone).slice(-4)) : "我的账户");
+
+      if (nameLabel) nameLabel.textContent = nickname;
+
+      if (avatar) {
+        const ch = String(nickname || "我").trim().slice(0, 1);
+        avatar.textContent = ch || "我";
+      }
+
+      try {
+        localStorage.setItem("freshbuy_is_logged_in", "1");
+        if (user?.phone) localStorage.setItem("freshbuy_login_phone", String(user.phone));
+        localStorage.setItem("freshbuy_login_nickname", String(nickname));
+        localStorage.setItem("freshbuy_user", JSON.stringify(user || {}));
+        localStorage.setItem("user", JSON.stringify(user || {}));
+      } catch {}
+    };
+
+    window.applyLoggedOutUI = window.applyLoggedOutUI || function () {
+      if (loginBtnTop) loginBtnTop.style.display = "";
+      if (registerBtnTop) registerBtnTop.style.display = "";
+      if (profile) profile.style.display = "none";
+      try { localStorage.setItem("freshbuy_is_logged_in", "0"); } catch {}
+    };
+
+    // ✅ 顶部按钮：打开弹窗
+    if (loginBtnTop) loginBtnTop.addEventListener("click", () => openModal("login"));
+    if (registerBtnTop) registerBtnTop.addEventListener("click", () => openModal("register"));
+
+    // ✅ Tab 切换
+    if (tabLogin) tabLogin.addEventListener("click", () => setMode("login"));
+    if (tabRegister) tabRegister.addEventListener("click", () => setMode("register"));
+
+    // ✅ 关闭
+    if (closeBtn) closeBtn.addEventListener("click", closeModal);
+    if (backdrop) {
+      backdrop.addEventListener("click", (e) => {
+        const card = backdrop.querySelector(".auth-card");
+        if (card && card.contains(e.target)) return;
+        closeModal();
+      });
+    }
+
+    // ✅ 登录提交
+    if (loginSubmitBtn) {
+      loginSubmitBtn.addEventListener("click", async () => {
+        const phone = String(document.getElementById("loginPhone")?.value || "").trim();
+        const pwd = String(document.getElementById("loginPassword")?.value || "").trim();
+        if (!phone) return showAuthMsg("请先输入手机号");
+        if (!pwd) return showAuthMsg("请先输入密码");
+
+        try {
+          const user = await window.Auth.login(phone, pwd);
+          closeModal();
+          window.applyLoggedInUI && window.applyLoggedInUI(user);
+          try { window.dispatchEvent(new Event("storage")); } catch {}
+        } catch (_) {
+          // login 内部已提示
+        }
+      });
+    }
+
+    // ✅ 页面启动：有 token 就自动显示头像
+    (async function boot() {
+      try {
+        const u = await window.Auth.me();
+        if (u) window.applyLoggedInUI(u);
+        else window.applyLoggedOutUI();
+      } catch {
+        window.applyLoggedOutUI();
+      }
+    })();
+  })();
   // ---------------------------------------------------------
   // 11) 安全兜底：初始化时清空提示条
   // ---------------------------------------------------------
@@ -771,39 +900,3 @@ location.reload();
     showAuthMsg("");
   } catch {}
 })();
-function applyLoggedInUI(user) {
-  const loginBtn = document.getElementById("loginBtn");
-  const registerBtn = document.getElementById("registerBtn");
-  const profile = document.getElementById("userProfile");
-  const avatar = document.getElementById("userAvatar");
-  const nameLabel = document.getElementById("userNameLabel");
-
-  // 隐藏 登录/注册
-  if (loginBtn) loginBtn.style.display = "none";
-  if (registerBtn) registerBtn.style.display = "none";
-
-  // 显示头像区
-  if (profile) profile.style.display = "flex";
-
-  // 显示昵称/手机号后4位
-  const nickname =
-    (user && (user.nickname || user.name || user.username)) ||
-    (user && user.phone ? ("用户" + String(user.phone).slice(-4)) : "我的账户");
-
-  if (nameLabel) nameLabel.textContent = nickname;
-
-  // 头像字母/“我”
-  if (avatar) {
-    const ch = String(nickname || "我").trim().slice(0, 1);
-    avatar.textContent = ch || "我";
-  }
-
-  // 给 index.js/其它页面用的缓存（很关键）
-  try {
-    localStorage.setItem("freshbuy_is_logged_in", "1");
-    if (user?.phone) localStorage.setItem("freshbuy_login_phone", String(user.phone));
-    localStorage.setItem("freshbuy_login_nickname", String(nickname));
-    localStorage.setItem("freshbuy_user", JSON.stringify(user || {}));
-    localStorage.setItem("user", JSON.stringify(user || {}));
-  } catch {}
-}
