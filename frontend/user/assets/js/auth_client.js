@@ -577,9 +577,15 @@
 
           await window.Auth.register({ phone, code, password: pw1, name });
 
-          try {
-            window.dispatchEvent(new Event("storage"));
-          } catch {}
+// ✅ 1) 关闭弹窗
+const back = document.getElementById("authBackdrop");
+if (back) back.classList.remove("active");
+
+// ✅ 2) 触发一次刷新登录态（如果你其它地方监听 storage）
+try { window.dispatchEvent(new Event("storage")); } catch {}
+
+// ✅ 3) 最稳：直接刷新页面，让 index.js 重新跑登录态 + banner + 购物车等
+location.reload();
         } catch (_) {
           // showAuthMsg 已提示
         } finally {
