@@ -273,8 +273,9 @@
 
     try {
       const user = await A.apiLogin(p, password);
-      showAuthMsg("登录成功", "ok");
-      return user;
+showAuthMsg("登录成功", "ok");
+applyLoggedInUI(user);              // ✅ 新增
+return user;
     } catch (e) {
       showAuthMsg(e?.message || "登录失败");
       throw e;
@@ -576,7 +577,8 @@
           const name = String(nameEl?.value || "").trim();
 
           await window.Auth.register({ phone, code, password: pw1, name });
-
+// ✅ 立刻显示头像
+applyLoggedInUI(await window.Auth.me().catch(() => null) || { phone });          
 // ✅ 1) 关闭弹窗
 const back = document.getElementById("authBackdrop");
 if (back) back.classList.remove("active");
@@ -769,3 +771,39 @@ location.reload();
     showAuthMsg("");
   } catch {}
 })();
+function applyLoggedInUI(user) {
+  const loginBtn = document.getElementById("loginBtn");
+  const registerBtn = document.getElementById("registerBtn");
+  const profile = document.getElementById("userProfile");
+  const avatar = document.getElementById("userAvatar");
+  const nameLabel = document.getElementById("userNameLabel");
+
+  // 隐藏 登录/注册
+  if (loginBtn) loginBtn.style.display = "none";
+  if (registerBtn) registerBtn.style.display = "none";
+
+  // 显示头像区
+  if (profile) profile.style.display = "flex";
+
+  // 显示昵称/手机号后4位
+  const nickname =
+    (user && (user.nickname || user.name || user.username)) ||
+    (user && user.phone ? ("用户" + String(user.phone).slice(-4)) : "我的账户");
+
+  if (nameLabel) nameLabel.textContent = nickname;
+
+  // 头像字母/“我”
+  if (avatar) {
+    const ch = String(nickname || "我").trim().slice(0, 1);
+    avatar.textContent = ch || "我";
+  }
+
+  // 给 index.js/其它页面用的缓存（很关键）
+  try {
+    localStorage.setItem("freshbuy_is_logged_in", "1");
+    if (user?.phone) localStorage.setItem("freshbuy_login_phone", String(user.phone));
+    localStorage.setItem("freshbuy_login_nickname", String(nickname));
+    localStorage.setItem("freshbuy_user", JSON.stringify(user || {}));
+    localStorage.setItem("user", JSON.stringify(user || {}));
+  } catch {}
+}
