@@ -10,7 +10,7 @@
 //   - Static assets: cache-first, fallback to network then cache
 // =========================================================
 
-const CACHE_VERSION = "2026-02-19_v2"; // ✅ 每次改SW都要改版本号
+const CACHE_VERSION = "2026-02-23_v2"; // ✅ 每次改SW都要改版本号
 const STATIC_CACHE = `freshbuy-static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `freshbuy-runtime-${CACHE_VERSION}`;
 

@@ -2028,12 +2028,28 @@
     <!--End of Tawk.to Script-->
     <script src="/user/assets/js/tawk_custom.js"></script>
     <!-- ✅ PWA: register service worker -->
+<!-- ✅ PWA: register service worker (WeChat disable to avoid stale cache) -->
 <script>
-  if ("serviceWorker" in navigator) {
-    window.addEventListener("load", () => {
-      navigator.serviceWorker.register("/user/service-worker.js").catch(console.error);
-    });
-  }
+  (function () {
+    const isWeChat = /MicroMessenger/i.test(navigator.userAgent || "");
+
+    // ✅ 微信内置浏览器：清理旧 SW，避免一直吃旧缓存
+    if (isWeChat && "serviceWorker" in navigator) {
+      navigator.serviceWorker.getRegistrations()
+        .then((regs) => Promise.all(regs.map((r) => r.unregister())))
+        .catch(() => {});
+      return; // 微信里不注册 SW
+    }
+
+    // ✅ 非微信：正常注册 SW
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker
+          .register("/user/service-worker.js?v=20260223_1") // ✅ 改版本号强制更新
+          .catch(console.error);
+      });
+    }
+  })();
 </script>
   </body>
 </html>
