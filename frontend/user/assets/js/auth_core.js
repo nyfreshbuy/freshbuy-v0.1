@@ -155,7 +155,7 @@
     }
   }
 
-  window.FreshAuth = {
+   window.FreshAuth = {
     normalizeUSPhone,
     getToken,
     setToken,
@@ -167,4 +167,81 @@
     apiMe,
     apiGetDefaultAddress,
   };
+
+  // ================================
+  // ✅ UI fallback: bind Login/Register buttons to open modal
+  // (support both id styles: loginBtn/registerBtn and btnLogin/btnRegister)
+  // ================================
+  function $(id) {
+    return document.getElementById(id);
+  }
+
+  function openAuth(mode) {
+    const back = $("authBackdrop");
+    const title = $("authTitle");
+    const tabLogin = $("tabLogin");
+    const tabRegister = $("tabRegister");
+    const loginPanel = $("loginPanel");
+    const registerPanel = $("registerPanel");
+    const forgotPanel = $("forgotPanel");
+
+    if (!back || !loginPanel || !registerPanel) return;
+
+    back.classList.add("active");
+    if (forgotPanel) forgotPanel.style.display = "none";
+
+    const isReg = mode === "register";
+    loginPanel.style.display = isReg ? "none" : "";
+    registerPanel.style.display = isReg ? "" : "none";
+
+    if (title) title.textContent = isReg ? "注册" : "登录";
+
+    if (tabLogin) {
+      tabLogin.classList.toggle("active", !isReg);
+      tabLogin.setAttribute("aria-selected", String(!isReg));
+    }
+    if (tabRegister) {
+      tabRegister.classList.toggle("active", isReg);
+      tabRegister.setAttribute("aria-selected", String(isReg));
+    }
+  }
+
+  function closeAuth() {
+    const back = $("authBackdrop");
+    if (back) back.classList.remove("active");
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    const btnLogin = $("loginBtn") || $("btnLogin");
+    const btnRegister = $("registerBtn") || $("btnRegister");
+
+    if (btnLogin) {
+      btnLogin.addEventListener("click", (e) => {
+        e.preventDefault();
+        openAuth("login");
+      });
+    }
+
+    if (btnRegister) {
+      btnRegister.addEventListener("click", (e) => {
+        e.preventDefault();
+        openAuth("register");
+      });
+    }
+
+    const tabLogin = $("tabLogin");
+    const tabRegister = $("tabRegister");
+    if (tabLogin) tabLogin.addEventListener("click", () => openAuth("login"));
+    if (tabRegister) tabRegister.addEventListener("click", () => openAuth("register"));
+
+    const closeBtn = $("authCloseBtn");
+    if (closeBtn) closeBtn.addEventListener("click", closeAuth);
+
+    const back = $("authBackdrop");
+    if (back) {
+      back.addEventListener("click", (e) => {
+        if (e.target === back) closeAuth();
+      });
+    }
+  });
 })();
