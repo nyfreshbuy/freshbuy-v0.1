@@ -1,16 +1,22 @@
 // frontend/admin/assets/js/admin_invoices.js
-// ✅ 发票开具（后台）完整前端脚本
+// ✅ 发票开具（后台）完整前端脚本（PRODUCTION SAFE）
 // - 选用户自动带出 name/phone/address
-// - 选商品/规格（variants）自动填描述/价格，并携带 unitCount（扣库存用，打印不显示）
+// - 商品/规格自动填描述/价格，并携带 unitCount（扣库存用）
 // - 保存：POST /api/admin/invoices（后端扣库存）
-// - 打印：GET /api/admin/invoices/:id/pdf（✅ 用 fetch+token+blob 打开，避免缺少 token）
+// - 打印（手机/电脑通用）：打开 /admin/print_invoice.html?id=xxx
 // - Statement：
 //    JSON: GET /api/admin/invoices/statements?from&to&userId
-//    PDF : GET /api/admin/invoices/statements/pdf?from&to&userId（✅ 用 fetch+token+blob 打开）
-// - 搜索发票：GET /api/admin/invoices?q&from&to&userId（后端需支持这些 query）
+//    打印（手机/电脑通用）：打开 /admin/print_statement.html?from&to&userId
+// - 搜索发票：GET /api/admin/invoices?q&from&to&userId
+//
+// ✅ Fixes:
+// - 修复 btnPdf 未定义导致 search list 不渲染
+// - 搜索/statement 的 user 输入支持：userId / 手机 / 姓名（前端解析）
+// - searchList 若不存在，自动创建到 #searchHint 后面
 
 (function () {
-  console.log("admin_invoices.js LOADED ✅ VERSION=2026-02-23-PRINTFIX");
+  console.log("admin_invoices.js LOADED ✅ VERSION=2026-02-24-FULLFIX");
+
   // =========================
   // Auth / Fetch helpers
   // =========================
@@ -39,49 +45,11 @@
     let data = null;
     const ct = (res.headers.get("content-type") || "").toLowerCase();
     if (ct.includes("application/json")) {
-      try {
-        data = await res.json();
-      } catch {
-        data = null;
-      }
+      try { data = await res.json(); } catch { data = null; }
     }
     return { res, data };
   }
 
-async function authedDownloadOpen(url) {
-  const tk = getAdminToken();
-  if (!tk) {
-    alert("未登录：没有 token，请重新登录后台。");
-    return;
-  }
-
-  const res = await fetch(url, {
-    headers: { Authorization: "Bearer " + tk },
-  });
-
-  if (!res.ok) {
-    const txt = await res.text().catch(() => "");
-    alert("打开失败：" + (txt || res.status));
-    return;
-  }
-
-  const blob = await res.blob();
-  const objUrl = URL.createObjectURL(blob);
-
-  // ✅ iOS/移动端更稳定：用 <a> 触发打开/下载
-  const a = document.createElement("a");
-  a.href = objUrl;
-  a.target = "_blank";
-  a.rel = "noopener";
-  // 如果你希望强制下载，打开下面这行：
-  // a.download = "invoice.pdf";
-
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-
-  setTimeout(() => URL.revokeObjectURL(objUrl), 60_000);
-}
   // =========================
   // DOM
   // =========================
@@ -116,10 +84,13 @@ async function authedDownloadOpen(url) {
   const stTo = document.getElementById("stTo");
   const stUserId = document.getElementById("stUserId");
   const btnStatement = document.getElementById("btnStatement");
-  const btnStatementPdf = document.getElementById("btnStatementPdf"); // ✅ 新增
+  const btnStatementPdf = document.getElementById("btnStatementPdf");
   const stResult = document.getElementById("stResult");
 
-  // ✅ 搜索区（可选：只有你的 invoices.html 有这些 id 才生效）
+  const stUserHint = document.getElementById("stUserHint"); // 可选（你的新版 html 有）
+  const sUserHint = document.getElementById("sUserHint");   // 可选（你的新版 html 有）
+
+  // 搜索区
   const sQ = document.getElementById("sQ");
   const sFrom = document.getElementById("sFrom");
   const sTo = document.getElementById("sTo");
@@ -127,22 +98,32 @@ async function authedDownloadOpen(url) {
   const btnSearch = document.getElementById("btnSearch");
   const btnSearchReset = document.getElementById("btnSearchReset");
   const searchHint = document.getElementById("searchHint");
-  const searchList = document.getElementById("searchList");
+  let searchList = document.getElementById("searchList"); // 可能不存在
+
+  // ✅ searchList 兜底创建（防止“找到1条但不显示”）
+  function ensureSearchList() {
+    if (searchList) return searchList;
+    if (!searchHint) return null;
+    const div = document.createElement("div");
+    div.id = "searchList";
+    div.className = "result-list";
+    searchHint.insertAdjacentElement("afterend", div);
+    searchList = div;
+    return searchList;
+  }
 
   // =========================
   // State
   // =========================
   let users = [];
   let products = [];
-  let productMap = new Map(); // _id -> product
-  let currentInvoiceId = "";  // 保存后返回 _id
+  let productMap = new Map();
+  let currentInvoiceId = "";
 
   // =========================
   // Date helpers
   // =========================
-  function pad2(n) {
-    return String(n).padStart(2, "0");
-  }
+  function pad2(n) { return String(n).padStart(2, "0"); }
 
   function toDateInputValue(d) {
     const yyyy = d.getFullYear();
@@ -155,7 +136,6 @@ async function authedDownloadOpen(url) {
     return toDateInputValue(new Date());
   }
 
-  // invoiceNo: YYYYMMDD-001（前端先生成预览；最终以后台返回为准）
   function genInvoiceNoPreview(dateStr) {
     const s = String(dateStr || "").replaceAll("-", "");
     if (!/^\d{8}$/.test(s)) return "";
@@ -182,16 +162,80 @@ async function authedDownloadOpen(url) {
   }
 
   function setShipDisabled(disabled) {
-    shipName.disabled = disabled;
-    shipPhone.disabled = disabled;
-    shipAddr.disabled = disabled;
+    if (shipName) shipName.disabled = disabled;
+    if (shipPhone) shipPhone.disabled = disabled;
+    if (shipAddr) shipAddr.disabled = disabled;
   }
 
   function syncShipFromSold() {
-    if (!sameAsSold.checked) return;
-    shipName.value = soldName.value || "";
-    shipPhone.value = soldPhone.value || "";
-    shipAddr.value = soldAddr.value || "";
+    if (!sameAsSold || !sameAsSold.checked) return;
+    if (shipName) shipName.value = soldName?.value || "";
+    if (shipPhone) shipPhone.value = soldPhone?.value || "";
+    if (shipAddr) shipAddr.value = soldAddr?.value || "";
+  }
+
+  function setSmallHint(el, msg) {
+    if (!el) return;
+    el.textContent = msg || "";
+  }
+
+  // =========================
+  // User resolver (支持 userId / phone / name)
+  // =========================
+  function normStr(s) {
+    return String(s || "").trim();
+  }
+
+  function normPhone(s) {
+    return String(s || "")
+      .replace(/[^\d]/g, ""); // 只保留数字
+  }
+
+  function looksLikeMongoId(s) {
+    return /^[a-fA-F0-9]{24}$/.test(String(s || "").trim());
+  }
+
+  // 返回 { userId, user, reason } 或 null
+  function resolveUserInput(raw) {
+    const input = normStr(raw);
+    if (!input) return null;
+
+    // 1) 直接就是 userId
+    if (looksLikeMongoId(input)) {
+      const u = users.find(x => String(x?._id || "") === input) || null;
+      return { userId: input, user: u, reason: u ? "userId" : "userId(unknown)" };
+    }
+
+    const phoneDigits = normPhone(input);
+
+    // 2) 看起来像手机号（>=7位）
+    if (phoneDigits.length >= 7) {
+      const hit = users.find(u => normPhone(u.phone).includes(phoneDigits));
+      if (hit) return { userId: hit._id, user: hit, reason: "phone" };
+    }
+
+    // 3) 姓名包含匹配
+    const lower = input.toLowerCase();
+    const hit2 = users.find(u => normStr(u.name).toLowerCase().includes(lower));
+    if (hit2) return { userId: hit2._id, user: hit2, reason: "name" };
+
+    return null;
+  }
+
+  function applyResolvedToInput(inputEl, hintEl, resolved) {
+    if (!inputEl) return;
+    if (!resolved) {
+      setSmallHint(hintEl, "");
+      return;
+    }
+    // 把 userId 写回输入框（你希望后端永远收到 userId）
+    inputEl.value = resolved.userId;
+    const u = resolved.user;
+    if (u) {
+      setSmallHint(hintEl, `✅ 已匹配：${u.name || ""} ${u.phone || ""} → ${resolved.userId}`);
+    } else {
+      setSmallHint(hintEl, `✅ 使用 userId：${resolved.userId}`);
+    }
   }
 
   // =========================
@@ -232,11 +276,10 @@ async function authedDownloadOpen(url) {
   async function loadUsers(keyword = "") {
     const qs = new URLSearchParams();
     qs.set("page", "1");
-    qs.set("pageSize", "80");
+    qs.set("pageSize", "200"); // ✅ 多拉点，方便姓名/电话匹配
     if (keyword) qs.set("keyword", keyword);
 
     const { res, data } = await apiFetch(`/api/admin/users?${qs.toString()}`);
-
     if (!res.ok || !data?.success) {
       setHint("❌ 拉取用户失败：" + (data?.message || res.status));
       users = [];
@@ -283,7 +326,6 @@ async function authedDownloadOpen(url) {
     if (keyword) qs.set("keyword", keyword);
 
     const { res, data } = await apiFetch(`/api/admin/products?${qs.toString()}`);
-
     if (!res.ok || !data?.success) {
       setHint("❌ 拉取商品失败：" + (data?.message || res.status));
       products = [];
@@ -373,19 +415,16 @@ async function authedDownloadOpen(url) {
     if (!itemsTbody) return;
     const tr = document.createElement("tr");
 
-    // 商品
     const tdP = document.createElement("td");
     const selP = makeProductSelect();
     selP.value = preset.productId || "";
     tdP.appendChild(selP);
     tr.appendChild(tdP);
 
-    // 规格
     const tdV = document.createElement("td");
     tdV.dataset.k = "variantCell";
     tr.appendChild(tdV);
 
-    // Description
     const tdD = document.createElement("td");
     const inpDesc = document.createElement("input");
     inpDesc.dataset.k = "description";
@@ -394,7 +433,6 @@ async function authedDownloadOpen(url) {
     tdD.appendChild(inpDesc);
     tr.appendChild(tdD);
 
-    // Qty
     const tdQ = document.createElement("td");
     const inpQty = document.createElement("input");
     inpQty.type = "number";
@@ -405,7 +443,6 @@ async function authedDownloadOpen(url) {
     tdQ.appendChild(inpQty);
     tr.appendChild(tdQ);
 
-    // Unit Price
     const tdU = document.createElement("td");
     const inpPrice = document.createElement("input");
     inpPrice.type = "number";
@@ -416,7 +453,6 @@ async function authedDownloadOpen(url) {
     tdU.appendChild(inpPrice);
     tr.appendChild(tdU);
 
-    // Total
     const tdT = document.createElement("td");
     const lineEl = document.createElement("div");
     lineEl.dataset.k = "lineTotal";
@@ -424,11 +460,11 @@ async function authedDownloadOpen(url) {
     tdT.appendChild(lineEl);
     tr.appendChild(tdT);
 
-    // 删除
     const tdX = document.createElement("td");
     const btnDel = document.createElement("button");
     btnDel.className = "btn btn-danger";
     btnDel.textContent = "删";
+    btnDel.type = "button";
     btnDel.onclick = () => {
       tr.remove();
       recalcTotals();
@@ -534,7 +570,6 @@ async function authedDownloadOpen(url) {
         unitCount,
       });
     }
-
     return items;
   }
 
@@ -542,30 +577,30 @@ async function authedDownloadOpen(url) {
   // Build payload
   // =========================
   function buildInvoicePayload() {
-    const dateStr = invDate.value || todayLocalInput();
+    const dateStr = invDate?.value || todayLocalInput();
 
     const soldTo = {
-      userId: userSelect.value || "",
-      name: (soldName.value || "").trim(),
-      phone: (soldPhone.value || "").trim(),
-      address: (soldAddr.value || "").trim(),
+      userId: userSelect?.value || "",
+      name: (soldName?.value || "").trim(),
+      phone: (soldPhone?.value || "").trim(),
+      address: (soldAddr?.value || "").trim(),
     };
 
-    const shipToSame = !!sameAsSold.checked;
+    const shipToSame = !!sameAsSold?.checked;
 
     const shipTo = {
       userId: shipToSame ? (soldTo.userId || "") : "",
-      name: (shipName.value || "").trim(),
-      phone: (shipPhone.value || "").trim(),
-      address: (shipAddr.value || "").trim(),
+      name: (shipName?.value || "").trim(),
+      phone: (shipPhone?.value || "").trim(),
+      address: (shipAddr?.value || "").trim(),
     };
 
     return {
-      invoiceNo: (invNo.value || "").trim(),
+      invoiceNo: (invNo?.value || "").trim(),
       date: dateStr,
-      accountNo: (accountNo.value || "").trim(),
-      salesRep: (salesRep.value || "").trim(),
-      terms: (terms.value || "").trim(),
+      accountNo: (accountNo?.value || "").trim(),
+      salesRep: (salesRep?.value || "").trim(),
+      terms: (terms?.value || "").trim(),
       soldTo,
       shipTo,
       shipToSameAsSoldTo: shipToSame,
@@ -588,7 +623,7 @@ async function authedDownloadOpen(url) {
       payload.invoiceNo = genInvoiceNoPreview(payload.date);
     }
 
-    btnSave && (btnSave.disabled = true);
+    if (btnSave) btnSave.disabled = true;
     setHint("⏳ 正在保存发票…（保存成功会扣库存）");
 
     try {
@@ -609,13 +644,19 @@ async function authedDownloadOpen(url) {
       const inv = data.invoice || data.data || data.item || null;
       currentInvoiceId = inv?._id || data?._id || currentInvoiceId;
 
-      if (inv?.invoiceNo) invNo.value = inv.invoiceNo;
+      if (inv?.invoiceNo && invNo) invNo.value = inv.invoiceNo;
 
       if (btnPrint) btnPrint.disabled = !currentInvoiceId;
-      setHint(`✅ 已保存：${invNo.value || "(no)"}（库存已按 qty*unitCount 扣减）`);
+      setHint(`✅ 已保存：${invNo?.value || "(no)"}（库存已按 qty*unitCount 扣减）`);
     } finally {
-      btnSave && (btnSave.disabled = false);
+      if (btnSave) btnSave.disabled = false;
     }
+  }
+
+  // ✅ 统一用打印页（手机/电脑都稳定）
+  function openInvoicePrintPage(id) {
+    if (!id) return;
+    window.open(`/admin/print_invoice.html?id=${encodeURIComponent(id)}`, "_blank", "noopener");
   }
 
   async function printInvoice() {
@@ -623,7 +664,7 @@ async function authedDownloadOpen(url) {
       alert("请先保存发票，再打印。");
       return;
     }
-    window.open(`/admin/print_invoice.html?id=${currentInvoiceId}`, "_blank");
+    openInvoicePrintPage(currentInvoiceId);
   }
 
   // =========================
@@ -632,11 +673,21 @@ async function authedDownloadOpen(url) {
   async function runStatement() {
     const from = (stFrom?.value || "").trim();
     const to = (stTo?.value || "").trim();
-    const uid = (stUserId?.value || "").trim();
+    const raw = (stUserId?.value || "").trim();
 
     if (!from || !to) {
       alert("Statement 需要选择 From / To 日期。");
       return;
+    }
+
+    // ✅ 支持姓名/电话解析成 userId
+    let uid = raw;
+    const resolved = resolveUserInput(raw);
+    if (resolved) {
+      uid = resolved.userId;
+      applyResolvedToInput(stUserId, stUserHint, resolved);
+    } else {
+      setSmallHint(stUserHint, raw ? "⚠️ 未匹配到用户，将按原样提交（建议填 userId）" : "");
     }
 
     const qs = new URLSearchParams();
@@ -672,27 +723,38 @@ async function authedDownloadOpen(url) {
     if (stResult) stResult.textContent = JSON.stringify(out, null, 2);
   }
 
+  function openStatementPrintPage(from, to, userId) {
+    const qs = new URLSearchParams();
+    qs.set("from", from);
+    qs.set("to", to);
+    if (userId) qs.set("userId", userId);
+    window.open(`/admin/print_statement.html?${qs.toString()}`, "_blank", "noopener");
+  }
+
   async function printStatementPdf() {
     const from = (stFrom?.value || "").trim();
     const to = (stTo?.value || "").trim();
-    const uid = (stUserId?.value || "").trim();
+    const raw = (stUserId?.value || "").trim();
 
     if (!from || !to) {
       alert("Statement 需要选择 From / To 日期。");
       return;
     }
 
-    const qs = new URLSearchParams();
-    qs.set("from", from);
-    qs.set("to", to);
-    if (uid) qs.set("userId", uid);
+    let uid = raw;
+    const resolved = resolveUserInput(raw);
+    if (resolved) {
+      uid = resolved.userId;
+      applyResolvedToInput(stUserId, stUserHint, resolved);
+    } else {
+      setSmallHint(stUserHint, raw ? "⚠️ 未匹配到用户，将按原样提交（建议填 userId）" : "");
+    }
 
-    // ✅ 用 fetch+token，避免 requireLogin 拦截
-    window.open(`/admin/print_statement.html?${qs.toString()}`, "_blank");
+    openStatementPrintPage(from, to, uid);
   }
 
   // =========================
-  // Search invoices (optional UI)
+  // Search invoices
   // =========================
   function setSearchHint(msg) {
     if (!searchHint) return;
@@ -700,12 +762,14 @@ async function authedDownloadOpen(url) {
   }
 
   function clearSearchList() {
-    if (!searchList) return;
-    searchList.innerHTML = "";
+    const listEl = ensureSearchList();
+    if (!listEl) return;
+    listEl.innerHTML = "";
   }
 
   function addSearchItem(inv) {
-    if (!searchList) return;
+    const listEl = ensureSearchList();
+    if (!listEl) return;
 
     const id = inv?._id || "";
     const invoiceNoX = inv?.invoiceNo || "";
@@ -735,18 +799,16 @@ async function authedDownloadOpen(url) {
     right.className = "result-right";
 
     const btnOpen = document.createElement("button");
-btnOpen.className = "btn btn-ghost";
-btnOpen.textContent = "打开/打印";
-btnOpen.onclick = () => window.open(`/admin/print_invoice.html?id=${id}`, "_blank");
+    btnOpen.className = "btn btn-dark";
+    btnOpen.type = "button";
+    btnOpen.textContent = "打开/打印";
+    btnOpen.onclick = () => openInvoicePrintPage(id);
 
-btnPdf.textContent = "打印";
-btnPdf.onclick = () => window.open(`/admin/print_invoice.html?id=${id}`, "_blank");
     right.appendChild(btnOpen);
-    right.appendChild(btnPdf);
 
     row.appendChild(left);
     row.appendChild(right);
-    searchList.appendChild(row);
+    listEl.appendChild(row);
   }
 
   async function runSearchInvoices() {
@@ -755,7 +817,17 @@ btnPdf.onclick = () => window.open(`/admin/print_invoice.html?id=${id}`, "_blank
     const q = (sQ?.value || "").trim();
     const from = (sFrom?.value || "").trim();
     const to = (sTo?.value || "").trim();
-    const uid = (sUserId?.value || "").trim();
+    const raw = (sUserId?.value || "").trim();
+
+    // ✅ user 输入支持姓名/电话解析
+    let uid = raw;
+    const resolved = resolveUserInput(raw);
+    if (resolved) {
+      uid = resolved.userId;
+      applyResolvedToInput(sUserId, sUserHint, resolved);
+    } else {
+      setSmallHint(sUserHint, raw ? "⚠️ 未匹配到用户，将按原样提交（建议填 userId）" : "");
+    }
 
     const qs = new URLSearchParams();
     if (q) qs.set("q", q);
@@ -782,6 +854,7 @@ btnPdf.onclick = () => window.open(`/admin/print_invoice.html?id=${id}`, "_blank
     if (sFrom) sFrom.value = "";
     if (sTo) sTo.value = "";
     if (sUserId) sUserId.value = "";
+    setSmallHint(sUserHint, "");
     setSearchHint("");
     clearSearchList();
   }
@@ -816,12 +889,12 @@ btnPdf.onclick = () => window.open(`/admin/print_invoice.html?id=${id}`, "_blank
       addRow({ qty: 1, unitPrice: 0 });
     }
 
-    // statement 默认区间：本月到今天
     const now = new Date();
     const first = new Date(now.getFullYear(), now.getMonth(), 1);
     if (stFrom) stFrom.value = toDateInputValue(first);
     if (stTo) stTo.value = toDateInputValue(now);
     if (stUserId) stUserId.value = "";
+    setSmallHint(stUserHint, "");
     if (stResult) stResult.textContent = "";
 
     recalcTotals();
@@ -835,12 +908,15 @@ btnPdf.onclick = () => window.open(`/admin/print_invoice.html?id=${id}`, "_blank
       const opt = userSelect.selectedOptions && userSelect.selectedOptions[0];
       if (!opt || !userSelect.value) return;
 
-      soldName.value = opt.dataset.name || "";
-      soldPhone.value = opt.dataset.phone || "";
-      soldAddr.value = opt.dataset.addr || "";
+      if (soldName) soldName.value = opt.dataset.name || "";
+      if (soldPhone) soldPhone.value = opt.dataset.phone || "";
+      if (soldAddr) soldAddr.value = opt.dataset.addr || "";
 
       syncShipFromSold();
+
+      // ✅ Statement 默认带 userId
       if (stUserId) stUserId.value = userSelect.value || "";
+      setSmallHint(stUserHint, userSelect.value ? `✅ 已选择用户：${opt.textContent} → ${userSelect.value}` : "");
     };
   }
 
@@ -859,23 +935,28 @@ btnPdf.onclick = () => window.open(`/admin/print_invoice.html?id=${id}`, "_blank
   if (soldPhone) soldPhone.oninput = syncShipFromSold;
   if (soldAddr) soldAddr.oninput = syncShipFromSold;
 
+  if (btnNew) btnNew.onclick = resetForm;
   if (btnAddRow) btnAddRow.onclick = () => addRow({ qty: 1, unitPrice: 0 });
   if (btnSave) btnSave.onclick = saveInvoice;
-  if (btnPrint) {
-  btnPrint.addEventListener("click", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    printInvoice();
-  });
-}
 
-if (btnStatementPdf) {
-  btnStatementPdf.addEventListener("click", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    printStatementPdf();
-  });
-}
+  if (btnPrint) {
+    btnPrint.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      printInvoice();
+    });
+  }
+
+  if (btnStatement) btnStatement.onclick = runStatement;
+
+  if (btnStatementPdf) {
+    btnStatementPdf.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      printStatementPdf();
+    });
+  }
+
   if (btnSearch) btnSearch.onclick = runSearchInvoices;
   if (btnSearchReset) btnSearchReset.onclick = resetSearchInvoices;
 
@@ -884,7 +965,7 @@ if (btnStatementPdf) {
       const cur = (invNo?.value || "").trim();
       const auto = genInvoiceNoPreview(invDate.value);
       if (!cur || /^\d{8}-\d{3}$/.test(cur)) {
-        invNo.value = auto;
+        if (invNo) invNo.value = auto;
       }
     };
   }
@@ -896,6 +977,20 @@ if (btnStatementPdf) {
       if (e.key === "Enter") runSearchInvoices();
     });
   });
+
+  // 输入框失焦时也尝试解析（更顺手）
+  if (stUserId) {
+    stUserId.addEventListener("blur", () => {
+      const resolved = resolveUserInput(stUserId.value);
+      if (resolved) applyResolvedToInput(stUserId, stUserHint, resolved);
+    });
+  }
+  if (sUserId) {
+    sUserId.addEventListener("blur", () => {
+      const resolved = resolveUserInput(sUserId.value);
+      if (resolved) applyResolvedToInput(sUserId, sUserHint, resolved);
+    });
+  }
 
   // =========================
   // Boot
@@ -911,6 +1006,7 @@ if (btnStatementPdf) {
     }
 
     await loadUsers("");
-    setHint("✅ 已加载用户/商品。可选择用户、选择商品/规格，保存后扣库存，打印 PDF。");
+    ensureSearchList();
+    setHint("✅ 已加载用户/商品。保存后扣库存；打印/打开走 print 页面（手机/电脑都稳定）。");
   })();
 })();
