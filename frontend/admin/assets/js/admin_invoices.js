@@ -723,10 +723,9 @@
     right.className = "result-right";
 
     const btnOpen = document.createElement("button");
-    btnOpen.className = "btn btn-ghost";
-    btnOpen.textContent = "打开详情";
-    btnOpen.onclick = () => window.open(`/api/admin/invoices/${id}`, "_blank");
-
+btnOpen.className = "btn btn-ghost";
+btnOpen.textContent = "打开PDF";
+btnOpen.onclick = () => authedDownloadOpen(`/api/admin/invoices/${id}/pdf`);
     const btnPdf = document.createElement("button");
     btnPdf.className = "btn btn-dark";
     btnPdf.textContent = "打印PDF";
