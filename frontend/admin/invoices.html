@@ -194,6 +194,14 @@
       flex-wrap: wrap;
       justify-content: flex-end;
     }
+
+    /* ✅ 可选：用于显示“手机号/姓名 -> userId”的提示 */
+    .user-suggest {
+      margin-top: 8px;
+      font-size: 12px;
+      color: #6b7280;
+      line-height: 1.4;
+    }
   </style>
 </head>
 
@@ -204,9 +212,9 @@
   <div class="top-actions">
     <h1>Invoice / 发票开具</h1>
     <div class="actions-inline">
-      <button class="btn btn-ghost" id="btnNew">新建</button>
-      <button class="btn btn-primary" id="btnSave">保存并扣库存</button>
-      <button class="btn btn-ghost" id="btnPrint" disabled>打印 PDF</button>
+      <button class="btn btn-ghost" id="btnNew" type="button">新建</button>
+      <button class="btn btn-primary" id="btnSave" type="button">保存并扣库存</button>
+      <button class="btn btn-ghost" id="btnPrint" type="button" disabled>打印 PDF</button>
     </div>
   </div>
 
@@ -275,7 +283,7 @@
   <div class="card">
     <div class="top-actions">
       <h3>商品明细</h3>
-      <button class="btn btn-ghost" id="btnAddRow">+ 添加</button>
+      <button class="btn btn-ghost" id="btnAddRow" type="button">+ 添加</button>
     </div>
 
     <table>
@@ -316,12 +324,13 @@
         <input type="date" id="stTo">
       </div>
       <div class="col">
-        <label>User ID（可选）</label>
-        <input id="stUserId" placeholder="不填=全部客户">
+        <label>User（ID / 手机号 / 姓名，可选）</label>
+        <input id="stUserId" placeholder="例如：65fa... / 917xxxx / 小田（不填=全部客户）">
+        <div class="user-suggest" id="stUserHint"></div>
       </div>
       <div class="col" style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap">
-        <button class="btn btn-ghost" id="btnStatement">生成(JSON)</button>
-        <button class="btn btn-dark" id="btnStatementPdf">打印(PDF)</button>
+        <button class="btn btn-ghost" id="btnStatement" type="button">生成(JSON)</button>
+        <button class="btn btn-dark" id="btnStatementPdf" type="button">打印(PDF)</button>
       </div>
     </div>
 
@@ -338,7 +347,7 @@
     <div class="row">
       <div class="col">
         <label>关键词（invoiceNo / name / phone）</label>
-        <input id="sQ" placeholder="例如：20260206-001 / 张三 / 917...">
+        <input id="sQ" placeholder="例如：20260206-001 / 小田 / 917...">
       </div>
       <div class="col">
         <label>From（可选）</label>
@@ -349,12 +358,13 @@
         <input type="date" id="sTo">
       </div>
       <div class="col">
-        <label>User ID（可选）</label>
-        <input id="sUserId" placeholder="可直接粘贴用户ID">
+        <label>User（ID / 手机号 / 姓名，可选）</label>
+        <input id="sUserId" placeholder="例如：65fa... / 917xxxx / 小田">
+        <div class="user-suggest" id="sUserHint"></div>
       </div>
       <div class="col" style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap">
-        <button class="btn btn-ghost" id="btnSearch">搜索</button>
-        <button class="btn btn-ghost" id="btnSearchReset">重置</button>
+        <button class="btn btn-ghost" id="btnSearch" type="button">搜索</button>
+        <button class="btn btn-ghost" id="btnSearchReset" type="button">重置</button>
       </div>
     </div>
 
