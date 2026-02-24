@@ -688,7 +688,7 @@ async function authedDownloadOpen(url) {
     if (uid) qs.set("userId", uid);
 
     // ✅ 用 fetch+token，避免 requireLogin 拦截
-    await authedDownloadOpen(`/api/admin/invoices/statements/pdf?${qs.toString()}`);
+    window.open(`/admin/print_statement.html?${qs.toString()}`, "_blank");
   }
 
   // =========================
