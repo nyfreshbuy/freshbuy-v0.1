@@ -623,7 +623,7 @@ async function authedDownloadOpen(url) {
       alert("请先保存发票，再打印。");
       return;
     }
-    await authedDownloadOpen(`/api/admin/invoices/${currentInvoiceId}/pdf`);
+    window.open(`/admin/print_invoice.html?id=${currentInvoiceId}`, "_blank");
   }
 
   // =========================
@@ -736,13 +736,11 @@ async function authedDownloadOpen(url) {
 
     const btnOpen = document.createElement("button");
 btnOpen.className = "btn btn-ghost";
-btnOpen.textContent = "打开PDF";
-btnOpen.onclick = () => authedDownloadOpen(`/api/admin/invoices/${id}/pdf`);
-    const btnPdf = document.createElement("button");
-    btnPdf.className = "btn btn-dark";
-    btnPdf.textContent = "打印PDF";
-    btnPdf.onclick = () => authedDownloadOpen(`/api/admin/invoices/${id}/pdf`);
+btnOpen.textContent = "打开/打印";
+btnOpen.onclick = () => window.open(`/admin/print_invoice.html?id=${id}`, "_blank");
 
+btnPdf.textContent = "打印";
+btnPdf.onclick = () => window.open(`/admin/print_invoice.html?id=${id}`, "_blank");
     right.appendChild(btnOpen);
     right.appendChild(btnPdf);
 
