@@ -10,6 +10,7 @@
 // - 搜索发票：GET /api/admin/invoices?q&from&to&userId（后端需支持这些 query）
 
 (function () {
+  console.log("admin_invoices.js LOADED ✅ VERSION=2026-02-23-PRINTFIX");
   // =========================
   // Auth / Fetch helpers
   // =========================
@@ -851,13 +852,21 @@ btnOpen.onclick = () => authedDownloadOpen(`/api/admin/invoices/${id}/pdf`);
 
   if (btnAddRow) btnAddRow.onclick = () => addRow({ qty: 1, unitPrice: 0 });
   if (btnSave) btnSave.onclick = saveInvoice;
-  if (btnPrint) btnPrint.onclick = printInvoice;
-  if (btnNew) btnNew.onclick = resetForm;
-  if (btnStatement) btnStatement.onclick = runStatement;
+  if (btnPrint) {
+  btnPrint.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    printInvoice();
+  });
+}
 
-  // ✅ 绑定 Statement 打印按钮
-  if (btnStatementPdf) btnStatementPdf.onclick = printStatementPdf;
-
+if (btnStatementPdf) {
+  btnStatementPdf.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    printStatementPdf();
+  });
+}
   if (btnSearch) btnSearch.onclick = runSearchInvoices;
   if (btnSearchReset) btnSearchReset.onclick = resetSearchInvoices;
 
