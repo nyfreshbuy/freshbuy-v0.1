@@ -78,9 +78,6 @@ async function authedDownloadOpen(url) {
 
   document.body.appendChild(a);
   a.click();
-  setTimeout(() => {
-  alert("如果没自动打开，请检查浏览器是否阻止了弹窗/新标签页。");
-}, 300);
   a.remove();
 
   setTimeout(() => URL.revokeObjectURL(objUrl), 60_000);
