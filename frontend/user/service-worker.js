@@ -8,9 +8,13 @@
 //   - Only cache GET APIs in whitelist (optional)
 //   - HTML navigations: network-first, fallback to cache, then /user/index.html
 //   - Static assets: cache-first, fallback to network then cache
+// ✅ Update behavior:
+//   - skipWaiting() on install (new SW installs -> no waiting)
+//   - clients.claim() on activate (new SW takes control immediately)
+//   - Optional: allow page to trigger SKIP_WAITING via postMessage
 // =========================================================
 
-const CACHE_VERSION = "2026-02-23_v2"; // ✅ 每次改SW都要改版本号
+const CACHE_VERSION = "2026-02-24_v1"; // ✅ 每次改SW都要改版本号
 const STATIC_CACHE = `freshbuy-static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `freshbuy-runtime-${CACHE_VERSION}`;
 
@@ -27,38 +31,68 @@ const PRECACHE_URLS = [
 const STATIC_EXT_RE = /\.(?:css|js|png|jpg|jpeg|webp|gif|svg|ico|woff2?|ttf|eot|map)$/i;
 
 // ✅ 允许缓存的 GET API 白名单（可按需增删）
-// 说明：只缓存“公开接口/不会带用户隐私/不会导致副作用”的 GET
 const CACHEABLE_API_PREFIX = [
   "/api/public/",
   "/api/zones/",
   "/api/products/",
-  // 如果你有公开分类/广告等接口也可以加："/api/banners/"
+  // "/api/banners/",
 ];
+
+function isOkResponse(res) {
+  // 只缓存“正常可读”的 response；避免缓存错误页/不可读响应
+  return res && (res.status === 200 || res.type === "basic");
+}
+
+async function putRuntimeCache(req, res) {
+  try {
+    if (!isOkResponse(res)) return;
+    const cache = await caches.open(RUNTIME_CACHE);
+    await cache.put(req, res);
+  } catch {
+    // ignore
+  }
+}
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches
-      .open(STATIC_CACHE)
-      .then((cache) => cache.addAll(PRECACHE_URLS))
-      .then(() => self.skipWaiting())
+    (async () => {
+      try {
+        const cache = await caches.open(STATIC_CACHE);
+        await cache.addAll(PRECACHE_URLS);
+      } catch {
+        // 预缓存失败也不要阻塞安装
+      }
+      // ✅ 新SW装好就准备接管
+      await self.skipWaiting();
+    })()
   );
 });
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches
-      .keys()
-      .then((keys) =>
-        Promise.all(
+    (async () => {
+      try {
+        const keys = await caches.keys();
+        await Promise.all(
           keys.map((k) => {
             if (!k.startsWith("freshbuy-")) return null;
             if (k === STATIC_CACHE || k === RUNTIME_CACHE) return null;
             return caches.delete(k);
           })
-        )
-      )
-      .then(() => self.clients.claim())
+        );
+      } finally {
+        // ✅ 立刻接管所有页面/标签页
+        await self.clients.claim();
+      }
+    })()
   );
+});
+
+// ✅ 可选：页面端可 postMessage({type:"SKIP_WAITING"}) 触发立即更新
+self.addEventListener("message", (event) => {
+  if (event?.data?.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener("fetch", (event) => {
@@ -84,16 +118,19 @@ self.addEventListener("fetch", (event) => {
 
   if (isHTML) {
     event.respondWith(
-      fetch(req)
-        .then((res) => {
-          // 成功则更新缓存
-          const copy = res.clone();
-          caches.open(RUNTIME_CACHE).then((c) => c.put(req, copy));
+      (async () => {
+        try {
+          const res = await fetch(req);
+          // 成功则更新缓存（注意：不要 await，避免影响首屏速度）
+          putRuntimeCache(req, res.clone());
           return res;
-        })
-        .catch(() =>
-          caches.match(req).then((r) => r || caches.match("/user/index.html"))
-        )
+        } catch {
+          const cached = await caches.match(req);
+          if (cached) return cached;
+          const fallback = await caches.match("/user/index.html");
+          return fallback || new Response("Offline", { status: 503 });
+        }
+      })()
     );
     return;
   }
@@ -102,22 +139,26 @@ self.addEventListener("fetch", (event) => {
   // B) API：默认不缓存，只缓存白名单 GET
   // ---------------------------------------------------------
   if (url.pathname.startsWith("/api/")) {
-    const okToCache = CACHEABLE_API_PREFIX.some((p) =>
-      url.pathname.startsWith(p)
-    );
+    const okToCache = CACHEABLE_API_PREFIX.some((p) => url.pathname.startsWith(p));
 
     // ❗ 不在白名单：直接走网络（不 respondWith，不缓存）
     if (!okToCache) return;
 
     // ✅ 白名单 GET API：网络优先，失败才用缓存
     event.respondWith(
-      fetch(req)
-        .then((res) => {
-          const copy = res.clone();
-          caches.open(RUNTIME_CACHE).then((c) => c.put(req, copy));
+      (async () => {
+        try {
+          const res = await fetch(req);
+          putRuntimeCache(req, res.clone());
           return res;
-        })
-        .catch(() => caches.match(req))
+        } catch {
+          const cached = await caches.match(req);
+          return cached || new Response(JSON.stringify({ success: false, message: "offline" }), {
+            status: 503,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      })()
     );
     return;
   }
@@ -125,20 +166,18 @@ self.addEventListener("fetch", (event) => {
   // ---------------------------------------------------------
   // C) 静态资源：缓存优先（快）
   // ---------------------------------------------------------
-  const isStatic =
-    STATIC_EXT_RE.test(url.pathname) ||
-    url.pathname.startsWith("/user/assets/");
+  const isStatic = STATIC_EXT_RE.test(url.pathname) || url.pathname.startsWith("/user/assets/");
 
   if (isStatic) {
     event.respondWith(
-      caches.match(req).then((cached) => {
+      (async () => {
+        const cached = await caches.match(req);
         if (cached) return cached;
-        return fetch(req).then((res) => {
-          const copy = res.clone();
-          caches.open(RUNTIME_CACHE).then((c) => c.put(req, copy));
-          return res;
-        });
-      })
+
+        const res = await fetch(req);
+        putRuntimeCache(req, res.clone());
+        return res;
+      })()
     );
     return;
   }
@@ -147,12 +186,15 @@ self.addEventListener("fetch", (event) => {
   // D) 其它 GET：网络优先 + 兜底缓存（温和策略）
   // ---------------------------------------------------------
   event.respondWith(
-    fetch(req)
-      .then((res) => {
-        const copy = res.clone();
-        caches.open(RUNTIME_CACHE).then((c) => c.put(req, copy));
+    (async () => {
+      try {
+        const res = await fetch(req);
+        putRuntimeCache(req, res.clone());
         return res;
-      })
-      .catch(() => caches.match(req))
+      } catch {
+        const cached = await caches.match(req);
+        return cached || new Response("Offline", { status: 503 });
+      }
+    })()
   );
 });
