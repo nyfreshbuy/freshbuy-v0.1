@@ -1,16 +1,18 @@
 // frontend/admin/assets/js/admin_invoices.js
 // ✅ 发票开具（后台）完整前端脚本
 // - 选用户自动带出 name/phone/address
+// - Account # 自动写入 userId（选用户 / 输入手机号姓名自动查）
 // - 选商品/规格（variants）自动填描述/价格，并携带 unitCount（扣库存用，打印不显示）
 // - 保存：POST /api/admin/invoices（后端扣库存）
-// - 打印：GET /api/admin/invoices/:id/pdf（✅ 用 fetch+token+blob 打开，避免缺少 token）
+// - 打印：GET /api/admin/invoices/:id/pdf（✅ fetch+token+blob + <a>.click 移动端更稳）
 // - Statement：
 //    JSON: GET /api/admin/invoices/statements?from&to&userId
-//    PDF : GET /api/admin/invoices/statements/pdf?from&to&userId（✅ 用 fetch+token+blob 打开）
+//    PDF : GET /api/admin/invoices/statements/pdf?from&to&userId（✅ fetch+token+blob）
 // - 搜索发票：GET /api/admin/invoices?q&from&to&userId（后端需支持这些 query）
 
 (function () {
-  console.log("admin_invoices.js LOADED ✅ VERSION=2026-02-23-PRINTFIX");
+  console.log("admin_invoices.js LOADED ✅ VERSION=2026-02-24-ACCOUNTID");
+
   // =========================
   // Auth / Fetch helpers
   // =========================
@@ -48,40 +50,41 @@
     return { res, data };
   }
 
-async function authedDownloadOpen(url) {
-  const tk = getAdminToken();
-  if (!tk) {
-    alert("未登录：没有 token，请重新登录后台。");
-    return;
+  // ✅ 移动端更稳定的打开方式：fetch -> blob -> <a>.click()
+  async function authedDownloadOpen(url, filename = "download.pdf") {
+    const tk = getAdminToken();
+    if (!tk) {
+      alert("未登录：没有 token，请重新登录后台。");
+      return;
+    }
+
+    const res = await fetch(url, {
+      headers: { Authorization: "Bearer " + tk },
+    });
+
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      alert("打开失败：" + (txt || res.status));
+      return;
+    }
+
+    const blob = await res.blob();
+    const objUrl = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = objUrl;
+    a.target = "_blank";
+    a.rel = "noopener";
+    // 你要强制下载可打开：
+    // a.download = filename;
+
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    setTimeout(() => URL.revokeObjectURL(objUrl), 60_000);
   }
 
-  const res = await fetch(url, {
-    headers: { Authorization: "Bearer " + tk },
-  });
-
-  if (!res.ok) {
-    const txt = await res.text().catch(() => "");
-    alert("打开失败：" + (txt || res.status));
-    return;
-  }
-
-  const blob = await res.blob();
-  const objUrl = URL.createObjectURL(blob);
-
-  // ✅ iOS/移动端更稳定：用 <a> 触发打开/下载
-  const a = document.createElement("a");
-  a.href = objUrl;
-  a.target = "_blank";
-  a.rel = "noopener";
-  // 如果你希望强制下载，打开下面这行：
-  // a.download = "invoice.pdf";
-
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-
-  setTimeout(() => URL.revokeObjectURL(objUrl), 60_000);
-}
   // =========================
   // DOM
   // =========================
@@ -116,10 +119,10 @@ async function authedDownloadOpen(url) {
   const stTo = document.getElementById("stTo");
   const stUserId = document.getElementById("stUserId");
   const btnStatement = document.getElementById("btnStatement");
-  const btnStatementPdf = document.getElementById("btnStatementPdf"); // ✅ 新增
+  const btnStatementPdf = document.getElementById("btnStatementPdf");
   const stResult = document.getElementById("stResult");
 
-  // ✅ 搜索区（可选：只有你的 invoices.html 有这些 id 才生效）
+  // ✅ 搜索区（只有 invoices.html 有这些 id 才生效）
   const sQ = document.getElementById("sQ");
   const sFrom = document.getElementById("sFrom");
   const sTo = document.getElementById("sTo");
@@ -182,16 +185,17 @@ async function authedDownloadOpen(url) {
   }
 
   function setShipDisabled(disabled) {
+    if (!shipName || !shipPhone || !shipAddr) return;
     shipName.disabled = disabled;
     shipPhone.disabled = disabled;
     shipAddr.disabled = disabled;
   }
 
   function syncShipFromSold() {
-    if (!sameAsSold.checked) return;
-    shipName.value = soldName.value || "";
-    shipPhone.value = soldPhone.value || "";
-    shipAddr.value = soldAddr.value || "";
+    if (!sameAsSold || !sameAsSold.checked) return;
+    if (shipName) shipName.value = soldName?.value || "";
+    if (shipPhone) shipPhone.value = soldPhone?.value || "";
+    if (shipAddr) shipAddr.value = soldAddr?.value || "";
   }
 
   // =========================
@@ -247,6 +251,38 @@ async function authedDownloadOpen(url) {
     const list = data.users || data.list || data.items || data.data || [];
     users = Array.isArray(list) ? list.map(normalizeUserFromApi) : [];
     renderUserSelect();
+  }
+
+  // ✅ 输入手机号/姓名/ID -> 找用户（用于 Account# & Statement）
+  async function findUserByKeyword(keyword) {
+    const s = String(keyword || "").trim();
+    if (!s) return null;
+
+    // 24位 ObjectId 直接返回
+    if (/^[a-f0-9]{24}$/i.test(s)) return { _id: s };
+
+    const qs = new URLSearchParams();
+    qs.set("page", "1");
+    qs.set("pageSize", "20");
+    qs.set("keyword", s);
+
+    const { res, data } = await apiFetch(`/api/admin/users?${qs.toString()}`);
+    if (!res.ok || !data?.success) return null;
+
+    const list = data.users || data.list || data.items || data.data || [];
+    if (!Array.isArray(list) || list.length === 0) return null;
+
+    const digits = s.replace(/\D/g, "");
+    if (digits) {
+      const hit = list.find(u => String(u.phone || "").replace(/\D/g, "") === digits);
+      if (hit) return hit;
+    }
+    return list[0] || null;
+  }
+
+  async function resolveUserIdInput(input) {
+    const u = await findUserByKeyword(input);
+    return u?._id || "";
   }
 
   // =========================
@@ -542,30 +578,30 @@ async function authedDownloadOpen(url) {
   // Build payload
   // =========================
   function buildInvoicePayload() {
-    const dateStr = invDate.value || todayLocalInput();
+    const dateStr = invDate?.value || todayLocalInput();
 
     const soldTo = {
-      userId: userSelect.value || "",
-      name: (soldName.value || "").trim(),
-      phone: (soldPhone.value || "").trim(),
-      address: (soldAddr.value || "").trim(),
+      userId: userSelect?.value || "",
+      name: (soldName?.value || "").trim(),
+      phone: (soldPhone?.value || "").trim(),
+      address: (soldAddr?.value || "").trim(),
     };
 
-    const shipToSame = !!sameAsSold.checked;
+    const shipToSame = !!sameAsSold?.checked;
 
     const shipTo = {
       userId: shipToSame ? (soldTo.userId || "") : "",
-      name: (shipName.value || "").trim(),
-      phone: (shipPhone.value || "").trim(),
-      address: (shipAddr.value || "").trim(),
+      name: (shipName?.value || "").trim(),
+      phone: (shipPhone?.value || "").trim(),
+      address: (shipAddr?.value || "").trim(),
     };
 
     return {
-      invoiceNo: (invNo.value || "").trim(),
+      invoiceNo: (invNo?.value || "").trim(),
       date: dateStr,
-      accountNo: (accountNo.value || "").trim(),
-      salesRep: (salesRep.value || "").trim(),
-      terms: (terms.value || "").trim(),
+      accountNo: (accountNo?.value || "").trim(),
+      salesRep: (salesRep?.value || "").trim(),
+      terms: (terms?.value || "").trim(),
       soldTo,
       shipTo,
       shipToSameAsSoldTo: shipToSame,
@@ -609,10 +645,10 @@ async function authedDownloadOpen(url) {
       const inv = data.invoice || data.data || data.item || null;
       currentInvoiceId = inv?._id || data?._id || currentInvoiceId;
 
-      if (inv?.invoiceNo) invNo.value = inv.invoiceNo;
+      if (inv?.invoiceNo && invNo) invNo.value = inv.invoiceNo;
 
       if (btnPrint) btnPrint.disabled = !currentInvoiceId;
-      setHint(`✅ 已保存：${invNo.value || "(no)"}（库存已按 qty*unitCount 扣减）`);
+      setHint(`✅ 已保存：${invNo?.value || "(no)"}（库存已按 qty*unitCount 扣减）`);
     } finally {
       btnSave && (btnSave.disabled = false);
     }
@@ -623,7 +659,7 @@ async function authedDownloadOpen(url) {
       alert("请先保存发票，再打印。");
       return;
     }
-    window.open(`/admin/print_invoice.html?id=${currentInvoiceId}`, "_blank");
+    await authedDownloadOpen(`/api/admin/invoices/${currentInvoiceId}/pdf`, `invoice-${currentInvoiceId}.pdf`);
   }
 
   // =========================
@@ -632,17 +668,23 @@ async function authedDownloadOpen(url) {
   async function runStatement() {
     const from = (stFrom?.value || "").trim();
     const to = (stTo?.value || "").trim();
-    const uid = (stUserId?.value || "").trim();
+    const uidInput = (stUserId?.value || "").trim();
 
     if (!from || !to) {
       alert("Statement 需要选择 From / To 日期。");
       return;
     }
 
+    const resolvedUid = await resolveUserIdInput(uidInput);
+    if (uidInput && !resolvedUid) {
+      alert("没找到该用户（姓名/电话/ID）： " + uidInput);
+      return;
+    }
+
     const qs = new URLSearchParams();
     qs.set("from", from);
     qs.set("to", to);
-    if (uid) qs.set("userId", uid);
+    if (resolvedUid) qs.set("userId", resolvedUid);
 
     if (stResult) stResult.textContent = "⏳ 生成中…";
 
@@ -656,7 +698,7 @@ async function authedDownloadOpen(url) {
     const out = {
       from: data.from || from,
       to: data.to || to,
-      userId: data.userId || uid || "",
+      userId: data.userId || resolvedUid || "",
       count: data.count ?? invoices.length,
       total: data.total ?? null,
       invoices: Array.isArray(invoices)
@@ -675,20 +717,25 @@ async function authedDownloadOpen(url) {
   async function printStatementPdf() {
     const from = (stFrom?.value || "").trim();
     const to = (stTo?.value || "").trim();
-    const uid = (stUserId?.value || "").trim();
+    const uidInput = (stUserId?.value || "").trim();
 
     if (!from || !to) {
       alert("Statement 需要选择 From / To 日期。");
       return;
     }
 
+    const resolvedUid = await resolveUserIdInput(uidInput);
+    if (uidInput && !resolvedUid) {
+      alert("没找到该用户（姓名/电话/ID）： " + uidInput);
+      return;
+    }
+
     const qs = new URLSearchParams();
     qs.set("from", from);
     qs.set("to", to);
-    if (uid) qs.set("userId", uid);
+    if (resolvedUid) qs.set("userId", resolvedUid);
 
-    // ✅ 用 fetch+token，避免 requireLogin 拦截
-    window.open(`/admin/print_statement.html?${qs.toString()}`, "_blank");
+    await authedDownloadOpen(`/api/admin/invoices/statements/pdf?${qs.toString()}`, `statement-${from}-${to}.pdf`);
   }
 
   // =========================
@@ -735,12 +782,15 @@ async function authedDownloadOpen(url) {
     right.className = "result-right";
 
     const btnOpen = document.createElement("button");
-btnOpen.className = "btn btn-ghost";
-btnOpen.textContent = "打开/打印";
-btnOpen.onclick = () => window.open(`/admin/print_invoice.html?id=${id}`, "_blank");
+    btnOpen.className = "btn btn-ghost";
+    btnOpen.textContent = "打开PDF";
+    btnOpen.onclick = () => authedDownloadOpen(`/api/admin/invoices/${id}/pdf`, `invoice-${invoiceNoX || id}.pdf`);
 
-btnPdf.textContent = "打印";
-btnPdf.onclick = () => window.open(`/admin/print_invoice.html?id=${id}`, "_blank");
+    const btnPdf = document.createElement("button");
+    btnPdf.className = "btn btn-dark";
+    btnPdf.textContent = "打印PDF";
+    btnPdf.onclick = () => authedDownloadOpen(`/api/admin/invoices/${id}/pdf`, `invoice-${invoiceNoX || id}.pdf`);
+
     right.appendChild(btnOpen);
     right.appendChild(btnPdf);
 
@@ -835,13 +885,50 @@ btnPdf.onclick = () => window.open(`/admin/print_invoice.html?id=${id}`, "_blank
       const opt = userSelect.selectedOptions && userSelect.selectedOptions[0];
       if (!opt || !userSelect.value) return;
 
-      soldName.value = opt.dataset.name || "";
-      soldPhone.value = opt.dataset.phone || "";
-      soldAddr.value = opt.dataset.addr || "";
+      if (soldName) soldName.value = opt.dataset.name || "";
+      if (soldPhone) soldPhone.value = opt.dataset.phone || "";
+      if (soldAddr) soldAddr.value = opt.dataset.addr || "";
+
+      // ✅ Account # 自动填 userId
+      if (accountNo) accountNo.value = userSelect.value || "";
 
       syncShipFromSold();
       if (stUserId) stUserId.value = userSelect.value || "";
     };
+  }
+
+  // ✅ Account # 输入手机号/姓名/ID -> 自动查并写入 userId
+  if (accountNo) {
+    let timer = null;
+
+    const doResolve = async () => {
+      const input = (accountNo.value || "").trim();
+      if (!input) return;
+
+      const u = await findUserByKeyword(input);
+      if (!u || !u._id) return;
+
+      // ✅ 写入 userId
+      accountNo.value = u._id;
+
+      // ✅ 同步用户选择框（如果能选到）
+      if (userSelect) userSelect.value = u._id;
+
+      // ✅ 可选：SoldTo 自动带出（仅当当前为空时）
+      if (soldName && !soldName.value) soldName.value = u.name || "";
+      if (soldPhone && !soldPhone.value) soldPhone.value = u.phone || "";
+      if (soldAddr && !soldAddr.value) soldAddr.value = u.addressText || u.address || "";
+
+      syncShipFromSold();
+      if (stUserId) stUserId.value = u._id;
+    };
+
+    accountNo.addEventListener("blur", doResolve);
+
+    accountNo.addEventListener("input", () => {
+      clearTimeout(timer);
+      timer = setTimeout(doResolve, 600);
+    });
   }
 
   if (sameAsSold) {
@@ -861,21 +948,27 @@ btnPdf.onclick = () => window.open(`/admin/print_invoice.html?id=${id}`, "_blank
 
   if (btnAddRow) btnAddRow.onclick = () => addRow({ qty: 1, unitPrice: 0 });
   if (btnSave) btnSave.onclick = saveInvoice;
-  if (btnPrint) {
-  btnPrint.addEventListener("click", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    printInvoice();
-  });
-}
 
-if (btnStatementPdf) {
-  btnStatementPdf.addEventListener("click", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    printStatementPdf();
-  });
-}
+  if (btnPrint) {
+    btnPrint.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      printInvoice();
+    });
+  }
+
+  if (btnStatement) btnStatement.onclick = runStatement;
+
+  if (btnStatementPdf) {
+    btnStatementPdf.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      printStatementPdf();
+    });
+  }
+
+  if (btnNew) btnNew.onclick = resetForm;
+
   if (btnSearch) btnSearch.onclick = runSearchInvoices;
   if (btnSearchReset) btnSearchReset.onclick = resetSearchInvoices;
 
@@ -884,7 +977,7 @@ if (btnStatementPdf) {
       const cur = (invNo?.value || "").trim();
       const auto = genInvoiceNoPreview(invDate.value);
       if (!cur || /^\d{8}-\d{3}$/.test(cur)) {
-        invNo.value = auto;
+        if (invNo) invNo.value = auto;
       }
     };
   }
