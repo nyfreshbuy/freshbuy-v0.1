@@ -49,7 +49,77 @@
     }
     return { res, data };
   }
+  // =========================
+  // UserId resolver (name / phone / userId)
+  // =========================
+  function isObjectId(s) {
+    return /^[a-fA-F0-9]{24}$/.test(String(s || "").trim());
+  }
 
+  function normPhoneDigits(s) {
+    const d = String(s || "").replace(/\D/g, "");
+    // 兼容：1xxxxxxxxxx / xxxxxxxxxx
+    if (d.length === 11 && d.startsWith("1")) return d.slice(1);
+    return d;
+  }
+
+  async function resolveUserId(input) {
+    const raw = String(input || "").trim();
+    if (!raw) return "";                // 为空 = 全部客户
+    if (isObjectId(raw)) return raw;    // 已是 userId 直接返回
+
+    // 尝试当手机号处理
+    const digits = normPhoneDigits(raw);
+    const isPhone = digits.length >= 7; // 你也可以改成 10 更严格
+    const keyword = isPhone ? digits : raw;
+
+    // 用后台用户列表接口做 keyword 搜索（你后端已有 /api/admin/users?keyword=）
+    const qs = new URLSearchParams();
+    qs.set("page", "1");
+    qs.set("pageSize", "20");
+    qs.set("keyword", keyword);
+
+    const { res, data } = await apiFetch(`/api/admin/users?${qs.toString()}`);
+    if (!res.ok || !data?.success) return ""; // 解析失败：当作不筛选/或提示
+
+    const list = data.users || data.list || data.items || data.data || [];
+    const usersList = Array.isArray(list) ? list : [];
+
+    if (usersList.length === 0) return "";
+
+    // 优先精确匹配：电话包含 / 姓名包含
+    const lowerRaw = raw.toLowerCase();
+    const digitsRaw = normPhoneDigits(raw);
+
+    const normalized = usersList.map((u) => ({
+      _id: u?._id || u?.id || "",
+      name: String(u?.name || ""),
+      phone: String(u?.phone || ""),
+    })).filter((x) => x._id);
+
+    // 精确手机号匹配
+    if (digitsRaw && digitsRaw.length >= 7) {
+      const hitPhone = normalized.find((x) => normPhoneDigits(x.phone).includes(digitsRaw));
+      if (hitPhone) return hitPhone._id;
+    }
+
+    // 姓名匹配
+    const hitName = normalized.find((x) => x.name.toLowerCase().includes(lowerRaw));
+    if (hitName) return hitName._id;
+
+    // 只有一个结果就直接用
+    if (normalized.length === 1) return normalized[0]._id;
+
+    // 多个结果：提示你用更精确的电话或直接粘贴 userId
+    alert(
+      "匹配到多个用户，请输入更精确的手机号或直接粘贴 UserId。\n" +
+        normalized
+          .slice(0, 8)
+          .map((x) => `${x.name || "(无名)"} ${x.phone || ""}  →  ${x._id}`)
+          .join("\n")
+    );
+    return "";
+  }
   // =========================
   // DOM
   // =========================
@@ -680,16 +750,20 @@
       return;
     }
 
-    // ✅ 支持姓名/电话解析成 userId
-    let uid = raw;
-    const resolved = resolveUserInput(raw);
-    if (resolved) {
-      uid = resolved.userId;
-      applyResolvedToInput(stUserId, stUserHint, resolved);
-    } else {
-      setSmallHint(stUserHint, raw ? "⚠️ 未匹配到用户，将按原样提交（建议填 userId）" : "");
-    }
-
+    // ✅ 支持 userId / 手机 / 姓名（远程解析成 userId）
+let uid = "";
+if (raw) {
+  uid = await resolveUserId(raw); // 关键：远程搜索解析
+  if (!uid) {
+    setSmallHint(stUserHint, "❌ 找不到该用户（请用更完整的姓名/手机号，或直接粘贴 userId）");
+    alert("找不到该用户（请用更完整的姓名/手机号，或直接粘贴 userId）");
+    return;
+  }
+  if (stUserId) stUserId.value = uid;
+  setSmallHint(stUserHint, `✅ 已解析为 userId：${uid}`);
+} else {
+  setSmallHint(stUserHint, "");
+}
     const qs = new URLSearchParams();
     qs.set("from", from);
     qs.set("to", to);
@@ -741,15 +815,19 @@
       return;
     }
 
-    let uid = raw;
-    const resolved = resolveUserInput(raw);
-    if (resolved) {
-      uid = resolved.userId;
-      applyResolvedToInput(stUserId, stUserHint, resolved);
-    } else {
-      setSmallHint(stUserHint, raw ? "⚠️ 未匹配到用户，将按原样提交（建议填 userId）" : "");
-    }
-
+    let uid = "";
+if (raw) {
+  uid = await resolveUserId(raw);
+  if (!uid) {
+    setSmallHint(stUserHint, "❌ 找不到该用户（请用更完整的姓名/手机号，或直接粘贴 userId）");
+    alert("找不到该用户（请用更完整的姓名/手机号，或直接粘贴 userId）");
+    return;
+  }
+  if (stUserId) stUserId.value = uid;
+  setSmallHint(stUserHint, `✅ 已解析为 userId：${uid}`);
+} else {
+  setSmallHint(stUserHint, "");
+}
     openStatementPrintPage(from, to, uid);
   }
 
@@ -819,16 +897,20 @@
     const to = (sTo?.value || "").trim();
     const raw = (sUserId?.value || "").trim();
 
-    // ✅ user 输入支持姓名/电话解析
-    let uid = raw;
-    const resolved = resolveUserInput(raw);
-    if (resolved) {
-      uid = resolved.userId;
-      applyResolvedToInput(sUserId, sUserHint, resolved);
-    } else {
-      setSmallHint(sUserHint, raw ? "⚠️ 未匹配到用户，将按原样提交（建议填 userId）" : "");
-    }
-
+    // ✅ user 输入支持 userId / 手机 / 姓名（远程解析）
+let uid = "";
+if (raw) {
+  uid = await resolveUserId(raw);
+  if (!uid) {
+    setSmallHint(sUserHint, "❌ 找不到该用户（请用更完整的姓名/手机号，或直接粘贴 userId）");
+    alert("找不到该用户（请用更完整的姓名/手机号，或直接粘贴 userId）");
+    return;
+  }
+  if (sUserId) sUserId.value = uid;
+  setSmallHint(sUserHint, `✅ 已解析为 userId：${uid}`);
+} else {
+  setSmallHint(sUserHint, "");
+}
     const qs = new URLSearchParams();
     if (q) qs.set("q", q);
     if (from) qs.set("from", from);
