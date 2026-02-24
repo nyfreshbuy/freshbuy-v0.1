@@ -59,16 +59,6 @@ async function apiLogin(phone, password) {
   if (!me) throw new Error("登录态验证失败（/me 未通过）");
   return me;
 }
-
-async function apiRegister(name, phone, password) {
-  const { res, data } = await apiFetch("/api/auth/register", {
-    method: "POST",
-    body: JSON.stringify({ name, phone, password }),
-  });
-  if (!res.ok || !data?.success) throw new Error(data?.msg || "注册失败");
-  return data.user || null;
-}
-
 async function apiMe() {
   const tk = getToken();
   if (!tk) return null;
@@ -390,25 +380,28 @@ function applyLoggedOutUI() {
 }
 
 async function initAuthUIFromStorage() {
-  localStorage.removeItem("freshbuy_is_logged_in");
+  try { localStorage.removeItem("freshbuy_is_logged_in"); } catch {}
 
-  const tk = getToken();
-  if (!tk) {
-    applyLoggedOutUI();
+  const user = await (window.Auth?.me ? window.Auth.me() : Promise.resolve(null)).catch(() => null);
+
+  const loginBtn = document.getElementById("loginBtn");
+  const logoutBtn = document.getElementById("logoutBtn");
+  const profile = document.getElementById("userProfile");
+
+  if (user) {
+    if (loginBtn) loginBtn.style.display = "none";
+    if (logoutBtn) logoutBtn.style.display = "";
+    if (profile) profile.style.display = "flex";
+
+    if (typeof window.applyLoggedInUI === "function") window.applyLoggedInUI(user);
     return;
   }
 
-  try {
-    const me = await apiMe();
-    const phone = me?.phone || getSavedPhone();
-    if (phone) applyLoggedInUI(phone);
-    else applyLoggedOutUI();
-  } catch (e) {
-    clearToken();
-    applyLoggedOutUI();
-  }
+  // 未登录
+  if (loginBtn) loginBtn.style.display = "";
+  if (logoutBtn) logoutBtn.style.display = "none";
+  if (profile) profile.style.display = "none";
 }
-
 // ============================
 // 7) 登录弹窗（保持你原逻辑）
 // ============================
@@ -473,9 +466,40 @@ function switchAuthMode(mode) {
   }
 }
 
-if (loginBtnTop) loginBtnTop.addEventListener("click", () => openAuthModal("login"));
-if (registerBtnTop) registerBtnTop.addEventListener("click", () => openAuthModal("register"));
+const logoutBtnTop = document.getElementById("logoutBtn");
 
+// ✅ 微信里经常事件被抢：用 capture=true + stopImmediatePropagation
+if (loginBtnTop) {
+  loginBtnTop.addEventListener(
+    "click",
+    (e) => {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      openAuthModal("login");
+    },
+    true
+  );
+}
+
+// ✅ 退出按钮（分类页有 logoutBtn）
+if (logoutBtnTop) {
+  logoutBtnTop.addEventListener(
+    "click",
+    (e) => {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      // 统一清 token（auth_client.js 里也有 clearAll）
+      if (window.Auth && typeof window.Auth.clearAll === "function") window.Auth.clearAll();
+      else {
+        localStorage.removeItem("freshbuy_token");
+        localStorage.removeItem("token");
+        localStorage.removeItem("freshbuy_login_phone");
+      }
+      location.reload(); // ✅ 微信最稳
+    },
+    true
+  );
+}
 if (authCloseBtn) authCloseBtn.addEventListener("click", closeAuthModal);
 if (authBackdrop) {
   authBackdrop.addEventListener("click", (e) => {
@@ -491,45 +515,22 @@ if (loginSubmitBtn) {
     const pwd = (loginPassword && loginPassword.value) || "";
     if (!phone || !pwd) return alert("请填写手机号和密码");
 
-    try {
-      const me = await apiLogin(phone, pwd);
+        try {
+      const user = await window.Auth.login(phone, pwd);
 
       if (loginRemember && loginRemember.checked) setSavedPhone(phone);
       else clearSavedPhone();
 
-      applyLoggedInUI(me.phone || phone);
+      // 用你 auth_client.js 里全局的 applyLoggedInUI（显示头像）
+      if (typeof window.applyLoggedInUI === "function") window.applyLoggedInUI(user || { phone });
 
-      alert("登录成功");
       closeAuthModal();
+      location.reload(); // ✅ 微信最稳
     } catch (e) {
-      alert(e.message || "登录失败");
+      alert(e?.message || "登录失败");
     }
   });
 }
-
-if (registerSubmitBtn) {
-  registerSubmitBtn.addEventListener("click", async () => {
-    const phone = (regPhone && regPhone.value.trim()) || "";
-    const pwd = (regPassword && regPassword.value) || "";
-    if (!phone || !pwd) return alert("请填写手机号和密码");
-
-    const name = (regName && regName.value.trim()) || "用户" + String(phone).slice(-4);
-
-    try {
-      await apiRegister(name, phone, pwd);
-      const me = await apiLogin(phone, pwd);
-
-      setSavedPhone(phone);
-      applyLoggedInUI(me.phone || phone);
-
-      alert("注册成功，已自动登录");
-      closeAuthModal();
-    } catch (e) {
-      alert(e.message || "注册失败");
-    }
-  });
-}
-
 // ============================
 // 8) DOMContentLoaded 初始化
 // ============================

@@ -991,14 +991,31 @@
               <div class="auth-label">昵称</div>
               <input class="auth-input" id="regName" placeholder="例如：test" />
             </div>
-            <div class="auth-row">
-              <div class="auth-label">手机号</div>
-              <input
-                class="auth-input"
-                id="regPhone"
-                placeholder="例如：9290000001"
-              />
-            </div>
+           <div class="auth-row">
+  <div class="auth-label">手机号</div>
+  <input class="auth-input" id="regPhone" placeholder="例如：9290000001" />
+</div>
+
+<!-- ✅ 短信验证码 + 获取按钮 -->
+<div class="auth-row">
+  <div class="auth-label">验证码</div>
+  <div style="display:flex; gap:10px; align-items:center;">
+    <input
+      class="auth-input"
+      id="regCode"
+      placeholder="请输入短信验证码"
+      style="flex:1;"
+    />
+    <button
+      class="link-btn"
+      id="regSendCodeBtn"
+      type="button"
+      style="white-space:nowrap;"
+    >
+      获取验证码
+    </button>
+  </div>
+</div>
             <div class="auth-row">
               <div class="auth-label">密码</div>
               <input
@@ -1008,7 +1025,31 @@
                 placeholder="至少 6 位"
               />
             </div>
+           <!-- ✅ 确认密码 -->
+<div class="auth-row">
+  <div class="auth-label">确认密码</div>
+  <input
+    class="auth-input"
+    id="regPasswordConfirm"
+    type="password"
+    placeholder="请再次输入密码"
+  />
+  <div id="regPwMatchHint" style="margin-top:6px;font-size:12px;color:#6b7280;"></div>
+</div>
+<!-- ✅ 必选：短信同意 + 条款同意（auth_client.js 会校验） -->
+<div class="auth-row" style="margin-top:12px;">
+  <label style="display:flex; gap:8px; align-items:flex-start; font-size:12px; color:#374151; line-height:1.4;">
+    <input type="checkbox" id="smsOptIn" />
+    <span>我同意接收 SMS 短信（用于验证码/订单通知）。可能产生运营商费用。</span>
+  </label>
+</div>
 
+<div class="auth-row" style="margin-top:8px;">
+  <label style="display:flex; gap:8px; align-items:flex-start; font-size:12px; color:#374151; line-height:1.4;">
+    <input type="checkbox" id="regAgree" />
+    <span>我已阅读并同意 服务条款 与 隐私政策。</span>
+  </label>
+</div>
             <button class="auth-submit" id="registerSubmitBtn">
               注册并登录
             </button>
@@ -1020,273 +1061,147 @@
         </div>
       </div>
     </div>
+<!-- 共享购物车逻辑（和首页同一个文件） -->
+<script src="assets/js/cart.js"></script>
 
-    <!-- 共享购物车逻辑（和首页同一个文件） -->
-    <script src="assets/js/cart.js"></script>
+<!-- ✅ 新版短信注册/登录：必须先 core 再 client（分类页也要加载） -->
+<script src="/user/assets/js/auth_core.js"></script>
+<script src="/user/assets/js/auth_client.js?v=20260223_1"></script>
+<script>
+(function () {
+  function $(id){ return document.getElementById(id); }
 
-    <!-- ✅ 分类页 Auth 逻辑（完整闭合 + 强力拦截 prompt） -->
-    <script>
-      (function () {
-        const TOKEN_KEY = "freshbuy_token";
-        const PHONE_KEY = "freshbuy_login_phone";
+  // 打开/关闭弹窗
+  function openAuth(mode) {
+    const back = $("authBackdrop");
+    if (!back) return;
+    back.classList.add("active");
+    switchTab(mode || "login");
+  }
+  function closeAuth() {
+    const back = $("authBackdrop");
+    if (!back) return;
+    back.classList.remove("active");
+  }
 
-        const authBackdrop = document.getElementById("authBackdrop");
-        const authCloseBtn = document.getElementById("authCloseBtn");
-        const authTitle = document.getElementById("authTitle");
+  // 切换登录/注册
+  function switchTab(mode) {
+    const tabLogin = $("tabLogin");
+    const tabRegister = $("tabRegister");
+    const loginPanel = $("loginPanel");
+    const registerPanel = $("registerPanel");
+    const title = $("authTitle");
 
-        const tabLogin = document.getElementById("tabLogin");
-        const tabRegister = document.getElementById("tabRegister");
-        const loginPanel = document.getElementById("loginPanel");
-        const registerPanel = document.getElementById("registerPanel");
+    if (!tabLogin || !tabRegister || !loginPanel || !registerPanel) return;
 
-        const loginPhone = document.getElementById("loginPhone");
-        const loginPassword = document.getElementById("loginPassword");
-        const loginRemember = document.getElementById("loginRemember");
-        const loginSubmitBtn = document.getElementById("loginSubmitBtn");
+    if (mode === "register") {
+      tabLogin.classList.remove("active");
+      tabRegister.classList.add("active");
+      loginPanel.style.display = "none";
+      registerPanel.style.display = "";
+      if (title) title.textContent = "注册";
+    } else {
+      tabLogin.classList.add("active");
+      tabRegister.classList.remove("active");
+      loginPanel.style.display = "";
+      registerPanel.style.display = "none";
+      if (title) title.textContent = "登录";
+    }
+  }
 
-        const regName = document.getElementById("regName");
-        const regPhone = document.getElementById("regPhone");
-        const regPassword = document.getElementById("regPassword");
-        const registerSubmitBtn = document.getElementById("registerSubmitBtn");
+  // 初始化：根据 token 显示头像/按钮
+  async function initHeader() {
+    try {
+      const user = await (window.Auth?.me ? window.Auth.me() : window.FreshAuth?.apiMe?.());
+      if (user) {
+        if (typeof window.applyLoggedInUI === "function") window.applyLoggedInUI(user);
+        // 显示退出按钮
+        const logoutBtn = $("logoutBtn");
+        if (logoutBtn) logoutBtn.style.display = "";
+        const loginBtn = $("loginBtn");
+        if (loginBtn) loginBtn.style.display = "none";
+      } else {
+        // 未登录
+        const logoutBtn = $("logoutBtn");
+        if (logoutBtn) logoutBtn.style.display = "none";
+        const loginBtn = $("loginBtn");
+        if (loginBtn) loginBtn.style.display = "";
+        const profile = $("userProfile");
+        if (profile) profile.style.display = "none";
+      }
+    } catch {}
+  }
 
-        function applyLoggedInUI(phone) {
-          const loginBtn = document.getElementById("loginBtn");
-          const logoutBtn = document.getElementById("logoutBtn");
-          const userProfile = document.getElementById("userProfile");
-          const userNameLabel = document.getElementById("userNameLabel");
-          const userAvatar = document.getElementById("userAvatar");
+  function bind() {
+    const loginBtn = $("loginBtn");
+    const logoutBtn = $("logoutBtn");
+    const closeBtn = $("authCloseBtn");
+    const back = $("authBackdrop");
+    const tabLogin = $("tabLogin");
+    const tabRegister = $("tabRegister");
+    const loginSubmit = $("loginSubmitBtn");
 
-          if (loginBtn) loginBtn.style.display = "none";
-          if (logoutBtn) logoutBtn.style.display = "";
-          if (userProfile) userProfile.style.display = "flex";
+    // ✅ 登录按钮打开弹窗（用捕获，防止 category.js 抢事件）
+    if (loginBtn) {
+      loginBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openAuth("login");
+      }, true);
+    }
 
-          const tail = String(phone || "").slice(-4);
-          if (userNameLabel) {
-            userNameLabel.textContent = tail ? "尾号 " + tail : "我的账户";
-          }
-          if (userAvatar) userAvatar.textContent = "我";
-        }
+    // ✅ 退出按钮
+    if (logoutBtn) {
+      logoutBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        window.Auth?.clearAll?.();
+        // 退出后刷新最稳（微信缓存更怪）
+        location.reload();
+      }, true);
+    }
 
-        function applyLoggedOutUI() {
-          const loginBtn = document.getElementById("loginBtn");
-          const logoutBtn = document.getElementById("logoutBtn");
-          const userProfile = document.getElementById("userProfile");
+    // 关闭
+    if (closeBtn) closeBtn.addEventListener("click", closeAuth);
+    if (back) {
+      back.addEventListener("click", (e) => {
+        if (e.target === back) closeAuth();
+      });
+    }
 
-          if (loginBtn) loginBtn.style.display = "";
-          if (logoutBtn) logoutBtn.style.display = "none";
-          if (userProfile) userProfile.style.display = "none";
-        }
+    // tabs
+    if (tabLogin) tabLogin.addEventListener("click", () => switchTab("login"));
+    if (tabRegister) tabRegister.addEventListener("click", () => switchTab("register"));
 
-        function openAuthModal(mode = "login") {
-          if (!authBackdrop) return;
-          authBackdrop.classList.add("active");
-          switchAuthMode(mode);
+    // 登录提交 -> 调用 Auth.login
+    if (loginSubmit) {
+      loginSubmit.addEventListener("click", async () => {
+        const phone = String($("loginPhone")?.value || "").trim();
+        const pwd = String($("loginPassword")?.value || "");
+        if (!phone || !pwd) return;
 
-          const savedPhone = localStorage.getItem(PHONE_KEY) || "";
-          if (savedPhone && loginPhone) loginPhone.value = savedPhone;
-          if (loginRemember) loginRemember.checked = !!savedPhone;
-          if (savedPhone && regPhone) regPhone.value = savedPhone;
-        }
+        try {
+          const user = await window.Auth.login(phone, pwd);
+          if (typeof window.applyLoggedInUI === "function") window.applyLoggedInUI(user || { phone });
+          closeAuth();
+          location.reload(); // ✅ 微信最稳
+        } catch {}
+      });
+    }
 
-        function closeAuthModal() {
-          if (!authBackdrop) return;
-          authBackdrop.classList.remove("active");
-        }
+    initHeader();
+  }
 
-        function switchAuthMode(mode) {
-          if (
-            !tabLogin ||
-            !tabRegister ||
-            !loginPanel ||
-            !registerPanel ||
-            !authTitle
-          )
-            return;
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bind);
+  else bind();
+})();
+</script>
+<script src="assets/js/product_card_renderer.js"></script>
 
-          if (mode === "login") {
-            tabLogin.classList.add("active");
-            tabRegister.classList.remove("active");
-            loginPanel.style.display = "";
-            registerPanel.style.display = "none";
-            authTitle.textContent = "登录";
-          } else {
-            tabLogin.classList.remove("active");
-            tabRegister.classList.add("active");
-            loginPanel.style.display = "none";
-            registerPanel.style.display = "";
-            authTitle.textContent = "注册";
-          }
-        }
+<!-- 分类页逻辑 -->
+<script src="assets/js/category.js"></script>
 
-        async function authFetch(url, options = {}) {
-          const token = localStorage.getItem(TOKEN_KEY) || "";
-          const headers = Object.assign({}, options.headers || {});
-          if (token) headers.Authorization = "Bearer " + token;
-          return fetch(url, Object.assign({}, options, { headers }));
-        }
-
-        async function initAuthFromToken() {
-          const token = localStorage.getItem(TOKEN_KEY) || "";
-          if (!token) {
-            applyLoggedOutUI();
-            return;
-          }
-
-          try {
-            const res = await authFetch("/api/auth/me", { method: "GET" });
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok || !data.success) throw new Error(data.msg || "未登录");
-
-            const phone =
-              data.user?.phone || localStorage.getItem(PHONE_KEY) || "";
-            applyLoggedInUI(phone);
-          } catch (e) {
-            localStorage.removeItem(TOKEN_KEY);
-            applyLoggedOutUI();
-          }
-        }
-
-        async function doLogin(phone, password) {
-          const res = await fetch("/api/auth/login", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ phone, password }),
-          });
-
-          const data = await res.json().catch(() => ({}));
-          if (!res.ok || !data.success || !data.token) {
-            throw new Error(data.msg || data.message || "登录失败");
-          }
-
-          localStorage.setItem(TOKEN_KEY, data.token);
-          localStorage.setItem(PHONE_KEY, data.user?.phone || phone);
-          localStorage.removeItem("freshbuy_is_logged_in"); // 清旧模拟标记
-
-          applyLoggedInUI(data.user?.phone || phone);
-          return data;
-        }
-
-        async function doRegister(name, phone, password) {
-          const res = await fetch("/api/auth/register", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name, phone, password }),
-          });
-
-          const data = await res.json().catch(() => ({}));
-          if (!res.ok || !data.success) {
-            throw new Error(data.msg || data.message || "注册失败");
-          }
-          return data;
-        }
-
-        function doLogout() {
-          localStorage.removeItem(TOKEN_KEY);
-          localStorage.removeItem(PHONE_KEY);
-          localStorage.removeItem("freshbuy_is_logged_in");
-          applyLoggedOutUI();
-          alert("已退出");
-        }
-
-        /* 绑定弹窗 */
-        if (authCloseBtn) authCloseBtn.addEventListener("click", closeAuthModal);
-        if (authBackdrop) {
-          authBackdrop.addEventListener("click", (e) => {
-            if (e.target === authBackdrop) closeAuthModal();
-          });
-        }
-        if (tabLogin) tabLogin.addEventListener("click", () => switchAuthMode("login"));
-        if (tabRegister)
-          tabRegister.addEventListener("click", () => switchAuthMode("register"));
-
-        /* 登录提交 */
-        if (loginSubmitBtn) {
-          loginSubmitBtn.addEventListener("click", async () => {
-            const phone = (loginPhone?.value || "").trim();
-            const pwd = loginPassword?.value || "";
-            if (!phone || !pwd) return alert("请填写手机号和密码");
-
-            try {
-              await doLogin(phone, pwd);
-              if (loginRemember?.checked) localStorage.setItem(PHONE_KEY, phone);
-              closeAuthModal();
-              alert("登录成功");
-            } catch (err) {
-              console.error(err);
-              alert(err?.message || "登录失败");
-            }
-          });
-        }
-
-        /* 注册提交 */
-        if (registerSubmitBtn) {
-          registerSubmitBtn.addEventListener("click", async () => {
-            const name = (regName?.value || "用户").trim() || "用户";
-            const phone = (regPhone?.value || "").trim();
-            const pwd = regPassword?.value || "";
-            if (!phone || !pwd) return alert("请填写手机号和密码");
-            if (pwd.length < 6) return alert("密码至少 6 位");
-
-            try {
-              await doRegister(name, phone, pwd);
-              await doLogin(phone, pwd);
-              closeAuthModal();
-              alert("注册并登录成功");
-            } catch (err) {
-              console.error(err);
-              alert(err?.message || "注册失败");
-            }
-          });
-        }
-
-        /* ✅ 强力接管：拦截 category.js 的模拟登录 prompt */
-        function hijackAuthButtons() {
-          const loginBtnEl = document.getElementById("loginBtn");
-          const logoutBtnEl = document.getElementById("logoutBtn");
-
-          if (loginBtnEl) {
-            loginBtnEl.addEventListener(
-              "click",
-              (e) => {
-                e.preventDefault();
-                e.stopImmediatePropagation();
-                openAuthModal("login");
-              },
-              true
-            );
-          }
-
-          if (logoutBtnEl) {
-            logoutBtnEl.addEventListener(
-              "click",
-              (e) => {
-                e.preventDefault();
-                e.stopImmediatePropagation();
-                doLogout();
-              },
-              true
-            );
-          }
-        }
-
-        /* 返回首页 / 头像点击 */
-        const btnGoHome = document.getElementById("btnGoHome");
-        if (btnGoHome) btnGoHome.addEventListener("click", () => (location.href = "/user/index.html"));
-
-        const userProfile = document.getElementById("userProfile");
-        if (userProfile) userProfile.addEventListener("click", () => alert("后续可跳转到个人中心"));
-
-        window.addEventListener("DOMContentLoaded", () => {
-          hijackAuthButtons();
-          initAuthFromToken();
-        });
-      })();
-    </script>
-    <script src="assets/js/product_card_renderer.js"></script>
-    <!-- 分类页逻辑 -->
-    <script src="assets/js/category.js"></script>
-
-    <!-- 页脚（如果你没有这个文件，就先注释掉） -->
-    <script src="/user/components/footer.js"></script>
+<!-- 页脚（如果你没有这个文件，就先注释掉） -->
+<script src="/user/components/footer.js"></script>
   </body>
 </html>
