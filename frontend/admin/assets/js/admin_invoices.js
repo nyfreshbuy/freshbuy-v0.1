@@ -48,29 +48,43 @@
     return { res, data };
   }
 
-  async function authedDownloadOpen(url) {
-    const tk = getAdminToken();
-    if (!tk) {
-      alert("未登录：没有 token，请重新登录后台。");
-      return;
-    }
-
-    const res = await fetch(url, {
-      headers: { Authorization: "Bearer " + tk },
-    });
-
-    if (!res.ok) {
-      const txt = await res.text().catch(() => "");
-      alert("打开失败：" + (txt || res.status));
-      return;
-    }
-
-    const blob = await res.blob();
-    const objUrl = URL.createObjectURL(blob);
-    window.open(objUrl, "_blank");
-    setTimeout(() => URL.revokeObjectURL(objUrl), 60_000);
+async function authedDownloadOpen(url) {
+  const tk = getAdminToken();
+  if (!tk) {
+    alert("未登录：没有 token，请重新登录后台。");
+    return;
   }
 
+  const res = await fetch(url, {
+    headers: { Authorization: "Bearer " + tk },
+  });
+
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    alert("打开失败：" + (txt || res.status));
+    return;
+  }
+
+  const blob = await res.blob();
+  const objUrl = URL.createObjectURL(blob);
+
+  // ✅ iOS/移动端更稳定：用 <a> 触发打开/下载
+  const a = document.createElement("a");
+  a.href = objUrl;
+  a.target = "_blank";
+  a.rel = "noopener";
+  // 如果你希望强制下载，打开下面这行：
+  // a.download = "invoice.pdf";
+
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+  alert("如果没自动打开，请检查浏览器是否阻止了弹窗/新标签页。");
+}, 300);
+  a.remove();
+
+  setTimeout(() => URL.revokeObjectURL(objUrl), 60_000);
+}
   // =========================
   // DOM
   // =========================
