@@ -634,6 +634,7 @@
       items.push({
         productId: productId || "",
         variantKey: variantKey || "",
+        variantLabel,              // ✅ 新增：规格文字（比如：整箱(1)）
         description: String(description || "").trim(),
         qty,
         unitPrice,
