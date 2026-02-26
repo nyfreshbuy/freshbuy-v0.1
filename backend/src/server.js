@@ -92,6 +92,13 @@ app.use("/user", express.static(userStaticDir));
 app.get("/favicon.ico", (req, res) => {
   res.sendFile(path.join(userStaticDir, "assets/icons/favicon.ico"));
 });
+// ✅ 兼容旧链接：不带 /user 的 newcomer 入口
+app.get("/newcomer", (req, res) => {
+  return res.redirect(302, "/user/newcomer.html");
+});
+app.get("/newcomer.html", (req, res) => {
+  return res.redirect(302, "/user/newcomer.html");
+});
 // 然后才是这些
 app.use("/api/orders", ordersRouter);
 app.use("/api/products", productsRouter);
