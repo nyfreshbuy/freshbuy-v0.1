@@ -1300,7 +1300,19 @@ const fixedAdd = article.querySelector(`.product-add-fixed[data-add-pid="${pid}"
   // 初次渲染：根据购物车数量决定显示“加入购物车”还是“黑框”
   return article;
 }
+// =====================================================
+// ✅ 共享给 hot.html 使用：把爆品页需要的能力挂到 window.FB
+// 插入位置：createProductCard() 结束后
+// =====================================================
+window.FB = window.FB || {};
+window.FB.createProductCard = createProductCard;
+window.FB.expandProductsWithVariants = expandProductsWithVariants;
+window.FB.isHotProduct = isHotProduct;
+window.FB.money = money;
 
+// 购物车徽章/按钮切换（hot 页也要用）
+window.FB.scheduleBadgeSync = scheduleBadgeSync;
+window.FB.renderAllCardsAction = renderAllCardsAction;
 /* ====== 下一段从：库存刷新 refreshStockAndCards + loadHomeProductsFromSimple 开始 ====== */
 // IP 建议 ZIP（不强制）—— ✅ 如果 ZIP 已被“默认地址锁定”，则不要再用 IP 覆盖
 async function tryPrefillZipFromIP() {

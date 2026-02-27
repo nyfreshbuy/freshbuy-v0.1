@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>限时爆品特价区</title>
+
+  <!-- ✅ 复用你现有样式路径（按你项目实际 CSS 路径调整） -->
+  <link rel="stylesheet" href="/user/assets/css/style.css" />
+</head>
+<body>
+
+  <main class="page">
+    <section id="sectionHot" class="home-section">
+      <div class="section-header">
+        <div>
+          <div class="section-title"><span class="title-icon">🔥</span>限时爆品特价区</div>
+          <div class="section-sub">每周精选 · 数量有限 · 售完恢复原价</div>
+        </div>
+        <a class="section-link--desktop" href="/user/index.html">返回首页 →</a>
+      </div>
+
+      <!-- ✅ 专页列表容器：用同一个 grid id，复用 createProductCard -->
+      <div class="product-grid" id="productGridHot"></div>
+
+      <div id="hotEmpty" style="display:none;padding:12px;font-size:13px;color:#6b7280;">
+        暂时没有爆品商品
+      </div>
+    </section>
+  </main>
+
+  <!-- ✅ 顺序很重要：先加载 cart.js，再加载 index.js（它会定义 window.FB） -->
+  <script src="/user/assets/js/cart.js"></script>
+  <script src="/user/assets/js/index.js"></script>
+
+  <!-- ✅ hot 专页逻辑 -->
+  <script src="/user/assets/js/hot.js"></script>
+</body>
+</html>
