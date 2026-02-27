@@ -45,8 +45,8 @@ function computeTotals(items = []) {
 }
 
 // ---------- 当天递增 invoiceNo：YYYYMMDD-001 ----------
-async function genInvoiceNo() {
-  const now = new Date();
+async function genInvoiceNo(dateInput) {
+  const now = dateInput ? new Date(dateInput) : new Date();
   const y = now.getFullYear();
   const m = String(now.getMonth() + 1).padStart(2, "0");
   const d = String(now.getDate()).padStart(2, "0");
@@ -57,7 +57,8 @@ async function genInvoiceNo() {
   const end = new Date(now);
   end.setHours(23, 59, 59, 999);
 
-  const count = await Invoice.countDocuments({ createdAt: { $gte: start, $lte: end } });
+  // ✅ 按发票 date 统计（更合理）
+  const count = await Invoice.countDocuments({ date: { $gte: start, $lte: end } });
   const seq = String(count + 1).padStart(3, "0");
   return `${ymd}-${seq}`;
 }
@@ -146,7 +147,7 @@ router.post("/", async (req, res) => {
   session.startTransaction();
   try {
     const body = req.body || {};
-    body.invoiceNo = body.invoiceNo || (await genInvoiceNo());
+    body.invoiceNo = body.invoiceNo || (await genInvoiceNo(body.date));
 
     // shipTo 默认同步 soldTo
     if (body.shipToSameAsSoldTo !== false) {
@@ -412,7 +413,18 @@ router.get("/statements/pdf", async (req, res) => {
 
   doc.end();
 });
-
+// =====================
+// GET /api/admin/invoices/next-no?date=YYYY-MM-DD (可选)
+// =====================
+router.get("/next-no", async (req, res) => {
+  try {
+    const { date } = req.query;
+    const nextNo = await genInvoiceNo(date);
+    res.json({ success: true, nextNo });
+  } catch (e) {
+    res.status(400).json({ success: false, message: e.message || "next-no failed" });
+  }
+});
 router.get("/:id", async (req, res) => {
   const inv = await Invoice.findById(req.params.id);
   if (!inv) return res.status(404).json({ success: false, message: "not found" });
@@ -451,7 +463,7 @@ try {
   const y = doc.y + 6;
   doc.image(logoPath, x, y, { width: logoW });
   doc.y = y + 40; // 往下留空（根据 logoW 可调）
-} catch {}git
+} catch {}
   // 抬头居中（中文大字 + 英文 + 地址电话）
  doc.fontSize(22).text("在鲜购商城", 0, 22, { align: "center" });   // ✅ 最大
 doc.fontSize(12).text("Margarita Market Inc", { align: "center" }); // ✅ 公司名

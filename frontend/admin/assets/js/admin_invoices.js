@@ -55,7 +55,14 @@
   function isObjectId(s) {
     return /^[a-fA-F0-9]{24}$/.test(String(s || "").trim());
   }
+  async function fetchNextInvoiceNo(dateStr) {
+  const qs = new URLSearchParams();
+  if (dateStr) qs.set("date", dateStr);
 
+  const { res, data } = await apiFetch(`/api/admin/invoices/next-no?${qs.toString()}`);
+  if (!res.ok || !data?.success) return "";
+  return String(data.nextNo || "").trim();
+}
   function normPhoneDigits(s) {
     const d = String(s || "").replace(/\D/g, "");
     // 兼容：1xxxxxxxxxx / xxxxxxxxxx
@@ -951,8 +958,13 @@ if (raw) {
     if (btnPrint) btnPrint.disabled = true;
 
     if (invDate) invDate.value = todayLocalInput();
-    if (invNo) invNo.value = genInvoiceNoPreview(invDate?.value);
+if (invNo) invNo.value = ""; // 先清空
 
+// ✅ 新建时直接显示下一张号（002/003...）
+(async () => {
+  const nextNo = await fetchNextInvoiceNo(invDate?.value);
+  if (nextNo && invNo) invNo.value = nextNo;
+})();
     if (accountNo) accountNo.value = "";
     if (salesRep) salesRep.value = "";
     if (terms) terms.value = "";
@@ -1045,15 +1057,13 @@ if (raw) {
   if (btnSearchReset) btnSearchReset.onclick = resetSearchInvoices;
 
   if (invDate) {
-    invDate.onchange = () => {
-      const cur = (invNo?.value || "").trim();
-      const auto = genInvoiceNoPreview(invDate.value);
-      if (!cur || /^\d{8}-\d{3}$/.test(cur)) {
-        if (invNo) invNo.value = auto;
-      }
-    };
-  }
-
+  invDate.onchange = async () => {
+    if (!invNo) return;
+    invNo.value = "";
+    const nextNo = await fetchNextInvoiceNo(invDate.value);
+    if (nextNo) invNo.value = nextNo;
+  };
+}
   // Enter 触发搜索
   [sQ, sFrom, sTo, sUserId].forEach((el) => {
     if (!el) return;
