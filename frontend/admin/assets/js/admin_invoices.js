@@ -484,7 +484,7 @@
   function addRow(preset = {}) {
     if (!itemsTbody) return;
     const tr = document.createElement("tr");
-
+    tr.dataset.manualPrice = "0"; // ✅ 默认没手动改价
     const tdP = document.createElement("td");
     const selP = makeProductSelect();
     selP.value = preset.productId || "";
@@ -576,32 +576,31 @@
 
       if (!inpDesc.value) inpDesc.value = p.name || "";
 
-      if (varSel && varSel.selectedOptions && varSel.selectedOptions[0]) {
-        const opt = varSel.selectedOptions[0];
-        const vp = opt.dataset.variantPrice;
-        const auto = vp !== "" ? parseNum(vp, p.price) : p.price;
+      const manual = tr.dataset.manualPrice === "1"; // ✅ 是否手动改过价
 
-        if (!inpPrice.value || parseNum(inpPrice.value, 0) === 0) {
-          inpPrice.value = String(auto || 0);
-        }
-      } else {
-        if (!inpPrice.value || parseNum(inpPrice.value, 0) === 0) {
-          inpPrice.value = String(p.price || 0);
-        }
-      }
+if (varSel && varSel.selectedOptions && varSel.selectedOptions[0]) {
+  const opt = varSel.selectedOptions[0];
+  const vp = opt.dataset.variantPrice;
+  const auto = vp !== "" ? parseNum(vp, p.price) : p.price;
 
+  if (!manual) inpPrice.value = String(auto || 0); // ✅ 没手动改价就覆盖
+} else {
+  if (!manual) inpPrice.value = String(p.price || 0);
+}
       recalcTotals();
     }
 
     selP.onchange = () => {
-      const varSel = refreshVariantUI(selP.value);
-      if (varSel) varSel.onchange = autofillByProductAndVariant;
-      autofillByProductAndVariant();
-    };
-
+  tr.dataset.manualPrice = "0"; // ✅ 换商品后默认用自动价格
+  const varSel = refreshVariantUI(selP.value);
+  if (varSel) varSel.onchange = autofillByProductAndVariant;
+  autofillByProductAndVariant();
+};
     inpQty.oninput = recalcTotals;
-    inpPrice.oninput = recalcTotals;
-
+    inpPrice.oninput = () => {
+  tr.dataset.manualPrice = "1"; // ✅ 手动改过价
+  recalcTotals();
+};
     const initialVarSel = refreshVariantUI(selP.value);
     if (initialVarSel) initialVarSel.onchange = autofillByProductAndVariant;
 
@@ -623,23 +622,25 @@
       const unitPrice = parseNum(tr.querySelector('[data-k="unitPrice"]')?.value, 0);
 
       let unitCount = 1;
-      const varSel = tr.querySelector('select[data-k="variantKey"]');
-      if (varSel && varSel.selectedOptions && varSel.selectedOptions[0]) {
-        unitCount = Math.max(1, Math.floor(parseNum(varSel.selectedOptions[0].dataset.unitCount, 1)));
-      }
+let variantLabel = ""; // ✅ 一定要定义
 
-      if (!productId && !description) continue;
-      if (!qty || qty <= 0) continue;
+const varSel = tr.querySelector('select[data-k="variantKey"]');
+if (varSel && varSel.selectedOptions && varSel.selectedOptions[0]) {
+  const opt = varSel.selectedOptions[0];
+  unitCount = Math.max(1, Math.floor(parseNum(opt.dataset.unitCount, 1)));
+  variantLabel = String(opt.textContent || "").trim(); // ✅ 规格文字，例如“整箱(1)”
+}
 
-      items.push({
-        productId: productId || "",
-        variantKey: variantKey || "",
-        variantLabel,              // ✅ 新增：规格文字（比如：整箱(1)）
-        description: String(description || "").trim(),
-        qty,
-        unitPrice,
-        unitCount,
-      });
+// ✅ 没选商品或没选规格时，variantLabel 为空也没问题
+items.push({
+  productId: productId || "",
+  variantKey: variantKey || "",
+  variantLabel, // ✅ 现在不会报错了
+  description: String(description || "").trim(),
+  qty,
+  unitPrice,
+  unitCount,
+});
     }
     return items;
   }
