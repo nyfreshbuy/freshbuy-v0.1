@@ -445,16 +445,19 @@ router.get("/:id/pdf", async (req, res) => {
   // ✅ logo：放这里
   // frontend/admin/assets/images/invoice_logo.png
   const logoPath = path.resolve(__dirname, "../../../frontend/admin/assets/images/invoice_logo.png");
-  try {
-    doc.image(logoPath, 36, 26, { width: 58 });
-  } catch {}
-
+try {
+  const logoW = 90; // 可调：80~110
+  const x = (doc.page.width - logoW) / 2;
+  const y = doc.y + 6;
+  doc.image(logoPath, x, y, { width: logoW });
+  doc.y = y + 40; // 往下留空（根据 logoW 可调）
+} catch {}
   // 抬头居中（中文大字 + 英文 + 地址电话）
-  doc.fontSize(22).text("在鲜购", 0, 22, { align: "center" });
-  doc.fontSize(12).text("margarita market inc", { align: "center" });
-  doc.fontSize(10).text("19926 48th ave freshmeadows ny11365", { align: "center" });
-  doc.fontSize(10).text("tel 9297070098", { align: "center" });
-
+ doc.fontSize(22).text("在鲜购商城", 0, 22, { align: "center" });   // ✅ 最大
+doc.fontSize(12).text("Margarita Market Inc", { align: "center" }); // ✅ 公司名
+doc.fontSize(10).text("www.freshbuy.com", { align: "center" });     // ✅ 网站（我建议放这里，理由看下面）
+doc.fontSize(10).text("19926 48th ave freshmeadows ny 11365", { align: "center" });
+doc.fontSize(10).text("Tel: 929-707-0098", { align: "center" });
   doc.moveDown(1.2);
 
   // Sold To / Ship To 两列
