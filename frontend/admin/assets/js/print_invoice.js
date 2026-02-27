@@ -29,7 +29,8 @@
     const x = Number(n || 0);
     return "$" + (Number.isFinite(x) ? x.toFixed(2) : "0.00");
   }
-
+const LOGO_URL = "/admin/assets/images/invoice_logo.png"; // ✅ 你的logo路径
+const SITE_URL = "www.freshbuy.com";                      // ✅ 你的网站
   const hint = document.getElementById("hint");
   const root = document.getElementById("root");
   const btnPrint = document.getElementById("btnPrint");
@@ -61,18 +62,22 @@
 
     // 简洁打印排版（你要更像正式发票我也能再美化）
     root.innerHTML = `
-      <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-        <div>
-          <div style="font-size:18px;font-weight:700;">Invoice / 发票</div>
-          <div class="muted">No: ${inv.invoiceNo || ""}</div>
-          <div class="muted">Date: ${(inv.date || "").slice(0,10)}</div>
-        </div>
-        <div style="text-align:right;">
-          <div style="font-weight:600;">Margarita Market</div>
-          <div class="muted">Admin Print View</div>
-        </div>
-      </div>
+      <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start;">
+  <div>
+    <div style="font-size:18px;font-weight:700;">Invoice / 发票</div>
+    <div class="muted">No: ${inv.invoiceNo || ""}</div>
+    <div class="muted">Date: ${(inv.date || "").slice(0,10)}</div>
+  </div>
 
+  <div style="text-align:right;min-width:220px;">
+    <div style="font-size:26px;font-weight:900;line-height:1.1;">在鲜购商城</div>
+    <div style="font-size:14px;font-weight:700;margin-top:4px;">Margarita Market Inc</div>
+    <div class="muted" style="margin-top:2px;">${SITE_URL}</div>
+    <div style="margin-top:8px;">
+      <img src="${LOGO_URL}" alt="logo" style="height:52px;object-fit:contain;" />
+    </div>
+  </div>
+</div>
       <hr style="border:none;border-top:1px solid #e5e7eb;margin:12px 0;" />
 
       <div style="display:flex;gap:14px;flex-wrap:wrap;">
@@ -101,17 +106,23 @@
         </thead>
         <tbody>
           ${items.map(it => {
-            const qty = Number(it.qty || 0);
-            const unitPrice = Number(it.unitPrice || 0);
-            const line = Math.round(qty * unitPrice * 100)/100;
-            return `
-              <tr>
-                <td>${(it.description || "").toString()}</td>
-                <td>${qty}</td>
-                <td>${money(unitPrice)}</td>
-                <td>${money(line)}</td>
-              </tr>`;
-          }).join("")}
+  const qty = Number(it.qty || 0);
+  const unitPrice = Number(it.unitPrice || 0);
+  const line = Math.round(qty * unitPrice * 100)/100;
+
+  // ✅ 规格显示：description + (variantLabel)
+  const baseDesc = (it.description || "").toString();
+  const vlab = (it.variantLabel || "").toString().trim();
+  const showDesc = vlab ? `${baseDesc} (${vlab})` : baseDesc;
+
+  return `
+    <tr>
+      <td>${showDesc}</td>
+      <td>${qty}</td>
+      <td>${money(unitPrice)}</td>
+      <td>${money(line)}</td>
+    </tr>`;
+}).join("")}
         </tbody>
       </table>
 
