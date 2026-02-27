@@ -30,7 +30,9 @@
     return "$" + (Number.isFinite(x) ? x.toFixed(2) : "0.00");
   }
 const LOGO_URL = "/admin/assets/images/invoice_logo.png"; // ✅ 你的logo路径
-const SITE_URL = "www.freshbuy.com";                      // ✅ 你的网站
+const SITE_URL = "网站：www.nyfreshbuy.com";
+const COMPANY_ADDR = "公司地址：19926 48th Ave, Fresh Meadows, NY 11365";
+const COMPANY_TEL  = "电话: 929-707-0098";                      // ✅ 你的网站
   const hint = document.getElementById("hint");
   const root = document.getElementById("root");
   const btnPrint = document.getElementById("btnPrint");
@@ -70,13 +72,17 @@ const SITE_URL = "www.freshbuy.com";                      // ✅ 你的网站
   </div>
 
   <div style="text-align:right;min-width:220px;">
-    <div style="font-size:26px;font-weight:900;line-height:1.1;">在鲜购商城</div>
-    <div style="font-size:14px;font-weight:700;margin-top:4px;">Margarita Market Inc</div>
-    <div class="muted" style="margin-top:2px;">${SITE_URL}</div>
-    <div style="margin-top:8px;">
-      <img src="${LOGO_URL}" alt="logo" style="height:52px;object-fit:contain;" />
-    </div>
+  <div style="font-size:26px;font-weight:900;line-height:1.1;">在鲜购商城</div>
+  <div style="font-size:14px;font-weight:700;margin-top:4px;">Margarita Market Inc</div>
+
+  <div class="muted" style="margin-top:2px;">${COMPANY_ADDR}</div>
+  <div class="muted" style="margin-top:2px;">${COMPANY_TEL}</div>
+
+  <div class="muted" style="margin-top:2px;">${SITE_URL}</div>
+  <div style="margin-top:8px;">
+    <img src="${LOGO_URL}" alt="logo" style="height:52px;object-fit:contain;" />
   </div>
+</div>
 </div>
       <hr style="border:none;border-top:1px solid #e5e7eb;margin:12px 0;" />
 
