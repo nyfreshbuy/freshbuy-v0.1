@@ -88,13 +88,16 @@ async function normalizeItemsByDB(items, session) {
     // code 默认用 sku（你 sku 可能为空，允许前端手填）
     const code = String(it.productCode || p.sku || "");
 
-    out.push({
-      ...it,
-      variantKey,
-      unitCount,
-      productCode: code,
-      description: String(it.description || p.name || ""),
-    });
+   const variantLabel = String(it.variantLabel || v?.label || "").trim();
+
+out.push({
+  ...it,
+  variantKey,
+  variantLabel, // ✅ 保存进 DB，PDF 才能打印
+  unitCount,
+  productCode: code,
+  description: String(it.description || p.name || ""),
+});
   }
   return out;
 }
@@ -501,7 +504,11 @@ router.get("/:id/pdf", async (req, res) => {
     const yy = doc.y;
     doc.text(String(it.qty ?? 0), 36, yy, { width: 40 });
     doc.text(cleanText(it.productCode), 76, yy, { width: 90 });
-    doc.text(cleanText(it.description), 166, yy, { width: 220 });
+    const baseDesc = cleanText(it.description);
+const vlab = cleanText(it.variantLabel);
+const showDesc = vlab ? `${baseDesc} (${vlab})` : baseDesc;
+
+doc.text(showDesc, 166, yy, { width: 220 });
     doc.text(`$${Number(it.unitPrice || 0).toFixed(2)}`, 386, yy, { width: 80, align: "right" });
     doc.text(`$${Number(it.lineTotal || 0).toFixed(2)}`, 466, yy, { width: 100, align: "right" });
     doc.moveDown(0.9);

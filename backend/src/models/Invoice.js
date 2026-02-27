@@ -5,9 +5,11 @@ const invoiceItemSchema = new mongoose.Schema(
     // 从商品管理选才有
     productId: { type: String, default: "" },
 
-    // ✅ 选中的规格：single / box12 / box24
-    variantKey: { type: String, default: "" },
+   // ✅ 选中的规格：single / box12 / box24
+variantKey: { type: String, default: "" },
 
+// ✅ 规格显示文字：比如 “整箱(1)” / “12瓶装”
+variantLabel: { type: String, default: "" },
     // prdt code：优先 sku，没有就允许手填
     productCode: { type: String, default: "" },
 
