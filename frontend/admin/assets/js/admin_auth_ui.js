@@ -61,7 +61,7 @@
   const role = localStorage.getItem(ROLE_KEY);
   const nickname = localStorage.getItem(NICK_KEY) || "管理员";
 
-  const isAdminLoggedIn = Boolean(token && role === "admin");
+  const isAdminLoggedIn = Boolean(token);
 
   // 登录页不显示“登录”按钮也行（避免重复）
   const isLoginPage = /\/admin\/login\.html$/i.test(location.pathname) || /login\.html$/i.test(location.pathname);
@@ -79,13 +79,24 @@
   });
 
   btnLogout.addEventListener("click", () => {
-    if (!confirm("确认退出后台登录？")) return;
+  if (!confirm("确认退出后台登录？")) return;
 
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(ROLE_KEY);
-    localStorage.removeItem(NICK_KEY);
-    localStorage.removeItem("freshbuy_is_logged_in");
+  // ✅ 1) 清所有可能的 token key（关键！）
+  const KEYS = [
+    "freshbuy_token",
+    "admin_token",
+    "token",
+    "auth_token",
+    "jwt",
+    "access_token",
+    "freshbuy_is_logged_in",
+    "freshbuy_role",
+    "freshbuy_login_nickname",
+  ];
+  KEYS.forEach((k) => localStorage.removeItem(k));
+  sessionStorage.clear();
 
-    location.href = "./login.html";
-  });
+  // ✅ 2) 用 replace 防止浏览器后退回到缓存的已登录页面
+  location.replace("./login.html?t=" + Date.now());
+});
 })();
