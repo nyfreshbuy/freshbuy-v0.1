@@ -64,6 +64,8 @@ import resetPwdRouter from "./routes/auth_reset_password.js";
 import zonesPublicListRouter from "./routes/zones_public_list.js";
 import bannersRouter from "./routes/banners.js";
 import adminBannersRouter from "./routes/admin_banners.js";
+import adminLeadersRouter from "./routes/admin_leaders.js";
+import leaderRouter from "./routes/leader.js";
 // =======================
 // ESM 环境下的 __dirname
 // =======================
@@ -200,6 +202,8 @@ app.use("/api/auth", authVerifyRegisterRouter);
 app.use("/api/users", userProfileRouter);
 app.use("/api/users", usersRouter);
 app.use("/api/user", userMeRouter);
+// ✅ 团长（团长端/客户绑定/邀请码等）
+app.use("/api/leader", leaderRouter);
 
 // ---- 支付 ----
 app.use("/api/payments", paymentsRouter);
@@ -241,7 +245,8 @@ app.use("/api/admin", adminDriversRouter);
 
 // 后台结算
 app.use("/api/admin/settlements", adminSettlementsRouter);
-
+// ✅ 团长（后台管理）
+app.use("/api/admin/leaders", adminLeadersRouter);
 // 后台通用 admin 功能
 app.use("/api/admin", adminRouter);
 

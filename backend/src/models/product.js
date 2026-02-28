@@ -3,8 +3,6 @@ import mongoose from "mongoose";
 
 // =========================
 // ✅ 规格（单个/整箱）Schema
-// 说明：你 MongoDB 里 variants 里已经有很多字段
-// 如果 schema 不包含它们，后续保存会被 mongoose 丢字段（默认 strict=true）
 // =========================
 const productVariantSchema = new mongoose.Schema(
   {
@@ -26,8 +24,8 @@ const productVariantSchema = new mongoose.Schema(
     // 可选：排序
     sortOrder: { type: Number, default: 0 },
 
-    // ✅ 你 DB 里 variants 还存在这些字段（全部补齐，避免保存时丢失）
-    stock: { type: Number, default: null }, // 如果你未来想做“规格库存”，可用
+    // ✅ 规格库存（可选）
+    stock: { type: Number, default: null },
     minStock: { type: Number, default: null },
     allowZeroStock: { type: Boolean, default: null },
 
@@ -38,11 +36,19 @@ const productVariantSchema = new mongoose.Schema(
     activeFrom: { type: Date, default: null },
     activeTo: { type: Date, default: null },
 
-    // ✅ 规格级特价（你 DB 里 variants.single 上就有）
+    // ✅ 规格级特价
     specialEnabled: { type: Boolean, default: false },
     specialPrice: { type: Number, default: null }, // 旧字段兼容
-    specialQty: { type: Number, default: 1, min: 1 },
+
+    // ✅ 关键：默认 0 = 无特价（更符合你 orders.js 的逻辑）
+    specialQty: { type: Number, default: 0, min: 0 },
     specialTotalPrice: { type: Number, default: null },
+
+    // ✅ 兼容旧命名（你 orders.js select 里有）
+    dealQty: { type: Number, default: 0, min: 0 },
+    dealTotalPrice: { type: Number, default: null },
+    dealPrice: { type: Number, default: null },
+
     specialFrom: { type: Date, default: null },
     specialTo: { type: Date, default: null },
 
@@ -71,31 +77,47 @@ const productSchema = new mongoose.Schema(
     desc: { type: String, trim: true, default: "" },
 
     // 价格相关
-    price: { type: Number, required: true, min: 0 }, // 当前售卖价
+    // ✅ 不要 required：避免创建/更新时没传 price 就报错
+    price: { type: Number, default: 0, min: 0 }, // 当前售卖价（可由 originPrice/特价逻辑算）
     originPrice: { type: Number, default: 0, min: 0 }, // 单件原价
     cost: { type: Number, default: 0, min: 0 },
     taxable: { type: Boolean, default: false },
 
-    // ✅ 产品级押金（你现在就是用这个）
+    // ✅ 押金字段（orders.js 会优先 bottleDeposit/containerDeposit > deposit > crv）
     deposit: { type: Number, default: 0, min: 0 },
+    bottleDeposit: { type: Number, default: 0, min: 0 },
+    containerDeposit: { type: Number, default: 0, min: 0 },
+    crv: { type: Number, default: 0, min: 0 },
 
-    // 分类
+    // 分类（尽量把你 orders.js 用到的都补齐）
     topCategoryKey: { type: String, trim: true, default: "" },
+
     category: { type: String, trim: true, default: "" },
     subCategory: { type: String, trim: true, default: "" },
 
+    // ✅ 兼容更多命名（orders.js hotFlag 判断会读这些）
+    mainCategory: { type: String, trim: true, default: "" },
+    subcategory: { type: String, trim: true, default: "" },
+    section: { type: String, trim: true, default: "" },
+
     // 标识/标签
     tag: { type: String, trim: true, default: "" },
-    type: { type: String, trim: true, default: "normal" }, // hot/normal...
+    type: { type: String, trim: true, default: "normal" },
+
+    // ✅ hotFlag 相关
+    isHot: { type: Boolean, default: false },
+    isHotDeal: { type: Boolean, default: false },
+    hotDeal: { type: Boolean, default: false },
+
+    // ✅ 文本/数组标签
+    tags: [{ type: String, trim: true }],
     labels: [{ type: String, trim: true }],
 
     // 图片
     images: [{ type: String, trim: true }],
     image: { type: String, trim: true, default: "" },
 
-    // =========================
-    // ✅ 规格 variants（单个/整箱）
-    // =========================
+    // ✅ 规格 variants
     variants: { type: [productVariantSchema], default: [] },
 
     // 库存（共用一个库存：以“基础单位”计数）
@@ -112,13 +134,19 @@ const productSchema = new mongoose.Schema(
     activeFrom: { type: Date, default: null },
     activeTo: { type: Date, default: null },
 
-    // =========================
-    // ✅ 产品级特价（有些商品用产品级，有些用 variant级）
-    // =========================
+    // ✅ 产品级特价
     specialEnabled: { type: Boolean, default: false },
     specialPrice: { type: Number, default: null },
-    specialQty: { type: Number, default: 1, min: 1 },
+    specialQty: { type: Number, default: 0, min: 0 }, // ✅ 默认 0=无特价
     specialTotalPrice: { type: Number, default: null },
+
+    // ✅ 兼容旧命名（你 orders.js select 里有）
+    specialN: { type: Number, default: 0, min: 0 },
+    specialTotal: { type: Number, default: null },
+    dealQty: { type: Number, default: 0, min: 0 },
+    dealTotalPrice: { type: Number, default: null },
+    dealPrice: { type: Number, default: null },
+
     specialFrom: { type: Date, default: null },
     specialTo: { type: Date, default: null },
 
@@ -142,32 +170,45 @@ const productSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// ✅ variants.key 索引
+// ✅ 索引
 productSchema.index({ "variants.key": 1 });
+productSchema.index({ id: 1 });
 
 // =========================
-// ✅ 保存前规范化：产品级特价
-// - specialEnabled=false 时清空特价字段
-// - specialQty<1 自动修正为 1
-// - qty=1 且 specialTotalPrice 有值时，同步 specialPrice（兼容旧逻辑）
+// ✅ 保存前规范化
 // =========================
 productSchema.pre("save", function () {
   try {
+    const normMoney = (v, def = 0) => {
+      const n = Number(v);
+      if (!Number.isFinite(n)) return def;
+      return n < 0 ? 0 : n;
+    };
+    const toBool = (x) => x === true || x === "true" || x === 1 || x === "1" || x === "yes";
+
     // 押金兜底
-    if (!Number.isFinite(Number(this.deposit))) this.deposit = 0;
-    if (Number(this.deposit) < 0) this.deposit = 0;
+    this.deposit = normMoney(this.deposit, 0);
+    this.bottleDeposit = normMoney(this.bottleDeposit, 0);
+    this.containerDeposit = normMoney(this.containerDeposit, 0);
+    this.crv = normMoney(this.crv, 0);
+
+    // 爆品 flags
+    this.isHot = toBool(this.isHot);
+    this.isHotDeal = toBool(this.isHotDeal);
+    this.hotDeal = toBool(this.hotDeal);
 
     // 产品级特价规范化
     if (!this.specialEnabled) {
       this.specialPrice = null;
-      this.specialQty = 1;
+      this.specialQty = 0;
       this.specialTotalPrice = null;
       this.specialFrom = null;
       this.specialTo = null;
     } else {
-      const qty = Math.max(1, Math.floor(Number(this.specialQty || 1)));
+      const qty = Math.max(0, Math.floor(Number(this.specialQty || 0)));
       this.specialQty = qty;
 
+      // qty=1 时，specialTotalPrice 兼容为 specialPrice
       if (qty === 1 && this.specialTotalPrice != null) {
         const t = Number(this.specialTotalPrice);
         if (Number.isFinite(t) && t > 0) this.specialPrice = t;
@@ -179,10 +220,9 @@ productSchema.pre("save", function () {
       for (const v of this.variants) {
         if (!v) continue;
 
-        // unitCount 兜底
         v.unitCount = Math.max(1, Math.floor(Number(v.unitCount || 1)));
 
-        // 规格押金兜底（允许 null：代表“用产品级 deposit”）
+        // 规格押金兜底（允许 null 代表用产品级 deposit）
         if (v.deposit != null) {
           const dv = Number(v.deposit);
           v.deposit = Number.isFinite(dv) && dv >= 0 ? dv : 0;
@@ -190,12 +230,12 @@ productSchema.pre("save", function () {
 
         if (!v.specialEnabled) {
           v.specialPrice = null;
-          v.specialQty = 1;
+          v.specialQty = 0;
           v.specialTotalPrice = null;
           v.specialFrom = null;
           v.specialTo = null;
         } else {
-          const q = Math.max(1, Math.floor(Number(v.specialQty || 1)));
+          const q = Math.max(0, Math.floor(Number(v.specialQty || 0)));
           v.specialQty = q;
 
           if (q === 1 && v.specialTotalPrice != null) {

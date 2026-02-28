@@ -88,6 +88,7 @@ const orderItemSchema = new mongoose.Schema(
     // ✅ 兼容旧字段（有些前端会传 taxable / isSpecial 等）
     taxable: { type: Boolean, default: false },
     isSpecial: { type: Boolean, default: false },
+    hotFlag: { type: Boolean, default: false }, // ✅ NEW
     tag: { type: String, default: "" },
     type: { type: String, default: "" },
 
@@ -317,6 +318,21 @@ deliverySms: {
   to: { type: String, default: "" },
   photoUrl: { type: String, default: "" },
 },
+    // =========================================================
+    // 👑 团长佣金（推荐团长）结算快照（新增，顶层字段确保严格 schema 也能落库）
+    // =========================================================
+    leaderCommission: {
+      settled: { type: Boolean, default: false, index: true }, // ✅ 幂等开关
+      settledAt: { type: Date },
+      amount: { type: Number, default: 0 },
+
+      // 佣金归属团长
+      leaderId: { type: mongoose.Schema.Types.ObjectId, ref: "User", index: true, default: null },
+      leaderCode: { type: String, default: "" },
+
+      // 买家绑定的邀请码（便于排查）
+      buyerInvitedByCode: { type: String, default: "" },
+    },
     settlementGenerated: { type: Boolean, default: false, index: true },
     settlementId: { type: mongoose.Schema.Types.ObjectId, ref: "Settlement", index: true },
   },
@@ -357,7 +373,8 @@ orderSchema.index({ "payment.intentKey": 1 });
 
 orderSchema.index({ "stockReserve.productId": 1 });
 orderSchema.index({ "stockReserve.variantKey": 1 });
-
+orderSchema.index({ "leaderCommission.settled": 1, createdAt: -1 });
+orderSchema.index({ "leaderCommission.leaderId": 1, createdAt: -1 });
 // =========================
 // pre-validate：金额 / 批次 / 派单统一
 // ✅ 修复：把押金写入 depositTotal + payment.amountDeposit
