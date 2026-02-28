@@ -9,6 +9,7 @@
 // - PATCH  /api/admin/products/:id/toggle-status
 // - GET    /api/admin/products/:id/purchase-batches
 // - POST   /api/admin/products/:id/purchase-batches
+
 import express from "express";
 import multer from "multer";
 import Product from "../models/product.js";
@@ -20,6 +21,7 @@ const router = express.Router();
 router.use(express.json()); // ✅ 必须加：解析 JSON body
 
 // ===================== 工具函数 =====================
+
 // ✅ DEBUG：确认 admin_products router 已部署并被挂载成功
 router.get("/__ping", (req, res) => {
   res.json({
@@ -55,10 +57,11 @@ async function findProductByAnyId(idParam) {
   return null;
 }
 
-// 库存保护逻辑：库存 ≤ 阈值时自动关掉特价并恢复原价
-// ✅ 同时支持：
-// - 单件特价：specialPrice
-// - N for 总价：specialQty + specialTotalPrice（例如 2 for 0.88）
+function isTrueFlag(v) {
+  return v === true || v === "true" || v === 1 || v === "1" || v === "yes";
+}
+
+// ✅ 允许为空的数值："" / null => null
 function numOrNull(v) {
   if (v === undefined || v === null) return null;
   if (typeof v === "string" && v.trim() === "") return null;
@@ -66,34 +69,102 @@ function numOrNull(v) {
   return Number.isFinite(n) ? n : null;
 }
 
-function normalizeVariants(raw) {
-  if (!Array.isArray(raw)) return [];
-  return raw
-    .map((v) => ({
-      key: String(v?.key || "").trim(),
-      label: String(v?.label || ""),
-      unitCount: Math.max(1, Math.floor(Number(v?.unitCount || 1))),
-      price: numOrNull(v?.price),
-      enabled: v?.enabled !== false,
-      sortOrder: Number(v?.sortOrder || 0),
-    }))
-    .filter((v) => v.key);
+// ✅ 允许为空的日期："" => null
+function dateOrNull(v) {
+  if (v === undefined || v === null) return null;
+  if (typeof v === "string" && v.trim() === "") return null;
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d;
 }
 
+// ✅ variants：保留完整字段，避免 mongoose strict 丢字段
+function normalizeVariants(raw) {
+  if (!Array.isArray(raw)) return [];
+
+  const toBool = (x) => isTrueFlag(x);
+
+  const numOr0 = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  return raw
+    .map((v) => {
+      const key = String(v?.key || "").trim();
+      if (!key) return null;
+
+      const unitCount = Math.max(1, Math.floor(Number(v?.unitCount || 1)));
+
+      // 规格特价
+      const specialEnabled = toBool(v?.specialEnabled);
+      const specialQty = Math.max(1, Math.floor(Number(v?.specialQty || 1)));
+      const specialTotalPrice = numOrNull(v?.specialTotalPrice);
+      const specialPrice =
+        specialEnabled && specialQty === 1 && specialTotalPrice != null
+          ? specialTotalPrice
+          : numOrNull(v?.specialPrice);
+
+      return {
+        key,
+        label: String(v?.label || ""),
+        unitCount,
+
+        // 规格价格
+        price: numOrNull(v?.price),
+
+        // 是否启用
+        enabled: v?.enabled !== false,
+        sortOrder: Number(v?.sortOrder || 0),
+
+        // 规格库存
+        stock: numOrNull(v?.stock),
+        minStock: numOrNull(v?.minStock),
+        allowZeroStock: v?.allowZeroStock === null ? null : toBool(v?.allowZeroStock),
+
+        // 销量/上下架
+        soldCount: Math.max(0, Math.floor(Number(v?.soldCount || 0))),
+        isActive: v?.isActive === undefined ? true : toBool(v?.isActive),
+        status: String(v?.status || "on"),
+        activeFrom: dateOrNull(v?.activeFrom),
+        activeTo: dateOrNull(v?.activeTo),
+
+        // ✅ 规格级特价
+        specialEnabled,
+        specialPrice,
+        specialQty,
+        specialTotalPrice,
+        specialFrom: dateOrNull(v?.specialFrom),
+        specialTo: dateOrNull(v?.specialTo),
+
+        // 标签类（可选）
+        isFlashDeal: toBool(v?.isFlashDeal),
+        isSpecial: toBool(v?.isSpecial),
+        isFamilyMustHave: toBool(v?.isFamilyMustHave),
+        isBestSeller: toBool(v?.isBestSeller),
+        isNewArrival: toBool(v?.isNewArrival),
+
+        // 低库存自动取消特价（规格级）
+        autoCancelSpecialOnLowStock: toBool(v?.autoCancelSpecialOnLowStock),
+        autoCancelSpecialThreshold: Math.max(0, Math.floor(numOr0(v?.autoCancelSpecialThreshold))),
+
+        // ✅ 规格级押金（允许 null 代表用产品级 deposit）
+        deposit: numOrNull(v?.deposit),
+      };
+    })
+    .filter(Boolean);
+}
+
+// ✅ 产品级 special + deposit（并保留 bottleDeposit/containerDeposit/crv）
 function normalizeSpecialAndDeposit(body) {
   const specialEnabled = !!body.specialEnabled;
 
-  // ✅ deposit 兼容：前端可能传 bottleDeposit / crv
   const deposit =
-    Number(
-      body.deposit ??
-        body.bottleDeposit ??
-        body.containerDeposit ??
-        body.crv ??
-        0
-    ) || 0;
+    Number(body.deposit ?? body.bottleDeposit ?? body.containerDeposit ?? body.crv ?? 0) || 0;
 
-  // ✅ specialQty：空字符串会变 0，所以必须兜底 >=1
+  const bottleDeposit = Number(body.bottleDeposit ?? 0) || 0;
+  const containerDeposit = Number(body.containerDeposit ?? 0) || 0;
+  const crv = Number(body.crv ?? 0) || 0;
+
   const qtyRaw = Number(
     body.specialQty ??
       body.specialN ??
@@ -104,7 +175,6 @@ function normalizeSpecialAndDeposit(body) {
   );
   const specialQty = Math.max(1, Math.floor(qtyRaw || 1));
 
-  // ✅ specialTotalPrice：允许为空（null），不要把 "" 变成 0
   const specialTotalPrice = numOrNull(
     body.specialTotalPrice ??
       body.specialTotal ??
@@ -113,16 +183,13 @@ function normalizeSpecialAndDeposit(body) {
       null
   );
 
-  // ✅ specialPrice：允许为空（null）
-  const specialPrice = numOrNull(
-    body.specialPrice ??
-      body.special_price ??
-      null
-  );
+  const specialPrice = numOrNull(body.specialPrice ?? body.special_price ?? null);
 
-  // ✅ specialEnabled=false 时必须清空（否则前端/计算会混乱）
   const normalized = {
-    deposit,
+    deposit: Math.max(0, Number(deposit) || 0),
+    bottleDeposit: Math.max(0, Number(bottleDeposit) || 0),
+    containerDeposit: Math.max(0, Number(containerDeposit) || 0),
+    crv: Math.max(0, Number(crv) || 0),
     specialEnabled,
   };
 
@@ -135,11 +202,9 @@ function normalizeSpecialAndDeposit(body) {
   } else {
     normalized.specialQty = specialQty;
     normalized.specialTotalPrice = specialTotalPrice;
-    // qty=1 且只填了总价：同步到 specialPrice（兼容旧逻辑）
+
     normalized.specialPrice =
-      specialQty === 1 && specialTotalPrice != null
-        ? specialTotalPrice
-        : specialPrice;
+      specialQty === 1 && specialTotalPrice != null ? specialTotalPrice : specialPrice;
 
     normalized.specialFrom = body.specialFrom ?? null;
     normalized.specialTo = body.specialTo ?? null;
@@ -147,6 +212,11 @@ function normalizeSpecialAndDeposit(body) {
 
   return normalized;
 }
+
+// 库存保护逻辑：库存 ≤ 阈值时自动关掉特价并恢复原价
+// ✅ 同时支持：
+// - 单件特价：specialPrice
+// - N for 总价：specialQty + specialTotalPrice（例如 2 for 0.88）
 function applyAutoCancelSpecial(p) {
   if (!p) return;
 
@@ -154,12 +224,7 @@ function applyAutoCancelSpecial(p) {
   const useGuard = !!p.autoCancelSpecialOnLowStock;
 
   // 低库存自动取消特价
-  if (
-    useGuard &&
-    threshold > 0 &&
-    typeof p.stock === "number" &&
-    p.stock <= threshold
-  ) {
+  if (useGuard && threshold > 0 && typeof p.stock === "number" && p.stock <= threshold) {
     p.specialEnabled = false;
     p.specialPrice = null;
     // ✅ 不强制清空 specialQty/specialTotalPrice（保留设置，方便你之后再启用）
@@ -175,25 +240,19 @@ function applyAutoCancelSpecial(p) {
 
   // ✅ 判断是否启用特价（允许两种模式）
   const qty = Math.max(1, Math.floor(Number(p.specialQty || 1)));
-  const total =
-    p.specialTotalPrice == null ? null : Number(p.specialTotalPrice);
+  const total = p.specialTotalPrice == null ? null : Number(p.specialTotalPrice);
   const unitSpecial = p.specialPrice == null ? null : Number(p.specialPrice);
 
   const hasNForTotal = qty > 1 && Number.isFinite(total) && total > 0;
-  const hasUnitSpecial =
-    Number.isFinite(unitSpecial) && unitSpecial > 0;
+  const hasUnitSpecial = Number.isFinite(unitSpecial) && unitSpecial > 0;
 
   const useSpecial = !!p.specialEnabled && okTime && (hasNForTotal || hasUnitSpecial);
 
   // ✅ 计算“当前售卖价 price”
-  // 规则：
-  // - 如果是 N for total：把单件展示价 = total / qty（保留两位小数）
-  // - 否则用单件特价 specialPrice
   if (useSpecial) {
     if (hasNForTotal) {
       const unit = Number((total / qty).toFixed(2));
       p.price = unit > 0 ? unit : origin;
-      // ✅ 不要强行把 specialPrice 覆盖成 unit（否则你会丢掉 2for 的语义）
     } else {
       p.price = Number(unitSpecial) || origin;
     }
@@ -206,28 +265,22 @@ function applyAutoCancelSpecial(p) {
 async function recomputeAutoTagsForList(list) {
   const now = Date.now();
 
-  // 注意：这里用串行更新，数据量不大就行；后期可优化成 bulkWrite
   for (const p of list) {
     const origin = Number(p.originPrice) || 0;
     const special = Number(p.specialPrice) || 0;
 
-    const isFamilyMustHave =
-      !!p.specialEnabled && special > 0 && origin > 0 && special <= origin * 0.8;
-
+    const isFamilyMustHave = !!p.specialEnabled && special > 0 && origin > 0 && special <= origin * 0.8;
     const isBestSeller = Number(p.soldCount || 0) > 50;
 
     const created = p.createdAt ? new Date(p.createdAt).getTime() : 0;
     const isNewArrival = created && now - created < 7 * 24 * 60 * 60 * 1000;
 
-    // 顺便跑库存保护（会影响 price / specialEnabled / specialPrice）
     applyAutoCancelSpecial(p);
 
-    // 更新对象用于返回
     p.isFamilyMustHave = isFamilyMustHave;
     p.isBestSeller = isBestSeller;
     p.isNewArrival = isNewArrival;
 
-    // 落库（确保下一次查询一致）
     await Product.findByIdAndUpdate(p._id, {
       $set: {
         isFamilyMustHave,
@@ -244,27 +297,21 @@ async function recomputeAutoTagsForList(list) {
 // ===================== 路由：上传图片 =====================
 
 // POST /api/admin/products/upload-image
-// ✅ Cloudinary 版：不再保存到本地 /uploads，直接返回云端 https 链接
 router.post("/upload-image", upload.single("image"), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ success: false, message: "未接收到文件" });
     }
 
-    // 上传到 Cloudinary（文件夹可用 env: CLOUDINARY_FOLDER 控制）
     const up = await uploadBufferToCloudinary(req.file.buffer, {
       public_id: `admin_product_${Date.now()}_${Math.random().toString(16).slice(2)}`,
     });
 
-    // 返回给前端的永久链接
     const url = up.secure_url;
-
     return res.json({ success: true, url });
   } catch (err) {
     console.error("上传图片出错:", err);
-    return res
-      .status(500)
-      .json({ success: false, message: err.message || "上传失败" });
+    return res.status(500).json({ success: false, message: err.message || "上传失败" });
   }
 });
 
@@ -276,13 +323,6 @@ router.get("/", async (req, res) => {
     const { keyword } = req.query;
     const filter = {};
 
-    // 简单搜索：支持
-    //  商品ID（id）
-    //  商品名（name）
-    //  标签（tag）
-    //  SKU（sku）
-    //  进货公司ID（supplierCompanyId）
-    //  公司内部ID（internalCompanyId）
     if (keyword && String(keyword).trim()) {
       const kw = String(keyword).trim();
       const re = new RegExp(escapeRegex(kw), "i");
@@ -296,10 +336,8 @@ router.get("/", async (req, res) => {
       ];
     }
 
-    // ✅ DB 查询
     const list = await Product.find(filter).sort({ sortOrder: 1, createdAt: -1 });
 
-    // 每次取列表前，重新跑标签和库存保护
     await recomputeAutoTagsForList(list);
 
     return res.json({
@@ -308,9 +346,7 @@ router.get("/", async (req, res) => {
     });
   } catch (err) {
     console.error("获取商品列表出错:", err);
-    return res
-      .status(500)
-      .json({ success: false, message: err.message || "服务器错误" });
+    return res.status(500).json({ success: false, message: err.message || "服务器错误" });
   }
 });
 
@@ -321,7 +357,6 @@ router.post("/", async (req, res) => {
   try {
     const body = req.body || {};
 
-    // 兼容你原要求：name + originPrice 必填
     if (!body.name || body.originPrice === undefined || body.originPrice === null) {
       return res.status(400).json({
         success: false,
@@ -329,10 +364,11 @@ router.post("/", async (req, res) => {
       });
     }
 
-    // 兼容你旧内存逻辑：如果没传 id 就生成一个，避免前端还在用旧 id
     const legacyId = body.id || "p_" + Date.now();
+
     const specialFix = normalizeSpecialAndDeposit(body);
-const variantsFix = normalizeVariants(body.variants);
+    const variantsFix = normalizeVariants(body.variants);
+
     const created = await Product.create({
       ...body,
       id: legacyId,
@@ -340,6 +376,7 @@ const variantsFix = normalizeVariants(body.variants);
       // 数字字段兜底
       originPrice: Number(body.originPrice),
       stock: body.stock !== undefined ? Number(body.stock) : 9999,
+      minStock: body.minStock !== undefined ? Number(body.minStock) : 0,
       sortOrder: body.sortOrder !== undefined ? Number(body.sortOrder) : 99999,
       cost: body.cost !== undefined ? Number(body.cost) : 0,
       soldCount: body.soldCount !== undefined ? Number(body.soldCount) : 0,
@@ -347,23 +384,34 @@ const variantsFix = normalizeVariants(body.variants);
       // 布尔字段兜底
       isActive: body.isActive === undefined ? true : !!body.isActive,
       isFlashDeal: !!body.isFlashDeal,
+
+      // ✅ 爆品字段
+      isHot: !!body.isHot,
+      isHotDeal: !!body.isHotDeal,
+      hotDeal: !!body.hotDeal,
+
+      // ✅ special + deposit（包含 bottle/container/crv）
+      deposit: specialFix.deposit,
+      bottleDeposit: specialFix.bottleDeposit,
+      containerDeposit: specialFix.containerDeposit,
+      crv: specialFix.crv,
+
       specialEnabled: specialFix.specialEnabled,
-specialQty: specialFix.specialQty,
-specialTotalPrice: specialFix.specialTotalPrice,
-specialPrice: specialFix.specialPrice,
-specialFrom: specialFix.specialFrom,
-specialTo: specialFix.specialTo,
+      specialQty: specialFix.specialQty,
+      specialTotalPrice: specialFix.specialTotalPrice,
+      specialPrice: specialFix.specialPrice,
+      specialFrom: specialFix.specialFrom,
+      specialTo: specialFix.specialTo,
+
+      // ✅ variants
       variants: variantsFix,
+
       // 数组
       labels: Array.isArray(body.labels) ? body.labels : [],
-      images: Array.isArray(body.images)
-        ? body.images
-        : body.images
-        ? [body.images]
-        : undefined,
+      tags: Array.isArray(body.tags) ? body.tags : typeof body.tags === "string" && body.tags.trim() ? [body.tags.trim()] : [],
+      images: Array.isArray(body.images) ? body.images : body.images ? [body.images] : undefined,
     });
 
-    // 跑一遍库存保护（并保存 price）
     applyAutoCancelSpecial(created);
     await Product.findByIdAndUpdate(created._id, { $set: { price: created.price } });
 
@@ -373,9 +421,7 @@ specialTo: specialFix.specialTo,
     });
   } catch (err) {
     console.error("新增商品出错:", err);
-    return res
-      .status(500)
-      .json({ success: false, message: err.message || "服务器错误" });
+    return res.status(500).json({ success: false, message: err.message || "服务器错误" });
   }
 });
 
@@ -392,7 +438,14 @@ router.patch("/:id", async (req, res) => {
       return res.status(404).json({ success: false, message: "商品不存在" });
     }
 
-    // 允许更新的字段（沿用你原来的）
+    // ✅ 兼容后台可能传 catKey/categoryKey
+    if (body.category === undefined && body.catKey !== undefined) body.category = body.catKey;
+    if (body.category === undefined && body.categoryKey !== undefined) body.category = body.categoryKey;
+
+    if (body.subCategory === undefined && body.subCatKey !== undefined) body.subCategory = body.subCatKey;
+    if (body.subCategory === undefined && body.subCategoryKey !== undefined) body.subCategory = body.subCategoryKey;
+
+    // 允许更新的字段
     const fields = [
       "name",
       "sku",
@@ -406,13 +459,21 @@ router.patch("/:id", async (req, res) => {
       "allowZeroStock",
       "taxable",
       "deposit",
+      "bottleDeposit",
+      "containerDeposit",
+      "crv",
       "topCategoryKey",
       "category",
       "subCategory",
+      "mainCategory",
+      "subcategory",
+      "section",
       "sortOrder",
       "image",
       "images",
       "labels",
+      "tags",
+
       "isFlashDeal",
       "isFamilyMustHave",
       "isBestSeller",
@@ -421,50 +482,47 @@ router.patch("/:id", async (req, res) => {
       "status",
       "activeFrom",
       "activeTo",
+
       "specialEnabled",
       "specialPrice",
       "specialQty",
       "specialTotalPrice",
       "specialFrom",
       "specialTo",
+
       "variants",
 
       // 库存保护
       "autoCancelSpecialOnLowStock",
       "autoCancelSpecialThreshold",
+
       // ⭐ 进货公司 ID & 公司内部 ID
       "supplierCompanyId",
       "internalCompanyId",
+
       // 成本/销量
       "cost",
       "soldCount",
+
       // 特价标识
       "isSpecial",
+
+      // ✅ 爆品字段
+      "isHot",
+      "isHotDeal",
+      "hotDeal",
     ];
-
-    // ✅ 兼容后台可能传 catKey/categoryKey
-    if (body.category === undefined && body.catKey !== undefined)
-      body.category = body.catKey;
-    if (body.category === undefined && body.categoryKey !== undefined)
-      body.category = body.categoryKey;
-
-    if (body.subCategory === undefined && body.subCatKey !== undefined)
-      body.subCategory = body.subCatKey;
-    if (body.subCategory === undefined && body.subCategoryKey !== undefined)
-      body.subCategory = body.subCategoryKey;
 
     fields.forEach((key) => {
       if (body[key] === undefined) return;
 
       if (key === "images") {
         if (Array.isArray(body.images)) p.images = body.images;
-        else if (typeof body.images === "string" && body.images.trim())
-          p.images = [body.images.trim()];
+        else if (typeof body.images === "string" && body.images.trim()) p.images = [body.images.trim()];
         else p.images = [];
         return;
       }
 
-      // ✅ variants：必须是数组
       if (key === "variants") {
         if (Array.isArray(body.variants)) p.variants = body.variants;
         else p.variants = [];
@@ -473,9 +531,15 @@ router.patch("/:id", async (req, res) => {
 
       if (key === "labels") {
         if (Array.isArray(body.labels)) p.labels = body.labels;
-        else if (typeof body.labels === "string" && body.labels.trim())
-          p.labels = [body.labels.trim()];
+        else if (typeof body.labels === "string" && body.labels.trim()) p.labels = [body.labels.trim()];
         else p.labels = [];
+        return;
+      }
+
+      if (key === "tags") {
+        if (Array.isArray(body.tags)) p.tags = body.tags;
+        else if (typeof body.tags === "string" && body.tags.trim()) p.tags = [body.tags.trim()];
+        else p.tags = [];
         return;
       }
 
@@ -492,7 +556,10 @@ router.patch("/:id", async (req, res) => {
           "specialTotalPrice",
           "cost",
           "soldCount",
-          "deposit", 
+          "deposit",
+          "bottleDeposit",
+          "containerDeposit",
+          "crv",
         ].includes(key)
       ) {
         p[key] = body[key] === null ? null : Number(body[key]);
@@ -511,6 +578,9 @@ router.patch("/:id", async (req, res) => {
           "autoCancelSpecialOnLowStock",
           "specialEnabled",
           "isSpecial",
+          "isHot",
+          "isHotDeal",
+          "hotDeal",
         ].includes(key)
       ) {
         p[key] = !!body[key];
@@ -519,23 +589,26 @@ router.patch("/:id", async (req, res) => {
 
       p[key] = body[key];
     });
-    // ✅ 统一归一化：special + deposit（解决 "" -> 0、specialQty 变 0 等问题）
-const specialFix = normalizeSpecialAndDeposit(body);
-p.deposit = specialFix.deposit;
 
-p.specialEnabled = specialFix.specialEnabled;
-p.specialQty = specialFix.specialQty;
-p.specialTotalPrice = specialFix.specialTotalPrice;
-p.specialPrice = specialFix.specialPrice;
-p.specialFrom = specialFix.specialFrom;
-p.specialTo = specialFix.specialTo;
+    // ✅ special + deposit 统一归一化（避免 "" -> 0，specialQty 变 0）
+    const specialFix = normalizeSpecialAndDeposit(body);
+    p.deposit = specialFix.deposit;
+    p.bottleDeposit = specialFix.bottleDeposit;
+    p.containerDeposit = specialFix.containerDeposit;
+    p.crv = specialFix.crv;
 
-// ✅ variants 归一化（确保 unitCount 是数字）
-if (body.variants !== undefined) {
-  p.variants = normalizeVariants(body.variants);
-}
+    p.specialEnabled = specialFix.specialEnabled;
+    p.specialQty = specialFix.specialQty;
+    p.specialTotalPrice = specialFix.specialTotalPrice;
+    p.specialPrice = specialFix.specialPrice;
+    p.specialFrom = specialFix.specialFrom;
+    p.specialTo = specialFix.specialTo;
 
-    // 更新后重新计算库存保护与标签（库存保护会重算 price）
+    // ✅ variants 归一化（保留完整字段）
+    if (body.variants !== undefined) {
+      p.variants = normalizeVariants(body.variants);
+    }
+
     applyAutoCancelSpecial(p);
 
     await p.save();
@@ -546,9 +619,7 @@ if (body.variants !== undefined) {
     });
   } catch (err) {
     console.error("更新商品出错:", err);
-    return res
-      .status(500)
-      .json({ success: false, message: err.message || "服务器错误" });
+    return res.status(500).json({ success: false, message: err.message || "服务器错误" });
   }
 });
 
@@ -564,19 +635,16 @@ router.get("/:id/purchase-batches", async (req, res) => {
       return res.status(404).json({ success: false, message: "商品不存在" });
     }
 
-   const batches = await ProductPurchaseBatch.find({ productId: p._id }).sort({ createdAt: -1 });
+    const batches = await ProductPurchaseBatch.find({ productId: p._id }).sort({ createdAt: -1 });
 
-return res.json({
-  success: true,
-  product: toClient(p),
-  batches,
-});
-
+    return res.json({
+      success: true,
+      product: toClient(p),
+      batches,
+    });
   } catch (err) {
     console.error("获取进货批次出错:", err);
-    return res
-      .status(500)
-      .json({ success: false, message: err.message || "服务器错误" });
+    return res.status(500).json({ success: false, message: err.message || "服务器错误" });
   }
 });
 
@@ -592,6 +660,7 @@ router.post("/:id/purchase-batches", async (req, res) => {
 
     const body = req.body || {};
     const supplierName = (body.supplierName || "").trim();
+    const supplierCompanyId = (body.supplierCompanyId || "").trim(); // ✅ 修复：原来你用但没定义
     const boxPrice = Number(body.boxPrice) || 0;
     const boxCount = Number(body.boxCount) || 0;
     const unitsPerBox = Number(body.unitsPerBox) || 0;
@@ -608,12 +677,10 @@ router.post("/:id/purchase-batches", async (req, res) => {
       return res.status(400).json({ success: false, message: "每箱内的件数必须大于 0" });
     }
 
-    // 单件成本 & 总件数 & 总成本
     const unitCost = boxPrice / unitsPerBox;
     const totalUnits = boxCount * unitsPerBox;
     const totalCost = boxPrice * boxCount;
 
-    // 建议零售价：unitCost / (1 - 毛利率)
     let retailPrice = unitCost;
     if (grossMarginPercent > 0 && grossMarginPercent < 100) {
       const rate = grossMarginPercent / 100;
@@ -646,26 +713,21 @@ router.post("/:id/purchase-batches", async (req, res) => {
     // ⭐ 自动用本批次算出来的零售价更新商品原价（originPrice）
     p.originPrice = retailPriceFixed;
 
-    // 重新跑库存保护 + 自动标签
     applyAutoCancelSpecial(p);
     await p.save();
 
-    const batches = await ProductPurchaseBatch.find({ productId: p._id }).sort({
-      createdAt: -1,
-    });
+    const batches = await ProductPurchaseBatch.find({ productId: p._id }).sort({ createdAt: -1 });
 
     return res.json({
       success: true,
       message: "进货批次已保存",
-      product: p,
+      product: toClient(p),
       batch,
       batches,
     });
   } catch (err) {
     console.error("保存进货批次出错:", err);
-    return res
-      .status(500)
-      .json({ success: false, message: err.message || "服务器错误" });
+    return res.status(500).json({ success: false, message: err.message || "服务器错误" });
   }
 });
 
@@ -684,15 +746,12 @@ router.delete("/:id", async (req, res) => {
       return res.status(404).json({ success: false, message: "商品不存在" });
     }
 
-    // 同时把该商品的进货批次删掉
     await ProductPurchaseBatch.deleteMany({ productId: p._id });
 
     return res.json({ success: true });
   } catch (err) {
     console.error("删除商品出错:", err);
-    return res
-      .status(500)
-      .json({ success: false, message: err.message || "服务器错误" });
+    return res.status(500).json({ success: false, message: err.message || "服务器错误" });
   }
 });
 
@@ -714,12 +773,10 @@ router.patch("/:id/toggle-status", async (req, res) => {
 
     await p.save();
 
-    return res.json({ success: true, product: p });
+    return res.json({ success: true, product: toClient(p) });
   } catch (err) {
     console.error("切换上/下架出错:", err);
-    return res
-      .status(500)
-      .json({ success: false, message: err.message || "服务器错误" });
+    return res.status(500).json({ success: false, message: err.message || "服务器错误" });
   }
 });
 

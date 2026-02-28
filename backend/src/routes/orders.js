@@ -8,6 +8,7 @@ import Product from "../models/product.js";
 import { requireLogin } from "../middlewares/auth.js";
 import Wallet from "../models/Wallet.js";
 import { computeTotalsFromPayload, calcSpecialLineTotal } from "../utils/checkout_pricing.js";
+import { calcLeaderCommissionFromOrder } from "../utils/leaderCommission.js";
 import crypto from "crypto";
 const router = express.Router();
 router.use(express.json());
@@ -27,7 +28,15 @@ router.get("/checkout/ping", (req, res) => {
 // ✅ NY 税率（可用环境变量覆盖）
 // =========================
 const NY_TAX_RATE = Number(process.env.NY_TAX_RATE || 0.08875);
-
+// ✅ 统一 Product 查询字段（orders.js 里所有 findById/findOne 都用它）
+const PRODUCT_SELECT =
+  "name sku price originPrice cost taxable " +
+  "deposit bottleDeposit containerDeposit crv " +
+  "image images stock allowZeroStock variants " +
+  "specialEnabled specialPrice specialQty specialTotalPrice specialN specialTotal " +
+  "dealQty dealTotalPrice dealPrice " +
+  "isHot isHotDeal hotDeal " +
+  "tag type category subCategory mainCategory subcategory section tags labels";
 // =========================
 // 工具
 // =========================
@@ -124,19 +133,34 @@ function buildBatchKey(deliveryDate, zoneKey) {
   return `${ymd}|zone:${String(zoneKey || "").trim()}`;
 }
 
-// ===== 工具：爆品判断 =====
-function isSpecialItem(it) {
-  if (!it) return false;
-  if (it.isSpecial || it.isDeal) return true;
+// ===== 工具：爆品判断（与前端 isHotProduct 对齐）=====
+function isTrueFlag(v) {
+  return v === true || v === "true" || v === 1 || v === "1" || v === "yes";
+}
 
-  const tag = String(it.tag || "").trim();
-  const type = String(it.type || "").toLowerCase();
-  const name = String(it.name || "");
+function hasKeywordLike(p, keyword) {
+  if (!p) return false;
+  const kw = String(keyword || "").toLowerCase();
+  const norm = (x) => (x ? String(x).toLowerCase() : "");
 
-  if (tag.includes("爆品")) return true;
-  if (type === "hot") return true;
-  if (name.includes("爆品")) return true;
+  const fields = [p.tag, p.type, p.category, p.subCategory, p.mainCategory, p.subcategory, p.section];
+  if (fields.some((f) => norm(f).includes(kw))) return true;
+
+  if (Array.isArray(p.tags) && p.tags.some((t) => norm(t).includes(kw))) return true;
+  if (Array.isArray(p.labels) && p.labels.some((t) => norm(t).includes(kw))) return true;
+
   return false;
+}
+
+function isHotProductLike(p) {
+  return (
+    isTrueFlag(p?.isHot) ||
+    isTrueFlag(p?.isHotDeal) ||
+    isTrueFlag(p?.hotDeal) ||
+    hasKeywordLike(p, "爆品") ||
+    hasKeywordLike(p, "爆品日") ||
+    hasKeywordLike(p, "hot")
+  );
 }
 // ✅ 规格解析：从 product.variants 找 variantKey
 function getVariantFromProduct(productDoc, variantKey) {
@@ -425,7 +449,8 @@ if (maybeId && mongoose.Types.ObjectId.isValid(maybeId)) {
  const q2 = Product.findOne({ id: maybeId })
   .select(
     "name sku price cost taxable deposit bottleDeposit containerDeposit crv image images stock allowZeroStock variants " +
-      "specialEnabled specialPrice specialQty specialTotalPrice specialN specialTotal dealQty dealTotalPrice dealPrice"
+      "specialEnabled specialPrice specialQty specialTotalPrice specialN specialTotal dealQty dealTotalPrice dealPrice " +
+      "isHot isHotDeal hotDeal tag type category subCategory mainCategory subcategory section tags labels"
   )
   .lean();
 
@@ -477,16 +502,18 @@ let v = null;      // ✅ FIX 2：提前声明（关键）
   (session
     ? await Product.findById(productId)
         .select(
-          "name sku price cost taxable deposit bottleDeposit containerDeposit crv image images stock allowZeroStock variants " +
-            "specialEnabled specialPrice specialQty specialTotalPrice specialN specialTotal dealQty dealTotalPrice dealPrice"
-        )
+  "name sku price cost taxable deposit bottleDeposit containerDeposit crv image images stock allowZeroStock variants " +
+    "specialEnabled specialPrice specialQty specialTotalPrice specialN specialTotal dealQty dealTotalPrice dealPrice " +
+    "isHot isHotDeal hotDeal tag type category subCategory mainCategory subcategory section tags labels"
+)
         .session(session)
         .lean()
     : await Product.findById(productId)
         .select(
-          "name sku price cost taxable deposit bottleDeposit containerDeposit crv image images stock allowZeroStock variants " +
-            "specialEnabled specialPrice specialQty specialTotalPrice specialN specialTotal dealQty dealTotalPrice dealPrice"
-        )
+  "name sku price cost taxable deposit bottleDeposit containerDeposit crv image images stock allowZeroStock variants " +
+    "specialEnabled specialPrice specialQty specialTotalPrice specialN specialTotal dealQty dealTotalPrice dealPrice " +
+    "isHot isHotDeal hotDeal tag type category subCategory mainCategory subcategory section tags labels"
+)
         .lean());
   if (!pdoc) {
     const e = new Error(`商品不存在（productId=${productId}）`);
@@ -632,6 +659,26 @@ console.log("🔎 PRICE CHECK", {
   specialQty,
   specialTotalPrice,
 });
+// ✅ NEW：爆品日专区标记（后端权威）——对齐前端 isHotProduct
+const hotFlag = isHotProductLike({
+  // flags
+  isHot: pdoc?.isHot ?? it.isHot,
+  isHotDeal: pdoc?.isHotDeal ?? it.isHotDeal,
+  hotDeal: pdoc?.hotDeal ?? it.hotDeal,
+
+  // text fields / categories
+  tag: pdoc?.tag ?? it.tag,
+  type: pdoc?.type ?? it.type,
+  category: pdoc?.category ?? it.category,
+  subCategory: pdoc?.subCategory ?? it.subCategory,
+  mainCategory: pdoc?.mainCategory ?? it.mainCategory,
+  subcategory: pdoc?.subcategory ?? it.subcategory,
+  section: pdoc?.section ?? it.section,
+
+  // arrays
+  tags: pdoc?.tags ?? it.tags,
+  labels: pdoc?.labels ?? it.labels,
+});
     cleanItems.push({
       productId,
       legacyProductId: legacyId || "",
@@ -656,14 +703,18 @@ console.log("🔎 PRICE CHECK", {
 
       image: finalImage,
       cost,
+       hotFlag, // ✅ NEW：以后佣金=0%就看它
     });
+    // =========================
+  // ✅ 团长佣金（按 items 成交额计算，和结算口径一致）
+  // =========================
+  const leaderCommission = calcLeaderCommissionFromOrder({ items: cleanItems });
   }
   // -------------------------
   // 规则校验（保留你原来的）
   // -------------------------
-  const hasSpecial = items.some((it) => isSpecialItem(it));
-  const hasNonSpecial = items.some((it) => !isSpecialItem(it));
-
+  const hasSpecial = cleanItems.some((it) => it.hotFlag === true);
+const hasNonSpecial = cleanItems.some((it) => it.hotFlag !== true);
   if (mode === "dealsDay" && (hasNonSpecial || !hasSpecial)) {
     const e = new Error("dealsDay 只能包含爆品");
     e.status = 400;
@@ -812,7 +863,19 @@ zone: zMongo ? { id: zMongo, name: zoneName || "" } : null,
     note: orderNote,
     address: { fullText, zip, zoneId: z, zoneMongoId: zMongo || "", lat, lng },
 
-    items: cleanItems,
+        items: cleanItems,
+
+    // ✅ NEW：团长佣金快照（先不管 leaderId，后续绑定团长再填）
+    commission: {
+      leaderId: "", // 后续你在下单时/派单时绑定团长再写
+      leaderAmount: Number(leaderCommission?.amount || 0),
+      rateHint: Number(leaderCommission?.rateHint || 0),
+      // ⚠️ breakdown 会让订单变大：你要是担心体积，可以删掉这一行
+      breakdown: Array.isArray(leaderCommission?.breakdown) ? leaderCommission.breakdown : [],
+      settled: false,
+      settledAt: null,
+      settlementId: "",
+    },
 
     // ✅ NEW：库存预扣快照（只有 checkout 才会有值）
     stockReserve: Array.isArray(stockReserve) ? stockReserve : [],
