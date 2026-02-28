@@ -1,3 +1,4 @@
+<!-- FILE: frontend/admin/invoices.html -->
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -14,9 +15,33 @@
       color: #111827;
     }
 
-    /* ✅ 关键：主内容给 sidebar 留位置（sidebar 宽度通常 240px） */
+    /* ===============================
+       ✅ Sidebar Layout Fix
+       - admin_sidebar.js 会注入 #adminSidebar
+       - sidebar 默认宽度 240px
+    =============================== */
+    #adminSidebar{
+      position: fixed;
+      left: 0;
+      top: 0;
+      width: 240px;
+      height: 100vh;
+      overflow: auto;
+      z-index: 9999;
+    }
+
+    /* ✅ 主内容给 sidebar 留位置 */
     .admin-main { margin-left: 240px; }
-    @media (max-width: 768px) { .admin-main { margin-left: 0; } }
+
+    /* ✅ 手机端：不固定 sidebar，不留左边空 */
+    @media (max-width: 768px) {
+      #adminSidebar{
+        position: static;
+        width: auto;
+        height: auto;
+      }
+      .admin-main { margin-left: 0; }
+    }
 
     .wrap {
       max-width: 1100px;
@@ -138,6 +163,7 @@
       border-radius: 12px;
       overflow: hidden;
     }
+
     .result-item {
       display: flex;
       justify-content: space-between;
@@ -146,13 +172,16 @@
       border-bottom: 1px solid #e5e7eb;
       align-items: center;
     }
+
     .result-item:last-child { border-bottom: none; }
+
     .result-left {
       display: flex;
       flex-direction: column;
       gap: 2px;
       min-width: 0;
     }
+
     .result-title {
       font-weight: 600;
       font-size: 13px;
@@ -161,6 +190,7 @@
       text-overflow: ellipsis;
       max-width: 700px;
     }
+
     .result-sub {
       font-size: 12px;
       color: #6b7280;
@@ -169,6 +199,7 @@
       text-overflow: ellipsis;
       max-width: 700px;
     }
+
     .result-right {
       display: flex;
       gap: 8px;
@@ -186,10 +217,10 @@
 </head>
 
 <body>
-  <!-- ✅ 必须：sidebar 注入容器 -->
+  <!-- ✅ Sidebar 注入容器（必须在最顶部） -->
   <div id="adminSidebar"></div>
 
-  <!-- ✅ 主内容（留出 sidebar 空间） -->
+  <!-- ✅ 主内容 -->
   <main class="admin-main">
     <div class="wrap">
 
@@ -360,8 +391,10 @@
     </div>
   </main>
 
-  <!-- ✅ 只加载一次：避免重复渲染/重复绑定 -->
+  <!-- ✅ 功能脚本 -->
   <script src="/admin/assets/js/admin_invoices.js?v=20260224_2"></script>
-  <script src="/admin/assets/js/admin_sidebar.js"></script>
+
+  <!-- ✅ sidebar 注入脚本（必须放在 body 末尾） -->
+  <script src="/admin/assets/js/admin_sidebar.js?v=20260227_1"></script>
 </body>
 </html>

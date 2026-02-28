@@ -1,3 +1,4 @@
+<!-- FILE: frontend/admin/banner_edit.html -->
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -5,29 +6,72 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>后台 - 横幅广告编辑</title>
 
-  <!-- ✅ 保留你原来的 admin.css -->
+  <!-- ✅ 保留你原来的 admin.css（sidebar 风格在这里） -->
   <link rel="stylesheet" href="/admin/assets/css/admin.css" />
 
   <style>
     body { margin: 0; }
 
-    /* ✅ 关键：主内容给 sidebar 留位置（sidebar 通常 240px） */
-    .admin-main { margin-left: 240px; }
-    @media (max-width: 768px) { .admin-main { margin-left: 0; } }
+    /* ===============================
+       ✅ Sidebar Layout Fix
+       - admin_sidebar.js 会注入 #adminSidebar
+       - sidebar 默认宽度 240px
+    =============================== */
+    #adminSidebar{
+      position: fixed;
+      left: 0;
+      top: 0;
+      width: 240px;
+      height: 100vh;
+      overflow: auto;
+      z-index: 9999;
+    }
 
-    .wrap { max-width: 1100px; margin: 18px auto; padding: 0 14px; }
+    /* ✅ 主内容给 sidebar 留位置 */
+    .admin-main { margin-left: 240px; }
+
+    /* ✅ 手机端：不固定 sidebar，不留左边空 */
+    @media (max-width: 768px) {
+      #adminSidebar{
+        position: static;
+        width: auto;
+        height: auto;
+      }
+      .admin-main { margin-left: 0; }
+      .row { grid-template-columns: 1fr; }
+      .row2 { grid-template-columns: 1fr; }
+    }
+
+    .wrap { max-width: 1100px; margin: 18px auto; padding: 0 14px 60px; }
     .card { background: rgba(2,6,23,.55); border: 1px solid rgba(148,163,184,.16); border-radius: 16px; padding: 14px; }
+
     .row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 12px; }
     .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+
     .field label { display:block; font-size:12px; color:#cbd5e1; margin-bottom:6px;}
     .field input, .field textarea, .field select {
-      width: 100%; border-radius: 12px; border:1px solid rgba(148,163,184,.22);
-      background: rgba(15,23,42,.45); color:#e5e7eb; padding:10px 12px; outline:none;
+      width: 100%;
+      border-radius: 12px;
+      border:1px solid rgba(148,163,184,.22);
+      background: rgba(15,23,42,.45);
+      color:#e5e7eb;
+      padding:10px 12px;
+      outline:none;
       box-sizing: border-box;
     }
     .field textarea { min-height: 88px; resize: vertical; }
+
     .actions { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top: 10px; }
-    .btn { padding:10px 14px; border-radius: 999px; border:1px solid rgba(148,163,184,.22); background:#0b1220; color:#e5e7eb; cursor:pointer; font-weight:700; }
+
+    .btn {
+      padding:10px 14px;
+      border-radius: 999px;
+      border:1px solid rgba(148,163,184,.22);
+      background:#0b1220;
+      color:#e5e7eb;
+      cursor:pointer;
+      font-weight:700;
+    }
     .btn.primary { background: #22c55e; border-color: transparent; color:#052e12; }
     .btn.danger { background:#ef4444; border-color: transparent; color:#fff; }
     .muted { color:#94a3b8; font-size:12px; }
@@ -39,6 +83,7 @@
     .slides-table th { font-size:12px; color:#cbd5e1; text-align:left; }
     .slides-table td input { width: 100%; }
     .mini { font-size:12px; padding:7px 10px; border-radius:999px; }
+
     .preview { margin-top: 12px; border-radius: 16px; overflow:hidden; border:1px solid rgba(148,163,184,.16); }
     .preview iframe { width:100%; height: 320px; border:none; background:#fff; }
   </style>
@@ -48,7 +93,7 @@
   <!-- ✅ 必须：sidebar 注入容器（放在 body 顶部） -->
   <div id="adminSidebar"></div>
 
-  <!-- ✅ 主内容：包在 main 里，给侧边栏留空间 -->
+  <!-- ✅ 主内容 -->
   <main class="admin-main">
     <div class="wrap">
       <h1 style="color:#e5e7eb; margin: 6px 0 12px;">横幅广告编辑（支持多 Banner + 多 Slides）</h1>
@@ -150,8 +195,8 @@
     </div>
   </main>
 
-  <!-- ✅ 顺序：先 sidebar（注入菜单），再页面业务 JS -->
-  <script src="/admin/assets/js/admin_sidebar.js"></script>
+  <!-- ✅ 顺序建议：先 sidebar 注入，再页面业务 JS -->
+  <script src="/admin/assets/js/admin_sidebar.js?v=20260227_1"></script>
   <script src="/admin/assets/js/banner_edit.js?v=20260131a"></script>
 </body>
 </html>
