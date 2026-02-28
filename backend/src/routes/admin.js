@@ -44,39 +44,7 @@ function normalizeProduct(p) {
     updatedAt: p.updatedAt,
   };
 }
-// ===============================
-// ✅ 管理员：直接设置某个用户的新密码（不需要旧密码）
-// POST /api/admin/users/:id/set-password
-// body: { password: "xxxxxx" }
-// ===============================
-router.post("/users/:id/set-password", requireLogin, requireAdmin, async (req, res) => {
-  try {
-    const userId = String(req.params?.id || "").trim();
-    const password = String(req.body?.password || "").trim();
 
-    if (!userId) {
-      return res.status(400).json({ success: false, message: "缺少用户ID" });
-    }
-    if (!password || password.length < 6) {
-      return res.status(400).json({ success: false, message: "新密码至少 6 位" });
-    }
-
-    // ✅ password 通常 select:false，这里 select("+password") 更保险
-    const u = await User.findById(userId).select("+password _id");
-    if (!u) {
-      return res.status(404).json({ success: false, message: "用户不存在" });
-    }
-
-    // ✅ 不要 bcrypt.hash，让 User model 的 pre("save") 自动 hash（避免双重 hash）
-    u.password = password;
-    await u.save();
-
-    return res.json({ success: true, message: "密码已更新" });
-  } catch (err) {
-    console.error("POST /api/admin/users/:id/set-password error:", err);
-    return res.status(500).json({ success: false, message: "修改密码失败" });
-  }
-});
 /* ========= 商品管理（DB版） ========= */
 
 // 列表

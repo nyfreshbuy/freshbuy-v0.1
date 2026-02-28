@@ -4,9 +4,17 @@
   <meta charset="UTF-8" />
   <title>Zelle 充值审核 - Freshbuy Admin</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <link rel="stylesheet" href="../user/assets/css/main.css" />
+
+  <!-- ✅ 建议：后台页用 admin.css（如果你后台统一深色风格） -->
+  <link rel="stylesheet" href="/admin/assets/css/admin.css" />
+
   <style>
-    body { background:#f3f4f6; }
+    body { margin:0; background:#f3f4f6; }
+
+    /* ✅ 关键：给 sidebar 留位置（admin_sidebar.js 通常 240px） */
+    .admin-main { margin-left: 240px; }
+    @media (max-width: 768px) { .admin-main { margin-left: 0; } }
+
     .wrap{ max-width: 980px; margin: 20px auto; padding: 0 14px; }
     .card{ background:#fff; border-radius:16px; box-shadow:0 6px 20px rgba(0,0,0,.08); padding:16px; }
     .title{ font-size:18px; font-weight:800; color:#111827; margin-bottom:12px; display:flex; justify-content:space-between; gap:10px; align-items:center; }
@@ -27,34 +35,40 @@
 </head>
 
 <body>
-  <div class="wrap">
-    <div class="card">
-      <div class="title">
-        <div>💸 Zelle 充值审核（Pending） <span class="badge" id="countBadge">0</span></div>
-        <div class="topbar">
-          <input class="note" id="adminNote" placeholder="备注（可选，例如：已到账 1/25）" />
-          <button class="btn btn-ghost" id="btnRefresh">刷新</button>
+  <!-- ✅ 必须：sidebar 注入容器 -->
+  <div id="adminSidebar"></div>
+
+  <!-- ✅ 主内容：让出 sidebar 的区域 -->
+  <main class="admin-main">
+    <div class="wrap">
+      <div class="card">
+        <div class="title">
+          <div>💸 Zelle 充值审核（Pending） <span class="badge" id="countBadge">0</span></div>
+          <div class="topbar">
+            <input class="note" id="adminNote" placeholder="备注（可选，例如：已到账 1/25）" />
+            <button class="btn btn-ghost" id="btnRefresh">刷新</button>
+          </div>
+        </div>
+
+        <div class="muted" id="statusText">加载中…</div>
+
+        <div style="overflow:auto; margin-top:10px;">
+          <table>
+            <thead>
+              <tr>
+                <th>时间</th>
+                <th>用户</th>
+                <th>金额</th>
+                <th>备注（ref/memo）</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="tbody"></tbody>
+          </table>
         </div>
       </div>
-
-      <div class="muted" id="statusText">加载中…</div>
-
-      <div style="overflow:auto; margin-top:10px;">
-        <table>
-          <thead>
-            <tr>
-              <th>时间</th>
-              <th>用户</th>
-              <th>金额</th>
-              <th>备注（ref/memo）</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody id="tbody"></tbody>
-        </table>
-      </div>
     </div>
-  </div>
+  </main>
 
 <script>
   // ✅ 管理员 token 兜底（按你项目可能的 key 来）
@@ -198,6 +212,8 @@
 
   load();
 </script>
+
+<!-- ✅ 顺序：最后加载 sidebar 注入脚本 -->
 <script src="/admin/assets/js/admin_sidebar.js"></script>
 </body>
 </html>

@@ -14,15 +14,17 @@
       color: #111827;
     }
 
+    /* ✅ 关键：主内容给 sidebar 留位置（sidebar 宽度通常 240px） */
+    .admin-main { margin-left: 240px; }
+    @media (max-width: 768px) { .admin-main { margin-left: 0; } }
+
     .wrap {
       max-width: 1100px;
       margin: 20px auto;
       padding: 0 14px 60px;
     }
 
-    h1, h2, h3 {
-      margin: 0 0 10px;
-    }
+    h1, h2, h3 { margin: 0 0 10px; }
 
     .card {
       background: #fff;
@@ -32,16 +34,8 @@
       box-shadow: 0 6px 18px rgba(0,0,0,.06);
     }
 
-    .row {
-      display: flex;
-      gap: 14px;
-      flex-wrap: wrap;
-    }
-
-    .col {
-      flex: 1;
-      min-width: 240px;
-    }
+    .row { display: flex; gap: 14px; flex-wrap: wrap; }
+    .col { flex: 1; min-width: 240px; }
 
     label {
       display: block;
@@ -61,11 +55,7 @@
 
     textarea { min-height: 72px; }
 
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 8px;
-    }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
 
     th, td {
       border-bottom: 1px solid #e5e7eb;
@@ -74,10 +64,7 @@
       vertical-align: top;
     }
 
-    th {
-      text-align: left;
-      color: #374151;
-    }
+    th { text-align: left; color: #374151; }
 
     .btn {
       padding: 10px 14px;
@@ -113,15 +100,9 @@
       margin-bottom: 6px;
     }
 
-    .totals .grand {
-      font-size: 18px;
-      font-weight: bold;
-    }
+    .totals .grand { font-size: 18px; font-weight: bold; }
 
-    .muted {
-      font-size: 12px;
-      color: #6b7280;
-    }
+    .muted { font-size: 12px; color: #6b7280; }
 
     pre {
       background: #0b1020;
@@ -195,7 +176,6 @@
       justify-content: flex-end;
     }
 
-    /* ✅ 可选：用于显示“手机号/姓名 -> userId”的提示 */
     .user-suggest {
       margin-top: 8px;
       font-size: 12px;
@@ -206,176 +186,182 @@
 </head>
 
 <body>
-<div class="wrap">
+  <!-- ✅ 必须：sidebar 注入容器 -->
+  <div id="adminSidebar"></div>
 
-  <!-- 顶部 -->
-  <div class="top-actions">
-    <h1>Invoice / 发票开具</h1>
-    <div class="actions-inline">
-      <button class="btn btn-ghost" id="btnNew" type="button">新建</button>
-      <button class="btn btn-primary" id="btnSave" type="button">保存并扣库存</button>
-      <button class="btn btn-ghost" id="btnPrint" type="button" disabled>打印 PDF</button>
+  <!-- ✅ 主内容（留出 sidebar 空间） -->
+  <main class="admin-main">
+    <div class="wrap">
+
+      <!-- 顶部 -->
+      <div class="top-actions">
+        <h1>Invoice / 发票开具</h1>
+        <div class="actions-inline">
+          <button class="btn btn-ghost" id="btnNew" type="button">新建</button>
+          <button class="btn btn-primary" id="btnSave" type="button">保存并扣库存</button>
+          <button class="btn btn-ghost" id="btnPrint" type="button" disabled>打印 PDF</button>
+        </div>
+      </div>
+
+      <div class="muted" id="hint"></div>
+
+      <!-- 基本信息 -->
+      <div class="card">
+        <div class="row">
+          <div class="col">
+            <label>Invoice Date</label>
+            <input type="date" id="invDate">
+          </div>
+          <div class="col">
+            <label>Invoice No</label>
+            <input id="invNo" placeholder="YYYYMMDD-001">
+          </div>
+          <div class="col">
+            <label>Account #</label>
+            <input id="accountNo">
+          </div>
+          <div class="col">
+            <label>Sales Rep</label>
+            <input id="salesRep">
+          </div>
+          <div class="col">
+            <label>Terms</label>
+            <input id="terms">
+          </div>
+        </div>
+      </div>
+
+      <!-- Sold / Ship -->
+      <div class="card">
+        <div class="row">
+          <div class="col">
+            <h3>Sold To</h3>
+            <label>选择用户</label>
+            <select id="userSelect"></select>
+
+            <label>姓名</label>
+            <input id="soldName">
+            <label>电话</label>
+            <input id="soldPhone">
+            <label>地址</label>
+            <textarea id="soldAddr"></textarea>
+          </div>
+
+          <div class="col">
+            <h3>Ship To</h3>
+            <label>
+              <input type="checkbox" id="sameAsSold" checked>
+              同 Sold To
+            </label>
+
+            <label>姓名</label>
+            <input id="shipName">
+            <label>电话</label>
+            <input id="shipPhone">
+            <label>地址</label>
+            <textarea id="shipAddr"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- 商品 -->
+      <div class="card">
+        <div class="top-actions">
+          <h3>商品明细</h3>
+          <button class="btn btn-ghost" id="btnAddRow" type="button">+ 添加</button>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>商品</th>
+              <th>规格</th>
+              <th>Description</th>
+              <th>Qty</th>
+              <th>Unit Price</th>
+              <th>Total</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="itemsTbody"></tbody>
+        </table>
+
+        <div class="totals">
+          <div class="line"><span>Subtotal</span><span id="subTotal">$0.00</span></div>
+          <div class="line grand"><span>Total</span><span id="grandTotal">$0.00</span></div>
+        </div>
+      </div>
+
+      <!-- Statement -->
+      <div class="card">
+        <div class="top-actions">
+          <h3>Statement</h3>
+          <span class="pill">像你图那样表格 + 可打印</span>
+        </div>
+
+        <div class="row">
+          <div class="col">
+            <label>From</label>
+            <input type="date" id="stFrom">
+          </div>
+          <div class="col">
+            <label>To</label>
+            <input type="date" id="stTo">
+          </div>
+          <div class="col">
+            <label>User（ID / 手机号 / 姓名，可选）</label>
+            <input id="stUserId" placeholder="例如：65fa... / 917xxxx / 小田（不填=全部客户）">
+            <div class="user-suggest" id="stUserHint"></div>
+          </div>
+          <div class="col" style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap">
+            <button class="btn btn-ghost" id="btnStatement" type="button">生成(JSON)</button>
+            <button class="btn btn-dark" id="btnStatementPdf" type="button">打印(PDF)</button>
+          </div>
+        </div>
+
+        <pre id="stResult"></pre>
+      </div>
+
+      <!-- 查找/搜索 -->
+      <div class="card">
+        <div class="top-actions">
+          <h3>查找发票/订单</h3>
+          <span class="pill">支持：单号 / 姓名 / 电话 / 日期范围 / userId</span>
+        </div>
+
+        <div class="row">
+          <div class="col">
+            <label>关键词（invoiceNo / name / phone）</label>
+            <input id="sQ" placeholder="例如：20260206-001 / 小田 / 917...">
+          </div>
+          <div class="col">
+            <label>From（可选）</label>
+            <input type="date" id="sFrom">
+          </div>
+          <div class="col">
+            <label>To（可选）</label>
+            <input type="date" id="sTo">
+          </div>
+          <div class="col">
+            <label>User（ID / 手机号 / 姓名，可选）</label>
+            <input id="sUserId" placeholder="例如：65fa... / 917xxxx / 小田">
+            <div class="user-suggest" id="sUserHint"></div>
+          </div>
+          <div class="col" style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap">
+            <button class="btn btn-ghost" id="btnSearch" type="button">搜索</button>
+            <button class="btn btn-ghost" id="btnSearchReset" type="button">重置</button>
+          </div>
+        </div>
+
+        <div class="muted" id="searchHint"></div>
+        <div id="searchList" class="result-list"></div>
+      </div>
+
     </div>
-  </div>
+  </main>
 
-  <div class="muted" id="hint"></div>
-
-  <!-- 基本信息 -->
-  <div class="card">
-    <div class="row">
-      <div class="col">
-        <label>Invoice Date</label>
-        <input type="date" id="invDate">
-      </div>
-      <div class="col">
-        <label>Invoice No</label>
-        <input id="invNo" placeholder="YYYYMMDD-001">
-      </div>
-      <div class="col">
-        <label>Account #</label>
-        <input id="accountNo">
-      </div>
-      <div class="col">
-        <label>Sales Rep</label>
-        <input id="salesRep">
-      </div>
-      <div class="col">
-        <label>Terms</label>
-        <input id="terms">
-      </div>
-    </div>
-  </div>
-
-  <!-- Sold / Ship -->
-  <div class="card">
-    <div class="row">
-      <div class="col">
-        <h3>Sold To</h3>
-        <label>选择用户</label>
-        <select id="userSelect"></select>
-
-        <label>姓名</label>
-        <input id="soldName">
-        <label>电话</label>
-        <input id="soldPhone">
-        <label>地址</label>
-        <textarea id="soldAddr"></textarea>
-      </div>
-
-      <div class="col">
-        <h3>Ship To</h3>
-        <label>
-          <input type="checkbox" id="sameAsSold" checked>
-          同 Sold To
-        </label>
-
-        <label>姓名</label>
-        <input id="shipName">
-        <label>电话</label>
-        <input id="shipPhone">
-        <label>地址</label>
-        <textarea id="shipAddr"></textarea>
-      </div>
-    </div>
-  </div>
-
-  <!-- 商品 -->
-  <div class="card">
-    <div class="top-actions">
-      <h3>商品明细</h3>
-      <button class="btn btn-ghost" id="btnAddRow" type="button">+ 添加</button>
-    </div>
-
-    <table>
-      <thead>
-      <tr>
-        <th>商品</th>
-        <th>规格</th>
-        <th>Description</th>
-        <th>Qty</th>
-        <th>Unit Price</th>
-        <th>Total</th>
-        <th></th>
-      </tr>
-      </thead>
-      <tbody id="itemsTbody"></tbody>
-    </table>
-
-    <div class="totals">
-      <div class="line"><span>Subtotal</span><span id="subTotal">$0.00</span></div>
-      <div class="line grand"><span>Total</span><span id="grandTotal">$0.00</span></div>
-    </div>
-  </div>
-
-  <!-- Statement -->
-  <div class="card">
-    <div class="top-actions">
-      <h3>Statement</h3>
-      <span class="pill">像你图那样表格 + 可打印</span>
-    </div>
-
-    <div class="row">
-      <div class="col">
-        <label>From</label>
-        <input type="date" id="stFrom">
-      </div>
-      <div class="col">
-        <label>To</label>
-        <input type="date" id="stTo">
-      </div>
-      <div class="col">
-        <label>User（ID / 手机号 / 姓名，可选）</label>
-        <input id="stUserId" placeholder="例如：65fa... / 917xxxx / 小田（不填=全部客户）">
-        <div class="user-suggest" id="stUserHint"></div>
-      </div>
-      <div class="col" style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap">
-        <button class="btn btn-ghost" id="btnStatement" type="button">生成(JSON)</button>
-        <button class="btn btn-dark" id="btnStatementPdf" type="button">打印(PDF)</button>
-      </div>
-    </div>
-
-    <pre id="stResult"></pre>
-  </div>
-
-  <!-- 查找/搜索 -->
-  <div class="card">
-    <div class="top-actions">
-      <h3>查找发票/订单</h3>
-      <span class="pill">支持：单号 / 姓名 / 电话 / 日期范围 / userId</span>
-    </div>
-
-    <div class="row">
-      <div class="col">
-        <label>关键词（invoiceNo / name / phone）</label>
-        <input id="sQ" placeholder="例如：20260206-001 / 小田 / 917...">
-      </div>
-      <div class="col">
-        <label>From（可选）</label>
-        <input type="date" id="sFrom">
-      </div>
-      <div class="col">
-        <label>To（可选）</label>
-        <input type="date" id="sTo">
-      </div>
-      <div class="col">
-        <label>User（ID / 手机号 / 姓名，可选）</label>
-        <input id="sUserId" placeholder="例如：65fa... / 917xxxx / 小田">
-        <div class="user-suggest" id="sUserHint"></div>
-      </div>
-      <div class="col" style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap">
-        <button class="btn btn-ghost" id="btnSearch" type="button">搜索</button>
-        <button class="btn btn-ghost" id="btnSearchReset" type="button">重置</button>
-      </div>
-    </div>
-
-    <div class="muted" id="searchHint"></div>
-    <div id="searchList" class="result-list"></div>
-  </div>
-
-</div>
-
-<!-- ✅ 只加载一次：避免重复渲染/重复绑定 -->
-<script src="/admin/assets/js/admin_invoices.js?v=20260224_2"></script>
-<script src="/admin/assets/js/admin_sidebar.js"></script>
+  <!-- ✅ 只加载一次：避免重复渲染/重复绑定 -->
+  <script src="/admin/assets/js/admin_invoices.js?v=20260224_2"></script>
+  <script src="/admin/assets/js/admin_sidebar.js"></script>
 </body>
 </html>

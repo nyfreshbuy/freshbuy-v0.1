@@ -4,8 +4,17 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>后台 - 横幅广告编辑</title>
+
+  <!-- ✅ 保留你原来的 admin.css -->
   <link rel="stylesheet" href="/admin/assets/css/admin.css" />
+
   <style>
+    body { margin: 0; }
+
+    /* ✅ 关键：主内容给 sidebar 留位置（sidebar 通常 240px） */
+    .admin-main { margin-left: 240px; }
+    @media (max-width: 768px) { .admin-main { margin-left: 0; } }
+
     .wrap { max-width: 1100px; margin: 18px auto; padding: 0 14px; }
     .card { background: rgba(2,6,23,.55); border: 1px solid rgba(148,163,184,.16); border-radius: 16px; padding: 14px; }
     .row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 12px; }
@@ -14,6 +23,7 @@
     .field input, .field textarea, .field select {
       width: 100%; border-radius: 12px; border:1px solid rgba(148,163,184,.22);
       background: rgba(15,23,42,.45); color:#e5e7eb; padding:10px 12px; outline:none;
+      box-sizing: border-box;
     }
     .field textarea { min-height: 88px; resize: vertical; }
     .actions { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top: 10px; }
@@ -29,111 +39,118 @@
     .slides-table th { font-size:12px; color:#cbd5e1; text-align:left; }
     .slides-table td input { width: 100%; }
     .mini { font-size:12px; padding:7px 10px; border-radius:999px; }
-    .chk { display:flex; align-items:center; gap:6px; font-size:12px; color:#cbd5e1; }
     .preview { margin-top: 12px; border-radius: 16px; overflow:hidden; border:1px solid rgba(148,163,184,.16); }
     .preview iframe { width:100%; height: 320px; border:none; background:#fff; }
   </style>
 </head>
 
 <body>
-  <div class="wrap">
-    <h1 style="color:#e5e7eb; margin: 6px 0 12px;">横幅广告编辑（支持多 Banner + 多 Slides）</h1>
+  <!-- ✅ 必须：sidebar 注入容器（放在 body 顶部） -->
+  <div id="adminSidebar"></div>
 
-    <div class="card">
-      <div class="row">
-        <div class="field">
-          <label>选择 Banner（key）</label>
-          <select id="bannerKeySelect"></select>
-          <div class="muted">支持多个 key：例如 homepage_main / homepage_secondary / deals_day ...</div>
+  <!-- ✅ 主内容：包在 main 里，给侧边栏留空间 -->
+  <main class="admin-main">
+    <div class="wrap">
+      <h1 style="color:#e5e7eb; margin: 6px 0 12px;">横幅广告编辑（支持多 Banner + 多 Slides）</h1>
+
+      <div class="card">
+        <div class="row">
+          <div class="field">
+            <label>选择 Banner（key）</label>
+            <select id="bannerKeySelect"></select>
+            <div class="muted">支持多个 key：例如 homepage_main / homepage_secondary / deals_day ...</div>
+          </div>
+
+          <div class="field">
+            <label>启用</label>
+            <select id="enabledSelect">
+              <option value="true">启用</option>
+              <option value="false">停用</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label>排序（可选）</label>
+            <input id="sortInput" type="number" value="0" />
+          </div>
+        </div>
+
+        <div class="row2">
+          <div class="field">
+            <label>标题</label>
+            <input id="titleInput" type="text" placeholder="例如：在鲜购1月31日正式上线啦" />
+          </div>
+          <div class="field">
+            <label>背景色</label>
+            <input id="bgColorInput" type="text" placeholder="#22c55e" />
+            <div class="muted">当 slide 没图片时可用 bgColor 兜底</div>
+          </div>
+        </div>
+
+        <div class="row2">
+          <div class="field">
+            <label>副标题</label>
+            <textarea id="subtitleInput" placeholder="例如：第一周前200名下单用户享受10%返现优惠"></textarea>
+          </div>
+          <div class="field">
+            <label>背景图 URL（可选）</label>
+            <input id="imageUrlInput" type="text" placeholder="https://... 或 /user/assets/..." />
+            <div class="muted">单横幅模式用；多轮播优先使用 slides</div>
+          </div>
         </div>
 
         <div class="field">
-          <label>启用</label>
-          <select id="enabledSelect">
-            <option value="true">启用</option>
-            <option value="false">停用</option>
-          </select>
+          <label>按钮（JSON 数组，兼容旧版）</label>
+          <textarea id="buttonsInput">[]</textarea>
+          <div class="muted">格式示例：[{ "label":"去充值", "link":"/user/recharge.html" }]</div>
         </div>
 
-        <div class="field">
-          <label>排序（可选）</label>
-          <input id="sortInput" type="number" value="0" />
+        <div class="divider"></div>
+
+        <div class="slides-head">
+          <div>
+            <div style="color:#e5e7eb;font-weight:800;">Slides（多张轮播）</div>
+            <div class="muted">保存后前台轮播会优先用 slides。</div>
+          </div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button class="btn mini" id="addSlideBtn" type="button">+ 添加一张</button>
+            <button class="btn mini" id="importSlidesBtn" type="button">导入 JSON</button>
+            <button class="btn mini" id="exportSlidesBtn" type="button">导出 JSON</button>
+          </div>
         </div>
-      </div>
 
-      <div class="row2">
-        <div class="field">
-          <label>标题</label>
-          <input id="titleInput" type="text" placeholder="例如：在鲜购1月31日正式上线啦" />
+        <table class="slides-table" id="slidesTable">
+          <thead>
+            <tr>
+              <th style="width:70px;">启用</th>
+              <th style="width:70px;">sort</th>
+              <th>imageUrl</th>
+              <th>link</th>
+              <th style="width:160px;">title</th>
+              <th style="width:180px;">subtitle</th>
+              <th style="width:120px;">bgColor</th>
+              <th style="width:80px;">操作</th>
+            </tr>
+          </thead>
+          <tbody id="slidesTbody"></tbody>
+        </table>
+
+        <div class="actions">
+          <button class="btn primary" id="saveBtn" type="button">保存</button>
+          <button class="btn" id="reloadBtn" type="button">刷新读取</button>
+          <button class="btn" id="newBtn" type="button">新建 Banner</button>
+          <button class="btn danger" id="deleteBtn" type="button">删除当前 Banner</button>
+          <span class="muted" id="statusText">Ready</span>
         </div>
-        <div class="field">
-          <label>背景色</label>
-          <input id="bgColorInput" type="text" placeholder="#22c55e" />
-          <div class="muted">当 slide 没图片时可用 bgColor 兜底</div>
+
+        <div class="preview">
+          <iframe src="/user/index.html" title="前台预览（刷新可看到轮播变化）"></iframe>
         </div>
-      </div>
-
-      <div class="row2">
-        <div class="field">
-          <label>副标题</label>
-          <textarea id="subtitleInput" placeholder="例如：第一周前200名下单用户享受10%返现优惠"></textarea>
-        </div>
-        <div class="field">
-          <label>背景图 URL（可选）</label>
-          <input id="imageUrlInput" type="text" placeholder="https://... 或 /user/assets/..." />
-          <div class="muted">单横幅模式用；多轮播优先使用 slides</div>
-        </div>
-      </div>
-
-      <div class="field">
-        <label>按钮（JSON 数组，兼容旧版）</label>
-        <textarea id="buttonsInput">[]</textarea>
-        <div class="muted">格式示例：[{ "label":"去充值", "link":"/user/recharge.html" }]</div>
-      </div>
-
-      <div class="divider"></div>
-
-      <div class="slides-head">
-        <div>
-          <div style="color:#e5e7eb;font-weight:800;">Slides（多张轮播）</div>
-          <div class="muted">你想要的“后台可编辑多张 banner”就在这里。保存后前台轮播会优先用 slides。</div>
-        </div>
-        <div style="display:flex; gap:8px; flex-wrap:wrap;">
-          <button class="btn mini" id="addSlideBtn" type="button">+ 添加一张</button>
-          <button class="btn mini" id="importSlidesBtn" type="button">导入 JSON</button>
-          <button class="btn mini" id="exportSlidesBtn" type="button">导出 JSON</button>
-        </div>
-      </div>
-
-      <table class="slides-table" id="slidesTable">
-        <thead>
-          <tr>
-            <th style="width:70px;">启用</th>
-            <th style="width:70px;">sort</th>
-            <th>imageUrl</th>
-            <th>link</th>
-            <th style="width:160px;">title</th>
-            <th style="width:180px;">subtitle</th>
-            <th style="width:120px;">bgColor</th>
-            <th style="width:80px;">操作</th>
-          </tr>
-        </thead>
-        <tbody id="slidesTbody"></tbody>
-      </table>
-
-      <div class="actions">
-        <button class="btn primary" id="saveBtn" type="button">保存</button>
-        <button class="btn" id="reloadBtn" type="button">刷新读取</button>
-        <button class="btn" id="newBtn" type="button">新建 Banner</button>
-        <button class="btn danger" id="deleteBtn" type="button">删除当前 Banner</button>
-        <span class="muted" id="statusText">Ready</span>
-      </div>
-
-      <div class="preview">
-        <iframe src="/user/index.html" title="前台预览（刷新可看到轮播变化）"></iframe>
       </div>
     </div>
-  </div>
+  </main>
+
+  <!-- ✅ 顺序：先 sidebar（注入菜单），再页面业务 JS -->
   <script src="/admin/assets/js/admin_sidebar.js"></script>
   <script src="/admin/assets/js/banner_edit.js?v=20260131a"></script>
 </body>
