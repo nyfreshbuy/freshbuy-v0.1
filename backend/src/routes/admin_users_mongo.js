@@ -4,14 +4,17 @@ import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 import User from "../models/user.js";
 import Address from "../models/Address.js"; // ✅ 读取用户默认地址
-import Order from "../models/order.js"; // ✅ 新增：用于统计订单数/累计消费（如文件名不同请改这里）
-import Wallet from "../models/Wallet.js"; // ✅ 新增：读取钱包余额（注意文件名大小写）
+import Order from "../models/order.js"; // ✅ 统计订单数/累计消费
+import Wallet from "../models/Wallet.js"; // ✅ 读取钱包余额
+
 console.log("✅ admin_users_mongo.js 已加载");
 
 const router = express.Router();
-router.use(express.json()); // ✅ 关键：支持 PATCH/POST JSON body
+router.use(express.json()); // ✅ 支持 PATCH/POST JSON body
 
+// -----------------
 // 小工具
+// -----------------
 function escapeRegex(s) {
   return String(s || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -40,6 +43,7 @@ function normalizeUser(u) {
         : u.status
           ? u.status !== "disabled"
           : true,
+
     // ✅ 账户余额（优先 walletBalance，其次 balance）
     walletBalance: Number(u.walletBalance ?? u.balance ?? 0),
 
@@ -54,7 +58,9 @@ function normalizeUser(u) {
   };
 }
 
+// =====================================================
 // ✅ GET /api/admin/users?keyword=&role=&page=&pageSize=
+// =====================================================
 router.get("/", async (req, res) => {
   try {
     const page = Math.max(parseInt(req.query.page) || 1, 1);
@@ -86,7 +92,8 @@ router.get("/", async (req, res) => {
       .lean();
 
     const users = docs.map(normalizeUser);
-        // ✅ 批量补齐：钱包余额（来自 Wallet 集合）
+
+    // ✅ 批量补齐：钱包余额（来自 Wallet 集合）
     if (users.length) {
       const ids = users.map((u) => new mongoose.Types.ObjectId(String(u._id)));
 
@@ -95,25 +102,21 @@ router.get("/", async (req, res) => {
         .lean();
 
       const walletMap = {};
-      for (const w of walletDocs) {
-        walletMap[String(w.userId)] = Number(w.balance || 0);
-      }
+      for (const w of walletDocs) walletMap[String(w.userId)] = Number(w.balance || 0);
 
       for (const u of users) {
-        // 把 Wallet.balance 写回到 users.walletBalance（normalizeUser 已经会用它）
         u.walletBalance = walletMap[String(u._id)] ?? 0;
       }
     }
+
     // ✅ 批量统计：订单数 + 累计消费（来自 Order 集合）
     if (users.length) {
       const ids = users.map((u) => new mongoose.Types.ObjectId(String(u._id)));
 
-      // ⚠️ 注意：这里用容错方式取金额字段
-      // 如果你订单金额字段明确（比如 totalPayable），你可以直接替换 money 的取值
       const stats = await Order.aggregate([
         { $match: { userId: { $in: ids } } },
 
-        // ✅ 如果你只想统计“已支付”订单，请按你订单字段放开下面的 match（示例）
+        // 如只统计已支付，可在这里加 match
         // { $match: { paymentStatus: "paid" } },
 
         {
@@ -171,15 +174,11 @@ router.get("/", async (req, res) => {
       const ids = users.map((u) => new mongoose.Types.ObjectId(String(u._id)));
 
       const addrDocs = await Address.find({ userId: { $in: ids }, isDefault: true })
-        .select(
-  "userId street1 street line1 line2 address1 address2 apt unit city state zip formattedAddress"
-)
+        .select("userId street1 street line1 line2 address1 address2 apt unit city state zip formattedAddress")
         .lean();
 
       const addrMap = {};
-      for (const a of addrDocs) {
-        addrMap[String(a.userId)] = a;
-      }
+      for (const a of addrDocs) addrMap[String(a.userId)] = a;
 
       for (const u of users) {
         const a = addrMap[String(u._id)];
@@ -189,17 +188,18 @@ router.get("/", async (req, res) => {
         }
 
         const line =
-  a.formattedAddress ||
-  [
-    a.street1 || a.street || a.line1 || a.address1 || "",
-    a.line2 || a.address2 || a.apt || a.unit || "",
-    a.city || "",
-    a.state || "",
-    a.zip || "",
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .trim();
+          a.formattedAddress ||
+          [
+            a.street1 || a.street || a.line1 || a.address1 || "",
+            a.line2 || a.address2 || a.apt || a.unit || "",
+            a.city || "",
+            a.state || "",
+            a.zip || "",
+          ]
+            .filter(Boolean)
+            .join(" ")
+            .trim();
+
         u.addressText = line || "";
       }
     }
@@ -229,7 +229,9 @@ router.get("/", async (req, res) => {
   }
 });
 
-// ✅ GET /api/admin/users/:id  (获取单个用户)
+// ==================================
+// ✅ GET /api/admin/users/:id 单用户
+// ==================================
 router.get("/:id", async (req, res) => {
   try {
     const id = String(req.params.id || "");
@@ -288,20 +290,18 @@ router.get("/:id", async (req, res) => {
         user.totalOrders = Number(stats[0].totalOrders || 0);
         user.totalSpent = Number((stats[0].totalSpent || 0).toFixed(2));
       }
-    } catch (e) {
-      // 不影响主流程
-    }
+    } catch (e) {}
 
     // ✅ 单用户：默认地址
     const addr = await Address.findOne({ userId: user._id, isDefault: true })
-      .select("street line1 line2 address1 address2 apt unit city state zip formattedAddress")
+      .select("street street1 line1 line2 address1 address2 apt unit city state zip formattedAddress")
       .lean();
 
     if (addr) {
       const line =
         addr.formattedAddress ||
         [
-          addr.street || addr.line1 || addr.address1 || "",
+          addr.street1 || addr.street || addr.line1 || addr.address1 || "",
           addr.line2 || addr.address2 || addr.apt || addr.unit || "",
           addr.city || "",
           addr.state || "",
@@ -323,7 +323,9 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-// ✅ PATCH /api/admin/users/:id  (编辑用户：姓名/手机号/角色/状态)
+// ==============================================
+// ✅ PATCH /api/admin/users/:id 编辑用户
+// ==============================================
 router.patch("/:id", async (req, res) => {
   try {
     const id = String(req.params.id || "");
@@ -361,7 +363,7 @@ router.patch("/:id", async (req, res) => {
       update.status = isActive ? "active" : "disabled";
     }
 
-    // phone 唯一冲突检测（如果你 phone 是 unique）
+    // phone 唯一冲突检测（如果 phone 是 unique）
     if (update.phone) {
       const conflict = await User.findOne({ phone: update.phone, _id: { $ne: id } }).select("_id");
       if (conflict) {
@@ -382,7 +384,9 @@ router.patch("/:id", async (req, res) => {
   }
 });
 
-// ✅ PATCH /api/admin/users/:id/role  (修改角色) ——保留你原来的
+// ==============================================
+// ✅ PATCH /api/admin/users/:id/role 修改角色
+// ==============================================
 router.patch("/:id/role", async (req, res) => {
   try {
     const id = String(req.params.id || "");
@@ -399,8 +403,6 @@ router.patch("/:id/role", async (req, res) => {
 
     if (!doc) return res.status(404).json({ success: false, message: "用户不存在" });
 
-    // ⚠️ 你原来这里写了 res.status(400)，我保留你原逻辑会导致前端认为失败
-    // ✅ 修正为 200
     return res.json({ success: true, user: normalizeUser(doc) });
   } catch (err) {
     console.error("❌ PATCH /api/admin/users/:id/role failed:", err);
@@ -408,7 +410,9 @@ router.patch("/:id/role", async (req, res) => {
   }
 });
 
-// ✅ PATCH /api/admin/users/:id/toggle (启用/禁用 - 可选)
+// ==============================================
+// ✅ PATCH /api/admin/users/:id/toggle 启用/禁用
+// ==============================================
 router.patch("/:id/toggle", async (req, res) => {
   try {
     const id = String(req.params.id || "");
@@ -430,7 +434,45 @@ router.patch("/:id/toggle", async (req, res) => {
   }
 });
 
+// =====================================================
+// ✅ ✅✅ 关键新增：POST /api/admin/users/:id/set-password
+// 给你后台“修改密码”弹窗用（解决你截图 404）
+// body 支持：{ password } 或 { newPassword }
+// =====================================================
+router.post("/:id/set-password", async (req, res) => {
+  try {
+    const id = String(req.params.id || "");
+    if (!isValidObjectId(id)) {
+      return res.status(400).json({ success: false, message: "用户ID不合法" });
+    }
+
+    const password = String(req.body?.password || req.body?.newPassword || "").trim();
+    if (!password || password.length < 6) {
+      return res.status(400).json({ success: false, message: "密码至少 6 位" });
+    }
+
+    // ✅ 这里必须手动 hash（因为 findByIdAndUpdate 不触发 pre('save')）
+    const hash = await bcrypt.hash(password, 10);
+
+    const doc = await User.findByIdAndUpdate(
+      id,
+      { $set: { password: hash } },
+      { new: true }
+    ).select("_id");
+
+    if (!doc) return res.status(404).json({ success: false, message: "用户不存在" });
+
+    return res.json({ success: true, message: "密码修改成功" });
+  } catch (err) {
+    console.error("❌ POST /api/admin/users/:id/set-password failed:", err);
+    return res.status(500).json({ success: false, message: err.message || "修改密码失败" });
+  }
+});
+
+// =====================================================
 // ✅ POST /api/admin/users/:id/reset-password  (重置密码)
+// body: { newPassword?: "xxxx" }  不传则自动生成临时密码
+// =====================================================
 router.post("/:id/reset-password", async (req, res) => {
   try {
     const id = String(req.params.id || "");
@@ -459,7 +501,9 @@ router.post("/:id/reset-password", async (req, res) => {
   }
 });
 
-// ✅ POST /api/admin/users  (创建用户)
+// ==============================================
+// ✅ POST /api/admin/users 创建用户
+// ==============================================
 router.post("/", async (req, res) => {
   try {
     const body = req.body || {};
@@ -520,7 +564,9 @@ router.post("/", async (req, res) => {
   }
 });
 
-// ✅ DELETE /api/admin/users/:id  (删除用户)
+// ==============================================
+// ✅ DELETE /api/admin/users/:id 删除用户
+// ==============================================
 router.delete("/:id", async (req, res) => {
   try {
     const id = String(req.params.id || "");
