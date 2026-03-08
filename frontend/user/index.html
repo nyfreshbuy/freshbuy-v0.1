@@ -598,7 +598,9 @@
       .delivery-pill.active span {
         color: #e5e7eb;
       }
-
+      .delivery-pill[data-mode="pickup"] strong::before {
+  content: "📦 ";
+}
       .delivery-info-title {
         font-size: 13px;
         font-weight: 600;
@@ -1620,21 +1622,26 @@
               </div>
 
               <div class="delivery-options">
-                <button class="delivery-pill" data-mode="next-day" type="button">
-                  <strong>次日配送</strong>
-                  <span>今天下单，明天送到家，适合少量临时补货</span>
-                </button>
+  <button class="delivery-pill" data-mode="next-day" type="button">
+    <strong>次日配送</strong>
+    <span>今天下单，明天送到家</span>
+  </button>
 
-                <button class="delivery-pill" data-mode="friend-group" type="button">
-                  <strong>好友拼单配送</strong>
-                  <span>和好友一起拼运费 · 有效期到今晚 24:00</span>
-                </button>
+  <button class="delivery-pill" data-mode="friend-group" type="button">
+    <strong>好友拼单配送</strong>
+    <span>和好友一起拼运费 · 有效期到今晚 24:00</span>
+  </button>
 
-                <button class="delivery-pill active" data-mode="area-group" id="defaultAreaBtn" type="button">
-                  <strong>区域团拼单配送</strong>
-                  <span>同一小区一起拼单 · 成团后免费配送</span>
-                </button>
-              </div>
+  <button class="delivery-pill active" data-mode="area-group" id="defaultAreaBtn" type="button">
+    <strong>区域团拼单配送</strong>
+    <span>同一小区一起拼单 · 成团后免费配送</span>
+  </button>
+
+  <button class="delivery-pill" data-mode="pickup" id="pickupPointBtn" type="button">
+    <strong>自提点自提</strong>
+    <span>系统推荐附近自提点 · 也可自由选择喜欢的自提点</span>
+  </button>
+</div>
             </div>
 
             <!-- ✅ 右侧：保留你想要的 ZIP box + deliveryInfoBody（但 id 不冲突） -->

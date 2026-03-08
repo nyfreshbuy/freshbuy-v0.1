@@ -15,7 +15,7 @@
 </script>
     <style>
       :root {
-        --primary: #22c55e;
+        --primary: #0f1110;
         --primary-dark: #16a34a;
         --bg: #f3f4f6;
         --text-main: #111827;
@@ -294,11 +294,11 @@
       /* ✅ 右侧卡片本身也抬高层级，避免被其它透明层挡住 */
       aside.card {
         position: relative;
-        z-index: 10000;
+        z-index: 1;
       }
       #shippingFormV2 {
         position: relative;
-        z-index: 10000;
+        z-index: 1;
       }
             /* ✅ 强制下拉弹窗 + 输入框闪烁 */
       .fb-flash {
@@ -317,21 +317,24 @@
         display: block;
       }
       .fb-modal-mask {
-        position: absolute;
-        inset: 0;
-        background: rgba(0, 0, 0, 0.45);
-      }
-      .fb-modal-card {
-        position: absolute;
-        left: 50%;
-        top: 22%;
-        transform: translateX(-50%);
-        width: min(520px, calc(100% - 32px));
-        background: #fff;
-        border-radius: 16px;
-        padding: 18px;
-        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
-      }
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 1;
+}
+.fb-modal-card {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(460px, calc(100vw - 32px));
+  max-width: 460px;
+  background: #fff;
+  border-radius: 16px;
+  padding: 18px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+  z-index: 2;
+}
       .fb-modal-title {
         font-size: 18px;
         font-weight: 700;
@@ -358,6 +361,15 @@
         color: #fff;
         font-weight: 700;
       }
+      @media (max-width: 768px) {
+  .fb-modal-card {
+    width: calc(100vw - 24px);
+    max-width: none;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    padding: 16px;
+  }
+}
     </style>
   </head>
 

@@ -379,7 +379,19 @@ function renderDeliveryInfo(mode) {
     startFriendCountdownToMidnight();
     return;
   }
-
+  if (mode === "pickup") {
+    deliveryHint.textContent = `当前：自提点自提 · 系统推荐附近自提点`;
+    deliveryInfoBody.innerHTML = `
+      <div class="delivery-info-title">自提点自提</div>
+      <ul class="delivery-info-list">
+        <li>系统会根据你的 ZIP 推荐附近自提点</li>
+        <li>你也可以自由选择自己喜欢的自提点</li>
+        <li>自提点将在结算页进行确认</li>
+        <li class="delivery-highlight">自提点自提通常免配送费</li>
+      </ul>
+    `;
+    return;
+  }
   deliveryHint.textContent = `当前：区域团拼单配送 · ${zoneName}`;
   deliveryInfoBody.innerHTML = `
     <div class="delivery-info-title">配送信息</div>
@@ -405,11 +417,12 @@ document.addEventListener("click", (e) => {
 
   try {
     function toCartModeKey(m) {
-      if (m === "area-group") return "groupDay";
-      if (m === "next-day") return "normal";
-      if (m === "friend-group") return "friendGroup";
-      return "groupDay";
-    }
+  if (m === "area-group") return "groupDay";
+  if (m === "next-day") return "normal";
+  if (m === "friend-group") return "friendGroup";
+  if (m === "pickup") return "pickup";
+  return "groupDay";
+}
     const mapped = toCartModeKey(mode || "");
     localStorage.setItem("freshbuy_pref_mode", mapped);
     window.dispatchEvent(new CustomEvent("freshbuy:deliveryModeChanged", { detail: { mode: mapped } }));
@@ -1847,6 +1860,7 @@ function toUiModeKey(cartMode) {
   if (cartMode === "groupDay") return "area-group";
   if (cartMode === "normal") return "next-day";
   if (cartMode === "friendGroup") return "friend-group";
+  if (cartMode === "pickup") return "pickup";
   return "area-group";
 }
 
