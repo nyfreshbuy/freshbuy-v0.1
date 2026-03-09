@@ -321,7 +321,58 @@ function updateFriendCountdown() {
   if (el2) el2.textContent = text;
   if (friendEndTime - now <= 0 && friendCountdownTimer) clearInterval(friendCountdownTimer);
 }
+function getRecommendedPickupPointsByZip(zip) {
+  const z = String(zip || "").trim();
 
+  const allPoints = [
+    {
+      _id: "pickup_fm_1",
+      name: "Fresh Meadows 自提点",
+      address: "199-26 48th Ave, Fresh Meadows, NY 11365",
+      openHours: "周三 / 周六 2:00 PM - 8:00 PM",
+      distanceMiles: 1.2,
+      recommended: false,
+    },
+    {
+      _id: "pickup_bayside_1",
+      name: "Bayside 自提点",
+      address: "214-11 Northern Blvd, Bayside, NY 11361",
+      openHours: "周三 / 周六 1:00 PM - 7:00 PM",
+      distanceMiles: 3.8,
+      recommended: false,
+    },
+    {
+      _id: "pickup_flushing_1",
+      name: "Flushing 自提点",
+      address: "41-08 Main St, Flushing, NY 11355",
+      openHours: "周二 / 周五 3:00 PM - 8:00 PM",
+      distanceMiles: 5.6,
+      recommended: false,
+    },
+  ];
+
+  let order = [];
+
+  if (["11365", "11366", "11367"].includes(z)) {
+    order = ["pickup_fm_1", "pickup_bayside_1", "pickup_flushing_1"];
+  } else if (["11361", "11360", "11364"].includes(z)) {
+    order = ["pickup_bayside_1", "pickup_fm_1", "pickup_flushing_1"];
+  } else if (["11354", "11355", "11358"].includes(z)) {
+    order = ["pickup_flushing_1", "pickup_fm_1", "pickup_bayside_1"];
+  } else {
+    order = ["pickup_fm_1", "pickup_bayside_1", "pickup_flushing_1"];
+  }
+
+  const rank = new Map(order.map((id, idx) => [id, idx]));
+
+  const sorted = [...allPoints].sort((a, b) => {
+    return (rank.get(a._id) ?? 999) - (rank.get(b._id) ?? 999);
+  });
+
+  if (sorted[0]) sorted[0].recommended = true;
+
+  return sorted;
+}
 // ✅ 统一：只写 #deliveryInfoBody，不覆盖右侧 ZIP box
 function renderDeliveryInfo(mode) {
   if (!deliveryHint || !deliveryInfoBody) return;
@@ -380,18 +431,57 @@ function renderDeliveryInfo(mode) {
     return;
   }
   if (mode === "pickup") {
-    deliveryHint.textContent = `当前：自提点自提 · 系统推荐附近自提点`;
+  const zip = String(getEffectiveZip(getSavedZip()) || "").trim();
+
+  const pickupPoints = getRecommendedPickupPointsByZip(zip);
+
+  deliveryHint.textContent = `当前：自提点自提 · 系统推荐附近自提点`;
+
+  if (!pickupPoints.length) {
     deliveryInfoBody.innerHTML = `
       <div class="delivery-info-title">自提点自提</div>
       <ul class="delivery-info-list">
-        <li>系统会根据你的 ZIP 推荐附近自提点</li>
-        <li>你也可以自由选择自己喜欢的自提点</li>
-        <li>自提点将在结算页进行确认</li>
-        <li class="delivery-highlight">自提点自提通常免配送费</li>
+        <li>当前暂无推荐自提点</li>
+        <li>你仍可在结算页查看可选自提点</li>
       </ul>
     `;
     return;
   }
+
+  deliveryInfoBody.innerHTML = `
+    <div class="delivery-info-title">推荐自提点</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px;">
+      ${pickupPoints
+        .map(
+          (p) => `
+            <div style="padding:10px 12px;border:1px solid #e5e7eb;border-radius:12px;background:#fff;">
+              <div style="font-size:13px;font-weight:700;color:#111827;">
+                ${p.name}${p.recommended ? ' <span style="color:#16a34a;font-size:12px;">推荐</span>' : ""}
+              </div>
+              <div style="margin-top:4px;font-size:12px;color:#6b7280;">
+                ${p.address}
+              </div>
+              <div style="margin-top:4px;font-size:12px;color:#6b7280;">
+                取货时间：${p.openHours || "—"}
+              </div>
+              ${
+                Number.isFinite(Number(p.distanceMiles))
+                  ? `<div style="margin-top:4px;font-size:12px;color:#16a34a;">距离约 ${Number(
+                      p.distanceMiles
+                    ).toFixed(1)} miles</div>`
+                  : ""
+              }
+            </div>
+          `
+        )
+        .join("")}
+    </div>
+    <div style="margin-top:10px;font-size:12px;color:#6b7280;">
+      下单后将在结算页最终确认自提点。
+    </div>
+  `;
+  return;
+}
   deliveryHint.textContent = `当前：区域团拼单配送 · ${zoneName}`;
   deliveryInfoBody.innerHTML = `
     <div class="delivery-info-title">配送信息</div>
