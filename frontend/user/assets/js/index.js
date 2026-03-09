@@ -1863,7 +1863,15 @@ function toUiModeKey(cartMode) {
   if (cartMode === "pickup") return "pickup";
   return "area-group";
 }
+function getCurrentUiDeliveryMode() {
+  const active = document.querySelector(".delivery-pill.active");
+  if (active?.dataset?.mode) return active.dataset.mode;
 
+  const pref = localStorage.getItem("freshbuy_pref_mode");
+  if (pref) return toUiModeKey(pref);
+
+  return "area-group";
+}
 function getSavedZoneBrief() {
   try {
     return JSON.parse(localStorage.getItem("freshbuy_zone") || "{}");
@@ -1895,18 +1903,25 @@ async function applyZoneToUI(zip, payload) {
   }
 
   if (!deliverable || !zone) {
-    deliveryHintEl.textContent = "当前：未开通配送";
-    deliveryInfoBodyEl.innerHTML = `
-      <div class="delivery-info-title">当前 ZIP 暂未开通配送</div>
-      <ul class="delivery-info-list">
-        <li>你输入的 ZIP：<span class="delivery-highlight">${zip || "--"}</span></li>
-        <li style="color:#b00020;">${reason}</li>
-        <li>如需查询你所在区域什么时候开通：<strong>加微信 nyfreshbuy</strong> 咨询</li>
-      </ul>
-    `;
+  const currentMode = getCurrentUiDeliveryMode();
+
+  // ✅ 如果当前/上次用户选的是自提点，不要被 ZIP 检测覆盖
+  if (currentMode === "pickup") {
+    renderDeliveryInfo("pickup");
     return;
   }
 
+  deliveryHintEl.textContent = "当前：未开通配送";
+  deliveryInfoBodyEl.innerHTML = `
+    <div class="delivery-info-title">当前 ZIP 暂未开通配送</div>
+    <ul class="delivery-info-list">
+      <li>你输入的 ZIP：<span class="delivery-highlight">${zip || "--"}</span></li>
+      <li style="color:#b00020;">${reason}</li>
+      <li>如需查询你所在区域什么时候开通：<strong>加微信 nyfreshbuy</strong> 咨询</li>
+    </ul>
+  `;
+  return;
+}
  const briefZone = {
   id: zone.id || zone._id || "",
   name: zone.name || "",
@@ -2252,11 +2267,15 @@ window.addEventListener("DOMContentLoaded", async () => {
   await initZipAutoZone();
 
   // ✅ 恢复用户选择的配送偏好
-  const pref = localStorage.getItem("freshbuy_pref_mode");
+    const pref = localStorage.getItem("freshbuy_pref_mode");
   if (pref) {
     const uiMode = toUiModeKey(pref);
     const btn = document.querySelector(`.delivery-pill[data-mode="${uiMode}"]`);
-    if (btn) btn.click();
+    if (btn) {
+      btn.click();
+    } else {
+      renderDeliveryInfo(uiMode);
+    }
   } else {
     renderDeliveryInfo("area-group");
   }
