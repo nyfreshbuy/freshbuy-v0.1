@@ -425,7 +425,18 @@
             <div class="muted" style="line-height: 1.4">
               Street Address 输入后请从下拉建议中选择，完成验证并生成坐标（placeId + lat/lng）。
             </div>
+            <div id="pickupSection" style="display:none; margin-top: 8px;">
+  <div class="muted" style="margin: 4px 0; font-weight: 700;">选择自提点</div>
+  <div class="muted" id="pickupHint" style="margin-bottom: 8px;">
+    系统会优先推荐附近自提点，你也可以自由选择。
+  </div>
 
+  <div id="pickupPointsList"></div>
+
+  <input id="pickupPointId" type="hidden" />
+  <input id="pickupPointName" type="hidden" />
+  <input id="pickupPointAddress" type="hidden" />
+</div>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px">
               <div>
                 <div class="muted" style="margin: 4px 0">名 (First Name)</div>
@@ -708,6 +719,32 @@
       const PREF_MODE_KEY = "freshbuy_pref_mode";
       const ZONE_LS_KEY = "freshbuy_zone";
       const CART_LS_KEY = "fresh_cart_v1";
+      const MOCK_PICKUP_POINTS = [
+  {
+    _id: "pickup_fm_1",
+    name: "Fresh Meadows 自提点",
+    address: "199-26 48th Ave, Fresh Meadows, NY 11365",
+    openHours: "周三 / 周六 2:00 PM - 8:00 PM",
+    distanceMiles: 1.2,
+    recommended: true,
+  },
+  {
+    _id: "pickup_bayside_1",
+    name: "Bayside 自提点",
+    address: "214-11 Northern Blvd, Bayside, NY 11361",
+    openHours: "周三 / 周六 1:00 PM - 7:00 PM",
+    distanceMiles: 3.8,
+    recommended: false,
+  },
+  {
+    _id: "pickup_flushing_1",
+    name: "Flushing 自提点",
+    address: "41-08 Main St, Flushing, NY 11355",
+    openHours: "周二 / 周五 3:00 PM - 8:00 PM",
+    distanceMiles: 5.6,
+    recommended: false,
+  },
+];
 
       function getToken() {
         return (
@@ -1044,13 +1081,14 @@ price: safeNum(p.price ?? p.priceNum, 0),
   }, 0);
 }
       function getPreferredMode() {
-        const v = String(localStorage.getItem(PREF_MODE_KEY) || "groupDay").trim();
-        if (v === "area-group") return "groupDay";
-        if (v === "next-day") return "normal";
-        if (v === "friend-group") return "friendGroup";
-        if (v === "groupDay" || v === "normal" || v === "friendGroup" || v === "dealsDay") return v;
-        return "groupDay";
-      }
+  const v = String(localStorage.getItem(PREF_MODE_KEY) || "groupDay").trim();
+  if (v === "area-group") return "groupDay";
+  if (v === "next-day") return "normal";
+  if (v === "friend-group") return "friendGroup";
+  if (v === "pickup") return "pickup";
+  if (v === "groupDay" || v === "normal" || v === "friendGroup" || v === "dealsDay" || v === "pickup") return v;
+  return "groupDay";
+}
 
       // ========= 核心：结算页重算（跟 cart.js 规则一致） =========
       function computeCheckoutSnapshot() {
@@ -1088,37 +1126,42 @@ price: safeNum(p.price ?? p.priceNum, 0),
         }
         // 3) 全是非爆：normal / friendGroup / groupDay
         else {
-          const pref = getPreferredMode();
+  const pref = getPreferredMode();
 
-          if (pref === "normal" && zone.normal?.enabled) {
-            mode = "normal";
-            const min = safeNum(zone.normal?.minAmount, 49.99);
-            const fee = safeNum(zone.normal?.shippingFee, 4.99);
-            shipping = fee;
-            canSubmit = subtotal >= min;
-            ruleHint = canSubmit
-              ? `规则：次日配送满 $${min.toFixed(2)} 可结算，运费 $${fee.toFixed(2)}。`
-              : `规则：次日配送需满 $${min.toFixed(2)} 才能结算（未满不可结算）。`;
-          } else if (pref === "friendGroup" && zone.friendGroup?.enabled) {
-            mode = "friendGroup";
-            const min = safeNum(zone.friendGroup?.minAmount, 29);
-            const fee = safeNum(zone.friendGroup?.shippingFee, 4.99);
-            shipping = fee;
-            canSubmit = subtotal >= min;
-            ruleHint = canSubmit
-              ? `规则：好友拼单最低 $${min.toFixed(2)} 可结算，运费将按人数分摊（此处先显示基础运费 $${fee.toFixed(2)}）。`
-              : `规则：好友拼单需满 $${min.toFixed(2)} 才能结算（未满不可结算）。`;
-          } else {
-            mode = "groupDay";
-            const th = safeNum(zone.groupDay?.freeThreshold, 49.99);
-            const fee = safeNum(zone.groupDay?.shippingFee, 4.99);
-            shipping = subtotal >= th ? 0 : fee;
-            ruleHint =
-              subtotal >= th
-                ? `规则：区域团满 $${th.toFixed(2)} 免运费，可结算。`
-                : `规则：区域团未满 $${th.toFixed(2)} 收取运费 $${fee.toFixed(2)}，可结算。`;
-          }
-        }
+  if (pref === "pickup") {
+    mode = "pickup";
+    shipping = 0;
+    canSubmit = true;
+    ruleHint = "规则：自提点自提免配送费，请在下方选择自提点。";
+  } else if (pref === "normal" && zone.normal?.enabled) {
+    mode = "normal";
+    const min = safeNum(zone.normal?.minAmount, 49.99);
+    const fee = safeNum(zone.normal?.shippingFee, 4.99);
+    shipping = fee;
+    canSubmit = subtotal >= min;
+    ruleHint = canSubmit
+      ? `规则：次日配送满 $${min.toFixed(2)} 可结算，运费 $${fee.toFixed(2)}。`
+      : `规则：次日配送需满 $${min.toFixed(2)} 才能结算（未满不可结算）。`;
+  } else if (pref === "friendGroup" && zone.friendGroup?.enabled) {
+    mode = "friendGroup";
+    const min = safeNum(zone.friendGroup?.minAmount, 29);
+    const fee = safeNum(zone.friendGroup?.shippingFee, 4.99);
+    shipping = fee;
+    canSubmit = subtotal >= min;
+    ruleHint = canSubmit
+      ? `规则：好友拼单最低 $${min.toFixed(2)} 可结算，运费将按人数分摊（此处先显示基础运费 $${fee.toFixed(2)}）。`
+      : `规则：好友拼单需满 $${min.toFixed(2)} 才能结算（未满不可结算）。`;
+  } else {
+    mode = "groupDay";
+    const th = safeNum(zone.groupDay?.freeThreshold, 49.99);
+    const fee = safeNum(zone.groupDay?.shippingFee, 4.99);
+    shipping = subtotal >= th ? 0 : fee;
+    ruleHint =
+      subtotal >= th
+        ? `规则：区域团满 $${th.toFixed(2)} 免运费，可结算。`
+        : `规则：区域团未满 $${th.toFixed(2)} 收取运费 $${fee.toFixed(2)}，可结算。`;
+  }
+}
 
         try {
           localStorage.setItem(PREF_MODE_KEY, mode);
@@ -1140,13 +1183,109 @@ price: safeNum(p.price ?? p.priceNum, 0),
       }
 
       function modeText(mode, zoneName) {
-        if (mode === "groupDay") return "区域团拼单配送" + (zoneName ? `（${zoneName}）` : "");
-        if (mode === "friendGroup") return "好友拼单配送";
-        if (mode === "normal") return "次日配送";
-        if (mode === "dealsDay") return "爆品日配送";
-        return mode;
-      }
+  if (mode === "groupDay") return "区域团拼单配送" + (zoneName ? `（${zoneName}）` : "");
+  if (mode === "friendGroup") return "好友拼单配送";
+  if (mode === "normal") return "次日配送";
+  if (mode === "pickup") return "自提点自提";
+  if (mode === "dealsDay") return "爆品日配送";
+  return mode;
+}
+function renderPickupPointsList(items) {
+  const box = document.getElementById("pickupPointsList");
+  if (!box) return;
 
+  if (!Array.isArray(items) || !items.length) {
+    box.innerHTML = `<div class="muted">当前暂无可选自提点。</div>`;
+    return;
+  }
+
+  const selectedId = document.getElementById("pickupPointId")?.value || "";
+
+  box.innerHTML = items.map((p) => {
+    const checked = selectedId ? selectedId === p._id : !!p.recommended;
+
+    return `
+      <label
+        style="
+          display:block;
+          border:1px solid ${checked ? "#16a34a" : "#e5e7eb"};
+          border-radius:12px;
+          padding:12px;
+          margin-top:8px;
+          cursor:pointer;
+          background:${checked ? "#f0fdf4" : "#fff"};
+        "
+      >
+        <div style="display:flex; justify-content:space-between; gap:10px; align-items:flex-start;">
+          <div style="flex:1;">
+            <div style="font-weight:800;">
+              ${p.name}
+              ${p.recommended ? '<span style="margin-left:8px; color:#16a34a; font-size:12px;">推荐</span>' : ""}
+            </div>
+            <div class="muted" style="margin-top:4px;">${p.address}</div>
+            <div class="muted" style="margin-top:4px;">取货时间：${p.openHours || "—"}</div>
+          </div>
+          <div style="text-align:right; min-width:82px;">
+            <input
+              type="radio"
+              name="pickupChoice"
+              value="${p._id}"
+              ${checked ? "checked" : ""}
+              onchange="selectPickupPoint('${p._id}', '${(p.name || "").replace(/'/g, "\\'")}', '${(p.address || "").replace(/'/g, "\\'")}')"
+            />
+            <div class="muted" style="margin-top:6px;">
+              ${Number.isFinite(Number(p.distanceMiles)) ? Number(p.distanceMiles).toFixed(1) + " miles" : ""}
+            </div>
+          </div>
+        </div>
+      </label>
+    `;
+  }).join("");
+
+  if (!selectedId) {
+    const first = items.find((x) => x.recommended) || items[0];
+    if (first) {
+      selectPickupPoint(first._id, first.name, first.address);
+    }
+  }
+}
+
+function selectPickupPoint(id, name, address) {
+  const idEl = document.getElementById("pickupPointId");
+  const nameEl = document.getElementById("pickupPointName");
+  const addrEl = document.getElementById("pickupPointAddress");
+
+  if (idEl) idEl.value = id || "";
+  if (nameEl) nameEl.value = name || "";
+  if (addrEl) addrEl.value = address || "";
+
+  renderPickupPointsList(MOCK_PICKUP_POINTS);
+}
+window.selectPickupPoint = selectPickupPoint;
+function togglePickupModeUI(mode) {
+  const pickupSection = document.getElementById("pickupSection");
+
+  const streetWrap = document.getElementById("street")?.closest("div");
+  const aptWrap = document.getElementById("apt")?.closest("div");
+  const cityInput = document.getElementById("city");
+  const cityStateZipWrap = cityInput ? cityInput.closest("div")?.parentElement : null;
+
+  const setAsDefaultWrap = document.getElementById("setAsDefault")?.closest("div");
+  const noteWrap = document.getElementById("note")?.closest("div");
+
+  const isPickup = mode === "pickup";
+
+  if (pickupSection) pickupSection.style.display = isPickup ? "block" : "none";
+  if (streetWrap) streetWrap.style.display = isPickup ? "none" : "";
+  if (aptWrap) aptWrap.style.display = isPickup ? "none" : "";
+  if (cityStateZipWrap) cityStateZipWrap.style.display = isPickup ? "none" : "";
+  if (setAsDefaultWrap) setAsDefaultWrap.style.display = isPickup ? "none" : "";
+  if (noteWrap) noteWrap.style.display = "";
+
+  if (isPickup) {
+    renderPickupPointsList(MOCK_PICKUP_POINTS);
+  }
+}
       // ========= 渲染 =========
       function render(snapshot) {
         const itemsList = document.getElementById("itemsList");
@@ -1163,7 +1302,7 @@ price: safeNum(p.price ?? p.priceNum, 0),
 
         itemsCount.textContent = (snapshot.totalQty || 0) + " 件";
         modeTip.textContent = "配送方式：" + modeText(snapshot.mode, snapshot.zone?.name || "");
-
+        togglePickupModeUI(snapshot.mode);
         items.forEach((item, index) => {
           const qty = Number(item.qty || 1);
           const meta = getSpecialMeta(item, qty); // ✅ 特价信息
@@ -1617,7 +1756,7 @@ if (!placeId0 || !Number.isFinite(lat0) || !Number.isFinite(lng0)) {
           const placeId = document.getElementById("addrPlaceId").value.trim();
           const lat = Number(document.getElementById("addrLat").value);
           const lng = Number(document.getElementById("addrLng").value);
-
+          const isPickupMode = snapshot.mode === "pickup";
           const { deliveryType, deliveryDate } = computeDeliveryMeta(snapshot.mode);
           const zoneKey = snapshot.zone?.zoneKey || snapshot.zone?.key || snapshot.zone?.id || "";
 
@@ -1748,10 +1887,11 @@ lastStripePaymentIntentId = String(data.paymentIntentId || data.payment_intent |
         const m = String(mode || "").trim();
 
         let deliveryType = m;
-        if (m === "friendGroup") deliveryType = "friend";
-        if (m === "normal") deliveryType = "nextDay";
-        if (m === "groupDay") deliveryType = "groupDay";
-        if (m === "dealsDay") deliveryType = "groupDay";
+if (m === "friendGroup") deliveryType = "friend";
+if (m === "normal") deliveryType = "nextDay";
+if (m === "groupDay") deliveryType = "groupDay";
+if (m === "dealsDay") deliveryType = "groupDay";
+if (m === "pickup") deliveryType = "pickup";
 
         let deliveryDate = "";
         if (deliveryType === "groupDay") {
@@ -1776,16 +1916,30 @@ lastStripePaymentIntentId = String(data.paymentIntentId || data.payment_intent |
         if (!snapshot.canSubmit) return showAlert("未满足最低消费条件，暂不可下单。", false);
 
         const f = getFormUS();
-        if (!f.firstName || !f.lastName || !f.phone) return showAlert("请填写 First Name / Last Name / Phone。", false);
-        if (!f.street1 || !f.city || !f.state || !f.zip) return showAlert("请完整填写 Street / City / State / ZIP。", false);
+if (!f.firstName || !f.lastName || !f.phone) {
+  return showAlert("请填写 First Name / Last Name / Phone。", false);
+}
 
-       if (!enforceDropdownPickOrStop()) return;
-// ✅ 真正下单/支付前再做 ZIP 支持校验（只在这里做，别在切换支付方式时做）
-try {
-  const okZip = await checkZipSupported((document.getElementById("zip").value || "").trim());
-  if (!okZip) return showAlert("该 ZIP 暂不支持配送。", false);
-} catch (e) {
-  return showAlert(e.message || "ZIP 校验失败", false);
+const isPickup = snapshot.mode === "pickup";
+
+if (!isPickup) {
+  if (!f.street1 || !f.city || !f.state || !f.zip) {
+    return showAlert("请完整填写 Street / City / State / ZIP。", false);
+  }
+
+  if (!enforceDropdownPickOrStop()) return;
+
+  try {
+    const okZip = await checkZipSupported((document.getElementById("zip").value || "").trim());
+    if (!okZip) return showAlert("该 ZIP 暂不支持配送。", false);
+  } catch (e) {
+    return showAlert(e.message || "ZIP 校验失败", false);
+  }
+} else {
+  const pickupPointId = document.getElementById("pickupPointId")?.value || "";
+  if (!pickupPointId) {
+    return showAlert("请选择一个自提点。", false);
+  }
 }
         if (document.getElementById("setAsDefault").checked) {
           try {
@@ -1814,6 +1968,14 @@ const lng = Number(document.getElementById("addrLng").value);
           zoneId: snapshot.zone?.id || "",
           zoneName: snapshot.zone?.name || "",
           remark: f.note || "", // ✅ 新增：订单备注（用于后台订单/贴纸）
+          pickup:
+  snapshot.mode === "pickup"
+    ? {
+        pickupPointId: document.getElementById("pickupPointId")?.value || "",
+        pickupPointName: document.getElementById("pickupPointName")?.value || "",
+        pickupAddress: document.getElementById("pickupPointAddress")?.value || "",
+      }
+    : null,
           items: (snapshot.items || []).map((it) => {
   const isTax = it.taxable === true || it.hasTax === true;
 
@@ -1839,21 +2001,29 @@ const lng = Number(document.getElementById("addrLng").value);
   };
 }),
           shipping: {
-            firstName: f.firstName,
-            lastName: f.lastName,
-            phone: f.phone,
-            street1: f.street1,
-            apt: f.apt || "",
-            city: f.city,
-            state: f.state,
-            zip: f.zip,
-            addressLine: addrLine,
-            fullText,
-            placeId: placeId || "",
-            lat,
-            lng,
-            note: f.note || "",
-          },
+  firstName: f.firstName,
+  lastName: f.lastName,
+  phone: f.phone,
+  street1: isPickupMode ? "" : f.street1,
+  apt: isPickupMode ? "" : (f.apt || ""),
+  city: isPickupMode ? "" : f.city,
+  state: isPickupMode ? "" : f.state,
+  zip: isPickupMode ? "" : f.zip,
+  addressLine: isPickupMode ? "" : addrLine,
+  fullText: isPickupMode ? "PICKUP" : fullText,
+  placeId: isPickupMode ? "" : (placeId || ""),
+  lat: isPickupMode ? undefined : (Number.isFinite(lat) ? lat : undefined),
+  lng: isPickupMode ? undefined : (Number.isFinite(lng) ? lng : undefined),
+  note: f.note || "",
+},
+pickup:
+  snapshot.mode === "pickup"
+    ? {
+        pickupPointId: document.getElementById("pickupPointId")?.value || "",
+        pickupPointName: document.getElementById("pickupPointName")?.value || "",
+        pickupAddress: document.getElementById("pickupPointAddress")?.value || "",
+      }
+    : null,
           pricing: {
   // ✅ 基础
   subtotal: Number(snapshot.subtotal),
