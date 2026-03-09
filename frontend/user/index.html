@@ -2052,7 +2052,7 @@
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
         navigator.serviceWorker
-          .register("/user/service-worker.js?v=20260223_1") // ✅ 改版本号强制更新
+          .register("/user/service-worker.js?v=20260223_2") // ✅ 改版本号强制更新
           .catch(console.error);
       });
     }
