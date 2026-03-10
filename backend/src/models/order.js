@@ -134,11 +134,39 @@ const orderSchema = new mongoose.Schema(
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", index: true },
 
     customerName: { type: String, default: "" },
-    customerPhone: { type: String, default: "", index: true },
+customerPhone: { type: String, default: "", index: true },
 
-    deliveryType: { type: String, default: "home", index: true },
+// 配送类型：home / leader_pickup
+deliveryType: { type: String, default: "home", index: true },
 
-    deliveryMode: {
+// =========================
+// 自提点真实归属字段
+// 修改位置：deliveryType 后面、deliveryMode 前面
+// =========================
+pickupPointId: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: "PickupPoint",
+  default: null,
+  index: true,
+},
+pickupPointName: { type: String, default: "" },
+pickupPointCode: { type: String, default: "", index: true },
+
+pickupDisplayArea: { type: String, default: "" },
+pickupMaskedAddress: { type: String, default: "" },
+pickupTimeText: { type: String, default: "" },
+
+// 真实地址快照（后台 / 团长可见）
+pickupAddressLine1: { type: String, default: "" },
+pickupAddressLine2: { type: String, default: "" },
+pickupCity: { type: String, default: "" },
+pickupState: { type: String, default: "" },
+pickupZip: { type: String, default: "", index: true },
+
+pickupLeaderName: { type: String, default: "" },
+pickupLeaderPhone: { type: String, default: "" },
+
+deliveryMode: {
       type: String,
       enum: ["normal", "groupDay", "dealsDay", "friendGroup"],
       default: "normal",
@@ -375,6 +403,8 @@ orderSchema.index({ "stockReserve.productId": 1 });
 orderSchema.index({ "stockReserve.variantKey": 1 });
 orderSchema.index({ "leaderCommission.settled": 1, createdAt: -1 });
 orderSchema.index({ "leaderCommission.leaderId": 1, createdAt: -1 });
+orderSchema.index({ pickupPointId: 1, createdAt: -1 });
+orderSchema.index({ pickupPointCode: 1, deliveryDate: 1, status: 1 });
 // =========================
 // pre-validate：金额 / 批次 / 派单统一
 // ✅ 修复：把押金写入 depositTotal + payment.amountDeposit

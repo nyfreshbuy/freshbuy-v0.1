@@ -66,6 +66,7 @@ import bannersRouter from "./routes/banners.js";
 import adminBannersRouter from "./routes/admin_banners.js";
 import adminLeadersRouter from "./routes/admin_leaders.js";
 import leaderRouter from "./routes/leader.js";
+import publicPickupPointsRouter from "./routes/public_pickup_points.js";
 // =======================
 // ESM 环境下的 __dirname
 // =======================
@@ -118,7 +119,7 @@ app.use("/api/admin/invoices", adminInvoicesRouter);
  * - pay_stripe.js 内部已经对 /webhook 使用了 express.raw
  * - 这里只需要确保 /api/pay/stripe 在 express.json() 之前挂载
  */
-
+app.use("/api/public/pickup-points", publicPickupPointsRouter);
 // cors 放在这里是安全的（不影响 webhook raw）
 app.use(cors());
 

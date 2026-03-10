@@ -5,6 +5,7 @@ import Order from "../models/order.js";
 import User from "../models/user.js";
 import Zone from "../models/Zone.js";
 import Product from "../models/product.js";
+import PickupPoint from "../models/PickupPoint.js";
 import { requireLogin } from "../middlewares/auth.js";
 import Wallet from "../models/Wallet.js";
 import { computeTotalsFromPayload, calcSpecialLineTotal } from "../utils/checkout_pricing.js";
@@ -267,7 +268,34 @@ async function resolveZoneFromPayload({ zoneId, ship, zip }) {
   const zoneName = String(doc.name || "").trim();
   return { zoneKey, zoneName, zoneMongoId };
 }
+async function resolvePickupPointFromPayload(body = {}) {
+  const pickupPointId = String(
+    body?.pickupPointId ||
+    body?.pickupPoint?._id ||
+    body?.pickupPoint?.id ||
+    ""
+  ).trim();
 
+  if (!pickupPointId) return null;
+  if (!mongoose.Types.ObjectId.isValid(pickupPointId)) {
+    const e = new Error("自提点ID不合法");
+    e.status = 400;
+    throw e;
+  }
+
+  const doc = await PickupPoint.findOne({
+    _id: pickupPointId,
+    enabled: true,
+  }).lean();
+
+  if (!doc) {
+    const e = new Error("自提点不存在或已停用");
+    e.status = 400;
+    throw e;
+  }
+
+  return doc;
+}
 // ✅ 如果订单当初没走 checkout 预扣库存（stockReserve 为空），在支付确认时补扣
 async function reserveStockForExistingOrder(orderDoc, session) {
   if (!orderDoc || !Array.isArray(orderDoc.items) || orderDoc.items.length === 0) return [];
@@ -341,7 +369,10 @@ async function buildOrderPayload(req, session = null) {
   const mode = pickMode(body);
 
   const { items, receiver, shipping, zoneId, deliveryDate, tip, tipAmount } = body;
-  const ship = shipping || receiver || {};
+const ship = shipping || receiver || {};
+
+const deliveryTypeRaw = String(body?.deliveryType || "").trim().toLowerCase();
+const isLeaderPickup = deliveryTypeRaw === "leader_pickup";
 
   // ✅ 订单备注统一入口
   const orderNote = String(body?.remark ?? body?.note ?? ship?.remark ?? ship?.note ?? "").trim();
@@ -357,29 +388,62 @@ async function buildOrderPayload(req, session = null) {
     e.status = 400;
     throw e;
   }
-
-  // 收货信息字段兼容
-  const contactName =
-    (ship.name || ship.fullName || ship.contactName || "").trim() ||
-    [ship.firstName, ship.lastName].filter(Boolean).join(" ").trim();
-
-  const contactPhone = String(ship.contactPhone || ship.phone || "").trim();
-
-  const addressText =
-    String(ship.address || ship.fullText || ship.formattedAddress || ship.address1 || ship.addressLine || "").trim() ||
-    [ship.street1, ship.apt, ship.city, ship.state, ship.zip].filter(Boolean).join(", ").trim();
-
-  if (!contactName || !contactPhone || !addressText) {
-    const e = new Error("收货信息不完整（姓名/电话/地址）");
+  let pickupPoint = null;
+if (isLeaderPickup) {
+  pickupPoint = await resolvePickupPointFromPayload(body);
+  if (!pickupPoint) {
+    const e = new Error("请选择自提点");
     e.status = 400;
     throw e;
   }
+}
+  // 收货信息字段兼容
+  const contactName =
+  (ship.name || ship.fullName || ship.contactName || "").trim() ||
+  [ship.firstName, ship.lastName].filter(Boolean).join(" ").trim();
 
+const contactPhone = String(ship.contactPhone || ship.phone || "").trim();
+
+// 送货单：地址来自用户收货地址
+// 自提单：addressText 走自提点真实地址
+let addressText =
+  String(ship.address || ship.fullText || ship.formattedAddress || ship.address1 || ship.addressLine || "").trim() ||
+  [ship.street1, ship.apt, ship.city, ship.state, ship.zip].filter(Boolean).join(", ").trim();
+
+if (!contactName || !contactPhone) {
+  const e = new Error("收货信息不完整（姓名/电话）");
+  e.status = 400;
+  throw e;
+}
+
+if (isLeaderPickup) {
+  addressText = [
+    pickupPoint?.addressLine1 || "",
+    pickupPoint?.addressLine2 || "",
+    pickupPoint?.city || "",
+    pickupPoint?.state || "",
+    pickupPoint?.zip || "",
+  ]
+    .filter(Boolean)
+    .join(", ")
+    .trim();
+} else {
+  if (!addressText) {
+    const e = new Error("收货信息不完整（地址）");
+    e.status = 400;
+    throw e;
+  }
+}
   // 坐标：优先前端，否则后台 geocode（可选）
   let lat = typeof ship.lat === "number" ? ship.lat : Number.isFinite(Number(ship.lat)) ? Number(ship.lat) : null;
-  let lng = typeof ship.lng === "number" ? ship.lng : Number.isFinite(Number(ship.lng)) ? Number(ship.lng) : null;
-  let fullText = String(ship.fullText || ship.formattedAddress || addressText).trim();
+let lng = typeof ship.lng === "number" ? ship.lng : Number.isFinite(Number(ship.lng)) ? Number(ship.lng) : null;
+let fullText = String(ship.fullText || ship.formattedAddress || addressText).trim();
 
+if (isLeaderPickup) {
+  lat = Number.isFinite(Number(pickupPoint?.lat)) ? Number(pickupPoint.lat) : null;
+  lng = Number.isFinite(Number(pickupPoint?.lng)) ? Number(pickupPoint.lng) : null;
+  fullText = addressText;
+} else {
   if (!(Number.isFinite(lat) && Number.isFinite(lng))) {
     const g = await geocodeIfNeeded(addressText);
     if (!g) {
@@ -391,7 +455,7 @@ async function buildOrderPayload(req, session = null) {
     lng = g.lng;
     fullText = g.fullText;
   }
-
+}
   // ✅ userId 强制存在
   const userId = toObjectIdMaybe(req.user?.id || req.user?._id);
   if (!userId) {
@@ -680,59 +744,47 @@ const hotFlag = isHotProductLike({
   labels: pdoc?.labels ?? it.labels,
 });
     cleanItems.push({
-      productId,
-      legacyProductId: legacyId || "",
-      name: finalName,
-      sku: finalSku,
+  productId,
+  legacyProductId: legacyId || "",
+  name: finalName,
+  sku: finalSku,
 
-      price: round2(price),
-      qty,
-      variantKey: finalVariantKey,
-      unitCount: finalUnitCount,
+  price: round2(price),
+  qty,
+  variantKey: finalVariantKey,
+  unitCount: finalUnitCount,
 
-      // ✅ 特价字段保留给统一结算用（与前端一致）
-      specialQty: Number(specialQty || 0),
-      specialTotalPrice: Number(specialTotalPrice || 0),
+  specialQty: Number(specialQty || 0),
+  specialTotalPrice: Number(specialTotalPrice || 0),
 
-      // ✅ 税字段统一：hasTax / taxable 都带
-      hasTax: !!hasTax,
-      taxable: !!hasTax,
+  hasTax: !!hasTax,
+  taxable: !!hasTax,
 
-      // ✅ 押金
-      deposit: round2(depositEach),
+  deposit: round2(depositEach),
 
-      image: finalImage,
-      cost,
-       hotFlag, // ✅ NEW：以后佣金=0%就看它
-    });
-    // =========================
-  // ✅ 团长佣金（按 items 成交额计算，和结算口径一致）
-  // =========================
-  const leaderCommission = calcLeaderCommissionFromOrder({ items: cleanItems });
-  }
+  image: finalImage,
+  cost,
+  hotFlag,
+});
+}
+
+// =========================
+// ✅ 团长佣金（按 items 成交额计算，和结算口径一致）
+// 修改位置：for 循环结束后
+// =========================
+const leaderCommission = calcLeaderCommissionFromOrder({ items: cleanItems });
   // -------------------------
   // 规则校验（保留你原来的）
   // -------------------------
   const hasSpecial = cleanItems.some((it) => it.hotFlag === true);
 const hasNonSpecial = cleanItems.some((it) => it.hotFlag !== true);
-  if (mode === "dealsDay" && (hasNonSpecial || !hasSpecial)) {
-    const e = new Error("dealsDay 只能包含爆品");
-    e.status = 400;
-    throw e;
-  }
-
-  if (mode === "groupDay" && hasSpecial && !hasNonSpecial) {
-    const e = new Error("groupDay 不允许纯爆品订单（纯爆品请用 dealsDay）");
-    e.status = 400;
-    throw e;
-  }
-
-  if ((mode === "normal" || mode === "friendGroup") && hasSpecial) {
-    const e = new Error(`${mode} 不应包含爆品`);
-    e.status = 400;
-    throw e;
-  }
-
+  // 商品规则：所有订单类型都可以买爆品
+// dealsDay 保留为“纯爆品单”
+if (mode === "dealsDay" && (hasNonSpecial || !hasSpecial)) {
+  const e = new Error("dealsDay 只能包含爆品");
+  e.status = 400;
+  throw e;
+}
   // -------------------------
 // tip（先算出来）
 // ✅ 兼容：顶层 tip/tipAmount + pricing.tip/tipAmount
@@ -762,13 +814,15 @@ const tipFee = round2(Math.max(0, safeNumber(tipRaw, 0)));
 );
 const subtotalForRule = round2(totalsWallet.subtotal);
 
-if (mode === "normal" && subtotalForRule < 49.99) {
+// ✅ 团长自提不限制最低消费
+// 只有普通送货 / 好友拼团送货才限制最低消费
+if (!isLeaderPickup && mode === "normal" && subtotalForRule < 49.99) {
   const e = new Error("未满足 $49.99 最低消费");
   e.status = 400;
   throw e;
 }
 
-if (mode === "friendGroup" && subtotalForRule < 29) {
+if (!isLeaderPickup && mode === "friendGroup" && subtotalForRule < 29) {
   const e = new Error("未满足 $29 最低消费");
   e.status = 400;
   throw e;
@@ -797,7 +851,9 @@ const discount = round2(
 // buildOrderPayload 阶段走 wallet 口径：平台费固定为 0
 const platformFee = 0;
   // zone
-  const zip = String(ship.zip || ship.postalCode || "").trim();
+  const zip = isLeaderPickup
+  ? String(pickupPoint?.zip || "").trim()
+  : String(ship.zip || ship.postalCode || "").trim();
 const { zoneKey, zoneName, zoneMongoId } = await resolveZoneFromPayload({ zoneId, ship, zip });
 const z = String(zoneKey || "").trim();                // 业务key（你现有 dispatch/fulfillment 用它）
 const zMongo = String(zoneMongoId || "").trim();       // ✅ Mongo _id（用于统计）
@@ -830,13 +886,33 @@ const zMongo = String(zoneMongoId || "").trim();       // ✅ Mongo _id（用于
   const orderDoc = {
     orderNo: genOrderNo(),
     userId,
+  // ✅ 归属手机号：优先登录手机号（关键）
+  customerPhone: (loginPhone10 || shipPhone10 || String(contactPhone)).trim(),
+  customerName: String(contactName).trim(),
 
-    // ✅ 归属手机号：优先登录手机号（关键）
-    customerPhone: (loginPhone10 || shipPhone10 || String(contactPhone)).trim(),
-    customerName: String(contactName).trim(),
+  deliveryType: isLeaderPickup ? "leader_pickup" : "home",
+  deliveryMode: mode,
 
-    deliveryType: "home",
-    deliveryMode: mode,
+  // =========================
+  // 自提点真实快照
+  // 修改位置：deliveryType / deliveryMode 后面
+  // =========================
+  pickupPointId: isLeaderPickup ? pickupPoint?._id || null : null,
+  pickupPointName: isLeaderPickup ? String(pickupPoint?.name || "") : "",
+  pickupPointCode: isLeaderPickup ? String(pickupPoint?.code || "") : "",
+
+  pickupDisplayArea: isLeaderPickup ? String(pickupPoint?.displayArea || "") : "",
+  pickupMaskedAddress: isLeaderPickup ? String(pickupPoint?.maskedAddress || "") : "",
+  pickupTimeText: isLeaderPickup ? String(pickupPoint?.pickupTimeText || "") : "",
+
+  pickupAddressLine1: isLeaderPickup ? String(pickupPoint?.addressLine1 || "") : "",
+  pickupAddressLine2: isLeaderPickup ? String(pickupPoint?.addressLine2 || "") : "",
+  pickupCity: isLeaderPickup ? String(pickupPoint?.city || "") : "",
+  pickupState: isLeaderPickup ? String(pickupPoint?.state || "") : "",
+  pickupZip: isLeaderPickup ? String(pickupPoint?.zip || "") : "",
+
+  pickupLeaderName: isLeaderPickup ? String(pickupPoint?.leaderName || "") : "",
+  pickupLeaderPhone: isLeaderPickup ? String(pickupPoint?.leaderPhone || "") : "",
     deliveryDate: finalDeliveryDate,
     // ✅✅✅ 插入这里（新增）
 zoneId: zMongo || "", // Mongo zoneId（用于拼团统计）
@@ -860,23 +936,29 @@ zone: zMongo ? { id: zMongo, name: zoneName || "" } : null,
     payment: paymentSnap,
 
     addressText: String(addressText).trim(),
-    note: orderNote,
-    address: { fullText, zip, zoneId: z, zoneMongoId: zMongo || "", lat, lng },
-
+note: orderNote,
+address: {
+  fullText,
+  zip,
+  zoneId: z,
+  zoneMongoId: zMongo || "",
+  lat,
+  lng,
+},
         items: cleanItems,
 
     // ✅ NEW：团长佣金快照（先不管 leaderId，后续绑定团长再填）
-    commission: {
-      leaderId: "", // 后续你在下单时/派单时绑定团长再写
-      leaderAmount: Number(leaderCommission?.amount || 0),
-      rateHint: Number(leaderCommission?.rateHint || 0),
-      // ⚠️ breakdown 会让订单变大：你要是担心体积，可以删掉这一行
-      breakdown: Array.isArray(leaderCommission?.breakdown) ? leaderCommission.breakdown : [],
-      settled: false,
-      settledAt: null,
-      settlementId: "",
-    },
+    leaderCommission: {
+  settled: false,
+  settledAt: null,
+  amount: Number(leaderCommission?.amount || 0),
 
+  // 先留空，后续绑定团长再写
+  leaderId: null,
+  leaderCode: "",
+
+  buyerInvitedByCode: "",
+},
     // ✅ NEW：库存预扣快照（只有 checkout 才会有值）
     stockReserve: Array.isArray(stockReserve) ? stockReserve : [],
   };
@@ -1472,6 +1554,19 @@ router.get("/:id([0-9a-fA-F]{24})", async (req, res) => {
         deliveryType: doc.deliveryType,
         status: doc.status,
         deliveryMode: doc.deliveryMode,
+        pickupPointId: doc.pickupPointId,
+pickupPointName: doc.pickupPointName,
+pickupPointCode: doc.pickupPointCode,
+pickupDisplayArea: doc.pickupDisplayArea,
+pickupMaskedAddress: doc.pickupMaskedAddress,
+pickupTimeText: doc.pickupTimeText,
+pickupAddressLine1: doc.pickupAddressLine1,
+pickupAddressLine2: doc.pickupAddressLine2,
+pickupCity: doc.pickupCity,
+pickupState: doc.pickupState,
+pickupZip: doc.pickupZip,
+pickupLeaderName: doc.pickupLeaderName,
+pickupLeaderPhone: doc.pickupLeaderPhone,
         fulfillment: doc.fulfillment,
         dispatch: doc.dispatch,
         payment: doc.payment,
