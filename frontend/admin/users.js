@@ -194,10 +194,21 @@ async function saveUser() {
       }
     );
 
-    const data = await res.json();
-    if (!data.success) {
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.success) {
       alert(data.message || "保存失败");
       return;
+    }
+
+    // ✅ 如果当前角色被设置成团长，额外调用 make-leader
+    if (body.role === "leader") {
+      try {
+        const leaderRet = await makeLeader(editingUserId);
+        console.log("✅ makeLeader success:", leaderRet);
+      } catch (err) {
+        console.error("makeLeader error:", err);
+        alert(`用户已保存，但自动创建团长自提点失败：${err.message || err}`);
+      }
     }
 
     closeEditModal();
@@ -207,7 +218,6 @@ async function saveUser() {
     alert("请求失败");
   }
 }
-
 function closeEditModal() {
   document.getElementById("editModal").classList.remove("open");
   editingUserId = null;
@@ -335,7 +345,24 @@ function normalizePhone10(v) {
   if (digits.length >= 10) return digits.slice(-10);
   return digits;
 }
+async function makeLeader(userId) {
+  const id = String(userId || "").trim();
+  if (!id) throw new Error("缺少 userId");
 
+  const res = await fetch("/api/admin/leaders/make-leader", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ userId: id }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok || !data.ok) {
+    throw new Error(data.message || "设为团长失败");
+  }
+
+  return data;
+}
 async function submitCreateUser() {
   const name = document.getElementById("createName").value.trim();
   const phoneRaw = document.getElementById("createPhone").value.trim();
