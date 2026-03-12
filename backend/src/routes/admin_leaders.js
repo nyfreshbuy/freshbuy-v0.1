@@ -3,7 +3,7 @@ import express from "express";
 import User from "../models/user.js";
 import PickupPoint from "../models/PickupPoint.js";
 import { genLeaderCode } from "../utils/leaderCode.js";
-import { maskAddress } from "../utils/address_mask.js";
+import { maskPickupAddress } from "../utils/address_mask.js";
 // import { requireAdmin } from "../middlewares/admin.js";
 
 const router = express.Router();
@@ -213,7 +213,7 @@ router.post("/make-leader", async (req, res) => {
 
     // ✅ 地址完整时才自动建点
     if (addressLine1 && city && state && zip) {
-      const maskedAddress = maskAddress(addressLine1, nearStreet);
+      const maskedAddress = maskPickupAddress(addressLine1, nearStreet);
 
       await PickupPoint.findOneAndUpdate(
         { leaderUserId: u._id },
