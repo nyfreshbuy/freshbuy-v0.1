@@ -25,8 +25,119 @@ function getDefaultAddressFromUser(u) {
   return list[0] || null;
 }
 
+function pickLeaderName(u) {
+  return String(
+    u?.name ||
+      u?.nickname ||
+      u?.username ||
+      u?.fullName ||
+      (u?.phone ? `用户${String(u.phone).slice(-4)}` : "团长")
+  ).trim();
+}
+
+function pickLeaderStatus(u) {
+  if (u?.status === "disabled" || u?.isDisabled) return "冻结";
+  return "正常";
+}
+
+function toNumber(v, fallback = 0) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function buildPickupName(u, pickup) {
+  const addr = getDefaultAddressFromUser(u);
+
+  return String(
+    pickup?.name ||
+      pickup?.displayArea ||
+      pickup?.maskedAddress ||
+      addr?.formattedAddress ||
+      addr?.addressLine ||
+      "-"
+  ).trim();
+}
+
+// ========================================================
+// GET /api/admin/leaders
+// ✅ 获取真实团长列表（给 admin/leaders.html 用）
+// ========================================================
+router.get("/", async (req, res) => {
+  try {
+    const leaders = await User.find({ role: "leader" })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const leaderIds = leaders.map((u) => u._id).filter(Boolean);
+
+    const pickupPoints = leaderIds.length
+      ? await PickupPoint.find({ leaderUserId: { $in: leaderIds } }).lean()
+      : [];
+
+    const pickupMap = new Map(
+      pickupPoints.map((p) => [String(p.leaderUserId), p])
+    );
+
+    const items = leaders.map((u, idx) => {
+      const pickup = pickupMap.get(String(u._id));
+
+      return {
+        userId: String(u._id),
+        leaderId: String(u.leaderCode || `L${String(idx + 1).padStart(4, "0")}`),
+        leaderName: pickLeaderName(u),
+        phone: String(u.phone || "").trim(),
+        pickupName: buildPickupName(u, pickup),
+
+        // 先兼容已有字段，没有就显示 0
+        totalOrders: toNumber(u.leaderOrderCount || u.totalOrders || 0),
+        totalGmv: toNumber(u.leaderTotalGmv || u.totalGmv || 0),
+        commissionRate: toNumber(
+          u.leaderCommissionRate ?? u.commissionRate ?? 0
+        ),
+        withdrawable: toNumber(
+          u.withdrawableCommission ??
+            u.availableCommission ??
+            u.pendingWithdrawAmount ??
+            0
+        ),
+
+        status: pickLeaderStatus(u),
+        createdAt: u.createdAt || null,
+
+        pickupPointId: pickup?._id ? String(pickup._id) : "",
+        pickupEnabled: Boolean(pickup?.enabled),
+      };
+    });
+
+    const summary = {
+      totalLeaders: items.length,
+      totalGmv: items.reduce((sum, x) => sum + toNumber(x.totalGmv), 0),
+      pendingCommission: items.reduce(
+        (sum, x) => sum + toNumber(x.withdrawable),
+        0
+      ),
+      activeLeaders: items.filter((x) => toNumber(x.totalOrders) > 0).length,
+    };
+
+    return res.json({
+      ok: true,
+      items,
+      summary,
+    });
+  } catch (err) {
+    console.error("GET /api/admin/leaders error:", err);
+    return res.status(500).json({
+      ok: false,
+      message: err?.message || "load leaders failed",
+    });
+  }
+});
+
+// ========================================================
+// POST /api/admin/leaders/make-leader
 // ✅ 把某个用户升级为团长并生成邀请码
 // ✅ 如果用户默认地址完整，则自动创建 / 更新一个自提点
+// ========================================================
 router.post("/make-leader", async (req, res) => {
   try {
     const userId = String(req.body?.userId || "").trim();
@@ -46,7 +157,10 @@ router.post("/make-leader", async (req, res) => {
     if (!u.leaderCode) {
       for (let i = 0; i < 12; i++) {
         const code = genLeaderCode(6);
-        const exists = await User.findOne({ leaderCode: code }).select("_id").lean();
+        const exists = await User.findOne({ leaderCode: code })
+          .select("_id")
+          .lean();
+
         if (!exists) {
           u.leaderCode = code;
           break;
@@ -67,18 +181,13 @@ router.post("/make-leader", async (req, res) => {
     // ✅ 自动创建 / 更新团长自提点
     // 规则：团长默认地址 = 自提点地址
     // =========================
-    const leaderName = String(
-      u.name || u.nickname || u.username || u.fullName || "团长"
-    ).trim();
-
+    const leaderName = pickLeaderName(u);
     const leaderPhone = String(u.phone || "").trim();
 
     const addr = getDefaultAddressFromUser(u);
 
     const addressLine1 = String(
-      addr?.addressLine ||
-      addr?.formattedAddress ||
-      ""
+      addr?.addressLine || addr?.formattedAddress || ""
     ).trim();
 
     // 你的 user.addresses 里没有单独 addressLine2，所以这里先留空
