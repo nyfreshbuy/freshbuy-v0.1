@@ -2270,7 +2270,33 @@ async function applyZip(zip, { silent = false, force = false } = {}) {
 
   applyZoneToUI(z, payload);
 }
+async function restoreHomepageDeliveryState() {
+  try {
+    const zipInput = document.getElementById("zipInput");
+    const currentZip = String(
+      getEffectiveZip(getSavedZip() || zipInput?.value || "")
+    ).trim();
 
+    // ✅ 有 ZIP 就重新应用一次 ZIP -> zone / pickup 数据
+    if (isValidZip(currentZip)) {
+      await applyZip(currentZip, { silent: true, force: true });
+    }
+
+    // ✅ 再按当前偏好模式重新渲染右侧区域
+    const pref = localStorage.getItem("freshbuy_pref_mode");
+    const uiMode = pref ? toUiModeKey(pref) : "area-group";
+
+    const btn = document.querySelector(`.delivery-pill[data-mode="${uiMode}"]`);
+    if (btn) {
+      document.querySelectorAll(".delivery-pill").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+    }
+
+    await renderDeliveryInfo(uiMode || "area-group");
+  } catch (err) {
+    console.error("restoreHomepageDeliveryState error:", err);
+  }
+}
 async function initZipAutoZone() {
   const zipInput = $("zipInput");
   const zipApplyBtn = $("zipApplyBtn");
@@ -2502,7 +2528,26 @@ window.addEventListener("DOMContentLoaded", async () => {
     fg.style.display = "none"; // 或者 fg.disabled = true; 取决于你用的元素类型
   }
 });
+window.addEventListener("pageshow", async (event) => {
+  try {
+    console.log("✅ index pageshow fired", {
+      persisted: !!event.persisted,
+    });
 
+    await restoreHomepageDeliveryState();
+  } catch (err) {
+    console.error("pageshow restore failed:", err);
+  }
+});
+document.addEventListener("visibilitychange", async () => {
+  if (document.visibilityState !== "visible") return;
+
+  try {
+    await restoreHomepageDeliveryState();
+  } catch (err) {
+    console.error("visibilitychange restore failed:", err);
+  }
+});
 // =========================
 // 🔍 搜索实现：过滤首页商品
 // =========================
