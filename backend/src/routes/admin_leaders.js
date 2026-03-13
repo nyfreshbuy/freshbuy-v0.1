@@ -2,6 +2,7 @@
 import express from "express";
 import User from "../models/user.js";
 import PickupPoint from "../models/PickupPoint.js";
+import Address from "../models/Address.js";
 import { genLeaderCode } from "../utils/leaderCode.js";
 import { maskPickupAddress } from "../utils/address_mask.js";
 // import { requireAdmin } from "../middlewares/admin.js";
@@ -25,6 +26,63 @@ function getDefaultAddressFromUser(u) {
   return list[0] || null;
 }
 
+async function getDefaultAddressForLeader(u) {
+  // 1) 先从 User.addresses 里拿
+  const embedded = getDefaultAddressFromUser(u);
+  if (embedded) {
+    return {
+      addressLine: String(
+        embedded.addressLine || embedded.formattedAddress || ""
+      ).trim(),
+      formattedAddress: String(embedded.formattedAddress || "").trim(),
+      city: String(embedded.city || "").trim(),
+      state: String(embedded.state || "").trim(),
+      zip: String(embedded.zip || "").trim(),
+      lat: embedded.lat,
+      lng: embedded.lng,
+    };
+  }
+
+  // 2) 再从独立 Address 集合里拿
+  try {
+    if (!u?._id) return null;
+
+    const userIdStr = String(u._id);
+
+    let a = await Address.findOne({
+      $or: [{ userId: userIdStr }, { userId: u._id }],
+      isDefault: true,
+    }).lean();
+
+    if (!a) {
+      a = await Address.findOne({
+        $or: [{ userId: userIdStr }, { userId: u._id }],
+      })
+        .sort({ createdAt: -1, updatedAt: -1 })
+        .lean();
+    }
+
+    if (!a) return null;
+
+    return {
+      addressLine: String(
+        a.addressLine ||
+          a.formattedAddress ||
+          [a.street1 || "", a.apt || ""].filter(Boolean).join(", ")
+      ).trim(),
+      formattedAddress: String(a.formattedAddress || "").trim(),
+      city: String(a.city || "").trim(),
+      state: String(a.state || "").trim(),
+      zip: String(a.zip || "").trim(),
+      lat: a.lat,
+      lng: a.lng,
+    };
+  } catch (err) {
+    console.warn("getDefaultAddressForLeader error:", err?.message || err);
+    return null;
+  }
+}
+
 function pickLeaderName(u) {
   return String(
     u?.name ||
@@ -45,8 +103,8 @@ function toNumber(v, fallback = 0) {
   return Number.isFinite(n) ? n : fallback;
 }
 
-function buildPickupName(u, pickup) {
-  const addr = getDefaultAddressFromUser(u);
+async function buildPickupName(u, pickup) {
+  const addr = await getDefaultAddressForLeader(u);
 
   return String(
     pickup?.name ||
@@ -60,7 +118,7 @@ function buildPickupName(u, pickup) {
 
 // ========================================================
 // GET /api/admin/leaders
-// ✅ 获取真实团长列表（给 admin/leaders.html 用）
+// 获取真实团长列表（给 admin/leaders.html 用）
 // ========================================================
 router.get("/", async (req, res) => {
   try {
@@ -78,36 +136,39 @@ router.get("/", async (req, res) => {
       pickupPoints.map((p) => [String(p.leaderUserId), p])
     );
 
-    const items = leaders.map((u, idx) => {
-      const pickup = pickupMap.get(String(u._id));
+    const items = await Promise.all(
+      leaders.map(async (u, idx) => {
+        const pickup = pickupMap.get(String(u._id));
 
-      return {
-        userId: String(u._id),
-        leaderId: String(u.leaderCode || `L${String(idx + 1).padStart(4, "0")}`),
-        leaderName: pickLeaderName(u),
-        phone: String(u.phone || "").trim(),
-        pickupName: buildPickupName(u, pickup),
+        return {
+          userId: String(u._id),
+          leaderId: String(
+            u.leaderCode || `L${String(idx + 1).padStart(4, "0")}`
+          ),
+          leaderName: pickLeaderName(u),
+          phone: String(u.phone || "").trim(),
+          pickupName: await buildPickupName(u, pickup),
 
-        // 先兼容已有字段，没有就显示 0
-        totalOrders: toNumber(u.leaderOrderCount || u.totalOrders || 0),
-        totalGmv: toNumber(u.leaderTotalGmv || u.totalGmv || 0),
-        commissionRate: toNumber(
-          u.leaderCommissionRate ?? u.commissionRate ?? 0
-        ),
-        withdrawable: toNumber(
-          u.withdrawableCommission ??
-            u.availableCommission ??
-            u.pendingWithdrawAmount ??
-            0
-        ),
+          totalOrders: toNumber(u.leaderOrderCount || u.totalOrders || 0),
+          totalGmv: toNumber(u.leaderTotalGmv || u.totalGmv || 0),
+          commissionRate: toNumber(
+            u.leaderCommissionRate ?? u.commissionRate ?? 0
+          ),
+          withdrawable: toNumber(
+            u.withdrawableCommission ??
+              u.availableCommission ??
+              u.pendingWithdrawAmount ??
+              0
+          ),
 
-        status: pickLeaderStatus(u),
-        createdAt: u.createdAt || null,
+          status: pickLeaderStatus(u),
+          createdAt: u.createdAt || null,
 
-        pickupPointId: pickup?._id ? String(pickup._id) : "",
-        pickupEnabled: Boolean(pickup?.enabled),
-      };
-    });
+          pickupPointId: pickup?._id ? String(pickup._id) : "",
+          pickupEnabled: Boolean(pickup?.enabled),
+        };
+      })
+    );
 
     const summary = {
       totalLeaders: items.length,
@@ -135,8 +196,8 @@ router.get("/", async (req, res) => {
 
 // ========================================================
 // POST /api/admin/leaders/make-leader
-// ✅ 把某个用户升级为团长并生成邀请码
-// ✅ 如果用户默认地址完整，则自动创建 / 更新一个自提点
+// 把某个用户升级为团长并生成邀请码
+// 如果默认地址完整，则自动创建 / 更新一个自提点
 // ========================================================
 router.post("/make-leader", async (req, res) => {
   try {
@@ -177,41 +238,34 @@ router.post("/make-leader", async (req, res) => {
 
     await u.save();
 
-    // =========================
-    // ✅ 自动创建 / 更新团长自提点
-    // 规则：团长默认地址 = 自提点地址
-    // =========================
+    // 自动创建 / 更新团长自提点
     const leaderName = pickLeaderName(u);
     const leaderPhone = String(u.phone || "").trim();
 
-    const addr = getDefaultAddressFromUser(u);
+    const addr = await getDefaultAddressForLeader(u);
 
     const addressLine1 = String(
       addr?.addressLine || addr?.formattedAddress || ""
     ).trim();
 
-    // 你的 user.addresses 里没有单独 addressLine2，所以这里先留空
     const addressLine2 = "";
-
     const city = String(addr?.city || "").trim();
     const state = String(addr?.state || "").trim();
     const zip = String(addr?.zip || "").trim();
 
-    const lat = Number.isFinite(Number(addr?.lat)) ? Number(addr.lat) : undefined;
-    const lng = Number.isFinite(Number(addr?.lng)) ? Number(addr.lng) : undefined;
+    const lat = Number.isFinite(Number(addr?.lat))
+      ? Number(addr.lat)
+      : undefined;
+    const lng = Number.isFinite(Number(addr?.lng))
+      ? Number(addr.lng)
+      : undefined;
 
-    // 展示区域：优先 city
     const displayArea = String(city || "").trim();
-
-    // 近街道：你当前 user.addresses 里没有单独字段，先留空
     const nearStreet = "";
-
-    // 取货时间先给默认值，后面可在团长管理里单独维护
     const pickupTimeText = "周六 2:00 PM - 6:00 PM";
 
     let pickupPointCreated = false;
 
-    // ✅ 地址完整时才自动建点
     if (addressLine1 && city && state && zip) {
       const maskedAddress = maskPickupAddress(addressLine1, nearStreet);
 
