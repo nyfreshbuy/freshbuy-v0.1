@@ -616,9 +616,8 @@ async function renderDeliveryInfo(mode) {
   `;
 }
 
-// 默认区域团拼单
-void renderDeliveryInfo("area-group");
-
+// 默认渲染：优先使用已保存的模式
+void renderDeliveryInfo(getCurrentUiDeliveryMode());
 // 点击切换配送模式（+ 好友拼单弹窗）
 document.addEventListener("click", (e) => {
   const pill = e.target.closest(".delivery-pill");
@@ -2081,11 +2080,13 @@ function toUiModeKey(cartMode) {
   return "area-group";
 }
 function getCurrentUiDeliveryMode() {
-  const active = document.querySelector(".delivery-pill.active");
-  if (active?.dataset?.mode) return active.dataset.mode;
-
+  // ✅ 先以用户保存的偏好为准
   const pref = localStorage.getItem("freshbuy_pref_mode");
   if (pref) return toUiModeKey(pref);
+
+  // ✅ 没有保存偏好时，才看当前激活按钮
+  const active = document.querySelector(".delivery-pill.active");
+  if (active?.dataset?.mode) return active.dataset.mode;
 
   return "area-group";
 }
