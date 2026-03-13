@@ -170,7 +170,10 @@ async function openEditModal(id) {
 }
 
 async function saveUser() {
-  if (!editingUserId) return;
+  if (!editingUserId) {
+    alert("缺少 editingUserId");
+    return;
+  }
 
   const body = {
     name: document.getElementById("editName").value.trim(),
@@ -178,6 +181,11 @@ async function saveUser() {
     role: document.getElementById("editRole").value,
     status: document.getElementById("editStatus").value,
   };
+
+  console.log("🧪 saveUser start:", {
+    editingUserId,
+    body,
+  });
 
   if (!body.name || !body.phone) {
     alert("姓名和手机号不能为空");
@@ -195,6 +203,12 @@ async function saveUser() {
     );
 
     const data = await res.json().catch(() => ({}));
+    console.log("🧪 PATCH /api/admin/users result:", {
+      status: res.status,
+      ok: res.ok,
+      data,
+    });
+
     if (!res.ok || !data.success) {
       alert(data.message || "保存失败");
       return;
@@ -203,8 +217,17 @@ async function saveUser() {
     // ✅ 如果当前角色被设置成团长，额外调用 make-leader
     if (body.role === "leader") {
       try {
+        alert(`准备调用 makeLeader，userId=${editingUserId}`);
+        console.log("🧪 about to call makeLeader:", editingUserId);
+
         const leaderRet = await makeLeader(editingUserId);
+
         console.log("✅ makeLeader success:", leaderRet);
+        alert(
+          `makeLeader 返回：pickupPointCreated=${Boolean(
+            leaderRet?.pickupPointCreated
+          )}，hasDefaultAddress=${Boolean(leaderRet?.hasDefaultAddress)}`
+        );
       } catch (err) {
         console.error("makeLeader error:", err);
         alert(`用户已保存，但自动创建团长自提点失败：${err.message || err}`);
@@ -218,6 +241,7 @@ async function saveUser() {
     alert("请求失败");
   }
 }
+
 function closeEditModal() {
   document.getElementById("editModal").classList.remove("open");
   editingUserId = null;
@@ -345,9 +369,12 @@ function normalizePhone10(v) {
   if (digits.length >= 10) return digits.slice(-10);
   return digits;
 }
+
 async function makeLeader(userId) {
   const id = String(userId || "").trim();
   if (!id) throw new Error("缺少 userId");
+
+  console.log("🧪 POST /api/admin/leaders/make-leader userId =", id);
 
   const res = await fetch("/api/admin/leaders/make-leader", {
     method: "POST",
@@ -357,12 +384,19 @@ async function makeLeader(userId) {
 
   const data = await res.json().catch(() => ({}));
 
+  console.log("🧪 makeLeader API result:", {
+    status: res.status,
+    ok: res.ok,
+    data,
+  });
+
   if (!res.ok || !data.ok) {
     throw new Error(data.message || "设为团长失败");
   }
 
   return data;
 }
+
 async function submitCreateUser() {
   const name = document.getElementById("createName").value.trim();
   const phoneRaw = document.getElementById("createPhone").value.trim();
@@ -396,6 +430,22 @@ async function submitCreateUser() {
       return;
     }
 
+    const createdUserId = String(
+      data.userId || data.id || data._id || data.user?._id || ""
+    ).trim();
+
+    // ✅ 创建时直接选团长，也调用 makeLeader
+    if (role === "leader" && createdUserId) {
+      try {
+        alert(`创建后准备调用 makeLeader，userId=${createdUserId}`);
+        const leaderRet = await makeLeader(createdUserId);
+        console.log("✅ makeLeader after create success:", leaderRet);
+      } catch (err) {
+        console.error("makeLeader after create error:", err);
+        alert(`用户已创建，但自动创建团长自提点失败：${err.message || err}`);
+      }
+    }
+
     const tempPwd = data.tempPassword || data.password || data.generatedPassword;
     const hint = document.getElementById("createHint");
     if (hint && tempPwd) {
@@ -427,19 +477,15 @@ window.deleteUser = deleteUser;
 window.addEventListener("DOMContentLoaded", () => {
   document.getElementById("searchBtn")?.addEventListener("click", () => fetchUsers(1));
 
-  // ✅ 刷新按钮生效
   document.getElementById("refreshBtn")?.addEventListener("click", () => fetchUsers(currentPage));
 
-  // 编辑弹窗
   document.getElementById("saveUserBtn")?.addEventListener("click", saveUser);
   document.getElementById("cancelEditBtn")?.addEventListener("click", closeEditModal);
 
-  // 创建弹窗
   document.getElementById("btnCreateUser")?.addEventListener("click", openCreateModal);
   document.getElementById("cancelCreateBtn")?.addEventListener("click", closeCreateModal);
   document.getElementById("createUserBtn")?.addEventListener("click", submitCreateUser);
 
-  // 修改密码弹窗
   document.getElementById("cancelPwdBtn")?.addEventListener("click", closeSetPasswordModal);
   document.getElementById("savePwdBtn")?.addEventListener("click", submitSetPassword);
 
