@@ -323,21 +323,111 @@ function updateFriendCountdown() {
 }
 async function getRecommendedPickupPointsByZip(zip) {
   const z = String(zip || "").trim();
-  const url = z
-    ? `/api/public/pickup-points?zip=${encodeURIComponent(z)}`
-    : `/api/public/pickup-points`;
+  if (!z) return [];
+
+  const url = `/api/public/zones/by-zip?zip=${encodeURIComponent(z)}&ts=${Date.now()}`;
 
   const res = await fetch(url, { cache: "no-store" });
   const data = await res.json().catch(() => ({}));
 
-  if (!res.ok || !data?.ok) {
+  if (!res.ok || !data?.success) {
     throw new Error(data?.message || "获取自提点失败");
   }
 
-  const items = Array.isArray(data.items) ? data.items : [];
+  const items = Array.isArray(data.pickupPoints) ? data.pickupPoints : [];
+  return items;
+}
+const PICKUP_SELECTED_KEY = "freshbuy_selected_pickup_point";
 
-  // 默认把第一个标成推荐
-  return items.map((p, idx) => ({
+function saveSelectedPickupPoint(point) {
+  try {
+    localStorage.setItem(PICKUP_SELECTED_KEY, JSON.stringify(point || {}));
+  } catch {}
+}
+
+function getSelectedPickupPoint() {
+  try {
+    return JSON.parse(localStorage.getItem(PICKUP_SELECTED_KEY) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function deg2rad(d) {
+  return (Number(d) * Math.PI) / 180;
+}
+
+function calcDistanceMiles(lat1, lng1, lat2, lng2) {
+  const a1 = Number(lat1);
+  const o1 = Number(lng1);
+  const a2 = Number(lat2);
+  const o2 = Number(lng2);
+
+  if (![a1, o1, a2, o2].every(Number.isFinite)) return null;
+
+  const R = 3958.8; // miles
+  const dLat = deg2rad(a2 - a1);
+  const dLng = deg2rad(o2 - o1);
+
+  const s1 =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(deg2rad(a1)) *
+      Math.cos(deg2rad(a2)) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
+
+  const s2 = 2 * Math.atan2(Math.sqrt(s1), Math.sqrt(1 - s1));
+  return R * s2;
+}
+
+function getBrowserLocation() {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) {
+      resolve(null);
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        resolve({
+          lat: Number(pos.coords.latitude),
+          lng: Number(pos.coords.longitude),
+        });
+      },
+      () => resolve(null),
+      {
+        enableHighAccuracy: false,
+        timeout: 5000,
+        maximumAge: 5 * 60 * 1000,
+      }
+    );
+  });
+}
+
+async function enrichAndSortPickupPoints(points) {
+  const arr = Array.isArray(points) ? [...points] : [];
+  if (!arr.length) return arr;
+
+  const userLoc = await getBrowserLocation();
+
+  const enriched = arr.map((p) => {
+    const distanceMiles = userLoc
+      ? calcDistanceMiles(userLoc.lat, userLoc.lng, p.lat, p.lng)
+      : null;
+
+    return {
+      ...p,
+      distanceMiles,
+    };
+  });
+
+  enriched.sort((a, b) => {
+    const ad = Number.isFinite(a.distanceMiles) ? a.distanceMiles : Infinity;
+    const bd = Number.isFinite(b.distanceMiles) ? b.distanceMiles : Infinity;
+    return ad - bd;
+  });
+
+  return enriched.map((p, idx) => ({
     ...p,
     recommended: idx === 0,
   }));
@@ -399,13 +489,14 @@ async function renderDeliveryInfo(mode) {
     startFriendCountdownToMidnight();
     return;
   }
-  if (mode === "pickup") {
+ if (mode === "pickup") {
   const zip = String(getEffectiveZip(getSavedZip()) || "").trim();
 
   deliveryHint.textContent = `当前：自提点自提 · 系统推荐附近自提点`;
 
   try {
-    const pickupPoints = await getRecommendedPickupPointsByZip(zip);
+    const rawPoints = await getRecommendedPickupPointsByZip(zip);
+    const pickupPoints = await enrichAndSortPickupPoints(rawPoints);
 
     if (!pickupPoints.length) {
       deliveryInfoBody.innerHTML = `
@@ -418,32 +509,93 @@ async function renderDeliveryInfo(mode) {
       return;
     }
 
+    const selected = getSelectedPickupPoint();
+    const selectedId = String(selected?.id || "");
+
     deliveryInfoBody.innerHTML = `
       <div class="delivery-info-title">推荐自提点</div>
       <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px;">
         ${pickupPoints
-          .map(
-            (p) => `
-              <div style="padding:10px 12px;border:1px solid #e5e7eb;border-radius:12px;background:#fff;">
-                <div style="font-size:13px;font-weight:700;color:#111827;">
-                  ${p.name || ""}${p.recommended ? ' <span style="color:#16a34a;font-size:12px;">推荐</span>' : ""}
+          .map((p) => {
+            const pointId = String(p.id || "");
+            const checked = selectedId && selectedId === pointId;
+            const distText = Number.isFinite(p.distanceMiles)
+              ? `距离约 ${p.distanceMiles.toFixed(1)} miles`
+              : "";
+
+            return `
+              <label
+                style="
+                  padding:10px 12px;
+                  border:1px solid ${checked ? "#16a34a" : "#e5e7eb"};
+                  border-radius:12px;
+                  background:${checked ? "#f0fdf4" : "#fff"};
+                  display:block;
+                  cursor:pointer;
+                "
+              >
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+                  <div style="font-size:13px;font-weight:700;color:#111827;">
+                    ${p.name || ""}
+                    ${p.recommended ? ' <span style="color:#16a34a;font-size:12px;">推荐</span>' : ""}
+                  </div>
+                  <input
+                    type="radio"
+                    name="pickupPointChoice"
+                    value="${pointId}"
+                    ${checked ? "checked" : ""}
+                    data-pickup-select
+                    data-pickup-id="${pointId}"
+                    style="transform:scale(1.05);"
+                  />
                 </div>
+
                 <div style="margin-top:4px;font-size:12px;color:#6b7280;">
-                  ${p.maskedAddress || p.displayAddress || "地址待更新"}
+                  ${p.maskedAddress || p.addressLine1 || "地址待更新"}
                 </div>
+
                 <div style="margin-top:4px;font-size:12px;color:#6b7280;">
                   取货时间：${p.pickupTimeText || "—"}
                 </div>
+
                 ${p.displayArea ? `<div style="margin-top:4px;font-size:12px;color:#6b7280;">区域：${p.displayArea}</div>` : ""}
-              </div>
-            `
-          )
+                ${distText ? `<div style="margin-top:4px;font-size:12px;color:#16a34a;">${distText}</div>` : ""}
+              </label>
+            `;
+          })
           .join("")}
       </div>
       <div style="margin-top:10px;font-size:12px;color:#6b7280;">
-        下单后将在结算页最终确认自提点。
+        已选自提点会保存到本地，结算页可继续确认。
       </div>
     `;
+
+    // ✅ 默认自动选最近点
+    const selectedNow = getSelectedPickupPoint();
+    if (!selectedNow?.id && pickupPoints[0]) {
+      saveSelectedPickupPoint(pickupPoints[0]);
+    }
+
+    deliveryInfoBody.querySelectorAll("[data-pickup-select]").forEach((radio) => {
+      radio.addEventListener("change", () => {
+        const id = String(radio.dataset.pickupId || "");
+        const picked = pickupPoints.find((x) => String(x.id) === id);
+        if (!picked) return;
+
+        saveSelectedPickupPoint(picked);
+
+        try {
+          localStorage.setItem("freshbuy_pref_mode", "pickup");
+          window.dispatchEvent(
+            new CustomEvent("freshbuy:pickupPointChanged", {
+              detail: { pickupPoint: picked },
+            })
+          );
+        } catch {}
+
+        void renderDeliveryInfo("pickup");
+      });
+    });
   } catch (err) {
     console.error("加载真实自提点失败：", err);
     deliveryInfoBody.innerHTML = `
