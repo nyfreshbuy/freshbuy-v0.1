@@ -88,7 +88,7 @@ const orderItemSchema = new mongoose.Schema(
     // ✅ 兼容旧字段（有些前端会传 taxable / isSpecial 等）
     taxable: { type: Boolean, default: false },
     isSpecial: { type: Boolean, default: false },
-    hotFlag: { type: Boolean, default: false }, // ✅ NEW
+    hotFlag: { type: Boolean, default: false },
     tag: { type: String, default: "" },
     type: { type: String, default: "" },
 
@@ -103,7 +103,7 @@ const orderItemSchema = new mongoose.Schema(
   { _id: false }
 );
 
-// ✅ 新增：预扣库存明细（取消/失败时回滚用）
+// ✅ 预扣库存明细（取消/失败时回滚用）
 const stockReserveItemSchema = new mongoose.Schema(
   {
     productId: { type: mongoose.Schema.Types.ObjectId, ref: "Product", index: true },
@@ -136,7 +136,7 @@ const orderSchema = new mongoose.Schema(
     customerName: { type: String, default: "" },
     customerPhone: { type: String, default: "", index: true },
 
-    // 配送类型：home / leader_pickup
+    // ✅ 履约方式：home / leader_pickup
     deliveryType: {
       type: String,
       enum: ["home", "leader_pickup"],
@@ -146,7 +146,7 @@ const orderSchema = new mongoose.Schema(
 
     // =========================
     // 自提点真实归属字段
-    // 修改位置：deliveryType 后面、deliveryMode 前面
+    // 位置：deliveryType 后面、deliveryMode 前面
     // =========================
     pickupPointId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -171,6 +171,7 @@ const orderSchema = new mongoose.Schema(
     pickupLeaderName: { type: String, default: "" },
     pickupLeaderPhone: { type: String, default: "" },
 
+    // ✅ 业务批次模式，不直接表示自提/送货
     deliveryMode: {
       type: String,
       enum: ["normal", "pickup", "groupDay", "dealsDay", "friendGroup"],
@@ -198,7 +199,16 @@ const orderSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["pending", "paid", "packing", "shipping", "done", "completed", "cancel", "cancelled"],
+      enum: [
+        "pending",
+        "paid",
+        "packing",
+        "shipping",
+        "done",
+        "completed",
+        "cancel",
+        "cancelled",
+      ],
       default: "pending",
       index: true,
     },
@@ -222,9 +232,10 @@ const orderSchema = new mongoose.Schema(
         index: true,
       },
 
+      // ✅ 支持现金支付
       method: {
         type: String,
-        enum: ["stripe", "wallet", "zelle", "none"],
+        enum: ["stripe", "wallet", "zelle", "cash", "none"],
         default: "none",
         index: true,
       },
@@ -253,6 +264,15 @@ const orderSchema = new mongoose.Schema(
         reference: { type: String, default: "" },
         confirmedBy: { type: String, default: "" },
         confirmedAt: Date,
+      },
+
+      // ✅ 现金支付扩展信息
+      cash: {
+        paid: { type: Number, default: 0 },
+        receivedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+        receivedByName: { type: String, default: "" },
+        receivedAt: { type: Date },
+        note: { type: String, default: "" },
       },
 
       lastError: { type: String, default: "" },
@@ -361,7 +381,12 @@ const orderSchema = new mongoose.Schema(
       settledAt: { type: Date },
       amount: { type: Number, default: 0 },
 
-      leaderId: { type: mongoose.Schema.Types.ObjectId, ref: "User", index: true, default: null },
+      leaderId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        index: true,
+        default: null,
+      },
       leaderCode: { type: String, default: "" },
 
       buyerInvitedByCode: { type: String, default: "" },
@@ -414,9 +439,10 @@ orderSchema.index({ pickupPointCode: 1, deliveryDate: 1, status: 1 });
 // pre-validate：金额 / 批次 / 派单统一
 // ✅ 修复：把押金写入 depositTotal + payment.amountDeposit
 // ✅ 修复：subtotal/taxableSubtotal 用特价口径（N for $X）
-// ✅ 修复：Stripe 平台费 = 0.5 + 2%*subtotal；钱包=0
+// ✅ 修复：Stripe 平台费 = 0.5 + 2%*subtotal；其他支付=0
 // ✅ 兼容：如果前端误传 deliveryMode=pickup，自动纠正为
 //    deliveryType=leader_pickup + deliveryMode=normal
+// ✅ 兼容：自提点订单 + cash 时保持 unpaid，等待线下收款
 // =========================
 orderSchema.pre("validate", function () {
   // 兼容旧前端：把 pickup 从 deliveryMode 纠正到 deliveryType
@@ -435,6 +461,11 @@ orderSchema.pre("validate", function () {
     this.deliveryType = "leader_pickup";
   }
 
+  // 兼容：现金支付只能用于自提点
+  if (this.payment?.method === "cash" && this.deliveryType !== "leader_pickup") {
+    this.invalidate("payment.method", "cash payment is only allowed for pickup orders");
+  }
+
   if (this.packBatchId && this.status === "paid") {
     this.status = "packing";
   }
@@ -445,7 +476,8 @@ orderSchema.pre("validate", function () {
     this.deliveryDate = startOfDay(this.deliveryDate);
   }
 
-  const zoneId = this.dispatch?.zoneId || this.fulfillment?.zoneId || this.address?.zoneId || "";
+  const zoneId =
+    this.dispatch?.zoneId || this.fulfillment?.zoneId || this.address?.zoneId || "";
 
   const ymd = toDateOnlyYMD(this.deliveryDate);
   const batchKey = `${ymd}|zone:${zoneId || ""}`;
@@ -492,7 +524,7 @@ orderSchema.pre("validate", function () {
 
   this.salesTax = round2(this.taxableSubtotal * Number(this.salesTaxRate || 0));
 
-  // ✅ 平台费：Stripe 才收（0.5 + 2% * subtotal）
+  // ✅ 平台费：只有 Stripe 才收
   const method = this.payment?.method || "none";
   const shouldPlatformFee = method === "stripe";
   this.platformFee = shouldPlatformFee ? round2(0.5 + this.subtotal * 0.02) : 0;
@@ -521,6 +553,16 @@ orderSchema.pre("validate", function () {
   this.payment.amountDiscount = this.discount;
   this.payment.amountTotal = this.totalAmount;
 
+  // ✅ 现金支付默认保持未支付，等后台/团长收款后再改 paid
+  if (this.payment.method === "cash") {
+    if (!this.payment.status || this.payment.status === "requires_payment_method") {
+      this.payment.status = "unpaid";
+    }
+    if (!Number.isFinite(Number(this.payment.paidTotal))) {
+      this.payment.paidTotal = 0;
+    }
+  }
+
   if (!this.payment.intentKey && this.payment.idempotencyKey) {
     this.payment.intentKey = this.payment.idempotencyKey;
   }
@@ -531,7 +573,10 @@ orderSchema.pre("validate", function () {
   if (!this.payment.stripePaymentIntentId && this.payment.stripe?.intentId) {
     this.payment.stripePaymentIntentId = this.payment.stripe.intentId;
   }
-  if (this.payment.stripePaymentIntentId && (!this.payment.stripe || !this.payment.stripe.intentId)) {
+  if (
+    this.payment.stripePaymentIntentId &&
+    (!this.payment.stripe || !this.payment.stripe.intentId)
+  ) {
     this.payment.stripe ||= {};
     this.payment.stripe.intentId = this.payment.stripePaymentIntentId;
   }
