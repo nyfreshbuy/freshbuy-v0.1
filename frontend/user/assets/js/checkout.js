@@ -178,7 +178,193 @@ function clearIntentKey() {
       note: (document.getElementById("orderNote")?.value || "").trim(),
     };
   }
+// =========================
+// ✅ 自提点：真实团长自提点（与首页同源）
+// =========================
+const CHECKOUT_PICKUP_SELECTED_KEY = "freshbuy_selected_pickup_point";
 
+function saveCheckoutSelectedPickupPoint(point) {
+  try {
+    localStorage.setItem(CHECKOUT_PICKUP_SELECTED_KEY, JSON.stringify(point || {}));
+  } catch {}
+}
+
+function getCheckoutSelectedPickupPoint() {
+  try {
+    return JSON.parse(localStorage.getItem(CHECKOUT_PICKUP_SELECTED_KEY) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+// 与首页保持一致：优先读首页已选中的自提点
+function getSelectedPickupPoint() {
+  try {
+    return JSON.parse(localStorage.getItem("freshbuy_selected_pickup_point") || "{}");
+  } catch {
+    return {};
+  }
+}
+
+async function getRecommendedPickupPointsByZip(zip) {
+  const z = String(zip || "").trim();
+  if (!z) return [];
+
+  const res = await fetch(`/api/public/zones/by-zip?zip=${encodeURIComponent(z)}&ts=${Date.now()}`, {
+    cache: "no-store",
+  });
+
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok || !data?.success) {
+    throw new Error(data?.message || "获取自提点失败");
+  }
+
+  return Array.isArray(data.pickupPoints) ? data.pickupPoints : [];
+}
+
+function getCheckoutZip() {
+  const zip =
+    localStorage.getItem("freshbuy_zip") ||
+    document.getElementById("zip")?.value ||
+    document.getElementById("zipInput")?.value ||
+    "";
+
+  return String(zip || "").trim();
+}
+
+function renderRealPickupPoints(points) {
+  const container =
+    document.getElementById("pickupPointsContainer") ||
+    document.getElementById("pickupPointList") ||
+    document.querySelector("[data-pickup-points]");
+
+  if (!container) {
+    console.warn("❌ 未找到自提点容器：#pickupPointsContainer / #pickupPointList / [data-pickup-points]");
+    return;
+  }
+
+  const homepageSelected = getSelectedPickupPoint();
+  const checkoutSelected = getCheckoutSelectedPickupPoint();
+  const selectedId = String(
+    checkoutSelected?.id ||
+    homepageSelected?.id ||
+    ""
+  );
+
+  container.innerHTML = "";
+
+  if (!Array.isArray(points) || !points.length) {
+    container.innerHTML = `
+      <div style="padding:12px;border:1px solid #eee;border-radius:12px;color:#6b7280;">
+        当前暂无可用自提点
+      </div>
+    `;
+    return;
+  }
+
+  points.forEach((p, idx) => {
+    const pointId = String(p.id || "");
+    const checked = selectedId ? selectedId === pointId : idx === 0;
+    const distText = Number.isFinite(Number(p.distanceMiles))
+      ? `${Number(p.distanceMiles).toFixed(1)} miles`
+      : "";
+
+    const card = document.createElement("label");
+    card.className = "pickup-option-card";
+    card.style.cssText = `
+      display:block;
+      border:1px solid ${checked ? "#22c55e" : "#e5e7eb"};
+      border-radius:16px;
+      padding:14px;
+      margin-bottom:12px;
+      background:${checked ? "#f0fdf4" : "#fff"};
+      cursor:pointer;
+    `;
+
+    card.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:15px;font-weight:800;color:#111827;">
+            ${p.name || "团长自提点"}
+            ${p.recommended ? '<span style="color:#16a34a;font-size:12px;margin-left:6px;">推荐</span>' : ""}
+          </div>
+
+          <div style="margin-top:6px;font-size:14px;color:#6b7280;line-height:1.5;">
+            ${p.maskedAddress || p.addressLine1 || p.addressLine || "地址待更新"}
+          </div>
+
+          <div style="margin-top:6px;font-size:13px;color:#6b7280;">
+            取货时间：${p.pickupTimeText || "—"}
+          </div>
+
+          ${p.displayArea ? `
+            <div style="margin-top:4px;font-size:13px;color:#6b7280;">
+              区域：${p.displayArea}
+            </div>
+          ` : ""}
+
+          ${distText ? `
+            <div style="margin-top:4px;font-size:13px;color:#16a34a;">
+              ${distText}
+            </div>
+          ` : ""}
+        </div>
+
+        <input
+          type="radio"
+          name="pickupPoint"
+          value="${pointId}"
+          ${checked ? "checked" : ""}
+          data-pickup-id="${pointId}"
+          style="margin-top:4px;"
+        />
+      </div>
+    `;
+
+    container.appendChild(card);
+  });
+
+  // 默认选中第一个，并同步到 localStorage
+  const current = getCheckoutSelectedPickupPoint();
+  if (!current?.id && !selectedId && points[0]) {
+    saveCheckoutSelectedPickupPoint(points[0]);
+    try {
+      localStorage.setItem("freshbuy_selected_pickup_point", JSON.stringify(points[0]));
+    } catch {}
+  }
+
+  container.querySelectorAll('input[name="pickupPoint"]').forEach((radio) => {
+    radio.addEventListener("change", () => {
+      const id = String(radio.value || "");
+      const picked = points.find((x) => String(x.id || "") === id);
+      if (!picked) return;
+
+      saveCheckoutSelectedPickupPoint(picked);
+
+      try {
+        localStorage.setItem("freshbuy_selected_pickup_point", JSON.stringify(picked));
+      } catch {}
+
+      renderRealPickupPoints(points);
+    });
+  });
+}
+
+async function loadRealPickupPointsForCheckout() {
+  try {
+    const zip = getCheckoutZip();
+    if (!zip) {
+      console.warn("⚠️ checkout 未拿到 ZIP，暂不加载自提点");
+      return;
+    }
+
+    const rawPoints = await getRecommendedPickupPointsByZip(zip);
+    renderRealPickupPoints(rawPoints);
+  } catch (err) {
+    console.error("loadRealPickupPointsForCheckout error:", err);
+  }
+}
   // =========================
   // 游客 UI 清理
   // =========================
@@ -514,15 +700,18 @@ function normalizeCheckoutItems(items) {
   // =========================
   // 初始化
   // =========================
-  document.addEventListener("DOMContentLoaded", () => {
-    const token = getAnyToken();
-    const isGuest = !token;
+  document.addEventListener("DOMContentLoaded", async () => {
+  const token = getAnyToken();
+  const isGuest = !token;
 
-    if (isGuest) clearCheckoutUserUI();
+  if (isGuest) clearCheckoutUserUI();
 
-    updateCheckoutUI();
-    renderFeesTaxDepositUI();
-  });
+  updateCheckoutUI();
+  renderFeesTaxDepositUI();
+
+  // ✅ 加载真实团长自提点
+  await loadRealPickupPointsForCheckout();
+});
 
   document.addEventListener("change", (e) => {
     if (e.target && e.target.id === "deliveryMode") {
@@ -557,6 +746,9 @@ function normalizeCheckoutItems(items) {
     }
 
     const shipping = buildShippingPayload();
+    const selectedPickupPoint = getCheckoutSelectedPickupPoint() || getSelectedPickupPoint() || {};
+const pickupPointId = String(selectedPickupPoint?.id || "").trim();
+
       // ✅ 强制：必须从下拉选中地址，否则阻止下单
     if (!enforceDropdownPickOrStop(shipping)) return;
     const tipAmount = readTip();
@@ -575,12 +767,14 @@ function normalizeCheckoutItems(items) {
     const deliveryModeUI = document.getElementById("deliveryMode")?.value || "next-day";
 
     let mode = "normal";
-    if (s.hasSpecial && !s.hasNormal) {
-      mode = "dealsDay";
-    } else {
-      mode = deliveryModeUI === "area-group" ? "groupDay" : "normal";
-    }
 
+if (deliveryModeUI === "pickup") {
+  mode = "pickup";
+} else if (s.hasSpecial && !s.hasNormal) {
+  mode = "dealsDay";
+} else {
+  mode = deliveryModeUI === "area-group" ? "groupDay" : "normal";
+}
     // ✅ 提交前强校验最低消费（避免后端 400）
     if (!(s.hasSpecial && !s.hasNormal)) {
       if (deliveryModeUI === "area-group" && s.normalAmount < CONFIG.minAmountNormal) {
@@ -597,27 +791,30 @@ const payMethod = payMethodRaw === "wallet" ? "wallet" : "stripe";
     const amounts = computeCheckoutAmounts();
 
     const payload = {
-     intentKey: getOrCreateIntentKey(), // ✅ 新增：短幂等键（给后端/Stripe 用）
-      mode,
-      deliveryMode: deliveryModeUI,
-      items: normalizedItems,
-      shipping,
-      receiver: shipping,
-      tipAmount,
-      payMethod,
-      paymentMethod: payMethod,
-      deliveryDate: document.getElementById("deliveryDate")?.value || undefined,
-      deliveryType: "home",
-      source: "web_checkout",
+  intentKey: getOrCreateIntentKey(),
+  mode,
+  deliveryMode: deliveryModeUI,
+  items: normalizedItems,
+  shipping,
+  receiver: shipping,
+  tipAmount,
+  payMethod,
+  paymentMethod: payMethod,
+  deliveryDate: document.getElementById("deliveryDate")?.value || undefined,
 
-      // ✅ NEW fields
-      subtotal: amounts.subtotal,
-      shippingFee: amounts.shippingFee,
-      platformFee: amounts.platformFee,
-      taxAmount: amounts.taxAmount,
-      bottleDeposit: amounts.bottleDeposit,
-    };
+  // ✅ 如果是 pickup，就传真实自提点
+  deliveryType: deliveryModeUI === "pickup" ? "pickup" : "home",
+  pickupPointId: deliveryModeUI === "pickup" ? pickupPointId : undefined,
+  pickupPoint: deliveryModeUI === "pickup" ? selectedPickupPoint : undefined,
 
+  source: "web_checkout",
+
+  subtotal: amounts.subtotal,
+  shippingFee: amounts.shippingFee,
+  platformFee: amounts.platformFee,
+  taxAmount: amounts.taxAmount,
+  bottleDeposit: amounts.bottleDeposit,
+};
     // 1) 先走后端 checkout（事务里会扣库存 + 扣钱包）
     const out = await apiFetch("/api/orders/checkout", {
       method: "POST",

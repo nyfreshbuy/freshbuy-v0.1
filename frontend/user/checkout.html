@@ -719,33 +719,23 @@
       const PREF_MODE_KEY = "freshbuy_pref_mode";
       const ZONE_LS_KEY = "freshbuy_zone";
       const CART_LS_KEY = "fresh_cart_v1";
-      const MOCK_PICKUP_POINTS = [
-  {
-    _id: "pickup_fm_1",
-    name: "Fresh Meadows 自提点",
-    address: "199-26 48th Ave, Fresh Meadows, NY 11365",
-    openHours: "周三 / 周六 2:00 PM - 8:00 PM",
-    distanceMiles: 1.2,
-    recommended: true,
-  },
-  {
-    _id: "pickup_bayside_1",
-    name: "Bayside 自提点",
-    address: "214-11 Northern Blvd, Bayside, NY 11361",
-    openHours: "周三 / 周六 1:00 PM - 7:00 PM",
-    distanceMiles: 3.8,
-    recommended: false,
-  },
-  {
-    _id: "pickup_flushing_1",
-    name: "Flushing 自提点",
-    address: "41-08 Main St, Flushing, NY 11355",
-    openHours: "周二 / 周五 3:00 PM - 8:00 PM",
-    distanceMiles: 5.6,
-    recommended: false,
-  },
-];
+      let REAL_PICKUP_POINTS = [];
 
+async function fetchRealPickupPointsByZip(zip) {
+  const z = String(zip || "").trim();
+  if (!z) return [];
+
+  const res = await fetch(`/api/public/zones/by-zip?zip=${encodeURIComponent(z)}&ts=${Date.now()}`, {
+    cache: "no-store",
+  });
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok || !data?.success) {
+    throw new Error(data?.message || "获取自提点失败");
+  }
+
+  return Array.isArray(data.pickupPoints) ? data.pickupPoints : [];
+}
       function getToken() {
         return (
           localStorage.getItem("freshbuy_token") ||
@@ -1195,15 +1185,35 @@ function renderPickupPointsList(items) {
   const box = document.getElementById("pickupPointsList");
   if (!box) return;
 
-  if (!Array.isArray(items) || !items.length) {
+  const list = Array.isArray(items) ? items : [];
+  REAL_PICKUP_POINTS = list;
+
+  if (!list.length) {
     box.innerHTML = `<div class="muted">当前暂无可选自提点。</div>`;
     return;
   }
 
   const selectedId = document.getElementById("pickupPointId")?.value || "";
 
-  box.innerHTML = items.map((p) => {
-    const checked = selectedId ? selectedId === p._id : !!p.recommended;
+  box.innerHTML = list.map((p) => {
+    const pid = String(p._id || p.id || "");
+    const checked = selectedId ? selectedId === pid : !!p.recommended;
+
+    const address =
+      p.maskedAddress ||
+      p.address ||
+      p.addressLine1 ||
+      p.fullAddress ||
+      "地址待更新";
+
+    const openHours =
+      p.pickupTimeText ||
+      p.openHours ||
+      "—";
+
+    const distText = Number.isFinite(Number(p.distanceMiles))
+      ? `${Number(p.distanceMiles).toFixed(1)} miles`
+      : "";
 
     return `
       <label
@@ -1220,22 +1230,22 @@ function renderPickupPointsList(items) {
         <div style="display:flex; justify-content:space-between; gap:10px; align-items:flex-start;">
           <div style="flex:1;">
             <div style="font-weight:800;">
-              ${p.name}
+              ${p.name || "自提点"}
               ${p.recommended ? '<span style="margin-left:8px; color:#16a34a; font-size:12px;">推荐</span>' : ""}
             </div>
-            <div class="muted" style="margin-top:4px;">${p.address}</div>
-            <div class="muted" style="margin-top:4px;">取货时间：${p.openHours || "—"}</div>
+            <div class="muted" style="margin-top:4px;">${address}</div>
+            <div class="muted" style="margin-top:4px;">取货时间：${openHours}</div>
           </div>
           <div style="text-align:right; min-width:82px;">
             <input
               type="radio"
               name="pickupChoice"
-              value="${p._id}"
+              value="${pid}"
               ${checked ? "checked" : ""}
-              onchange="selectPickupPoint('${p._id}', '${(p.name || "").replace(/'/g, "\\'")}', '${(p.address || "").replace(/'/g, "\\'")}')"
+              onchange="selectPickupPoint('${pid}')"
             />
             <div class="muted" style="margin-top:6px;">
-              ${Number.isFinite(Number(p.distanceMiles)) ? Number(p.distanceMiles).toFixed(1) + " miles" : ""}
+              ${distText}
             </div>
           </div>
         </div>
@@ -1244,25 +1254,37 @@ function renderPickupPointsList(items) {
   }).join("");
 
   if (!selectedId) {
-    const first = items.find((x) => x.recommended) || items[0];
+    const first = list.find((x) => x.recommended) || list[0];
     if (first) {
-      selectPickupPoint(first._id, first.name, first.address);
+      selectPickupPoint(String(first._id || first.id || ""));
     }
   }
 }
+function selectPickupPoint(id) {
+  const picked = REAL_PICKUP_POINTS.find(
+    (x) => String(x._id || x.id || "") === String(id || "")
+  );
+  if (!picked) return;
 
-function selectPickupPoint(id, name, address) {
   const idEl = document.getElementById("pickupPointId");
   const nameEl = document.getElementById("pickupPointName");
   const addrEl = document.getElementById("pickupPointAddress");
 
-  if (idEl) idEl.value = id || "";
-  if (nameEl) nameEl.value = name || "";
-  if (addrEl) addrEl.value = address || "";
+  const address =
+    picked.maskedAddress ||
+    picked.address ||
+    picked.addressLine1 ||
+    picked.fullAddress ||
+    "";
 
-  renderPickupPointsList(MOCK_PICKUP_POINTS);
+  if (idEl) idEl.value = String(picked._id || picked.id || "");
+  if (nameEl) nameEl.value = picked.name || "";
+  if (addrEl) addrEl.value = address;
+
+  renderPickupPointsList(REAL_PICKUP_POINTS);
 }
 window.selectPickupPoint = selectPickupPoint;
+
 function togglePickupModeUI(mode) {
   const pickupSection = document.getElementById("pickupSection");
 
@@ -1285,8 +1307,25 @@ function togglePickupModeUI(mode) {
   if (noteWrap) noteWrap.style.display = "";
 
   if (isPickup) {
-    renderPickupPointsList(MOCK_PICKUP_POINTS);
+  const zip =
+  (document.getElementById("zip")?.value || "").trim() ||
+  (localStorage.getItem("freshbuy_zip") || "").trim() ||
+  "";
+  if (!/^\d{5}$/.test(zip)) {
+    renderPickupPointsList([]);
+    return;
   }
+
+  fetchRealPickupPointsByZip(zip)
+    .then((items) => {
+      renderPickupPointsList(items);
+    })
+    .catch((err) => {
+      console.error("加载真实自提点失败：", err);
+      renderPickupPointsList([]);
+      showAlert(err?.message || "自提点加载失败", false);
+    });
+}
 }
       // ========= 渲染 =========
       function render(snapshot) {
@@ -2250,6 +2289,10 @@ if (stateEl && !stateEl.value) stateEl.value = "NY";
             currentTip = v;
             tipButtons.forEach((b) => b.classList.toggle("active", b === btn));
             refreshAll();
+            const prefMode = String(localStorage.getItem("freshbuy_pref_mode") || "").trim();
+if (prefMode === "pickup") {
+  togglePickupModeUI("pickup");
+}
           });
         });
 
@@ -2262,8 +2305,14 @@ if (stateEl && !stateEl.value) stateEl.value = "NY";
 
         // 地址 state/zip 改变会影响税：刷新
         document.getElementById("state").addEventListener("change", refreshAll);
-        document.getElementById("zip").addEventListener("input", () => refreshAll());
+        document.getElementById("zip").addEventListener("input", () => {
+  refreshAll();
 
+  const prefMode = String(localStorage.getItem("freshbuy_pref_mode") || "").trim();
+  if (prefMode === "pickup") {
+    togglePickupModeUI("pickup");
+  }
+});
         // 先刷新一次（读取 cart + mode + zone）
         refreshAll();
 
