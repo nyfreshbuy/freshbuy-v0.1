@@ -431,7 +431,7 @@
     系统会优先推荐附近自提点，你也可以自由选择。
   </div>
 
-  <div id="pickupPointsList"></div>
+  <div id="pickupPointsContainer"></div>
 
   <input id="pickupPointId" type="hidden" />
   <input id="pickupPointName" type="hidden" />
@@ -576,26 +576,72 @@
           </div>
           <div class="muted" id="walletHint" style="margin-top: 4px; line-height: 1.4">请选择支付方式后提交订单。</div>
 
-          <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 10px">
-            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer">
-              <input type="radio" name="payMethod" value="wallet" id="payWallet" checked />
-              <div>
-                <div style="font-weight: 700">钱包余额支付</div>
-                <div class="muted">余额足够时可直接完成支付并下单（不收平台服务费）</div>
-              </div>
-            </label>
+          <div
+  id="paymentMethods"
+  class="payment-methods"
+  style="display: flex; flex-direction: column; gap: 10px; margin-top: 10px"
+>
+  <label
+    style="
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      cursor: pointer;
+      border: 1px solid #e5e7eb;
+      border-radius: 14px;
+      padding: 12px;
+      background: #fff;
+    "
+  >
+    <input type="radio" name="payMethod" value="wallet" id="payWallet" checked style="margin-top: 3px;" />
+    <div>
+      <div style="font-weight: 700">钱包余额支付</div>
+      <div class="muted">余额足够时可直接完成支付并下单（不收平台服务费）</div>
+    </div>
+  </label>
 
-            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer">
-              <input type="radio" name="payMethod" value="stripe" id="payStripe" />
-              <div>
-                <div style="font-weight: 700">信用卡 / Apple Pay（Stripe）</div>
-                <div class="muted">需要走 Stripe 时会收平台服务费（2%）</div>
-              </div>
-            </label>
+  <label
+    style="
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      cursor: pointer;
+      border: 1px solid #e5e7eb;
+      border-radius: 14px;
+      padding: 12px;
+      background: #fff;
+    "
+  >
+    <input type="radio" name="payMethod" value="stripe" id="payStripe" style="margin-top: 3px;" />
+    <div>
+      <div style="font-weight: 700">信用卡 / Apple Pay（Stripe）</div>
+      <div class="muted">需要走 Stripe 时会收平台服务费（$0.50 + 2%）</div>
+    </div>
+  </label>
 
-            <button class="btn" id="btnGoRecharge" type="button" style="display: none">去充值</button>
-          </div>
+  <!-- ✅ 新增：现金支付（默认隐藏，仅自提模式显示） -->
+  <label
+    id="cashPayOptionWrap"
+    style="
+      display: none;
+      align-items: flex-start;
+      gap: 10px;
+      cursor: pointer;
+      border: 1px solid #e5e7eb;
+      border-radius: 14px;
+      padding: 12px;
+      background: #fff;
+    "
+  >
+    <input type="radio" name="payMethod" value="cash" id="payCash" style="margin-top: 3px;" />
+    <div>
+      <div style="font-weight: 700">现金支付（到自提点付款）</div>
+      <div class="muted">仅限团长自提点订单使用，提交后到自提点现场付款取货。</div>
+    </div>
+  </label>
 
+  <button class="btn" id="btnGoRecharge" type="button" style="display: none">去充值</button>
+</div>
           <div id="stripeArea" style="display: none; margin-top: 10px">
             <div class="muted" style="margin-bottom: 6px">卡信息（Stripe）</div>
             <div class="stripe-box" id="paymentElement"></div>
@@ -606,7 +652,7 @@
 
           <div class="actions">
             <button class="btn" onclick="window.location.href='/user/index.html'">返回继续选购</button>
-            <button class="btn primary" id="btnPlaceOrder" type="button">支付</button>
+            <button class="btn primary" id="btnPlaceOrder" type="button">提交订单 / 支付</button>
           </div>
 
           <div class="muted" style="margin-top: 10px" id="ruleHint">—</div>
@@ -2122,7 +2168,34 @@ const lng = Number(document.getElementById("addrLng").value);
       return;
     }
   }
+if (method === "cash") {
+  if (snapshot.mode !== "pickup") {
+    btn.disabled = false;
+    return showAlert("现金支付仅支持自提点自提订单。", false);
+  }
 
+  showAlert("现金支付：正在提交自提订单…", true);
+
+  const res = await fetch("/api/orders/checkout", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+    body: JSON.stringify(payload),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.success) {
+    btn.disabled = false;
+    return showAlert(data.message || "提交订单失败", false);
+  }
+
+  try {
+    localStorage.setItem(CART_LS_KEY, JSON.stringify({ items: [], mode: "groupDay" }));
+  } catch {}
+
+  showAlert("自提订单已提交，请到自提点现场现金付款取货。", true);
+  setTimeout(() => (window.location.href = "/user/user_center.html"), 600);
+  return;
+}
   showAlert("钱包支付：正在提交订单…", true);
   const res = await fetch("/api/orders/checkout", {
     method: "POST",
@@ -2315,7 +2388,7 @@ if (prefMode === "pickup") {
 });
         // 先刷新一次（读取 cart + mode + zone）
         refreshAll();
-
+        onPaySwitch();
         // 钱包充值按钮
         document.getElementById("btnGoRecharge").addEventListener("click", () => {
           window.location.href = "/user/recharge.html";
@@ -2327,20 +2400,32 @@ if (prefMode === "pickup") {
        // ✅ 支付方式切换：点信用卡就立刻加载输入框
 const onPaySwitch = async () => {
   const m = getPayMethod();
+  const snapshot = computeCheckoutSnapshot();
+  const isPickup = snapshot?.mode === "pickup";
+
+  const cashWrap = document.getElementById("cashPayOptionWrap");
+  const payCash = document.getElementById("payCash");
+
+  // ✅ 只有 pickup 才显示现金支付
+  if (cashWrap) {
+    cashWrap.style.display = isPickup ? "flex" : "none";
+  }
+
+  if (!isPickup && payCash?.checked) {
+    document.getElementById("payWallet").checked = true;
+  }
 
   if (m === "stripe") {
-    // 先显示 Stripe 区域
     setStripeAreaVisible(true);
 
     try {
-      await ensureStripeMounted(); // 挂载 paymentElement
+      await ensureStripeMounted();
       refreshAll();
-      return; // ✅ 成功就直接返回，绝对不要切回钱包
+      return;
     } catch (e) {
       console.error(e);
       showAlert(e.message || "信用卡初始化失败（请先完善地址）", false);
 
-      // ✅ 失败才回退到钱包
       document.getElementById("payWallet").checked = true;
       setStripeAreaVisible(false);
       refreshAll();
@@ -2348,7 +2433,7 @@ const onPaySwitch = async () => {
     }
   }
 
-  // wallet
+  // ✅ cash / wallet 都不显示 Stripe 输入框
   setStripeAreaVisible(false);
   refreshAll();
 };
