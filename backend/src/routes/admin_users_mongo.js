@@ -169,41 +169,47 @@ router.get("/", async (req, res) => {
       }
     }
 
-    // ✅ 批量查询默认地址并合并到 users.addressText（更具体）
-    if (users.length) {
-      const ids = users.map((u) => new mongoose.Types.ObjectId(String(u._id)));
+    // ✅ 批量查询地址并合并到 users.addressText
+// 优先默认地址；如果没有默认地址，就回退到该用户最新一条地址
+if (users.length) {
+  const ids = users.map((u) => new mongoose.Types.ObjectId(String(u._id)));
 
-      const addrDocs = await Address.find({ userId: { $in: ids }, isDefault: true })
-        .select("userId street1 street line1 line2 address1 address2 apt unit city state zip formattedAddress")
-        .lean();
+  const addrDocs = await Address.find({ userId: { $in: ids } })
+    .sort({ isDefault: -1, updatedAt: -1, createdAt: -1 })
+    .select("userId isDefault street1 street line1 line2 address1 address2 apt unit city state zip formattedAddress")
+    .lean();
 
-      const addrMap = {};
-      for (const a of addrDocs) addrMap[String(a.userId)] = a;
+  const addrMap = {};
+  for (const a of addrDocs) {
+    const k = String(a.userId || "");
+    if (!k) continue;
+    // ✅ 只保留每个用户排序后的第一条：默认优先，其次最新
+    if (!addrMap[k]) addrMap[k] = a;
+  }
 
-      for (const u of users) {
-        const a = addrMap[String(u._id)];
-        if (!a) {
-          u.addressText = "";
-          continue;
-        }
-
-        const line =
-          a.formattedAddress ||
-          [
-            a.street1 || a.street || a.line1 || a.address1 || "",
-            a.line2 || a.address2 || a.apt || a.unit || "",
-            a.city || "",
-            a.state || "",
-            a.zip || "",
-          ]
-            .filter(Boolean)
-            .join(" ")
-            .trim();
-
-        u.addressText = line || "";
-      }
+  for (const u of users) {
+    const a = addrMap[String(u._id)];
+    if (!a) {
+      u.addressText = "";
+      continue;
     }
 
+    const line =
+      a.formattedAddress ||
+      [
+        a.street1 || a.street || a.line1 || a.address1 || "",
+        a.line2 || a.address2 || a.apt || a.unit || "",
+        a.city || "",
+        a.state || "",
+        a.zip || "",
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .trim();
+
+    u.addressText = line || "";
+  }
+}
     const totalPages = Math.max(Math.ceil(total / pageSize) || 1, 1);
 
     return res.json({
@@ -292,10 +298,11 @@ router.get("/:id", async (req, res) => {
       }
     } catch (e) {}
 
-    // ✅ 单用户：默认地址
-    const addr = await Address.findOne({ userId: user._id, isDefault: true })
-      .select("street street1 line1 line2 address1 address2 apt unit city state zip formattedAddress")
-      .lean();
+    // ✅ 单用户：优先默认地址；没有默认地址就取最新一条
+const addr = await Address.findOne({ userId: user._id })
+  .sort({ isDefault: -1, updatedAt: -1, createdAt: -1 })
+  .select("isDefault street street1 line1 line2 address1 address2 apt unit city state zip formattedAddress")
+  .lean();
 
     if (addr) {
       const line =
