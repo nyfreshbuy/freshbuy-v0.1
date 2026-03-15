@@ -2388,7 +2388,7 @@ if (prefMode === "pickup") {
 });
         // 先刷新一次（读取 cart + mode + zone）
         refreshAll();
-        onPaySwitch();
+      
         // 钱包充值按钮
         document.getElementById("btnGoRecharge").addEventListener("click", () => {
           window.location.href = "/user/recharge.html";
@@ -2452,12 +2452,10 @@ const onPaySwitch = async () => {
 
         // ✅【关键补强】radio change：点到圆点/键盘切换也能触发（解决“点不开”）
         payWalletEl.addEventListener("change", onPaySwitch);
-        payStripeEl.addEventListener("change", onPaySwitch);
+payStripeEl.addEventListener("change", onPaySwitch);
 
-        // ✅ 如果页面打开时默认就是 stripe（未来你可能改默认），自动挂载一次
-        if (getPayMethod() === "stripe") {
-          onPaySwitch();
-        }
+// ✅ 页面初始化后再同步一次支付方式显示状态
+await onPaySwitch();
 
        // 默认地址（✅ 只有登录才允许回填）
 const token = getToken();
