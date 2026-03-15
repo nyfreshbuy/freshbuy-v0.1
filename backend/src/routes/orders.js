@@ -230,6 +230,7 @@ function pickMode(body) {
 function resolveDeliveryDate(mode, deliveryDate) {
   const input = deliveryDate ? startOfDay(deliveryDate) : null;
 
+  // 区域团：必须传固定配送日
   if (mode === "groupDay") {
     if (!input) {
       const e = new Error("groupDay 必须传 deliveryDate（区域团固定配送日）");
@@ -237,6 +238,13 @@ function resolveDeliveryDate(mode, deliveryDate) {
       throw e;
     }
     return input;
+  }
+
+  // 自提：允许不传，默认明天（或你以后改成自提点最近开放日）
+  if (mode === "pickup") {
+    if (input) return input;
+    const tomorrow = addDays(new Date(), 1);
+    return startOfDay(tomorrow);
   }
 
   if (input) return input;
@@ -270,11 +278,12 @@ async function resolveZoneFromPayload({ zoneId, ship, zip }) {
 }
 async function resolvePickupPointFromPayload(body = {}) {
   const pickupPointId = String(
-    body?.pickupPointId ||
-    body?.pickupPoint?._id ||
-    body?.pickupPoint?.id ||
-    ""
-  ).trim();
+  body?.pickupPointId ||
+  body?.pickup?.pickupPointId ||
+  body?.pickupPoint?._id ||
+  body?.pickupPoint?.id ||
+  ""
+).trim();
 
   if (!pickupPointId) return null;
   if (!mongoose.Types.ObjectId.isValid(pickupPointId)) {
@@ -372,17 +381,19 @@ async function buildOrderPayload(req, session = null) {
 const ship = shipping || receiver || {};
 
 const deliveryTypeRaw = String(body?.deliveryType || "").trim().toLowerCase();
-const isLeaderPickup = deliveryTypeRaw === "leader_pickup";
+const isLeaderPickup =
+  mode === "pickup" ||
+  deliveryTypeRaw === "pickup" ||
+  deliveryTypeRaw === "leader_pickup";
 
   // ✅ 订单备注统一入口
   const orderNote = String(body?.remark ?? body?.note ?? ship?.remark ?? ship?.note ?? "").trim();
 
-  if (!["dealsDay", "groupDay", "normal", "friendGroup"].includes(mode)) {
-    const e = new Error("mode 不合法（请传 mode 或 deliveryMode）");
-    e.status = 400;
-    throw e;
-  }
-
+  if (!["dealsDay", "groupDay", "normal", "friendGroup", "pickup"].includes(mode)) {
+  const e = new Error("mode 不合法（请传 mode 或 deliveryMode）");
+  e.status = 400;
+  throw e;
+}
   if (!Array.isArray(items) || items.length === 0) {
     const e = new Error("items 不能为空");
     e.status = 400;
@@ -784,6 +795,9 @@ if (mode === "dealsDay" && (hasNonSpecial || !hasSpecial)) {
   const e = new Error("dealsDay 只能包含爆品");
   e.status = 400;
   throw e;
+}
+if (mode === "pickup") {
+  // pickup 自提：允许普通商品/爆品/混合商品
 }
   // -------------------------
 // tip（先算出来）
