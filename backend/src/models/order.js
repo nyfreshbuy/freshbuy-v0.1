@@ -134,41 +134,46 @@ const orderSchema = new mongoose.Schema(
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", index: true },
 
     customerName: { type: String, default: "" },
-customerPhone: { type: String, default: "", index: true },
+    customerPhone: { type: String, default: "", index: true },
 
-// 配送类型：home / leader_pickup
-deliveryType: { type: String, default: "home", index: true },
-
-// =========================
-// 自提点真实归属字段
-// 修改位置：deliveryType 后面、deliveryMode 前面
-// =========================
-pickupPointId: {
-  type: mongoose.Schema.Types.ObjectId,
-  ref: "PickupPoint",
-  default: null,
-  index: true,
-},
-pickupPointName: { type: String, default: "" },
-pickupPointCode: { type: String, default: "", index: true },
-
-pickupDisplayArea: { type: String, default: "" },
-pickupMaskedAddress: { type: String, default: "" },
-pickupTimeText: { type: String, default: "" },
-
-// 真实地址快照（后台 / 团长可见）
-pickupAddressLine1: { type: String, default: "" },
-pickupAddressLine2: { type: String, default: "" },
-pickupCity: { type: String, default: "" },
-pickupState: { type: String, default: "" },
-pickupZip: { type: String, default: "", index: true },
-
-pickupLeaderName: { type: String, default: "" },
-pickupLeaderPhone: { type: String, default: "" },
-
-deliveryMode: {
+    // 配送类型：home / leader_pickup
+    deliveryType: {
       type: String,
-      enum: ["normal", "groupDay", "dealsDay", "friendGroup"],
+      enum: ["home", "leader_pickup"],
+      default: "home",
+      index: true,
+    },
+
+    // =========================
+    // 自提点真实归属字段
+    // 修改位置：deliveryType 后面、deliveryMode 前面
+    // =========================
+    pickupPointId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "PickupPoint",
+      default: null,
+      index: true,
+    },
+    pickupPointName: { type: String, default: "" },
+    pickupPointCode: { type: String, default: "", index: true },
+
+    pickupDisplayArea: { type: String, default: "" },
+    pickupMaskedAddress: { type: String, default: "" },
+    pickupTimeText: { type: String, default: "" },
+
+    // 真实地址快照（后台 / 团长可见）
+    pickupAddressLine1: { type: String, default: "" },
+    pickupAddressLine2: { type: String, default: "" },
+    pickupCity: { type: String, default: "" },
+    pickupState: { type: String, default: "" },
+    pickupZip: { type: String, default: "", index: true },
+
+    pickupLeaderName: { type: String, default: "" },
+    pickupLeaderPhone: { type: String, default: "" },
+
+    deliveryMode: {
+      type: String,
+      enum: ["normal", "pickup", "groupDay", "dealsDay", "friendGroup"],
       default: "normal",
       index: true,
     },
@@ -256,7 +261,7 @@ deliveryMode: {
       amountSubtotal: { type: Number, default: 0 },
       amountDeliveryFee: { type: Number, default: 0 },
       amountTax: { type: Number, default: 0 },
-      amountDeposit: { type: Number, default: 0 }, // ✅ NEW
+      amountDeposit: { type: Number, default: 0 },
       amountPlatformFee: { type: Number, default: 0 },
       amountTip: { type: Number, default: 0 },
       amountDiscount: { type: Number, default: 0 },
@@ -284,7 +289,7 @@ deliveryMode: {
     taxableSubtotal: { type: Number, default: 0 },
     salesTax: { type: Number, default: 0 },
 
-    depositTotal: { type: Number, default: 0 }, // ✅ NEW（押金总额）
+    depositTotal: { type: Number, default: 0 },
 
     platformFee: { type: Number, default: 0 },
     tipFee: { type: Number, default: 0 },
@@ -324,50 +329,49 @@ deliveryMode: {
     },
 
     deliveredAt: { type: Date, index: true },
+
     // ✅ 送达照片（司机上传）
-proofPhotos: {
-  type: [
-    {
-      url: { type: String, default: "" },
-      uploadedAt: { type: Date },
-      uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    proofPhotos: {
+      type: [
+        {
+          url: { type: String, default: "" },
+          uploadedAt: { type: Date },
+          uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+        },
+      ],
+      default: [],
     },
-  ],
-  default: [],
-},
 
-// ✅ 送达操作者/备注
-deliveredBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", index: true },
-deliveryNote: { type: String, default: "" },
+    // ✅ 送达操作者/备注
+    deliveredBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", index: true },
+    deliveryNote: { type: String, default: "" },
 
-// ✅ 送达短信记录（mark-delivered 里会写）
-deliverySms: {
-  sentAt: { type: Date },
-  to: { type: String, default: "" },
-  photoUrl: { type: String, default: "" },
-},
+    // ✅ 送达短信记录（mark-delivered 里会写）
+    deliverySms: {
+      sentAt: { type: Date },
+      to: { type: String, default: "" },
+      photoUrl: { type: String, default: "" },
+    },
+
     // =========================================================
-    // 👑 团长佣金（推荐团长）结算快照（新增，顶层字段确保严格 schema 也能落库）
+    // 👑 团长佣金（推荐团长）结算快照
     // =========================================================
     leaderCommission: {
-      settled: { type: Boolean, default: false, index: true }, // ✅ 幂等开关
+      settled: { type: Boolean, default: false, index: true },
       settledAt: { type: Date },
       amount: { type: Number, default: 0 },
 
-      // 佣金归属团长
       leaderId: { type: mongoose.Schema.Types.ObjectId, ref: "User", index: true, default: null },
       leaderCode: { type: String, default: "" },
 
-      // 买家绑定的邀请码（便于排查）
       buyerInvitedByCode: { type: String, default: "" },
     },
+
     settlementGenerated: { type: Boolean, default: false, index: true },
     settlementId: { type: mongoose.Schema.Types.ObjectId, ref: "Settlement", index: true },
   },
   {
     timestamps: true,
-
-    // ✅ 关键：让 virtual（remark）在返回 JSON/对象时也能看到
     toJSON: { virtuals: true },
     toObject: { virtuals: true },
   }
@@ -405,13 +409,32 @@ orderSchema.index({ "leaderCommission.settled": 1, createdAt: -1 });
 orderSchema.index({ "leaderCommission.leaderId": 1, createdAt: -1 });
 orderSchema.index({ pickupPointId: 1, createdAt: -1 });
 orderSchema.index({ pickupPointCode: 1, deliveryDate: 1, status: 1 });
+
 // =========================
 // pre-validate：金额 / 批次 / 派单统一
 // ✅ 修复：把押金写入 depositTotal + payment.amountDeposit
 // ✅ 修复：subtotal/taxableSubtotal 用特价口径（N for $X）
 // ✅ 修复：Stripe 平台费 = 0.5 + 2%*subtotal；钱包=0
+// ✅ 兼容：如果前端误传 deliveryMode=pickup，自动纠正为
+//    deliveryType=leader_pickup + deliveryMode=normal
 // =========================
 orderSchema.pre("validate", function () {
+  // 兼容旧前端：把 pickup 从 deliveryMode 纠正到 deliveryType
+  if (this.deliveryMode === "pickup") {
+    this.deliveryType = "leader_pickup";
+    this.deliveryMode = "normal";
+  }
+
+  // 如果已经选择自提点，也自动标记为 leader_pickup
+  if (
+    this.pickupPointId ||
+    this.pickupPointCode ||
+    this.pickupPointName ||
+    this.pickupMaskedAddress
+  ) {
+    this.deliveryType = "leader_pickup";
+  }
+
   if (this.packBatchId && this.status === "paid") {
     this.status = "packing";
   }
@@ -492,7 +515,7 @@ orderSchema.pre("validate", function () {
   this.payment.amountSubtotal = this.subtotal;
   this.payment.amountDeliveryFee = this.deliveryFee;
   this.payment.amountTax = this.salesTax;
-  this.payment.amountDeposit = this.depositTotal; // ✅ NEW
+  this.payment.amountDeposit = this.depositTotal;
   this.payment.amountPlatformFee = this.platformFee;
   this.payment.amountTip = this.tipFee;
   this.payment.amountDiscount = this.discount;
