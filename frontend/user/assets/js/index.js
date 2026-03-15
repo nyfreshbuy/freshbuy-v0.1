@@ -616,8 +616,6 @@ async function renderDeliveryInfo(mode) {
   `;
 }
 
-// 默认渲染：优先使用已保存的模式
-void renderDeliveryInfo(getCurrentUiDeliveryMode());
 // 点击切换配送模式（+ 好友拼单弹窗）
 document.addEventListener("click", (e) => {
   const pill = e.target.closest(".delivery-pill");
@@ -2121,11 +2119,17 @@ async function applyZoneToUI(zip, payload) {
   }
 
   if (!deliverable || !zone) {
-  const currentMode = getCurrentUiDeliveryMode();
+  const savedPref = localStorage.getItem("freshbuy_pref_mode");
+  const currentMode = savedPref ? toUiModeKey(savedPref) : getCurrentUiDeliveryMode();
 
-  // ✅ 如果当前/上次用户选的是自提点，不要被 ZIP 检测覆盖
+  // ✅ 如果用户上次选的是“自提点自提”，即使当前 ZIP 不支持区域团，也优先显示自提点
   if (currentMode === "pickup") {
-    void renderDeliveryInfo("pickup");
+    document.querySelectorAll(".delivery-pill").forEach((b) => b.classList.remove("active"));
+    const pickupBtn = document.querySelector('.delivery-pill[data-mode="pickup"]');
+    if (pickupBtn) pickupBtn.classList.add("active");
+
+    deliveryHintEl.textContent = "当前：自提点自提 · 系统推荐附近自提点";
+    await renderDeliveryInfo("pickup");
     return;
   }
 
@@ -2269,7 +2273,7 @@ async function applyZip(zip, { silent = false, force = false } = {}) {
     saveZone({});
   }
 
-  applyZoneToUI(z, payload);
+  await applyZoneToUI(z, payload);
 }
 async function restoreHomepageDeliveryState() {
   try {
@@ -2278,22 +2282,21 @@ async function restoreHomepageDeliveryState() {
       getEffectiveZip(getSavedZip() || zipInput?.value || "")
     ).trim();
 
-    // ✅ 有 ZIP 就重新应用一次 ZIP -> zone / pickup 数据
+    const pref = localStorage.getItem("freshbuy_pref_mode");
+    const uiMode = pref ? toUiModeKey(pref) : "area-group";
+
+    // ✅ 先恢复按钮状态
+    document.querySelectorAll(".delivery-pill").forEach((b) => b.classList.remove("active"));
+    const btn = document.querySelector(`.delivery-pill[data-mode="${uiMode}"]`);
+    if (btn) btn.classList.add("active");
+
+    // ✅ 再重新拉 ZIP 对应数据
     if (isValidZip(currentZip)) {
       await applyZip(currentZip, { silent: true, force: true });
     }
 
-    // ✅ 再按当前偏好模式重新渲染右侧区域
-    const pref = localStorage.getItem("freshbuy_pref_mode");
-    const uiMode = pref ? toUiModeKey(pref) : "area-group";
-
-    const btn = document.querySelector(`.delivery-pill[data-mode="${uiMode}"]`);
-    if (btn) {
-      document.querySelectorAll(".delivery-pill").forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
-    }
-
-    await renderDeliveryInfo(uiMode || "area-group");
+    // ✅ 最后再强制渲染一次当前模式，防止被 applyZip 内部覆盖
+    await renderDeliveryInfo(uiMode);
   } catch (err) {
     console.error("restoreHomepageDeliveryState error:", err);
   }
@@ -2511,18 +2514,15 @@ window.addEventListener("DOMContentLoaded", async () => {
   await initZipAutoZone();
 
   // ✅ 恢复用户选择的配送偏好
-    const pref = localStorage.getItem("freshbuy_pref_mode");
-  if (pref) {
-    const uiMode = toUiModeKey(pref);
-    const btn = document.querySelector(`.delivery-pill[data-mode="${uiMode}"]`);
-    if (btn) {
-      btn.click();
-    } else {
-      void renderDeliveryInfo(uiMode);
-    }
-  } else {
-    void renderDeliveryInfo("area-group");
-  }
+   const pref = localStorage.getItem("freshbuy_pref_mode");
+const uiMode = pref ? toUiModeKey(pref) : "area-group";
+
+document.querySelectorAll(".delivery-pill").forEach((b) => b.classList.remove("active"));
+const btn = document.querySelector(`.delivery-pill[data-mode="${uiMode}"]`);
+if (btn) btn.classList.add("active");
+
+await renderDeliveryInfo(uiMode);
+
     // 🚫 暂时隐藏/禁用：好友拼单按钮
   const fg = document.querySelector('.delivery-pill[data-mode="friend-group"]');
   if (fg) {

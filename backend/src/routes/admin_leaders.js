@@ -244,6 +244,13 @@ router.post("/make-leader", async (req, res) => {
 
     const addr = await getDefaultAddressForLeader(u);
 
+    console.log("make-leader addr debug:", {
+      userId: String(u._id),
+      leaderName,
+      leaderPhone,
+      addr,
+    });
+
     const addressLine1 = String(
       addr?.addressLine || addr?.formattedAddress || ""
     ).trim();
@@ -266,10 +273,17 @@ router.post("/make-leader", async (req, res) => {
 
     let pickupPointCreated = false;
 
+    console.log("make-leader address fields:", {
+      addressLine1,
+      city,
+      state,
+      zip,
+    });
+
     if (addressLine1 && city && state && zip) {
       const maskedAddress = maskPickupAddress(addressLine1, nearStreet);
 
-      await PickupPoint.findOneAndUpdate(
+      const pickupDoc = await PickupPoint.findOneAndUpdate(
         { leaderUserId: u._id },
         {
           $set: {
@@ -308,7 +322,31 @@ router.post("/make-leader", async (req, res) => {
         }
       );
 
+      console.log("✅ pickup point upsert result:", {
+        id: pickupDoc?._id ? String(pickupDoc._id) : "",
+        leaderUserId: pickupDoc?.leaderUserId
+          ? String(pickupDoc.leaderUserId)
+          : "",
+        name: pickupDoc?.name || "",
+        zip: pickupDoc?.zip || "",
+        enabled: pickupDoc?.enabled,
+      });
+
       pickupPointCreated = true;
+    }
+
+    if (!pickupPointCreated) {
+      console.warn(
+        "⚠️ pickup point NOT created because address fields are incomplete:",
+        {
+          userId: String(u._id),
+          addressLine1,
+          city,
+          state,
+          zip,
+          hasDefaultAddress: Boolean(addr),
+        }
+      );
     }
 
     return res.json({
