@@ -5,39 +5,57 @@ function getToken() {
 }
 
 async function api(url) {
+  const token = getToken();
+  console.log("[leader] token exists:", !!token);
+
   const res = await fetch(url, {
     headers: {
-      Authorization: "Bearer " + getToken()
+      Authorization: "Bearer " + token
     }
   });
 
-  if (res.status === 401) {
-    localStorage.removeItem(AUTH_TOKEN_KEY);
-    location.href = "/user/index.html";
-    return null;
+  console.log("[leader] status:", res.status, "url:", url);
+
+  let data = null;
+  try {
+    data = await res.json();
+  } catch (e) {
+    console.log("[leader] json parse error:", e);
   }
 
-  try {
-    return await res.json();
-  } catch (e) {
-    return null;
-  }
+  console.log("[leader] response:", data);
+
+  return {
+    status: res.status,
+    data
+  };
 }
 
 async function checkLeader() {
-  const data = await api("/api/leader/me");
+  const result = await api("/api/leader/me");
+  const status = result?.status;
+  const data = result?.data;
+
+  const leaderNameEl = document.getElementById("leaderName");
+
+  if (status === 401) {
+    if (leaderNameEl) leaderNameEl.innerText = "未登录或 token 失效";
+    alert("团长页访问失败：当前测试站未登录，或登录状态已失效。");
+    return;
+  }
 
   if (!data || !data.ok) {
-    location.href = "/user/index.html";
+    if (leaderNameEl) leaderNameEl.innerText = "团长信息读取失败";
+    alert("团长页访问失败：/api/leader/me 返回异常。请按 F12 查看 Console 和 Network。");
     return;
   }
 
   if (!data.isLeader) {
-    location.href = "/user/index.html";
+    if (leaderNameEl) leaderNameEl.innerText = "当前账号不是团长";
+    alert("当前测试站登录账号不是团长账号。");
     return;
   }
 
-  const leaderNameEl = document.getElementById("leaderName");
   if (leaderNameEl) {
     leaderNameEl.innerText = "团长：" + ((data.leader && data.leader.name) || "团长");
   }
