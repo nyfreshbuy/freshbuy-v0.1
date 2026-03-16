@@ -131,52 +131,64 @@ async function ensureLeader(req, res, next) {
 // 兼容你原来前端的字段
 // =========================
 router.get("/me", async (req, res) => {
-  const me = await getLeaderMe(req.user._id);
+  try {
+    const me = await User.findById(req.user._id).select(
+      "role name phone leaderCode leaderCommissionBalance leaderTotalCommissionEarned pickupPointName pickupAddress pickupAddressMasked leaderStatus accountSettings.displayName"
+    );
 
-  if (!me) {
-    return res.status(404).json({ ok: false, message: "User not found" });
-  }
+    if (!me) {
+      return res.status(404).json({
+        ok: false,
+        success: false,
+        message: "User not found"
+      });
+    }
 
-  const isLeader = me.role === "leader";
-  if (!isLeader) {
-    return res.json({ ok: true, isLeader: false });
-  }
+    const isLeader = me.role === "leader";
 
-  const teamCount = await User.countDocuments({ invitedByLeaderId: me._id });
+    if (!isLeader) {
+      return res.json({
+        ok: true,
+        success: true,
+        isLeader: false,
+        message: "Current user is not a leader"
+      });
+    }
 
-  const wallet = await Wallet.findOne({ userId: me._id }).select("balance").lean().catch(() => null);
+    const teamCount = await User.countDocuments({ invitedByLeaderId: me._id });
 
-  return res.json({
-    ok: true,
-    isLeader: true,
+    return res.json({
+      ok: true,
+      success: true,
+      isLeader: true,
 
-    // ✅ 兼容旧字段
-    leaderCode: me.leaderCode || "",
-    balance: money(me.leaderCommissionBalance || 0),
-    totalEarned: money(me.leaderTotalCommissionEarned || 0),
-    teamCount,
-
-    // ✅ 给新界面用
-    leader: {
-      _id: String(me._id),
-      name:
-        me.accountSettings?.displayName ||
-        me.name ||
-        me.phone ||
-        "团长",
-      phone: me.phone || "",
-      phoneMasked: maskPhone(me.phone || ""),
       leaderCode: me.leaderCode || "",
-      pickupPointName: me.pickupPointName || "",
-      pickupAddress: me.pickupAddress || "",
-      pickupAddressMasked: me.pickupAddressMasked || "",
-      leaderStatus: me.leaderStatus || "active",
-      commissionBalance: money(me.leaderCommissionBalance || 0),
-      totalCommissionEarned: money(me.leaderTotalCommissionEarned || 0),
-      walletBalance: money(wallet?.balance || 0),
+      balance: Number(me.leaderCommissionBalance || 0),
+      totalEarned: Number(me.leaderTotalCommissionEarned || 0),
       teamCount,
-    },
-  });
+
+      leader: {
+        _id: String(me._id),
+        name:
+          me.accountSettings?.displayName ||
+          me.name ||
+          me.phone ||
+          "团长",
+        phone: me.phone || "",
+        pickupPointName: me.pickupPointName || "",
+        pickupAddress: me.pickupAddress || "",
+        pickupAddressMasked: me.pickupAddressMasked || "",
+        leaderStatus: me.leaderStatus || "active"
+      }
+    });
+  } catch (err) {
+    console.error("GET /api/leader/me error:", err);
+    return res.status(500).json({
+      ok: false,
+      success: false,
+      message: err?.message || "Server error"
+    });
+  }
 });
 
 // =========================

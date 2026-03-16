@@ -6,7 +6,6 @@ function getToken() {
 
 async function api(url) {
   const token = getToken();
-  console.log("[leader] token exists:", !!token);
 
   const res = await fetch(url, {
     headers: {
@@ -14,16 +13,12 @@ async function api(url) {
     }
   });
 
-  console.log("[leader] status:", res.status, "url:", url);
-
   let data = null;
   try {
     data = await res.json();
   } catch (e) {
-    console.log("[leader] json parse error:", e);
+    data = null;
   }
-
-  console.log("[leader] response:", data);
 
   return {
     status: res.status,
@@ -39,25 +34,41 @@ async function checkLeader() {
   const leaderNameEl = document.getElementById("leaderName");
 
   if (status === 401) {
-    if (leaderNameEl) leaderNameEl.innerText = "未登录或 token 失效";
-    alert("团长页访问失败：当前测试站未登录，或登录状态已失效。");
+    if (leaderNameEl) leaderNameEl.innerText = "未登录";
+    alert("团长页访问失败：当前未登录或 token 已失效。");
+    location.href = "/leader/login.html";
     return;
   }
 
-  if (!data || !data.ok) {
+  if (!data) {
+    if (leaderNameEl) leaderNameEl.innerText = "接口无返回";
+    alert("团长页访问失败：/api/leader/me 没有返回有效 JSON。");
+    return;
+  }
+
+  const isOk = data.ok === true || data.success === true;
+
+  if (!isOk) {
     if (leaderNameEl) leaderNameEl.innerText = "团长信息读取失败";
-    alert("团长页访问失败：/api/leader/me 返回异常。请按 F12 查看 Console 和 Network。");
+    alert("团长页访问失败：" + (data.message || "/api/leader/me 返回异常"));
     return;
   }
 
   if (!data.isLeader) {
     if (leaderNameEl) leaderNameEl.innerText = "当前账号不是团长";
-    alert("当前测试站登录账号不是团长账号。");
+    alert("当前账号不是团长账号。");
+    location.href = "/leader/login.html";
     return;
   }
 
+  const leaderName =
+    (data.leader && data.leader.name) ||
+    data.name ||
+    data.phone ||
+    "团长";
+
   if (leaderNameEl) {
-    leaderNameEl.innerText = "团长：" + ((data.leader && data.leader.name) || "团长");
+    leaderNameEl.innerText = "团长：" + leaderName;
   }
 }
 
