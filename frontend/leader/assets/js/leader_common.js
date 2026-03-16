@@ -35,7 +35,6 @@ async function checkLeader() {
 
   if (status === 401) {
     if (leaderNameEl) leaderNameEl.innerText = "未登录";
-    alert("团长页访问失败：当前未登录或 token 已失效。");
     location.href = "/leader/login.html";
     return;
   }
@@ -56,7 +55,6 @@ async function checkLeader() {
 
   if (!data.isLeader) {
     if (leaderNameEl) leaderNameEl.innerText = "当前账号不是团长";
-    alert("当前账号不是团长账号。");
     location.href = "/leader/login.html";
     return;
   }
