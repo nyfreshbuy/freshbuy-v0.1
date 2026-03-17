@@ -4,14 +4,27 @@ function getToken() {
   return localStorage.getItem(AUTH_TOKEN_KEY) || "";
 }
 
-async function api(url) {
+async function api(url, options = {}) {
   const token = getToken();
 
-  const res = await fetch(url, {
+  const fetchOptions = {
+    method: options.method || "GET",
+    cache: "no-store",
     headers: {
+      "Accept": "application/json",
+      "Cache-Control": "no-cache, no-store, must-revalidate",
+      "Pragma": "no-cache",
+      "Expires": "0",
+      ...(options.headers || {}),
       Authorization: "Bearer " + token
     }
-  });
+  };
+
+  if (options.body !== undefined) {
+    fetchOptions.body = options.body;
+  }
+
+  const res = await fetch(url, fetchOptions);
 
   let data = null;
   try {
@@ -22,12 +35,13 @@ async function api(url) {
 
   return {
     status: res.status,
+    ok: res.ok,
     data
   };
 }
 
 async function checkLeader() {
-  const result = await api("/api/leader/me");
+  const result = await api("/api/leader/me?_t=" + Date.now());
   const status = result?.status;
   const data = result?.data;
 

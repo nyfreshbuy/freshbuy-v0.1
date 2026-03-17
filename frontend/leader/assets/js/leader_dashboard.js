@@ -58,7 +58,7 @@ function makeStatusBadge(text) {
 }
 
 async function loadStats() {
-  const data = await api("/api/leader/dashboard/stats");
+  const data = await api("/api/leader/dashboard/stats?_t=" + Date.now());
 
   const todayOrdersEl = document.getElementById("todayOrders");
   const pendingPickupEl = document.getElementById("pendingPickup");
@@ -93,7 +93,7 @@ async function loadStats() {
 }
 
 async function loadOrders() {
-  const data = await api("/api/leader/orders?status=pending");
+  const data = await api("/api/leader/orders?status=pending&_t=" + Date.now());
 
   const tbody = document.getElementById("orderList");
   if (!tbody) return;
@@ -129,7 +129,7 @@ async function loadOrders() {
 }
 
 async function loadPickups() {
-  const data = await api("/api/leader/pickups/today");
+  const data = await api("/api/leader/pickups/today?_t=" + Date.now());
 
   const tbody = document.getElementById("pickupList");
   if (!tbody) return;
