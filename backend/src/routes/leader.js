@@ -25,8 +25,8 @@ function startOfToday() {
 
 function startOfWeek() {
   const d = new Date();
-  const day = d.getDay(); // 0 Sun
-  const diff = day === 0 ? 6 : day - 1; // 周一开始
+  const day = d.getDay();
+  const diff = day === 0 ? 6 : day - 1;
   d.setDate(d.getDate() - diff);
   d.setHours(0, 0, 0, 0);
   return d;
@@ -45,7 +45,6 @@ function maskPhone(phone) {
 }
 
 function normalizeOrderStatus(o) {
-  // 你项目里订单状态字段可能不统一，这里尽量兼容
   const raw =
     o.status ||
     o.orderStatus ||
@@ -93,6 +92,10 @@ function getPickupCode(o) {
   return o.pickupCode || o.selfPickupCode || o.verifyCode || "";
 }
 
+function getReqUserId(req) {
+  return req.user?._id || req.user?.id || null;
+}
+
 // =========================
 // 权限校验
 // =========================
@@ -115,24 +118,54 @@ async function getLeaderMe(userId) {
 }
 
 async function ensureLeader(req, res, next) {
-  const me = await getLeaderMe(req.user._id);
+  const userId = getReqUserId(req);
+
+  if (!userId) {
+    return res.status(401).json({
+      ok: false,
+      success: false,
+      message: "未登录（缺少用户ID）"
+    });
+  }
+
+  const me = await getLeaderMe(userId);
+
   if (!me) {
-    return res.status(404).json({ ok: false, message: "User not found" });
+    return res.status(404).json({
+      ok: false,
+      success: false,
+      message: "User not found"
+    });
   }
+
   if (me.role !== "leader") {
-    return res.status(403).json({ ok: false, message: "Not a leader" });
+    return res.status(403).json({
+      ok: false,
+      success: false,
+      message: "Not a leader"
+    });
   }
+
   req.leader = me;
   next();
 }
 
 // =========================
 // 团长中心：我的信息
-// 兼容你原来前端的字段
 // =========================
 router.get("/me", async (req, res) => {
   try {
-    const me = await User.findById(req.user._id).select(
+    const userId = getReqUserId(req);
+
+    if (!userId) {
+      return res.status(401).json({
+        ok: false,
+        success: false,
+        message: "未登录（缺少用户ID）"
+      });
+    }
+
+    const me = await User.findById(userId).select(
       "role name phone leaderCode leaderCommissionBalance leaderTotalCommissionEarned pickupPointName pickupAddress pickupAddressMasked leaderStatus accountSettings.displayName"
     );
 
@@ -157,6 +190,13 @@ router.get("/me", async (req, res) => {
 
     const teamCount = await User.countDocuments({ invitedByLeaderId: me._id });
 
+    let wallet = null;
+    try {
+      wallet = await Wallet.findOne({ userId: me._id }).select("balance").lean();
+    } catch {
+      wallet = null;
+    }
+
     return res.json({
       ok: true,
       success: true,
@@ -178,7 +218,8 @@ router.get("/me", async (req, res) => {
         pickupPointName: me.pickupPointName || "",
         pickupAddress: me.pickupAddress || "",
         pickupAddressMasked: me.pickupAddressMasked || "",
-        leaderStatus: me.leaderStatus || "active"
+        leaderStatus: me.leaderStatus || "active",
+        walletBalance: money(wallet?.balance || 0)
       }
     });
   } catch (err) {
@@ -230,7 +271,6 @@ router.get("/dashboard/stats", ensureLeader, async (req, res) => {
     leaderId,
     status: { $in: ["ready", "ready_for_pickup", "notified", "paid", "confirmed", "processing", "packing"] },
   }).catch(async () => {
-    // 万一 status 字段不一致，退化成 today 统计
     return await Order.countDocuments({
       leaderId,
       createdAt: { $gte: today },
@@ -241,7 +281,6 @@ router.get("/dashboard/stats", ensureLeader, async (req, res) => {
     invitedByLeaderId: leaderId,
   });
 
-  // 这里优先从订单累计本周佣金；如果没有订单佣金字段，就退回用户总佣金字段
   let weekCommission = 0;
   try {
     const agg = await Order.aggregate([
@@ -282,7 +321,6 @@ router.get("/dashboard/stats", ensureLeader, async (req, res) => {
 
 // =========================
 // 团长订单列表
-// GET /api/leader/orders?status=pending&page=1&pageSize=20
 // =========================
 router.get("/orders", ensureLeader, async (req, res) => {
   const leaderId = req.leader._id;
