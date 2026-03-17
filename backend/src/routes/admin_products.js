@@ -3,6 +3,7 @@
 // 保持原接口不变：
 // - POST   /api/admin/products/upload-image
 // - GET    /api/admin/products?keyword=xxx
+// - GET    /api/admin/products/search-lite?q=xxx   ✅ 新增：给发票页 Description 自动搜索用
 // - POST   /api/admin/products
 // - PATCH  /api/admin/products/:id
 // - DELETE /api/admin/products/:id
@@ -350,6 +351,103 @@ router.get("/", async (req, res) => {
   }
 });
 
+// ===================== 路由：轻量搜索商品（给发票页 Description 自动搜索用） =====================
+
+// GET /api/admin/products/search-lite?q=上海青
+router.get("/search-lite", async (req, res) => {
+  try {
+    const q = String(req.query.q || "").trim();
+    if (!q) {
+      return res.json({ success: true, items: [] });
+    }
+
+    const re = new RegExp(escapeRegex(q), "i");
+
+    const list = await Product.find({
+      $or: [
+        { id: re },
+        { name: re },
+        { tag: re },
+        { sku: re },
+        { supplierCompanyId: re },
+        { internalCompanyId: re },
+      ],
+    })
+      .sort({ sortOrder: 1, createdAt: -1 })
+      .limit(20)
+      .lean();
+
+    const items = [];
+
+    for (const p of list) {
+      const productId = String(p?._id || "");
+      const name = String(p?.name || "");
+      const basePrice = Number(p?.price ?? p?.originPrice ?? 0) || 0;
+      const baseStock = Number(p?.stock ?? 0) || 0;
+
+      const variants = Array.isArray(p?.variants) ? p.variants : [];
+      const enabledVariants = variants.filter((v) => v && v.key && v.enabled !== false);
+
+      if (enabledVariants.length > 0) {
+        for (const v of enabledVariants) {
+          const specPrice =
+            v?.price === null || v?.price === undefined || v?.price === ""
+              ? basePrice
+              : Number(v.price || 0);
+
+          const specStock =
+            v?.stock === null || v?.stock === undefined || v?.stock === ""
+              ? baseStock
+              : Number(v.stock || 0);
+
+          items.push({
+            id: productId,
+            name,
+            specLabel: String(v?.label || v?.key || ""),
+            price: Number(specPrice || 0),
+            stock: Number(specStock || 0),
+            defaultSpecId: String(v?.key || ""),
+            specs: enabledVariants.map((x) => ({
+              id: String(x?.key || ""),
+              label: String(x?.label || x?.key || ""),
+              price:
+                x?.price === null || x?.price === undefined || x?.price === ""
+                  ? basePrice
+                  : Number(x.price || 0),
+              stock:
+                x?.stock === null || x?.stock === undefined || x?.stock === ""
+                  ? baseStock
+                  : Number(x.stock || 0),
+              unitCount: Math.max(1, Math.floor(Number(x?.unitCount || 1))),
+            })),
+          });
+        }
+      } else {
+        items.push({
+          id: productId,
+          name,
+          specLabel: "",
+          price: Number(basePrice || 0),
+          stock: Number(baseStock || 0),
+          defaultSpecId: "",
+          specs: [],
+        });
+      }
+    }
+
+    return res.json({
+      success: true,
+      items,
+    });
+  } catch (err) {
+    console.error("search-lite 商品搜索出错:", err);
+    return res.status(500).json({
+      success: false,
+      message: err.message || "搜索商品失败",
+    });
+  }
+});
+
 // ===================== 路由：新增商品 =====================
 
 // POST /api/admin/products
@@ -408,7 +506,11 @@ router.post("/", async (req, res) => {
 
       // 数组
       labels: Array.isArray(body.labels) ? body.labels : [],
-      tags: Array.isArray(body.tags) ? body.tags : typeof body.tags === "string" && body.tags.trim() ? [body.tags.trim()] : [],
+      tags: Array.isArray(body.tags)
+        ? body.tags
+        : typeof body.tags === "string" && body.tags.trim()
+          ? [body.tags.trim()]
+          : [],
       images: Array.isArray(body.images) ? body.images : body.images ? [body.images] : undefined,
     });
 
@@ -660,7 +762,7 @@ router.post("/:id/purchase-batches", async (req, res) => {
 
     const body = req.body || {};
     const supplierName = (body.supplierName || "").trim();
-    const supplierCompanyId = (body.supplierCompanyId || "").trim(); // ✅ 修复：原来你用但没定义
+    const supplierCompanyId = (body.supplierCompanyId || "").trim();
     const boxPrice = Number(body.boxPrice) || 0;
     const boxCount = Number(body.boxCount) || 0;
     const unitsPerBox = Number(body.unitsPerBox) || 0;

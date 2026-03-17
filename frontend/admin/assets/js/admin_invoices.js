@@ -1,21 +1,17 @@
 // frontend/admin/assets/js/admin_invoices.js
-// ✅ 发票开具（后台）完整前端脚本（PRODUCTION SAFE）
-// - 选用户自动带出 name/phone/address
-// - 商品/规格自动填描述/价格，并携带 unitCount（扣库存用）
+// ✅ 发票开具（后台）完整前端脚本（DESCRIPTION 搜索商品版）
+// - Description 输入自动搜索商品
+// - 下拉显示 商品 / 规格 / 库存 / 单价
+// - 选中后自动带入 productId / 规格 / 单价 / 库存
 // - 保存：POST /api/admin/invoices（后端扣库存）
 // - 打印（手机/电脑通用）：打开 /admin/print_invoice.html?id=xxx
 // - Statement：
 //    JSON: GET /api/admin/invoices/statements?from&to&userId
 //    打印（手机/电脑通用）：打开 /admin/print_statement.html?from&to&userId
 // - 搜索发票：GET /api/admin/invoices?q&from&to&userId
-//
-// ✅ Fixes:
-// - 修复 btnPdf 未定义导致 search list 不渲染
-// - 搜索/statement 的 user 输入支持：userId / 手机 / 姓名（前端解析）
-// - searchList 若不存在，自动创建到 #searchHint 后面
 
 (function () {
-  console.log("admin_invoices.js LOADED ✅ VERSION=2026-02-24-FULLFIX");
+  console.log("admin_invoices.js LOADED ✅ VERSION=2026-03-16-DESC-AUTOCOMPLETE");
 
   // =========================
   // Auth / Fetch helpers
@@ -49,6 +45,16 @@
     }
     return { res, data };
   }
+
+  function escapeHtml(s) {
+    return String(s || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
   // =========================
   // UserId resolver (name / phone / userId)
   // =========================
@@ -58,36 +64,32 @@
 
   function normPhoneDigits(s) {
     const d = String(s || "").replace(/\D/g, "");
-    // 兼容：1xxxxxxxxxx / xxxxxxxxxx
     if (d.length === 11 && d.startsWith("1")) return d.slice(1);
     return d;
   }
 
   async function resolveUserId(input) {
     const raw = String(input || "").trim();
-    if (!raw) return "";                // 为空 = 全部客户
-    if (isObjectId(raw)) return raw;    // 已是 userId 直接返回
+    if (!raw) return "";
+    if (isObjectId(raw)) return raw;
 
-    // 尝试当手机号处理
     const digits = normPhoneDigits(raw);
-    const isPhone = digits.length >= 7; // 你也可以改成 10 更严格
+    const isPhone = digits.length >= 7;
     const keyword = isPhone ? digits : raw;
 
-    // 用后台用户列表接口做 keyword 搜索（你后端已有 /api/admin/users?keyword=）
     const qs = new URLSearchParams();
     qs.set("page", "1");
     qs.set("pageSize", "20");
     qs.set("keyword", keyword);
 
     const { res, data } = await apiFetch(`/api/admin/users?${qs.toString()}`);
-    if (!res.ok || !data?.success) return ""; // 解析失败：当作不筛选/或提示
+    if (!res.ok || !data?.success) return "";
 
     const list = data.users || data.list || data.items || data.data || [];
     const usersList = Array.isArray(list) ? list : [];
 
     if (usersList.length === 0) return "";
 
-    // 优先精确匹配：电话包含 / 姓名包含
     const lowerRaw = raw.toLowerCase();
     const digitsRaw = normPhoneDigits(raw);
 
@@ -97,20 +99,16 @@
       phone: String(u?.phone || ""),
     })).filter((x) => x._id);
 
-    // 精确手机号匹配
     if (digitsRaw && digitsRaw.length >= 7) {
       const hitPhone = normalized.find((x) => normPhoneDigits(x.phone).includes(digitsRaw));
       if (hitPhone) return hitPhone._id;
     }
 
-    // 姓名匹配
     const hitName = normalized.find((x) => x.name.toLowerCase().includes(lowerRaw));
     if (hitName) return hitName._id;
 
-    // 只有一个结果就直接用
     if (normalized.length === 1) return normalized[0]._id;
 
-    // 多个结果：提示你用更精确的电话或直接粘贴 userId
     alert(
       "匹配到多个用户，请输入更精确的手机号或直接粘贴 UserId。\n" +
         normalized
@@ -120,6 +118,7 @@
     );
     return "";
   }
+
   // =========================
   // DOM
   // =========================
@@ -157,10 +156,9 @@
   const btnStatementPdf = document.getElementById("btnStatementPdf");
   const stResult = document.getElementById("stResult");
 
-  const stUserHint = document.getElementById("stUserHint"); // 可选（你的新版 html 有）
-  const sUserHint = document.getElementById("sUserHint");   // 可选（你的新版 html 有）
+  const stUserHint = document.getElementById("stUserHint");
+  const sUserHint = document.getElementById("sUserHint");
 
-  // 搜索区
   const sQ = document.getElementById("sQ");
   const sFrom = document.getElementById("sFrom");
   const sTo = document.getElementById("sTo");
@@ -168,9 +166,8 @@
   const btnSearch = document.getElementById("btnSearch");
   const btnSearchReset = document.getElementById("btnSearchReset");
   const searchHint = document.getElementById("searchHint");
-  let searchList = document.getElementById("searchList"); // 可能不存在
+  let searchList = document.getElementById("searchList");
 
-  // ✅ searchList 兜底创建（防止“找到1条但不显示”）
   function ensureSearchList() {
     if (searchList) return searchList;
     if (!searchHint) return null;
@@ -257,34 +254,28 @@
   }
 
   function normPhone(s) {
-    return String(s || "")
-      .replace(/[^\d]/g, ""); // 只保留数字
+    return String(s || "").replace(/[^\d]/g, "");
   }
 
   function looksLikeMongoId(s) {
     return /^[a-fA-F0-9]{24}$/.test(String(s || "").trim());
   }
 
-  // 返回 { userId, user, reason } 或 null
   function resolveUserInput(raw) {
     const input = normStr(raw);
     if (!input) return null;
 
-    // 1) 直接就是 userId
     if (looksLikeMongoId(input)) {
       const u = users.find(x => String(x?._id || "") === input) || null;
       return { userId: input, user: u, reason: u ? "userId" : "userId(unknown)" };
     }
 
     const phoneDigits = normPhone(input);
-
-    // 2) 看起来像手机号（>=7位）
     if (phoneDigits.length >= 7) {
       const hit = users.find(u => normPhone(u.phone).includes(phoneDigits));
       if (hit) return { userId: hit._id, user: hit, reason: "phone" };
     }
 
-    // 3) 姓名包含匹配
     const lower = input.toLowerCase();
     const hit2 = users.find(u => normStr(u.name).toLowerCase().includes(lower));
     if (hit2) return { userId: hit2._id, user: hit2, reason: "name" };
@@ -298,7 +289,6 @@
       setSmallHint(hintEl, "");
       return;
     }
-    // 把 userId 写回输入框（你希望后端永远收到 userId）
     inputEl.value = resolved.userId;
     const u = resolved.user;
     if (u) {
@@ -334,11 +324,9 @@
       opt.value = u._id;
       const label = `${u.name || ""} ${u.phone || ""}`.trim() || u._id;
       opt.textContent = label;
-
       opt.dataset.name = u.name || "";
       opt.dataset.phone = u.phone || "";
       opt.dataset.addr = u.addressText || "";
-
       userSelect.appendChild(opt);
     }
   }
@@ -346,7 +334,7 @@
   async function loadUsers(keyword = "") {
     const qs = new URLSearchParams();
     qs.set("page", "1");
-    qs.set("pageSize", "200"); // ✅ 多拉点，方便姓名/电话匹配
+    qs.set("pageSize", "200");
     if (keyword) qs.set("keyword", keyword);
 
     const { res, data } = await apiFetch(`/api/admin/users?${qs.toString()}`);
@@ -415,6 +403,21 @@
   }
 
   // =========================
+  // Search products for invoice
+  // =========================
+  async function searchProductsForInvoice(keyword) {
+    const q = String(keyword || "").trim();
+    if (!q) return [];
+
+    const { res, data } = await apiFetch(`/api/admin/products/search-lite?q=${encodeURIComponent(q)}`, {
+      method: "GET",
+    });
+
+    if (!res.ok) return [];
+    return Array.isArray(data?.items) ? data.items : [];
+  }
+
+  // =========================
   // Items table
   // =========================
   function recalcTotals() {
@@ -438,71 +441,122 @@
     if (grandTotalEl) grandTotalEl.textContent = money(sub);
   }
 
-  function makeProductSelect() {
-    const sel = document.createElement("select");
-    sel.dataset.k = "productId";
+  function renderSuggest(dropdownEl, items, onPick) {
+    if (!dropdownEl) return;
 
-    const opt0 = document.createElement("option");
-    opt0.value = "";
-    opt0.textContent = "（手填 / 不扣库存）";
-    sel.appendChild(opt0);
-
-    for (const p of products) {
-      const opt = document.createElement("option");
-      opt.value = p._id;
-      opt.textContent = p.name || p._id;
-      sel.appendChild(opt);
+    if (!items || !items.length) {
+      dropdownEl.innerHTML = `<div class="invoice-suggest-empty">无匹配商品</div>`;
+      dropdownEl.style.display = "block";
+      return;
     }
-    return sel;
+
+    dropdownEl.innerHTML = items.map((item, idx) => {
+      const name = escapeHtml(item.name || "");
+      const specLabel = escapeHtml(item.specLabel || "");
+      const stock = Number(item.stock || 0);
+      const price = Number(item.price || 0).toFixed(2);
+
+      return `
+        <button type="button" class="invoice-suggest-item" data-idx="${idx}">
+          <div class="invoice-suggest-title">${name}</div>
+          <div class="invoice-suggest-meta">
+            <span>规格：${specLabel || "-"}</span>
+            <span>库存：${stock}</span>
+            <span>单价：$${price}</span>
+          </div>
+        </button>
+      `;
+    }).join("");
+
+    dropdownEl.style.display = "block";
+
+    [...dropdownEl.querySelectorAll(".invoice-suggest-item")].forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const idx = Number(btn.dataset.idx || -1);
+        if (idx >= 0 && items[idx]) onPick(items[idx]);
+      });
+    });
   }
 
-  function makeVariantSelect(product) {
+  function makeVariantSelectWithLiteSpecs(specs, selectedId = "") {
     const sel = document.createElement("select");
     sel.dataset.k = "variantKey";
 
-    const vars =
-      product && Array.isArray(product.variants) && product.variants.length
-        ? product.variants
-        : [{ key: "single", label: "单个", unitCount: 1, price: null, enabled: true, sortOrder: 0 }];
-
-    const sorted = [...vars].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
-
-    for (const v of sorted) {
-      if (!v || !v.key) continue;
-      if (v.enabled === false) continue;
-
+    const list = Array.isArray(specs) ? specs : [];
+    if (!list.length) {
       const opt = document.createElement("option");
-      opt.value = v.key;
-      opt.textContent = v.label || v.key;
-      opt.dataset.unitCount = String(v.unitCount || 1);
-      opt.dataset.variantPrice = v.price == null ? "" : String(v.price);
+      opt.value = "";
+      opt.textContent = "单个";
+      opt.dataset.unitCount = "1";
+      opt.dataset.variantPrice = "";
+      opt.dataset.variantLabel = "单个";
+      opt.dataset.stock = "";
+      sel.appendChild(opt);
+      return sel;
+    }
+
+    for (const spec of list) {
+      const opt = document.createElement("option");
+      opt.value = String(spec.id || "");
+      opt.textContent = spec.label || "默认规格";
+      opt.dataset.unitCount = String(Math.max(1, Math.floor(parseNum(spec.unitCount, 1))));
+      opt.dataset.variantPrice = spec.price == null ? "" : String(parseNum(spec.price, 0));
+      opt.dataset.variantLabel = spec.label || "";
+      opt.dataset.stock = String(parseNum(spec.stock, 0));
+      if (String(spec.id || "") === String(selectedId || "")) opt.selected = true;
       sel.appendChild(opt);
     }
+
     return sel;
   }
 
   function addRow(preset = {}) {
     if (!itemsTbody) return;
-    const tr = document.createElement("tr");
-    tr.dataset.manualPrice = "0"; // ✅ 默认没手动改价
-    const tdP = document.createElement("td");
-    const selP = makeProductSelect();
-    selP.value = preset.productId || "";
-    tdP.appendChild(selP);
-    tr.appendChild(tdP);
 
+    const tr = document.createElement("tr");
+    tr.dataset.manualPrice = preset.unitPrice != null ? "1" : "0";
+
+    // hidden productId
+    const hiddenProductId = document.createElement("input");
+    hiddenProductId.type = "hidden";
+    hiddenProductId.dataset.k = "productId";
+    hiddenProductId.value = preset.productId || "";
+    tr.appendChild(hiddenProductId);
+
+    // Description
+    const tdD = document.createElement("td");
+    tdD.style.position = "relative";
+
+    const inpDesc = document.createElement("input");
+    inpDesc.dataset.k = "description";
+    inpDesc.placeholder = "输入商品名 / 规格 / 关键字";
+    inpDesc.autocomplete = "off";
+    inpDesc.value = preset.description || "";
+
+    const suggest = document.createElement("div");
+    suggest.className = "invoice-suggest";
+    suggest.style.display = "none";
+
+    tdD.appendChild(inpDesc);
+    tdD.appendChild(suggest);
+    tr.appendChild(tdD);
+
+    // Variant
     const tdV = document.createElement("td");
     tdV.dataset.k = "variantCell";
     tr.appendChild(tdV);
 
-    const tdD = document.createElement("td");
-    const inpDesc = document.createElement("input");
-    inpDesc.dataset.k = "description";
-    inpDesc.placeholder = "可手填";
-    inpDesc.value = preset.description || "";
-    tdD.appendChild(inpDesc);
-    tr.appendChild(tdD);
+    // Stock
+    const tdS = document.createElement("td");
+    const stockBadge = document.createElement("div");
+    stockBadge.dataset.k = "stock";
+    stockBadge.className = "invoice-stock-badge";
+    stockBadge.textContent = "-";
+    stockBadge.dataset.stock = preset.stock != null ? String(parseNum(preset.stock, 0)) : "";
+    tdS.appendChild(stockBadge);
+    tr.appendChild(tdS);
 
+    // Qty
     const tdQ = document.createElement("td");
     const inpQty = document.createElement("input");
     inpQty.type = "number";
@@ -513,6 +567,7 @@
     tdQ.appendChild(inpQty);
     tr.appendChild(tdQ);
 
+    // Unit price
     const tdU = document.createElement("td");
     const inpPrice = document.createElement("input");
     inpPrice.type = "number";
@@ -523,6 +578,7 @@
     tdU.appendChild(inpPrice);
     tr.appendChild(tdU);
 
+    // Total
     const tdT = document.createElement("td");
     const lineEl = document.createElement("div");
     lineEl.dataset.k = "lineTotal";
@@ -530,6 +586,7 @@
     tdT.appendChild(lineEl);
     tr.appendChild(tdT);
 
+    // Delete
     const tdX = document.createElement("td");
     const btnDel = document.createElement("button");
     btnDel.className = "btn btn-danger";
@@ -542,70 +599,127 @@
     tdX.appendChild(btnDel);
     tr.appendChild(tdX);
 
-    function refreshVariantUI(productId) {
+    function refreshVariantUIFromLiteSpecs(specs = [], selectedId = "") {
       tdV.innerHTML = "";
-      const p = productId ? getProduct(productId) : null;
-
-      if (!p) {
-        const dummy = document.createElement("select");
-        dummy.dataset.k = "variantKey";
-        const o = document.createElement("option");
-        o.value = "";
-        o.textContent = "-";
-        dummy.appendChild(o);
-        tdV.appendChild(dummy);
-        return dummy;
-      }
-
-      const vs = makeVariantSelect(p);
+      const vs = makeVariantSelectWithLiteSpecs(specs, selectedId);
       tdV.appendChild(vs);
-
-      if (preset.variantKey) vs.value = preset.variantKey;
       return vs;
     }
 
-    function autofillByProductAndVariant() {
-      const pid = selP.value;
-      const p = pid ? getProduct(pid) : null;
+    function updateStockFromVariantSelect() {
       const varSel = tdV.querySelector('select[data-k="variantKey"]');
-
-      if (!p) {
+      if (!varSel || !varSel.selectedOptions || !varSel.selectedOptions[0]) {
+        stockBadge.textContent = "-";
+        stockBadge.dataset.stock = "";
         recalcTotals();
         return;
       }
 
-      if (!inpDesc.value) inpDesc.value = p.name || "";
+      const opt = varSel.selectedOptions[0];
+      const stock = parseNum(opt.dataset.stock, 0);
+      const vp = opt.dataset.variantPrice;
 
-      const manual = tr.dataset.manualPrice === "1"; // ✅ 是否手动改过价
+      stockBadge.dataset.stock = String(stock);
+      stockBadge.textContent = `库存 ${stock}`;
 
-if (varSel && varSel.selectedOptions && varSel.selectedOptions[0]) {
-  const opt = varSel.selectedOptions[0];
-  const vp = opt.dataset.variantPrice;
-  const auto = vp !== "" ? parseNum(vp, p.price) : p.price;
+      if (tr.dataset.manualPrice !== "1") {
+        if (vp !== "") {
+          inpPrice.value = String(parseNum(vp, 0));
+        }
+      }
 
-  if (!manual) inpPrice.value = String(auto || 0); // ✅ 没手动改价就覆盖
-} else {
-  if (!manual) inpPrice.value = String(p.price || 0);
-}
+      // 限库存
+      const qty = parseNum(inpQty.value, 0);
+      if (stock > 0 && qty > stock) {
+        inpQty.value = String(stock);
+      }
+
       recalcTotals();
     }
 
-    selP.onchange = () => {
-  tr.dataset.manualPrice = "0"; // ✅ 换商品后默认用自动价格
-  const varSel = refreshVariantUI(selP.value);
-  if (varSel) varSel.onchange = autofillByProductAndVariant;
-  autofillByProductAndVariant();
-};
-    inpQty.oninput = recalcTotals;
+    function pickLiteProduct(item) {
+      hiddenProductId.value = item.id || "";
+      inpDesc.value = item.specLabel ? `${item.name || ""} - ${item.specLabel}` : (item.name || "");
+      tr.dataset.manualPrice = "0";
+
+      const specs = Array.isArray(item.specs) ? item.specs : [];
+      const vs = refreshVariantUIFromLiteSpecs(specs, item.defaultSpecId || "");
+      if (vs) {
+        vs.onchange = () => updateStockFromVariantSelect();
+      }
+
+      const price = parseNum(item.price, 0);
+      inpPrice.value = String(price);
+
+      const stock = parseNum(item.stock, 0);
+      stockBadge.dataset.stock = String(stock);
+      stockBadge.textContent = `库存 ${stock}`;
+
+      suggest.style.display = "none";
+      suggest.innerHTML = "";
+
+      recalcTotals();
+    }
+
+    let searchTimer = null;
+
+    inpDesc.addEventListener("input", () => {
+      const keyword = String(inpDesc.value || "").trim();
+
+      clearTimeout(searchTimer);
+      if (!keyword) {
+        suggest.style.display = "none";
+        suggest.innerHTML = "";
+        hiddenProductId.value = "";
+        return;
+      }
+
+      searchTimer = setTimeout(async () => {
+        const items = await searchProductsForInvoice(keyword);
+        renderSuggest(suggest, items, pickLiteProduct);
+      }, 250);
+    });
+
+    inpDesc.addEventListener("focus", async () => {
+      const keyword = String(inpDesc.value || "").trim();
+      if (!keyword) return;
+      const items = await searchProductsForInvoice(keyword);
+      renderSuggest(suggest, items, pickLiteProduct);
+    });
+
+    document.addEventListener("click", (e) => {
+      if (!tr.contains(e.target)) {
+        suggest.style.display = "none";
+      }
+    });
+
+    inpQty.oninput = () => {
+      const stock = parseNum(stockBadge.dataset.stock, 0);
+      const qty = parseNum(inpQty.value, 0);
+      if (stock > 0 && qty > stock) {
+        inpQty.value = String(stock);
+      }
+      recalcTotals();
+    };
+
     inpPrice.oninput = () => {
-  tr.dataset.manualPrice = "1"; // ✅ 手动改过价
-  recalcTotals();
-};
-    const initialVarSel = refreshVariantUI(selP.value);
-    if (initialVarSel) initialVarSel.onchange = autofillByProductAndVariant;
+      tr.dataset.manualPrice = "1";
+      recalcTotals();
+    };
+
+    // preset variant
+    const initialSpecs = Array.isArray(preset.specs) ? preset.specs : [];
+    const initialVarSel = refreshVariantUIFromLiteSpecs(initialSpecs, preset.variantKey || "");
+    if (initialVarSel) {
+      initialVarSel.onchange = () => updateStockFromVariantSelect();
+    }
+
+    if (preset.stock != null) {
+      stockBadge.textContent = `库存 ${parseNum(preset.stock, 0)}`;
+    }
 
     itemsTbody.appendChild(tr);
-    autofillByProductAndVariant();
+    updateStockFromVariantSelect();
     recalcTotals();
   }
 
@@ -616,31 +730,30 @@ if (varSel && varSel.selectedOptions && varSel.selectedOptions[0]) {
     const trs = itemsTbody.querySelectorAll("tr");
     for (const tr of trs) {
       const productId = tr.querySelector('[data-k="productId"]')?.value || "";
-      const variantKey = tr.querySelector('[data-k="variantKey"]')?.value || "";
+      const varSel = tr.querySelector('select[data-k="variantKey"]');
+      const variantKey = varSel?.value || "";
       const description = tr.querySelector('[data-k="description"]')?.value || "";
       const qty = parseNum(tr.querySelector('[data-k="qty"]')?.value, 0);
       const unitPrice = parseNum(tr.querySelector('[data-k="unitPrice"]')?.value, 0);
 
       let unitCount = 1;
-let variantLabel = ""; // ✅ 一定要定义
+      let variantLabel = "";
 
-const varSel = tr.querySelector('select[data-k="variantKey"]');
-if (varSel && varSel.selectedOptions && varSel.selectedOptions[0]) {
-  const opt = varSel.selectedOptions[0];
-  unitCount = Math.max(1, Math.floor(parseNum(opt.dataset.unitCount, 1)));
-  variantLabel = String(opt.textContent || "").trim(); // ✅ 规格文字，例如“整箱(1)”
-}
+      if (varSel && varSel.selectedOptions && varSel.selectedOptions[0]) {
+        const opt = varSel.selectedOptions[0];
+        unitCount = Math.max(1, Math.floor(parseNum(opt.dataset.unitCount, 1)));
+        variantLabel = String(opt.dataset.variantLabel || opt.textContent || "").trim();
+      }
 
-// ✅ 没选商品或没选规格时，variantLabel 为空也没问题
-items.push({
-  productId: productId || "",
-  variantKey: variantKey || "",
-  variantLabel, // ✅ 现在不会报错了
-  description: String(description || "").trim(),
-  qty,
-  unitPrice,
-  unitCount,
-});
+      items.push({
+        productId: productId || "",
+        variantKey: variantKey || "",
+        variantLabel,
+        description: String(description || "").trim(),
+        qty,
+        unitPrice,
+        unitCount,
+      });
     }
     return items;
   }
@@ -725,7 +838,6 @@ items.push({
     }
   }
 
-  // ✅ 统一用打印页（手机/电脑都稳定）
   function openInvoicePrintPage(id) {
     if (!id) return;
     window.open(`/admin/print_invoice.html?id=${encodeURIComponent(id)}`, "_blank", "noopener");
@@ -752,20 +864,20 @@ items.push({
       return;
     }
 
-    // ✅ 支持 userId / 手机 / 姓名（远程解析成 userId）
-let uid = "";
-if (raw) {
-  uid = await resolveUserId(raw); // 关键：远程搜索解析
-  if (!uid) {
-    setSmallHint(stUserHint, "❌ 找不到该用户（请用更完整的姓名/手机号，或直接粘贴 userId）");
-    alert("找不到该用户（请用更完整的姓名/手机号，或直接粘贴 userId）");
-    return;
-  }
-  if (stUserId) stUserId.value = uid;
-  setSmallHint(stUserHint, `✅ 已解析为 userId：${uid}`);
-} else {
-  setSmallHint(stUserHint, "");
-}
+    let uid = "";
+    if (raw) {
+      uid = await resolveUserId(raw);
+      if (!uid) {
+        setSmallHint(stUserHint, "❌ 找不到该用户（请用更完整的姓名/手机号，或直接粘贴 userId）");
+        alert("找不到该用户（请用更完整的姓名/手机号，或直接粘贴 userId）");
+        return;
+      }
+      if (stUserId) stUserId.value = uid;
+      setSmallHint(stUserHint, `✅ 已解析为 userId：${uid}`);
+    } else {
+      setSmallHint(stUserHint, "");
+    }
+
     const qs = new URLSearchParams();
     qs.set("from", from);
     qs.set("to", to);
@@ -818,18 +930,19 @@ if (raw) {
     }
 
     let uid = "";
-if (raw) {
-  uid = await resolveUserId(raw);
-  if (!uid) {
-    setSmallHint(stUserHint, "❌ 找不到该用户（请用更完整的姓名/手机号，或直接粘贴 userId）");
-    alert("找不到该用户（请用更完整的姓名/手机号，或直接粘贴 userId）");
-    return;
-  }
-  if (stUserId) stUserId.value = uid;
-  setSmallHint(stUserHint, `✅ 已解析为 userId：${uid}`);
-} else {
-  setSmallHint(stUserHint, "");
-}
+    if (raw) {
+      uid = await resolveUserId(raw);
+      if (!uid) {
+        setSmallHint(stUserHint, "❌ 找不到该用户（请用更完整的姓名/手机号，或直接粘贴 userId）");
+        alert("找不到该用户（请用更完整的姓名/手机号，或直接粘贴 userId）");
+        return;
+      }
+      if (stUserId) stUserId.value = uid;
+      setSmallHint(stUserHint, `✅ 已解析为 userId：${uid}`);
+    } else {
+      setSmallHint(stUserHint, "");
+    }
+
     openStatementPrintPage(from, to, uid);
   }
 
@@ -899,20 +1012,20 @@ if (raw) {
     const to = (sTo?.value || "").trim();
     const raw = (sUserId?.value || "").trim();
 
-    // ✅ user 输入支持 userId / 手机 / 姓名（远程解析）
-let uid = "";
-if (raw) {
-  uid = await resolveUserId(raw);
-  if (!uid) {
-    setSmallHint(sUserHint, "❌ 找不到该用户（请用更完整的姓名/手机号，或直接粘贴 userId）");
-    alert("找不到该用户（请用更完整的姓名/手机号，或直接粘贴 userId）");
-    return;
-  }
-  if (sUserId) sUserId.value = uid;
-  setSmallHint(sUserHint, `✅ 已解析为 userId：${uid}`);
-} else {
-  setSmallHint(sUserHint, "");
-}
+    let uid = "";
+    if (raw) {
+      uid = await resolveUserId(raw);
+      if (!uid) {
+        setSmallHint(sUserHint, "❌ 找不到该用户（请用更完整的姓名/手机号，或直接粘贴 userId）");
+        alert("找不到该用户（请用更完整的姓名/手机号，或直接粘贴 userId）");
+        return;
+      }
+      if (sUserId) sUserId.value = uid;
+      setSmallHint(sUserHint, `✅ 已解析为 userId：${uid}`);
+    } else {
+      setSmallHint(sUserHint, "");
+    }
+
     const qs = new URLSearchParams();
     if (q) qs.set("q", q);
     if (from) qs.set("from", from);
@@ -998,7 +1111,6 @@ if (raw) {
 
       syncShipFromSold();
 
-      // ✅ Statement 默认带 userId
       if (stUserId) stUserId.value = userSelect.value || "";
       setSmallHint(stUserHint, userSelect.value ? `✅ 已选择用户：${opt.textContent} → ${userSelect.value}` : "");
     };
@@ -1054,7 +1166,6 @@ if (raw) {
     };
   }
 
-  // Enter 触发搜索
   [sQ, sFrom, sTo, sUserId].forEach((el) => {
     if (!el) return;
     el.addEventListener("keydown", (e) => {
@@ -1062,7 +1173,6 @@ if (raw) {
     });
   });
 
-  // 输入框失焦时也尝试解析（更顺手）
   if (stUserId) {
     stUserId.addEventListener("blur", () => {
       const resolved = resolveUserInput(stUserId.value);
@@ -1091,6 +1201,6 @@ if (raw) {
 
     await loadUsers("");
     ensureSearchList();
-    setHint("✅ 已加载用户/商品。保存后扣库存；打印/打开走 print 页面（手机/电脑都稳定）。");
+    setHint("✅ 已加载用户/商品。Description 支持搜索商品并显示库存。");
   })();
 })();
