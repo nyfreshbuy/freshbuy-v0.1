@@ -18,17 +18,62 @@ function renderEmptyRow(tbody, text, colSpan = 4) {
   `;
 }
 
+function makeStatusBadge(text) {
+  const t = String(text || "待处理");
+
+  let bg = "#f3f4f6";
+  let color = "#374151";
+
+  if (t.includes("已完成")) {
+    bg = "#dcfce7";
+    color = "#166534";
+  } else if (t.includes("待自提")) {
+    bg = "#dbeafe";
+    color = "#1d4ed8";
+  } else if (t.includes("已通知")) {
+    bg = "#fef3c7";
+    color = "#92400e";
+  } else if (t.includes("处理中") || t.includes("待处理")) {
+    bg = "#ede9fe";
+    color = "#6d28d9";
+  } else if (t.includes("已取消")) {
+    bg = "#fee2e2";
+    color = "#991b1b";
+  }
+
+  return `
+    <span style="
+      display:inline-block;
+      padding:4px 10px;
+      border-radius:999px;
+      font-size:12px;
+      font-weight:600;
+      background:${bg};
+      color:${color};
+      white-space:nowrap;
+    ">
+      ${t}
+    </span>
+  `;
+}
+
 async function loadStats() {
   const data = await api("/api/leader/dashboard/stats");
-
-  if (!data || !data.ok) return;
-
-  const stats = data.stats || {};
 
   const todayOrdersEl = document.getElementById("todayOrders");
   const pendingPickupEl = document.getElementById("pendingPickup");
   const weekCommissionEl = document.getElementById("weekCommission");
   const totalCustomersEl = document.getElementById("totalCustomers");
+
+  if (!data || !data.ok) {
+    if (todayOrdersEl) todayOrdersEl.innerText = "0";
+    if (pendingPickupEl) pendingPickupEl.innerText = "0";
+    if (weekCommissionEl) weekCommissionEl.innerText = "$0.00";
+    if (totalCustomersEl) totalCustomersEl.innerText = "0";
+    return;
+  }
+
+  const stats = data.stats || {};
 
   if (todayOrdersEl) {
     todayOrdersEl.innerText = Number(stats.todayOrders || 0);
@@ -70,11 +115,13 @@ async function loadOrders() {
   items.forEach((o) => {
     const tr = document.createElement("tr");
 
+    const statusText = safeText(o.statusText || o.status, "待处理");
+
     tr.innerHTML = `
       <td>${safeText(o.orderNo)}</td>
       <td>${safeText(o.customerName)}</td>
       <td>$${safeMoney(o.total)}</td>
-      <td>${safeText(o.statusText || o.status, "待处理")}</td>
+      <td>${makeStatusBadge(statusText)}</td>
     `;
 
     tbody.appendChild(tr);
@@ -104,11 +151,13 @@ async function loadPickups() {
   items.forEach((o) => {
     const tr = document.createElement("tr");
 
+    const statusText = safeText(o.statusText || o.status, "待处理");
+
     tr.innerHTML = `
       <td>${safeText(o.orderNo)}</td>
       <td>${safeText(o.customerName)}</td>
       <td>${safeText(o.pickupCode, "-")}</td>
-      <td>${safeText(o.statusText || o.status, "待处理")}</td>
+      <td>${makeStatusBadge(statusText)}</td>
     `;
 
     tbody.appendChild(tr);
