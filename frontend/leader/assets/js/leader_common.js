@@ -4,6 +4,10 @@ function getToken() {
   return localStorage.getItem(AUTH_TOKEN_KEY) || "";
 }
 
+function clearToken() {
+  localStorage.removeItem(AUTH_TOKEN_KEY);
+}
+
 async function api(url, options = {}) {
   const token = getToken();
 
@@ -40,6 +44,22 @@ async function api(url, options = {}) {
   };
 }
 
+function logoutLeader() {
+  clearToken();
+  location.href = "/leader/login.html";
+}
+
+function bindLogoutButton() {
+  const btn = document.getElementById("logoutBtn");
+  if (!btn) return;
+
+  btn.addEventListener("click", () => {
+    const yes = confirm("确定退出登录吗？");
+    if (!yes) return;
+    logoutLeader();
+  });
+}
+
 async function checkLeader() {
   const result = await api("/api/leader/me?_t=" + Date.now());
   const status = result?.status;
@@ -49,7 +69,7 @@ async function checkLeader() {
 
   if (status === 401) {
     if (leaderNameEl) leaderNameEl.innerText = "未登录";
-    location.href = "/leader/login.html";
+    logoutLeader();
     return;
   }
 
@@ -69,7 +89,8 @@ async function checkLeader() {
 
   if (!data.isLeader) {
     if (leaderNameEl) leaderNameEl.innerText = "当前账号不是团长";
-    location.href = "/leader/login.html";
+    alert("当前账号不是团长账号。");
+    logoutLeader();
     return;
   }
 
@@ -84,4 +105,7 @@ async function checkLeader() {
   }
 }
 
-checkLeader();
+document.addEventListener("DOMContentLoaded", async () => {
+  bindLogoutButton();
+  await checkLeader();
+});

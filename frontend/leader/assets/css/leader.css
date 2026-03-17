@@ -182,3 +182,22 @@ tr:hover td{
     font-size: 20px;
   }
 }
+.topbar-right{
+display:flex;
+align-items:center;
+gap:12px;
+}
+
+.logout-btn{
+background:#ef4444;
+color:white;
+border:none;
+padding:6px 14px;
+border-radius:6px;
+cursor:pointer;
+font-size:13px;
+}
+
+.logout-btn:hover{
+background:#dc2626;
+}
