@@ -1,8 +1,9 @@
 // frontend/admin/assets/js/admin_invoices.js
-// ✅ 发票开具（后台）完整前端脚本（DESCRIPTION 搜索商品版）
+// ✅ 发票开具（后台）完整前端脚本（DESCRIPTION 搜索商品版 / 无规格列）
 // - Description 输入自动搜索商品
 // - 下拉显示 商品 / 规格 / 库存 / 单价
-// - 选中后自动带入 productId / 规格 / 单价 / 库存
+// - 选中后自动带入 productId / 描述 / 单价 / 库存
+// - 页面不再单独显示“规格”列
 // - 保存：POST /api/admin/invoices（后端扣库存）
 // - 打印（手机/电脑通用）：打开 /admin/print_invoice.html?id=xxx
 // - Statement：
@@ -11,7 +12,7 @@
 // - 搜索发票：GET /api/admin/invoices?q&from&to&userId
 
 (function () {
-  console.log("admin_invoices.js LOADED ✅ VERSION=2026-03-16-DESC-AUTOCOMPLETE");
+  console.log("admin_invoices.js LOADED ✅ VERSION=2026-03-17-NO-VARIANT-COL");
 
   // =========================
   // Auth / Fetch helpers
@@ -279,7 +280,6 @@
     const lower = input.toLowerCase();
     const hit2 = users.find(u => normStr(u.name).toLowerCase().includes(lower));
     if (hit2) return { userId: hit2._id, user: hit2, reason: "name" };
-
     return null;
   }
 
@@ -478,38 +478,6 @@
     });
   }
 
-  function makeVariantSelectWithLiteSpecs(specs, selectedId = "") {
-    const sel = document.createElement("select");
-    sel.dataset.k = "variantKey";
-
-    const list = Array.isArray(specs) ? specs : [];
-    if (!list.length) {
-      const opt = document.createElement("option");
-      opt.value = "";
-      opt.textContent = "单个";
-      opt.dataset.unitCount = "1";
-      opt.dataset.variantPrice = "";
-      opt.dataset.variantLabel = "单个";
-      opt.dataset.stock = "";
-      sel.appendChild(opt);
-      return sel;
-    }
-
-    for (const spec of list) {
-      const opt = document.createElement("option");
-      opt.value = String(spec.id || "");
-      opt.textContent = spec.label || "默认规格";
-      opt.dataset.unitCount = String(Math.max(1, Math.floor(parseNum(spec.unitCount, 1))));
-      opt.dataset.variantPrice = spec.price == null ? "" : String(parseNum(spec.price, 0));
-      opt.dataset.variantLabel = spec.label || "";
-      opt.dataset.stock = String(parseNum(spec.stock, 0));
-      if (String(spec.id || "") === String(selectedId || "")) opt.selected = true;
-      sel.appendChild(opt);
-    }
-
-    return sel;
-  }
-
   function addRow(preset = {}) {
     if (!itemsTbody) return;
 
@@ -522,6 +490,25 @@
     hiddenProductId.dataset.k = "productId";
     hiddenProductId.value = preset.productId || "";
     tr.appendChild(hiddenProductId);
+
+    // hidden variant info（页面不显示规格列，但保存时仍携带）
+    const hiddenVariantKey = document.createElement("input");
+    hiddenVariantKey.type = "hidden";
+    hiddenVariantKey.dataset.k = "variantKey";
+    hiddenVariantKey.value = preset.variantKey || "";
+    tr.appendChild(hiddenVariantKey);
+
+    const hiddenVariantLabel = document.createElement("input");
+    hiddenVariantLabel.type = "hidden";
+    hiddenVariantLabel.dataset.k = "variantLabel";
+    hiddenVariantLabel.value = preset.variantLabel || "";
+    tr.appendChild(hiddenVariantLabel);
+
+    const hiddenUnitCount = document.createElement("input");
+    hiddenUnitCount.type = "hidden";
+    hiddenUnitCount.dataset.k = "unitCount";
+    hiddenUnitCount.value = preset.unitCount != null ? String(preset.unitCount) : "1";
+    tr.appendChild(hiddenUnitCount);
 
     // Description
     const tdD = document.createElement("td");
@@ -540,11 +527,6 @@
     tdD.appendChild(inpDesc);
     tdD.appendChild(suggest);
     tr.appendChild(tdD);
-
-    // Variant
-    const tdV = document.createElement("td");
-    tdV.dataset.k = "variantCell";
-    tr.appendChild(tdV);
 
     // Stock
     const tdS = document.createElement("td");
@@ -599,54 +581,14 @@
     tdX.appendChild(btnDel);
     tr.appendChild(tdX);
 
-    function refreshVariantUIFromLiteSpecs(specs = [], selectedId = "") {
-      tdV.innerHTML = "";
-      const vs = makeVariantSelectWithLiteSpecs(specs, selectedId);
-      tdV.appendChild(vs);
-      return vs;
-    }
-
-    function updateStockFromVariantSelect() {
-      const varSel = tdV.querySelector('select[data-k="variantKey"]');
-      if (!varSel || !varSel.selectedOptions || !varSel.selectedOptions[0]) {
-        stockBadge.textContent = "-";
-        stockBadge.dataset.stock = "";
-        recalcTotals();
-        return;
-      }
-
-      const opt = varSel.selectedOptions[0];
-      const stock = parseNum(opt.dataset.stock, 0);
-      const vp = opt.dataset.variantPrice;
-
-      stockBadge.dataset.stock = String(stock);
-      stockBadge.textContent = `库存 ${stock}`;
-
-      if (tr.dataset.manualPrice !== "1") {
-        if (vp !== "") {
-          inpPrice.value = String(parseNum(vp, 0));
-        }
-      }
-
-      // 限库存
-      const qty = parseNum(inpQty.value, 0);
-      if (stock > 0 && qty > stock) {
-        inpQty.value = String(stock);
-      }
-
-      recalcTotals();
-    }
-
-    function pickLiteProduct(item) {
+    function applyPickedItem(item) {
       hiddenProductId.value = item.id || "";
+      hiddenVariantKey.value = item.defaultSpecId || "";
+      hiddenVariantLabel.value = item.specLabel || "";
+      hiddenUnitCount.value = String(Math.max(1, Math.floor(parseNum(item.unitCount, 1))));
+
       inpDesc.value = item.specLabel ? `${item.name || ""} - ${item.specLabel}` : (item.name || "");
       tr.dataset.manualPrice = "0";
-
-      const specs = Array.isArray(item.specs) ? item.specs : [];
-      const vs = refreshVariantUIFromLiteSpecs(specs, item.defaultSpecId || "");
-      if (vs) {
-        vs.onchange = () => updateStockFromVariantSelect();
-      }
 
       const price = parseNum(item.price, 0);
       inpPrice.value = String(price);
@@ -671,12 +613,15 @@
         suggest.style.display = "none";
         suggest.innerHTML = "";
         hiddenProductId.value = "";
+        hiddenVariantKey.value = "";
+        hiddenVariantLabel.value = "";
+        hiddenUnitCount.value = "1";
         return;
       }
 
       searchTimer = setTimeout(async () => {
         const items = await searchProductsForInvoice(keyword);
-        renderSuggest(suggest, items, pickLiteProduct);
+        renderSuggest(suggest, items, applyPickedItem);
       }, 250);
     });
 
@@ -684,7 +629,7 @@
       const keyword = String(inpDesc.value || "").trim();
       if (!keyword) return;
       const items = await searchProductsForInvoice(keyword);
-      renderSuggest(suggest, items, pickLiteProduct);
+      renderSuggest(suggest, items, applyPickedItem);
     });
 
     document.addEventListener("click", (e) => {
@@ -707,19 +652,11 @@
       recalcTotals();
     };
 
-    // preset variant
-    const initialSpecs = Array.isArray(preset.specs) ? preset.specs : [];
-    const initialVarSel = refreshVariantUIFromLiteSpecs(initialSpecs, preset.variantKey || "");
-    if (initialVarSel) {
-      initialVarSel.onchange = () => updateStockFromVariantSelect();
-    }
-
     if (preset.stock != null) {
       stockBadge.textContent = `库存 ${parseNum(preset.stock, 0)}`;
     }
 
     itemsTbody.appendChild(tr);
-    updateStockFromVariantSelect();
     recalcTotals();
   }
 
@@ -730,25 +667,17 @@
     const trs = itemsTbody.querySelectorAll("tr");
     for (const tr of trs) {
       const productId = tr.querySelector('[data-k="productId"]')?.value || "";
-      const varSel = tr.querySelector('select[data-k="variantKey"]');
-      const variantKey = varSel?.value || "";
+      const variantKey = tr.querySelector('[data-k="variantKey"]')?.value || "";
+      const variantLabel = tr.querySelector('[data-k="variantLabel"]')?.value || "";
       const description = tr.querySelector('[data-k="description"]')?.value || "";
       const qty = parseNum(tr.querySelector('[data-k="qty"]')?.value, 0);
       const unitPrice = parseNum(tr.querySelector('[data-k="unitPrice"]')?.value, 0);
-
-      let unitCount = 1;
-      let variantLabel = "";
-
-      if (varSel && varSel.selectedOptions && varSel.selectedOptions[0]) {
-        const opt = varSel.selectedOptions[0];
-        unitCount = Math.max(1, Math.floor(parseNum(opt.dataset.unitCount, 1)));
-        variantLabel = String(opt.dataset.variantLabel || opt.textContent || "").trim();
-      }
+      const unitCount = Math.max(1, Math.floor(parseNum(tr.querySelector('[data-k="unitCount"]')?.value, 1)));
 
       items.push({
         productId: productId || "",
         variantKey: variantKey || "",
-        variantLabel,
+        variantLabel: variantLabel || "",
         description: String(description || "").trim(),
         qty,
         unitPrice,
