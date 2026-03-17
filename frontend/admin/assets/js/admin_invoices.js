@@ -461,7 +461,7 @@
           <div class="invoice-suggest-title">${name}</div>
           <div class="invoice-suggest-meta">
             <span>规格：${specLabel || "-"}</span>
-            <span>库存：${stock}</span>
+            <span>可卖：${stock}</span>
             <span>单价：$${price}</span>
           </div>
         </button>
@@ -595,7 +595,7 @@
 
       const stock = parseNum(item.stock, 0);
       stockBadge.dataset.stock = String(stock);
-      stockBadge.textContent = `库存 ${stock}`;
+      stockBadge.textContent = `可卖 ${stock}`;
 
       suggest.style.display = "none";
       suggest.innerHTML = "";

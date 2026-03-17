@@ -383,43 +383,69 @@ router.get("/search-lite", async (req, res) => {
       const productId = String(p?._id || "");
       const name = String(p?.name || "");
       const basePrice = Number(p?.price ?? p?.originPrice ?? 0) || 0;
-      const baseStock = Number(p?.stock ?? 0) || 0;
+      const baseRawStock = Number(p?.stock ?? 0) || 0;
 
       const variants = Array.isArray(p?.variants) ? p.variants : [];
       const enabledVariants = variants.filter((v) => v && v.key && v.enabled !== false);
 
       if (enabledVariants.length > 0) {
         for (const v of enabledVariants) {
+          const unitCount = Math.max(1, Math.floor(Number(v?.unitCount || 1)));
+
           const specPrice =
             v?.price === null || v?.price === undefined || v?.price === ""
               ? basePrice
               : Number(v.price || 0);
 
-          const specStock =
+          // 原始库存：优先规格库存，没有就退回商品总库存
+          const specRawStock =
             v?.stock === null || v?.stock === undefined || v?.stock === ""
-              ? baseStock
+              ? baseRawStock
               : Number(v.stock || 0);
+
+          // 可卖库存：按规格换算
+          const specSellableStock = Math.max(0, Math.floor(specRawStock / unitCount));
 
           items.push({
             id: productId,
             name,
             specLabel: String(v?.label || v?.key || ""),
             price: Number(specPrice || 0),
-            stock: Number(specStock || 0),
+
+            // ✅ 给前端显示/限购用：按规格换算后的可卖库存
+            stock: specSellableStock,
+
+            // ✅ 保留原始库存（单个库存），方便调试/后续扩展
+            rawStock: specRawStock,
+
             defaultSpecId: String(v?.key || ""),
-            specs: enabledVariants.map((x) => ({
-              id: String(x?.key || ""),
-              label: String(x?.label || x?.key || ""),
-              price:
-                x?.price === null || x?.price === undefined || x?.price === ""
-                  ? basePrice
-                  : Number(x.price || 0),
-              stock:
+            unitCount,
+
+            specs: enabledVariants.map((x) => {
+              const xUnitCount = Math.max(1, Math.floor(Number(x?.unitCount || 1)));
+
+              const xRawStock =
                 x?.stock === null || x?.stock === undefined || x?.stock === ""
-                  ? baseStock
-                  : Number(x.stock || 0),
-              unitCount: Math.max(1, Math.floor(Number(x?.unitCount || 1))),
-            })),
+                  ? baseRawStock
+                  : Number(x.stock || 0);
+
+              return {
+                id: String(x?.key || ""),
+                label: String(x?.label || x?.key || ""),
+                price:
+                  x?.price === null || x?.price === undefined || x?.price === ""
+                    ? basePrice
+                    : Number(x.price || 0),
+
+                // ✅ 规格可卖库存
+                stock: Math.max(0, Math.floor(xRawStock / xUnitCount)),
+
+                // ✅ 原始单个库存
+                rawStock: xRawStock,
+
+                unitCount: xUnitCount,
+              };
+            }),
           });
         }
       } else {
@@ -428,8 +454,13 @@ router.get("/search-lite", async (req, res) => {
           name,
           specLabel: "",
           price: Number(basePrice || 0),
-          stock: Number(baseStock || 0),
+
+          // 无规格时，可卖库存 = 原始库存
+          stock: Number(baseRawStock || 0),
+          rawStock: Number(baseRawStock || 0),
+
           defaultSpecId: "",
+          unitCount: 1,
           specs: [],
         });
       }

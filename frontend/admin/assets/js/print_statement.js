@@ -63,20 +63,20 @@
     }
 
     const list = data.invoices || data.list || data.items || [];
-    const total = data.total ?? list.reduce((s, x) => s + Number(x.total || x.amount || x.grandTotal || 0), 0);
+    const total =
+      data.total ??
+      list.reduce((s, x) => s + Number(x.total || x.amount || x.grandTotal || 0), 0);
 
     document.title = `Statement ${from} ~ ${to}`;
 
     root.innerHTML = `
-      <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+      <div id="companyHeader"></div>
+
+      <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:8px;">
         <div>
           <div style="font-size:18px;font-weight:700;">Statement / 对账单</div>
           <div class="muted">From: ${from} &nbsp; To: ${to}</div>
           <div class="muted">UserId: ${userId || "ALL"}</div>
-        </div>
-        <div style="text-align:right;">
-          <div style="font-weight:600;">Margarita Market</div>
-          <div class="muted">Admin Print View</div>
         </div>
       </div>
 
@@ -91,7 +91,7 @@
         </thead>
         <tbody>
           ${list.map(x => {
-            const d = (x.date || x.createdAt || "").toString().slice(0,10);
+            const d = (x.date || x.createdAt || "").toString().slice(0, 10);
             const no = x.invoiceNo || x.no || "";
             const name = x.soldTo?.name || x.customerName || "";
             const t = Number(x.total || x.amount || x.grandTotal || 0);
@@ -113,6 +113,15 @@
         </div>
       </div>
     `;
+
+    try {
+      const resHeader = await fetch("/admin/components/company_header.html");
+      const html = await resHeader.text();
+      const el = document.getElementById("companyHeader");
+      if (el) el.innerHTML = html;
+    } catch (e) {
+      console.warn("company_header.html 加载失败", e);
+    }
 
     hint.textContent = "✅ 可打印";
   })();
