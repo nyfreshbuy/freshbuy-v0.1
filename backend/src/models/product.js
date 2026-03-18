@@ -119,13 +119,14 @@ const productSchema = new mongoose.Schema(
 
     // ✅ 规格 variants
     variants: { type: [productVariantSchema], default: [] },
-    // ✅ 控制整箱规格是否在前台展示
-    boxVisibleOnFrontend: { type: Boolean, default: true },
-    // 库存（共用一个库存：以“基础单位”计数）
-    stock: { type: Number, default: 9999 },
-    minStock: { type: Number, default: 0 },
-    allowZeroStock: { type: Boolean, default: true },
-    boxVisibleOnFrontend: { type: Boolean, default: true },
+
+// 库存（共用一个库存：以“基础单位”计数）
+stock: { type: Number, default: 9999 },
+minStock: { type: Number, default: 0 },
+allowZeroStock: { type: Boolean, default: true },
+
+// ✅ 控制整箱规格是否在前台展示
+boxVisibleOnFrontend: { type: Boolean, default: true },
     // 销量
     soldCount: { type: Number, default: 0 },
 
@@ -198,7 +199,9 @@ productSchema.pre("save", function () {
     this.isHotDeal = toBool(this.isHotDeal);
     this.hotDeal = toBool(this.hotDeal);
     // ✅ 整箱前台展示开关，默认 true
-    this.boxVisibleOnFrontend = this.boxVisibleOnFrontend !== false;
+    if (this.boxVisibleOnFrontend === "false") this.boxVisibleOnFrontend = false;
+else if (this.boxVisibleOnFrontend === "true") this.boxVisibleOnFrontend = true;
+else this.boxVisibleOnFrontend = this.boxVisibleOnFrontend !== false;
     // 产品级特价规范化
     if (!this.specialEnabled) {
       this.specialPrice = null;
