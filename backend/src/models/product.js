@@ -199,9 +199,9 @@ productSchema.pre("save", function () {
     this.isHotDeal = toBool(this.isHotDeal);
     this.hotDeal = toBool(this.hotDeal);
     // ✅ 整箱前台展示开关，默认 true
-    if (this.boxVisibleOnFrontend === "false") this.boxVisibleOnFrontend = false;
-else if (this.boxVisibleOnFrontend === "true") this.boxVisibleOnFrontend = true;
-else this.boxVisibleOnFrontend = this.boxVisibleOnFrontend !== false;
+    if (this.boxVisibleOnFrontend === undefined || this.boxVisibleOnFrontend === null) {
+  this.boxVisibleOnFrontend = true;
+}
     // 产品级特价规范化
     if (!this.specialEnabled) {
       this.specialPrice = null;
