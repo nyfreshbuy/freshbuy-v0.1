@@ -634,6 +634,8 @@ body {
 
 .company-header-logo{
   height:52px;
+  max-width:160px;
+  width:auto;
   object-fit:contain;
   display:block;
   margin-left:auto;
