@@ -82,7 +82,7 @@
     return Number(p.limitQty || p.limitPerUser || p.maxQty || p.purchaseLimit || 0) || 0;
   }
     function shouldHideBoxVariant(product, variant) {
-    if (!product || product.boxVisibleOnFrontend !== false) return false;
+    if (!product || product.boxVisibleOnFrontend === true) return false;
     if (!variant) return false;
 
     const unitCount = Math.max(1, Math.floor(Number(variant.unitCount || 1) || 1));
