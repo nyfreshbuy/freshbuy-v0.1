@@ -94,14 +94,16 @@
 
     root.innerHTML = `
       <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start;">
-        <div>
-          <div style="font-size:18px;font-weight:700;">Statement / 对账单</div>
-          <div class="muted">From: ${esc(from)} &nbsp; To: ${esc(to)}</div>
-          <div class="muted">UserId: ${esc(userId || "ALL")}</div>
-        </div>
 
-        <div id="companyHeader" style="text-align:right;min-width:320px;"></div>
-      </div>
+  <div id="companyHeader" style="min-width:320px;"></div>
+
+  <div style="text-align:right">
+    <div style="font-size:18px;font-weight:700;">Statement / 对账单</div>
+    <div class="muted">From: ${esc(from)} &nbsp; To: ${esc(to)}</div>
+    <div class="muted">UserId: ${esc(userId || "ALL")}</div>
+  </div>
+
+</div>
 
       <hr style="border:none;border-top:1px solid #e5e7eb;margin:12px 0;" />
 

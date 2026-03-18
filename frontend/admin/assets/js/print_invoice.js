@@ -105,13 +105,13 @@
 
     root.innerHTML = `
       <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start;">
-        <div>
+        <div id="companyHeader" style="min-width:320px;"></div>
+
+        <div style="text-align:right;">
           <div style="font-size:18px;font-weight:700;">Invoice / 发票</div>
           <div class="muted">No: ${invoiceNo}</div>
           <div class="muted">Date: ${invoiceDate}</div>
         </div>
-
-        <div id="companyHeader" style="text-align:right;min-width:320px;"></div>
       </div>
 
       <hr style="border:none;border-top:1px solid #e5e7eb;margin:12px 0;" />
