@@ -67,6 +67,7 @@ import adminBannersRouter from "./routes/admin_banners.js";
 import adminLeadersRouter from "./routes/admin_leaders.js";
 import leaderRouter from "./routes/leader.js";
 import publicPickupPointsRouter from "./routes/public_pickup_points.js";
+import adminProfitRouter from "./routes/admin_profit.js";
 // =======================
 // ESM 环境下的 __dirname
 // =======================
@@ -214,7 +215,7 @@ app.use("/api/driver", driverRouter);
 
 // ---- 后台 ----
 app.use("/api/admin/dashboard", adminDashboardrouter);
-
+app.use("/api/admin/profit", adminProfitRouter);
 
 app.use("/api/admin/auth", adminAuthRouter);
 console.log("✅ admin_auth 已挂载到 /api/admin/auth");
