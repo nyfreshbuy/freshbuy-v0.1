@@ -61,7 +61,9 @@ async function findProductByAnyId(idParam) {
 function isTrueFlag(v) {
   return v === true || v === "true" || v === 1 || v === "1" || v === "yes";
 }
-
+function normalizeBoxVisibleOnFrontend(v) {
+  return v === false || v === "false" ? false : true;
+}
 // ✅ 允许为空的数值："" / null => null
 function numOrNull(v) {
   if (v === undefined || v === null) return null;
@@ -496,7 +498,8 @@ router.post("/", async (req, res) => {
     const legacyId = body.id || "p_" + Date.now();
 
     const specialFix = normalizeSpecialAndDeposit(body);
-    const variantsFix = normalizeVariants(body.variants);
+const variantsFix = normalizeVariants(body.variants);
+const boxVisibleOnFrontend = normalizeBoxVisibleOnFrontend(body.boxVisibleOnFrontend);
 
     const created = await Product.create({
       ...body,
@@ -534,7 +537,8 @@ router.post("/", async (req, res) => {
 
       // ✅ variants
       variants: variantsFix,
-
+            // ✅ 整箱规格是否在前台展示
+      boxVisibleOnFrontend,
       // 数组
       labels: Array.isArray(body.labels) ? body.labels : [],
       tags: Array.isArray(body.tags)
@@ -623,7 +627,8 @@ router.patch("/:id", async (req, res) => {
       "specialFrom",
       "specialTo",
 
-      "variants",
+            "variants",
+      "boxVisibleOnFrontend",
 
       // 库存保护
       "autoCancelSpecialOnLowStock",
@@ -699,7 +704,7 @@ router.patch("/:id", async (req, res) => {
         return;
       }
 
-      if (
+            if (
         [
           "allowZeroStock",
           "taxable",
@@ -717,6 +722,11 @@ router.patch("/:id", async (req, res) => {
         ].includes(key)
       ) {
         p[key] = !!body[key];
+        return;
+      }
+
+      if (key === "boxVisibleOnFrontend") {
+        p.boxVisibleOnFrontend = normalizeBoxVisibleOnFrontend(body.boxVisibleOnFrontend);
         return;
       }
 

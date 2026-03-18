@@ -77,20 +77,30 @@ function getSpecialText(p) {
 }
 
 function buildVariantPriceLines(p) {
-  const vs = Array.isArray(p?.variants) ? p.variants.filter((v) => v && v.enabled !== false) : [];
+  const vs = Array.isArray(p?.variants)
+    ? p.variants.filter(
+        (v) => v && v.enabled !== false && !shouldHideBoxVariant(p, v)
+      )
+    : [];
+
   if (!vs.length) return "";
+
   const boxes = vs
     .filter((v) => Number(v.unitCount || 1) > 1)
     .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+
   if (!boxes.length) return "";
+
   const lines = boxes.map((v) => {
     const boxPrice =
       v.price != null && Number(v.price) > 0
         ? Number(v.price)
         : Number(p.price || p.originPrice || 0) * Number(v.unitCount || 1);
+
     const label = v.label || `整箱(${Number(v.unitCount || 1)}个)`;
     return `<div class="variant-line">📦 ${label}：$${money(boxPrice)}</div>`;
   });
+
   return `<div class="variant-box">${lines.join("")}</div>`;
 }
 
@@ -708,6 +718,19 @@ setTimeout(() => {
 // =========================
 
 // ✅ variants 展开：同一商品 -> 多个“展示商品”（单个/整箱）
+function shouldHideBoxVariant(product, variant) {
+  if (!product || product.boxVisibleOnFrontend !== false) return false;
+  if (!variant) return false;
+
+  const unitCount = Math.max(1, Math.floor(Number(variant.unitCount || 1) || 1));
+  const label = String(variant.label || variant.key || "").trim();
+  const isBox = unitCount > 1 || /整箱|箱|box/i.test(label);
+
+  return isBox;
+}
+
+// ✅ variants 展开：同一商品 -> 多个“展示商品”（单个/整箱）
+// ✅ 新增：支持 boxVisibleOnFrontend=false 时隐藏整箱规格
 function expandProductsWithVariants(list) {
   const out = [];
   const arr = Array.isArray(list) ? list : [];
@@ -731,7 +754,10 @@ function expandProductsWithVariants(list) {
       continue;
     }
 
-    const enabledVars = variants.filter((v) => v && v.enabled !== false);
+    const enabledVars = variants.filter(
+      (v) => v && v.enabled !== false && !shouldHideBoxVariant(p, v)
+    );
+
     if (!enabledVars.length) {
       const vKey = "single";
       out.push({
@@ -749,11 +775,13 @@ function expandProductsWithVariants(list) {
 
     for (const v of enabledVars) {
       const vKey = String(v.key || "single").trim() || "single";
-      const unitCount = Math.max(1, Math.floor(Number(v.unitCount || 1)));
+      const unitCount = Math.max(1, Math.floor(Number(v.unitCount || 1) || 1));
 
-      const vLabel = String(v.label || "").trim() || (unitCount > 1 ? `整箱(${unitCount}个)` : "单个");
+      const vLabel =
+        String(v.label || "").trim() || (unitCount > 1 ? `整箱(${unitCount}个)` : "单个");
 
-      const vPrice = v.price != null && Number.isFinite(Number(v.price)) ? Number(v.price) : null;
+      const vPrice =
+        v.price != null && Number.isFinite(Number(v.price)) ? Number(v.price) : null;
 
       out.push({
         ...p,

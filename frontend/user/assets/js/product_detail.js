@@ -8,6 +8,7 @@
 // ✅ 修复：- 只减 1，不会清空、不暴涨
 // ✅ 修复：右上角购物车打不开（自动兼容 toggleCartDrawer / Cart.toggleDrawer / Cart.openDrawer）
 // ✅ 主图：支持 image/images/imageUrl/imgUrl，失败显示占位文字
+// ✅ 新增：支持 boxVisibleOnFrontend，隐藏整箱规格后详情页默认只按可见规格处理
 // ======================================================
 
 (function () {
@@ -29,6 +30,38 @@
   function toNum(v) {
     const n = Number(v);
     return Number.isFinite(n) ? n : 0;
+  }
+
+  // -------------------------
+  // 规格可见性：隐藏整箱
+  // -------------------------
+  function shouldHideBoxVariant(product, variant) {
+    if (!product || product.boxVisibleOnFrontend !== false) return false;
+    if (!variant) return false;
+
+    const unitCount = Math.max(1, Math.floor(Number(variant.unitCount || 1) || 1));
+    const label = String(variant.label || variant.key || "").trim();
+    const isBox = unitCount > 1 || /整箱|箱|box/i.test(label);
+
+    return isBox;
+  }
+
+  function getVisibleVariants(product) {
+    const variants = Array.isArray(product?.variants) ? product.variants : [];
+    return variants.filter((v) => v && v.enabled !== false && !shouldHideBoxVariant(product, v));
+  }
+
+  function getDefaultVisibleVariant(product) {
+    const visible = getVisibleVariants(product);
+    if (visible.length) return visible[0];
+
+    return {
+      key: "single",
+      label: "单个",
+      unitCount: 1,
+      price: null,
+      enabled: true,
+    };
   }
 
   // -------------------------
@@ -66,9 +99,20 @@
   }
 
   function buildProductForCart(p) {
-    // 统一计算价格：优先特价，其次 price，再次 originPrice
+    const selectedVariant = p?.__defaultVisibleVariant || getDefaultVisibleVariant(p);
+    const variantKey = String(selectedVariant?.key || "single");
+    const unitCount = Math.max(1, Math.floor(Number(selectedVariant?.unitCount || 1) || 1));
+
+    // 统一计算价格：优先规格价，其次特价，再次 price，再次 originPrice
     let finalPrice = 0;
-    if (p && (p.specialEnabled || p.isSpecial) && typeof p.specialPrice === "number") {
+    if (
+      selectedVariant &&
+      selectedVariant.price !== null &&
+      selectedVariant.price !== undefined &&
+      selectedVariant.price !== ""
+    ) {
+      finalPrice = toNum(selectedVariant.price);
+    } else if (p && (p.specialEnabled || p.isSpecial) && typeof p.specialPrice === "number") {
       finalPrice = toNum(p.specialPrice);
     } else if (p && typeof p.price === "number") {
       finalPrice = toNum(p.price);
@@ -79,38 +123,39 @@
     const pid = getPid(p);
 
     return {
-  // ✅ 关键：同时带 id + productId，保证后端一定能识别
-  id: pid,
-  productId: String(p?._id || p?.id || pid || ""),     // 给后端优先用
-  legacyProductId: String(p?.id || ""),               // 兼容旧字段
+      // ✅ 关键：同时带 id + productId，保证后端一定能识别
+      id: pid,
+      productId: String(p?._id || p?.id || pid || ""),
+      legacyProductId: String(p?.id || ""),
 
-  name: p?.name || "商品",
+      name: p?.name || "商品",
 
-  price: finalPrice,
-  priceNum: finalPrice,
+      price: finalPrice,
+      priceNum: finalPrice,
 
-  // ✅ 税 / 押金（没有就 0）
-  taxable: !!p?.taxable,
-  hasTax: !!p?.taxable,
-  deposit: toNum(p?.deposit || 0),
+      // ✅ 税 / 押金（没有就 0）
+      taxable: !!p?.taxable,
+      hasTax: !!p?.taxable,
+      deposit: toNum(p?.deposit || 0),
 
-  // ✅ 规格（你现在详情页默认 single）
-  variantKey: "single",
-  unitCount: 1,
+      // ✅ 使用默认可见规格
+      variantKey,
+      unitCount,
 
-  isDeal: !!(
-    p?.isDeal ||
-    p?.specialEnabled ||
-    p?.isSpecial ||
-    String(p?.tag || "").includes("爆品")
-  ),
-  tag: p?.tag || "",
-  type: p?.type || "",
-  isSpecial: !!p?.isSpecial,
+      isDeal: !!(
+        p?.isDeal ||
+        p?.specialEnabled ||
+        p?.isSpecial ||
+        String(p?.tag || "").includes("爆品")
+      ),
+      tag: p?.tag || "",
+      type: p?.type || "",
+      isSpecial: !!p?.isSpecial,
 
-  image: p?.image || "",
-};
-} 
+      image: p?.image || "",
+    };
+  }
+
   function notifyCartChanged(pid) {
     try {
       if (typeof window.updateCartUI === "function") window.updateCartUI();
@@ -175,9 +220,7 @@
     }
 
     // 老 removeOne / removeFromCart（如果存在且明确是减 1）
-    // 注意：不调用 removeItem(pid,1) 之类，避免你现在那个反向问题
     if (typeof window.removeOneFromCart === "function") {
-      // 避免和本函数同名递归：这里只在全局老方法存在时才用
       if (window.removeOneFromCart !== removeOneFromCart) {
         window.removeOneFromCart(pid);
         notifyCartChanged(pid);
@@ -225,7 +268,7 @@
       return;
     }
 
-    // 3) 最后兜底：直接操作 DOM 显示/隐藏（只要你的 HTML 有 cartDrawer/cartBackdrop）
+    // 3) 最后兜底：直接操作 DOM 显示/隐藏
     window.toggleCartDrawer = function (open) {
       const drawer = document.getElementById("cartDrawer");
       const backdrop = document.getElementById("cartBackdrop");
@@ -247,12 +290,11 @@
   // -------------------------
   function pickImageUrl(p) {
     if (!p) return "";
-    // 常见字段兜底
+
     if (typeof p.image === "string" && p.image.trim()) return p.image.trim();
     if (typeof p.imageUrl === "string" && p.imageUrl.trim()) return p.imageUrl.trim();
     if (typeof p.imgUrl === "string" && p.imgUrl.trim()) return p.imgUrl.trim();
 
-    // images 数组兜底
     if (Array.isArray(p.images) && p.images.length) {
       const first = p.images[0];
       if (typeof first === "string" && first.trim()) return first.trim();
@@ -277,10 +319,23 @@
     if (titleEl) titleEl.textContent = p.name || "未命名商品";
     if (descEl) descEl.textContent = p.desc || "";
 
+    const defaultVariant = p?.__defaultVisibleVariant || getDefaultVisibleVariant(p);
+
     let currPrice = 0;
-    if (typeof p.price === "number") currPrice = p.price;
-    else if (typeof p.specialPrice === "number") currPrice = p.specialPrice;
-    else currPrice = toNum(p.originPrice || 0);
+    if (
+      defaultVariant &&
+      defaultVariant.price !== null &&
+      defaultVariant.price !== undefined &&
+      defaultVariant.price !== ""
+    ) {
+      currPrice = toNum(defaultVariant.price);
+    } else if (typeof p.price === "number") {
+      currPrice = p.price;
+    } else if (typeof p.specialPrice === "number") {
+      currPrice = p.specialPrice;
+    } else {
+      currPrice = toNum(p.originPrice || 0);
+    }
 
     if (priceEl) priceEl.textContent = "$" + currPrice.toFixed(2);
 
@@ -319,7 +374,6 @@
       }
     }
 
-    // ✅ 主图显示
     const url = pickImageUrl(p);
     if (imgEl && url) {
       imgEl.src = url;
@@ -364,7 +418,7 @@
 
     if (mainTextEl) {
       if (qty > 0) mainTextEl.textContent = `已加入 ${qty} 件商品`;
-      else mainTextEl.textContent = `加入 1 件商品`;
+      else mainTextEl.textContent = "加入 1 件商品";
     }
     if (subTextEl) {
       if (qty > 0) subTextEl.textContent = "点击中间继续加购（不会自动打开购物车）";
@@ -382,9 +436,7 @@
 
     if (!capsule) return;
 
-    // ✅ 中间点一下：+1（但点到 +/- 不算中间）
     capsule.addEventListener("click", (e) => {
-      // 关键：用 closest，避免 iOS 点到文本节点导致识别失败 + 冒泡
       if (e.target && e.target.closest) {
         if (e.target.closest("#btnQtyMinusBig") || e.target.closest("#btnQtyPlusBig")) return;
       }
@@ -490,25 +542,20 @@
       </div>
     `;
 
-    // 收藏按钮（占位）
     const favBtn = card.querySelector(".detail-recommend-fav-btn");
     favBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       alert("收藏功能后续接入，这里先做占位提示。");
     });
 
-    // 加入购物车
     const addBtn = card.querySelector("[data-rec-add-id]");
     addBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       addOneToCart(p);
-
-      // 同页同步：当前详情胶囊 + 推荐徽章
       refreshCapsuleUI();
       refreshRecommendBadges();
     });
 
-    // 整卡点击跳详情（按钮不跳）
     card.addEventListener("click", () => {
       if (!pid) return;
       window.location.href = "product_detail.html?id=" + encodeURIComponent(pid);
@@ -546,7 +593,6 @@
       return;
     }
 
-    // 排除当前商品
     if (currentProduct) {
       const cid = getPid(currentProduct);
       list = list.filter((p) => getPid(p) !== cid);
@@ -562,8 +608,6 @@
     recommend.forEach((p, idx) => track.appendChild(createRecommendCard(p, idx === 0)));
 
     bindRecommendArrows();
-
-    // 初次渲染后同步一次徽章
     refreshRecommendBadges();
   }
 
@@ -609,7 +653,7 @@
     );
   }
 
-  // -------- 确保 allProducts 已加载（优先 /api/products-simple） --------
+  // -------- 确保 allProducts 已加载（优先 /api/products-simple）--------
   async function ensureProductsLoaded() {
     if (Array.isArray(window.allProducts) && window.allProducts.length) return;
 
@@ -625,7 +669,11 @@
     try {
       const res = await fetch("/api/products-simple");
       const data = await res.json();
-      const list = Array.isArray(data) ? data : Array.isArray(data.items) ? data.items : [];
+      const list = Array.isArray(data)
+        ? data
+        : Array.isArray(data.items)
+        ? data.items
+        : [];
       if (list.length) window.allProducts = list;
     } catch (e) {
       console.warn("详情页：请求 /api/products-simple 失败", e);
@@ -639,7 +687,6 @@
     const icon = document.getElementById("cartIcon");
     if (!icon) return;
 
-    // 如果 HTML 写了 onclick，也再补一个 click 监听（避免某些页面脚本覆盖）
     icon.addEventListener("click", (e) => {
       e.preventDefault();
       try {
@@ -660,7 +707,6 @@
 
     let list = Array.isArray(window.allProducts) ? window.allProducts : [];
 
-    // ✅ 没有 id 就直接提示
     if (!idFromUrl) {
       const titleEl = document.getElementById("detailTitle");
       if (titleEl) titleEl.textContent = "缺少商品ID（请从商品列表点击进入）";
@@ -669,12 +715,15 @@
 
     let product = matchProductById(list, idFromUrl);
 
-    // 如果没找到，再请求一次
     if (!product) {
       try {
         const res = await fetch("/api/products-simple");
         const data = await res.json();
-        const apiList = Array.isArray(data) ? data : Array.isArray(data.items) ? data.items : [];
+        const apiList = Array.isArray(data)
+          ? data
+          : Array.isArray(data.items)
+          ? data.items
+          : [];
         if (apiList.length) {
           window.allProducts = apiList;
           list = apiList;
@@ -691,22 +740,24 @@
       return;
     }
 
-    currentProduct = product;
+    const defaultVariant = getDefaultVisibleVariant(product);
+    currentProduct = {
+      ...product,
+      __defaultVisibleVariant: defaultVariant,
+    };
 
     renderDetailMain(currentProduct);
     bindCapsuleControls();
     bindFavButton();
     renderRecommendList();
 
-        // 初次同步胶囊徽章
     refreshCapsuleUI();
 
-    // 监听全站购物车更新（如果 cart.js 有发事件）
     window.addEventListener("freshbuy:cartUpdated", () => {
       refreshCapsuleUI();
       refreshRecommendBadges();
     });
-  } // ✅ initDetailPage end
+  }
 
   // ===============================
   // 详情页兜底：补 toggleCartDrawer

@@ -119,7 +119,8 @@ const productSchema = new mongoose.Schema(
 
     // ✅ 规格 variants
     variants: { type: [productVariantSchema], default: [] },
-
+    // ✅ 控制整箱规格是否在前台展示
+    boxVisibleOnFrontend: { type: Boolean, default: true },
     // 库存（共用一个库存：以“基础单位”计数）
     stock: { type: Number, default: 9999 },
     minStock: { type: Number, default: 0 },
