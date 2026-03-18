@@ -197,7 +197,8 @@ productSchema.pre("save", function () {
     this.isHot = toBool(this.isHot);
     this.isHotDeal = toBool(this.isHotDeal);
     this.hotDeal = toBool(this.hotDeal);
-
+    // ✅ 整箱前台展示开关，默认 true
+    this.boxVisibleOnFrontend = this.boxVisibleOnFrontend !== false;
     // 产品级特价规范化
     if (!this.specialEnabled) {
       this.specialPrice = null;

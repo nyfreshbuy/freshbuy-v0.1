@@ -590,7 +590,8 @@ async function saveProduct() {
   const allowZeroStock = document.getElementById("p_allowZeroStock").checked;
     const boxVisibleOnFrontend =
     document.getElementById("p_boxVisibleOnFrontend")?.checked !== false;
-  // ✅ 税：是否收税（NY）
+    console.log("boxVisibleOnFrontend =", boxVisibleOnFrontend);
+    // ✅ 税：是否收税（NY）
   const taxable = !!document.getElementById("p_taxable")?.checked;
 
   // ⭐ 首页导航大类
