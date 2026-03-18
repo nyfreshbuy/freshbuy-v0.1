@@ -125,7 +125,7 @@ const productSchema = new mongoose.Schema(
     stock: { type: Number, default: 9999 },
     minStock: { type: Number, default: 0 },
     allowZeroStock: { type: Boolean, default: true },
-
+    boxVisibleOnFrontend: { type: Boolean, default: true },
     // 销量
     soldCount: { type: Number, default: 0 },
 

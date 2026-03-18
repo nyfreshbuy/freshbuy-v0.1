@@ -79,7 +79,13 @@ function dateOrNull(v) {
   const d = new Date(v);
   return Number.isNaN(d.getTime()) ? null : d;
 }
-
+function toBoolLoose(v, defaultValue = false) {
+  if (v === undefined) return defaultValue;
+  if (v === null) return false;
+  if (v === true || v === "true" || v === 1 || v === "1" || v === "yes") return true;
+  if (v === false || v === "false" || v === 0 || v === "0" || v === "no") return false;
+  return defaultValue;
+}
 // ✅ variants：保留完整字段，避免 mongoose strict 丢字段
 function normalizeVariants(raw) {
   if (!Array.isArray(raw)) return [];
@@ -594,6 +600,7 @@ router.patch("/:id", async (req, res) => {
       "stock",
       "minStock",
       "allowZeroStock",
+      "boxVisibleOnFrontend",
       "taxable",
       "deposit",
       "bottleDeposit",
@@ -704,26 +711,31 @@ router.patch("/:id", async (req, res) => {
         return;
       }
 
-            if (
-        [
-          "allowZeroStock",
-          "taxable",
-          "isFlashDeal",
-          "isFamilyMustHave",
-          "isBestSeller",
-          "isNewArrival",
-          "isActive",
-          "autoCancelSpecialOnLowStock",
-          "specialEnabled",
-          "isSpecial",
-          "isHot",
-          "isHotDeal",
-          "hotDeal",
-        ].includes(key)
-      ) {
-        p[key] = !!body[key];
-        return;
-      }
+            if (key === "boxVisibleOnFrontend") {
+  p.boxVisibleOnFrontend = toBoolLoose(body.boxVisibleOnFrontend, true);
+  return;
+}
+
+if (
+  [
+    "allowZeroStock",
+    "taxable",
+    "isFlashDeal",
+    "isFamilyMustHave",
+    "isBestSeller",
+    "isNewArrival",
+    "isActive",
+    "autoCancelSpecialOnLowStock",
+    "specialEnabled",
+    "isSpecial",
+    "isHot",
+    "isHotDeal",
+    "hotDeal",
+  ].includes(key)
+) {
+  p[key] = !!body[key];
+  return;
+}
 
       if (key === "boxVisibleOnFrontend") {
         p.boxVisibleOnFrontend = normalizeBoxVisibleOnFrontend(body.boxVisibleOnFrontend);
