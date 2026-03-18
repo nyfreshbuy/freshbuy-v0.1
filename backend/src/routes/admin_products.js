@@ -61,9 +61,11 @@ async function findProductByAnyId(idParam) {
 function isTrueFlag(v) {
   return v === true || v === "true" || v === 1 || v === "1" || v === "yes";
 }
+
 function normalizeBoxVisibleOnFrontend(v) {
   return v === false || v === "false" ? false : true;
 }
+
 // ✅ 允许为空的数值："" / null => null
 function numOrNull(v) {
   if (v === undefined || v === null) return null;
@@ -79,6 +81,7 @@ function dateOrNull(v) {
   const d = new Date(v);
   return Number.isNaN(d.getTime()) ? null : d;
 }
+
 function toBoolLoose(v, defaultValue = false) {
   if (v === undefined) return defaultValue;
   if (v === null) return false;
@@ -86,6 +89,7 @@ function toBoolLoose(v, defaultValue = false) {
   if (v === false || v === "false" || v === 0 || v === "0" || v === "no") return false;
   return defaultValue;
 }
+
 // ✅ variants：保留完整字段，避免 mongoose strict 丢字段
 function normalizeVariants(raw) {
   if (!Array.isArray(raw)) return [];
@@ -405,13 +409,11 @@ router.get("/search-lite", async (req, res) => {
               ? basePrice
               : Number(v.price || 0);
 
-          // 原始库存：优先规格库存，没有就退回商品总库存
           const specRawStock =
             v?.stock === null || v?.stock === undefined || v?.stock === ""
               ? baseRawStock
               : Number(v.stock || 0);
 
-          // 可卖库存：按规格换算
           const specSellableStock = Math.max(0, Math.floor(specRawStock / unitCount));
 
           items.push({
@@ -419,13 +421,8 @@ router.get("/search-lite", async (req, res) => {
             name,
             specLabel: String(v?.label || v?.key || ""),
             price: Number(specPrice || 0),
-
-            // ✅ 给前端显示/限购用：按规格换算后的可卖库存
             stock: specSellableStock,
-
-            // ✅ 保留原始库存（单个库存），方便调试/后续扩展
             rawStock: specRawStock,
-
             defaultSpecId: String(v?.key || ""),
             unitCount,
 
@@ -444,13 +441,8 @@ router.get("/search-lite", async (req, res) => {
                   x?.price === null || x?.price === undefined || x?.price === ""
                     ? basePrice
                     : Number(x.price || 0),
-
-                // ✅ 规格可卖库存
                 stock: Math.max(0, Math.floor(xRawStock / xUnitCount)),
-
-                // ✅ 原始单个库存
                 rawStock: xRawStock,
-
                 unitCount: xUnitCount,
               };
             }),
@@ -462,11 +454,8 @@ router.get("/search-lite", async (req, res) => {
           name,
           specLabel: "",
           price: Number(basePrice || 0),
-
-          // 无规格时，可卖库存 = 原始库存
           stock: Number(baseRawStock || 0),
           rawStock: Number(baseRawStock || 0),
-
           defaultSpecId: "",
           unitCount: 1,
           specs: [],
@@ -504,8 +493,8 @@ router.post("/", async (req, res) => {
     const legacyId = body.id || "p_" + Date.now();
 
     const specialFix = normalizeSpecialAndDeposit(body);
-const variantsFix = normalizeVariants(body.variants);
-const boxVisibleOnFrontend = normalizeBoxVisibleOnFrontend(body.boxVisibleOnFrontend);
+    const variantsFix = normalizeVariants(body.variants);
+    const boxVisibleOnFrontend = normalizeBoxVisibleOnFrontend(body.boxVisibleOnFrontend);
 
     const created = await Product.create({
       ...body,
@@ -543,8 +532,10 @@ const boxVisibleOnFrontend = normalizeBoxVisibleOnFrontend(body.boxVisibleOnFron
 
       // ✅ variants
       variants: variantsFix,
-            // ✅ 整箱规格是否在前台展示
+
+      // ✅ 整箱规格是否在前台展示
       boxVisibleOnFrontend,
+
       // 数组
       labels: Array.isArray(body.labels) ? body.labels : [],
       tags: Array.isArray(body.tags)
@@ -581,14 +572,12 @@ router.patch("/:id", async (req, res) => {
       return res.status(404).json({ success: false, message: "商品不存在" });
     }
 
-    // ✅ 兼容后台可能传 catKey/categoryKey
     if (body.category === undefined && body.catKey !== undefined) body.category = body.catKey;
     if (body.category === undefined && body.categoryKey !== undefined) body.category = body.categoryKey;
 
     if (body.subCategory === undefined && body.subCatKey !== undefined) body.subCategory = body.subCatKey;
     if (body.subCategory === undefined && body.subCategoryKey !== undefined) body.subCategory = body.subCategoryKey;
 
-    // 允许更新的字段
     const fields = [
       "name",
       "sku",
@@ -634,8 +623,7 @@ router.patch("/:id", async (req, res) => {
       "specialFrom",
       "specialTo",
 
-            "variants",
-      "boxVisibleOnFrontend",
+      "variants",
 
       // 库存保护
       "autoCancelSpecialOnLowStock",
@@ -711,34 +699,29 @@ router.patch("/:id", async (req, res) => {
         return;
       }
 
-            if (key === "boxVisibleOnFrontend") {
-  p.boxVisibleOnFrontend = toBoolLoose(body.boxVisibleOnFrontend, true);
-  return;
-}
-
-if (
-  [
-    "allowZeroStock",
-    "taxable",
-    "isFlashDeal",
-    "isFamilyMustHave",
-    "isBestSeller",
-    "isNewArrival",
-    "isActive",
-    "autoCancelSpecialOnLowStock",
-    "specialEnabled",
-    "isSpecial",
-    "isHot",
-    "isHotDeal",
-    "hotDeal",
-  ].includes(key)
-) {
-  p[key] = !!body[key];
-  return;
-}
-
       if (key === "boxVisibleOnFrontend") {
-        p.boxVisibleOnFrontend = normalizeBoxVisibleOnFrontend(body.boxVisibleOnFrontend);
+        p.boxVisibleOnFrontend = toBoolLoose(body.boxVisibleOnFrontend, true);
+        return;
+      }
+
+      if (
+        [
+          "allowZeroStock",
+          "taxable",
+          "isFlashDeal",
+          "isFamilyMustHave",
+          "isBestSeller",
+          "isNewArrival",
+          "isActive",
+          "autoCancelSpecialOnLowStock",
+          "specialEnabled",
+          "isSpecial",
+          "isHot",
+          "isHotDeal",
+          "hotDeal",
+        ].includes(key)
+      ) {
+        p[key] = !!body[key];
         return;
       }
 
@@ -862,10 +845,7 @@ router.post("/:id/purchase-batches", async (req, res) => {
       remainingUnits: totalUnits,
     });
 
-    // ⭐ 自动把本批次数量累加到商品总库存上
     p.stock = Number(p.stock || 0) + totalUnits;
-
-    // ⭐ 自动用本批次算出来的零售价更新商品原价（originPrice）
     p.originPrice = retailPriceFixed;
 
     applyAutoCancelSpecial(p);
