@@ -829,28 +829,37 @@ router.post("/:id/purchase-batches", async (req, res) => {
     const unitCostFixed = Number(unitCost.toFixed(4));
 
     const batch = await ProductPurchaseBatch.create({
-      productId: p._id,
-      supplierName,
-      supplierCompanyId,
-      boxPrice,
-      boxCount,
-      unitsPerBox,
-      unitCost: unitCostFixed,
-      totalUnits,
-      totalCost,
-      grossMarginPercent,
-      retailPrice: retailPriceFixed,
-      consumptionAt: null,
-      expireAt,
-      remainingUnits: totalUnits,
-    });
+  productId: p._id,
+  supplierName,
+  supplierCompanyId,
 
+  purchaseDate: new Date(),
+
+  boxPrice,
+  boxCount,
+  unitsPerBox,
+
+  unitCost: unitCostFixed,
+  finalUnitCost: unitCostFixed,
+
+  totalUnits,
+  totalCost,
+
+  grossMarginPercent,
+  retailPrice: retailPriceFixed,
+
+  consumptionAt: null,
+  expireAt,
+  remainingUnits: totalUnits,
+});
     p.stock = Number(p.stock || 0) + totalUnits;
-    p.originPrice = retailPriceFixed;
 
-    applyAutoCancelSpecial(p);
-    await p.save();
+if (!p.originPrice || Number(p.originPrice) <= 0) {
+  p.originPrice = retailPriceFixed;
+}
 
+applyAutoCancelSpecial(p);
+await p.save();
     const batches = await ProductPurchaseBatch.find({ productId: p._id }).sort({ createdAt: -1 });
 
     return res.json({

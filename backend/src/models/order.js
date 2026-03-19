@@ -99,8 +99,31 @@ const orderItemSchema = new mongoose.Schema(
     deposit: { type: Number, default: 0 }, // 每个基础单位押金（例如 2）
     specialQty: { type: Number, default: 0 },
     specialTotalPrice: { type: Number, default: 0 },
+    // =========================
+// ✅ 成本 & 利润（FIFO）
+// =========================
+costLayers: [
+  {
+    batchId: { type: String, default: "" },
+    qty: { type: Number, default: 0 },
+    unitCost: { type: Number, default: 0 },
+    cost: { type: Number, default: 0 }
+  }
+],
+
+batchUnitsConsumed: { type: Number, default: 0 },
+
+// 每库存单位成本（FIFO平均）
+unitCostSnapshot: { type: Number, default: 0 },
+
+// 总成本
+totalCost: { type: Number, default: 0 },
+
+// 利润 = 收入 - 成本
+grossProfit: { type: Number, default: 0 },
   },
   { _id: false }
+  
 );
 
 // ✅ 预扣库存明细（取消/失败时回滚用）

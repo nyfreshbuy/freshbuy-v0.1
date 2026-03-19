@@ -11,7 +11,7 @@ import Wallet from "../models/Wallet.js";
 import { computeTotalsFromPayload, calcSpecialLineTotal } from "../utils/checkout_pricing.js";
 import { calcLeaderCommissionFromOrder } from "../utils/leaderCommission.js";
 import crypto from "crypto";
-
+import ProductPurchaseBatch from "../models/ProductPurchaseBatch.js";
 const router = express.Router();
 router.use(express.json());
 
@@ -293,7 +293,77 @@ async function resolveZoneFromPayload({ zoneId, ship, zip }) {
   const zoneName = String(doc.name || "").trim();
   return { zoneKey, zoneName, zoneMongoId };
 }
+async function consumeInventoryFIFO(productId, sellUnits, session = null) {
+  let remaining = Math.max(0, Number(sellUnits || 0));
+  let totalCost = 0;
+  const layers = [];
 
+  const batches = await ProductPurchaseBatch.find({
+    productId,
+    remainingUnits: { $gt: 0 }
+  })
+    .sort({ purchaseDate: 1, createdAt: 1 })
+    .session(session);
+
+  for (const b of batches) {
+    if (remaining <= 0) break;
+
+    const takeQty = Math.min(Number(b.remainingUnits || 0), remaining);
+    const unitCost = Number(b.finalUnitCost || b.unitCost || 0);
+    const cost = takeQty * unitCost;
+
+    layers.push({
+      batchId: String(b._id),
+      qty: takeQty,
+      unitCost,
+      cost
+    });
+
+    b.remainingUnits = Math.max(0, Number(b.remainingUnits || 0) - takeQty);
+
+    if (b.remainingUnits <= 0) {
+      b.remainingUnits = 0;
+      b.status = "depleted";
+    }
+
+    await b.save({ session });
+
+    totalCost += cost;
+    remaining -= takeQty;
+  }
+
+  if (remaining > 0) {
+    const e = new Error("库存不足（批次不够）");
+    e.status = 400;
+    throw e;
+  }
+
+  return {
+    totalCost,
+    layers,
+    unitCost: sellUnits > 0 ? totalCost / sellUnits : 0
+  };
+}
+async function restoreBatchFromOrder(order, session = null) {
+  if (!order || !Array.isArray(order.items)) return;
+
+  for (const it of order.items) {
+    if (!Array.isArray(it.costLayers)) continue;
+
+    for (const layer of it.costLayers) {
+      if (!layer?.batchId || !layer?.qty) continue;
+
+      await ProductPurchaseBatch.updateOne(
+        { _id: layer.batchId },
+        {
+          $inc: { remainingUnits: Number(layer.qty || 0) },
+          $set: { status: "active" } // 防止之前被标记 depleted
+        },
+        { session }
+      );
+    }
+  }
+}
 async function resolvePickupPointFromPayload(body = {}) {
   const pickupPointId = String(
     body?.pickupPointId ||
@@ -389,7 +459,8 @@ async function reserveStockForExistingOrder(orderDoc, session) {
  * @param {object} req
  * @param {mongoose.ClientSession|null} session - checkout 时传，用于扣库存 + 写 stockReserve
  */
-async function buildOrderPayload(req, session = null) {
+async function buildOrderPayload(req, session = null, options = {}) {
+  const shouldConsumeBatch = options.consumeBatch === true;
   const body = req.body || {};
   const mode = pickMode(body);
   const clientPayMethod = pickClientPayMethod(body);
@@ -733,14 +804,43 @@ async function buildOrderPayload(req, session = null) {
       tags: pdoc?.tags ?? it.tags,
       labels: pdoc?.labels ?? it.labels,
     });
+    // ==========================
+// ✅ FIFO 成本计算（核心）
+// ==========================
+const needUnitsForBatch = qty * finalUnitCount;
 
+let costResult = {
+  layers: [],
+  totalCost: 0,
+  unitCost: 0
+};
+
+if (shouldConsumeBatch) {
+  costResult = await consumeInventoryFIFO(productId, needUnitsForBatch, session);
+}
+
+const lineTotal = calcSpecialLineTotal({
+  price,
+  qty,
+  specialQty,
+  specialTotalPrice
+}, qty);
+
+const revenue = lineTotal;
     cleanItems.push({
       productId,
       legacyProductId: legacyId || "",
       name: finalName,
       sku: finalSku,
       price: round2(price),
+      batchUnitsConsumed: needUnitsForBatch,
       qty,
+      // ✅ 新增 ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓
+  costLayers: costResult.layers,
+  totalCost: costResult.totalCost,
+  unitCostSnapshot: costResult.unitCost,
+  grossProfit: revenue - costResult.totalCost,
+  // ✅ 新增 ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑
       variantKey: finalVariantKey,
       unitCount: finalUnitCount,
       specialQty: Number(specialQty || 0),
@@ -1023,7 +1123,7 @@ router.get("/my", requireLogin, async (req, res) => {
 // =====================================================
 router.post("/", requireLogin, async (req, res) => {
   try {
-    const { orderDoc } = await buildOrderPayload(req, null);
+    const { orderDoc } = await buildOrderPayload(req, null, { consumeBatch: false });
     const doc = await Order.create(orderDoc);
 
     return res.json({
@@ -1101,7 +1201,11 @@ router.post("/checkout", requireLogin, async (req, res) => {
     }
 
     await session.withTransaction(async () => {
-      const { orderDoc, clientPayMethod, isLeaderPickup } = await buildOrderPayload(req, session);
+      const { orderDoc, clientPayMethod, isLeaderPickup } = await buildOrderPayload(
+  req,
+  session,
+  { consumeBatch: true }
+);
 
       console.log(
         "🧩 ORDER ITEMS BEFORE PRICING JSON=\n" +
@@ -1465,10 +1569,10 @@ router.post("/:id([0-9a-fA-F]{24})/confirm-stripe", requireLogin, async (req, re
       const paidTotal = round2(walletPaid + newStripePaid);
 
       if (paidTotal + 0.01 < total) {
-        const e = new Error(`stripePaid 不足以覆盖剩余金额（paidTotal=${paidTotal}, total=${total}）`);
-        e.status = 400;
-        throw e;
-      }
+  const e = new Error(`stripePaid 不足以覆盖剩余金额（paidTotal=${paidTotal}, total=${total}）`);
+  e.status = 400;
+  throw e;
+}
 
       const now = new Date();
       doc.status = "paid";
@@ -1722,10 +1826,48 @@ router.patch("/:id/status", async (req, res) => {
       return res.status(400).json({ success: false, message: "status 不合法" });
     }
 
-    const doc = await Order.findByIdAndUpdate(req.params.id, { status }, { new: true });
-    if (!doc) return res.status(404).json({ success: false, message: "订单不存在" });
+    if (status === "cancel" || status === "cancelled") {
+  const session = await mongoose.startSession();
 
-    return res.json({ success: true, data: { id: doc._id.toString(), status: doc.status } });
+  let outDoc = null;
+  try {
+    await session.withTransaction(async () => {
+      const doc = await Order.findById(req.params.id).session(session);
+      if (!doc) {
+        const e = new Error("订单不存在");
+        e.status = 404;
+        throw e;
+      }
+
+      const hasCostLayers = Array.isArray(doc.items) &&
+  doc.items.some((it) => Array.isArray(it.costLayers) && it.costLayers.length > 0);
+
+if (doc.status !== "cancelled" && doc.status !== "cancel" && hasCostLayers) {
+  await restoreBatchFromOrder(doc, session);
+}
+      doc.status = "cancelled";
+      await doc.save({ session });
+      outDoc = doc;
+    });
+
+    return res.json({
+      success: true,
+      data: { id: outDoc._id.toString(), status: outDoc.status }
+    });
+  } catch (err) {
+    return res.status(err?.status || 500).json({
+      success: false,
+      message: err?.message || "取消订单失败"
+    });
+  } finally {
+    session.endSession();
+  }
+}
+
+const doc = await Order.findByIdAndUpdate(req.params.id, { status }, { new: true });
+if (!doc) return res.status(404).json({ success: false, message: "订单不存在" });
+
+return res.json({ success: true, data: { id: doc._id.toString(), status: doc.status } });
   } catch (err) {
     console.error("PATCH /api/orders/:id/status error:", err);
     return res.status(500).json({ success: false, message: "更新状态失败" });
@@ -1753,12 +1895,44 @@ router.patch("/admin/:id/status", requireLogin, async (req, res) => {
       return res.status(400).json({ success: false, message: "status 不合法" });
     }
 
-    const patch = { status };
-    if (["delivered", "done", "completed"].includes(status)) {
-      patch.deliveredAt = new Date();
-    }
+    if (status === "cancel" || status === "cancelled") {
+  const session = await mongoose.startSession();
+  let outDoc = null;
 
-    const doc = await Order.findByIdAndUpdate(id, patch, { new: true });
+  try {
+    await session.withTransaction(async () => {
+      const doc = await Order.findById(id).session(session);
+      if (!doc) {
+        const e = new Error("订单不存在");
+        e.status = 404;
+        throw e;
+      }
+
+      const hasCostLayers = Array.isArray(doc.items) &&
+        doc.items.some((it) => Array.isArray(it.costLayers) && it.costLayers.length > 0);
+
+      if (doc.status !== "cancelled" && doc.status !== "cancel" && hasCostLayers) {
+        await restoreBatchFromOrder(doc, session);
+      }
+
+      doc.status = "cancelled";
+      await doc.save({ session });
+      outDoc = doc;
+    });
+
+    return res.json({
+      success: true,
+      data: { id: outDoc._id.toString(), status: outDoc.status }
+    });
+  } catch (err) {
+    return res.status(err?.status || 500).json({
+      success: false,
+      message: err?.message || "更新状态失败"
+    });
+  } finally {
+    session.endSession();
+  }
+}
     if (!doc) return res.status(404).json({ success: false, message: "订单不存在" });
 
     return res.json({
