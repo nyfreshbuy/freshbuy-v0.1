@@ -12,6 +12,10 @@
     return Number.isFinite(n) ? n : 0;
   }
 
+  function pct(v) {
+    return (safeNum(v) * 100).toFixed(2) + "%";
+  }
+
   function esc(s) {
     return String(s ?? "").replace(/[&<>"']/g, (m) => ({
       "&": "&amp;",
@@ -54,7 +58,8 @@
       text = `统计区间：${startDate || "开始"} ~ ${endDate || "结束"}`;
     }
 
-    $("rangeBadge").textContent = text;
+    const el = $("rangeBadge");
+    if (el) el.textContent = text;
   }
 
   function applyQuickRange(val) {
@@ -115,27 +120,44 @@
 
   function renderSummary(data) {
     const d = data?.data || {};
+    const orderPart = d.orders || {};
+    const invoicePart = d.invoices || {};
 
     $("kpiRevenue").textContent = money(d.revenue);
     $("kpiCost").textContent = money(d.cost);
     $("kpiGrossProfit").textContent = money(d.grossProfit);
+    $("kpiMargin").textContent = pct(d.margin);
     $("kpiCommission").textContent = money(d.commission);
-    $("kpiTax").textContent = money(d.tax);
     $("kpiNetProfit").textContent = money(d.netProfit);
 
     $("sumOrderCount").textContent = String(d.orderCount || 0);
+    $("sumInvoiceCount").textContent = String(d.invoiceCount || 0);
     $("sumRevenue").textContent = money(d.revenue);
     $("sumCost").textContent = money(d.cost);
     $("sumGrossProfit").textContent = money(d.grossProfit);
+    $("sumMargin").textContent = pct(d.margin);
     $("sumCommission").textContent = money(d.commission);
     $("sumTax").textContent = money(d.tax);
     $("sumNetProfit").textContent = money(d.netProfit);
+
+    $("orderRevenue").textContent = money(orderPart.revenue);
+    $("orderCost").textContent = money(orderPart.cost);
+    $("orderGrossProfit").textContent = money(orderPart.grossProfit);
+    $("orderMargin").textContent = pct(orderPart.margin);
+
+    $("invoiceRevenue").textContent = money(invoicePart.revenue);
+    $("invoiceCost").textContent = money(invoicePart.cost);
+    $("invoiceGrossProfit").textContent = money(invoicePart.grossProfit);
+    $("invoiceMargin").textContent = pct(invoicePart.margin);
 
     $("kpiGrossProfit").className = "kpi-value " + (safeNum(d.grossProfit) >= 0 ? "positive" : "negative");
     $("kpiNetProfit").className = "kpi-value " + (safeNum(d.netProfit) >= 0 ? "positive" : "negative");
 
     $("sumGrossProfit").className = "summary-val " + (safeNum(d.grossProfit) >= 0 ? "positive" : "negative");
     $("sumNetProfit").className = "summary-val " + (safeNum(d.netProfit) >= 0 ? "positive" : "negative");
+
+    $("orderGrossProfit").className = "summary-val " + (safeNum(orderPart.grossProfit) >= 0 ? "positive" : "negative");
+    $("invoiceGrossProfit").className = "summary-val " + (safeNum(invoicePart.grossProfit) >= 0 ? "positive" : "negative");
   }
 
   function renderProducts(data) {
@@ -170,19 +192,29 @@
     const tbody = $("leadersTbody");
 
     if (!list.length) {
-      tbody.innerHTML = `<tr><td colspan="5" class="empty">暂无团长利润数据</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="9" class="empty">暂无团长利润数据</td></tr>`;
       return;
     }
 
-    tbody.innerHTML = list.map((it, idx) => `
-      <tr>
-        <td>${idx + 1}</td>
-        <td>${esc(it.leaderId || "unknown")}</td>
-        <td class="num">${safeNum(it.orderCount)}</td>
-        <td class="num">${money(it.revenue)}</td>
-        <td class="num">${money(it.commission)}</td>
-      </tr>
-    `).join("");
+    tbody.innerHTML = list.map((it, idx) => {
+      const grossProfit = safeNum(it.grossProfit);
+      const netProfit = safeNum(it.netProfit);
+      const marginPct = safeNum(it.margin) * 100;
+
+      return `
+        <tr>
+          <td>${idx + 1}</td>
+          <td>${esc(it.leaderId || "unknown")}</td>
+          <td class="num">${safeNum(it.orderCount)}</td>
+          <td class="num">${money(it.revenue)}</td>
+          <td class="num">${money(it.cost)}</td>
+          <td class="num ${grossProfit >= 0 ? "positive" : "negative"}">${money(grossProfit)}</td>
+          <td class="num">${money(it.commission)}</td>
+          <td class="num ${netProfit >= 0 ? "positive" : "negative"}">${money(netProfit)}</td>
+          <td class="num ${marginPct >= 0 ? "positive" : "negative"}">${marginPct.toFixed(2)}%</td>
+        </tr>
+      `;
+    }).join("");
   }
 
   function renderLowProfit(data) {
@@ -190,20 +222,25 @@
     const tbody = $("lowProfitTbody");
 
     if (!list.length) {
-      tbody.innerHTML = `<tr><td colspan="6" class="empty">暂无低利润订单数据</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="8" class="empty">暂无低利润订单数据</td></tr>`;
       return;
     }
 
     tbody.innerHTML = list.map((it, idx) => {
+      const grossProfit = safeNum(it.grossProfit);
       const profit = safeNum(it.profit);
+      const marginPct = safeNum(it.margin) * 100;
+
       return `
         <tr>
           <td>${idx + 1}</td>
-          <td>${esc(it._id || "-")}</td>
+          <td>${esc(it.orderNo || it._id || "-")}</td>
           <td class="num">${money(it.revenue)}</td>
           <td class="num">${money(it.cost)}</td>
+          <td class="num ${grossProfit >= 0 ? "positive" : "negative"}">${money(grossProfit)}</td>
           <td class="num">${money(it.commission)}</td>
           <td class="num ${profit >= 0 ? "positive" : "negative"}">${money(profit)}</td>
+          <td class="num ${marginPct >= 0 ? "positive" : "negative"}">${marginPct.toFixed(2)}%</td>
         </tr>
       `;
     }).join("");
