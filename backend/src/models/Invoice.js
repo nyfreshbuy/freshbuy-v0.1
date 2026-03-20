@@ -5,11 +5,12 @@ const invoiceItemSchema = new mongoose.Schema(
     // 从商品管理选才有
     productId: { type: String, default: "" },
 
-   // ✅ 选中的规格：single / box12 / box24
-variantKey: { type: String, default: "" },
+    // ✅ 选中的规格：single / box12 / box24
+    variantKey: { type: String, default: "" },
 
-// ✅ 规格显示文字：比如 “整箱(1)” / “12瓶装”
-variantLabel: { type: String, default: "" },
+    // ✅ 规格显示文字：比如 “整箱(1)” / “12瓶装”
+    variantLabel: { type: String, default: "" },
+
     // prdt code：优先 sku，没有就允许手填
     productCode: { type: String, default: "" },
 
@@ -22,7 +23,15 @@ variantLabel: { type: String, default: "" },
     unitCount: { type: Number, default: 1 },
 
     unitPrice: { type: Number, default: 0 },
+
+    // ✅ 新增：单位成本
+    unitCost: { type: Number, default: 0 },
+
     lineTotal: { type: Number, default: 0 },
+
+    // ✅ 新增：总成本 / 利润
+    totalCost: { type: Number, default: 0 },
+    grossProfit: { type: Number, default: 0 },
   },
   { _id: false }
 );
@@ -54,6 +63,11 @@ const invoiceSchema = new mongoose.Schema(
 
     subtotal: { type: Number, default: 0 },
     total: { type: Number, default: 0 },
+
+    // ✅ 新增：成本 / 利润 / 毛利率
+    totalCost: { type: Number, default: 0 },
+    grossProfit: { type: Number, default: 0 },
+    grossMargin: { type: Number, default: 0 },
 
     // Statement 区间（可空）
     statementFrom: { type: Date, default: null },
