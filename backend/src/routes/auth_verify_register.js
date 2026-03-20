@@ -2,7 +2,6 @@
 import express from "express";
 import twilio from "twilio";
 import jwt from "jsonwebtoken";
-import bcrypt from "bcryptjs";
 import User from "../models/user.js";
 import SmsRateLimit from "../models/SmsRateLimit.js";
 import { normalizeUSPhone } from "../utils/phone.js";
@@ -68,6 +67,20 @@ function buildPhoneCandidates(e164Phone) {
 async function findUserByPhoneAnyFormat(e164Phone) {
   const candidates = buildPhoneCandidates(e164Phone);
   return await User.findOne({ phone: { $in: candidates } }).select("_id").lean();
+}
+
+// =====================================================
+// ✅ 团长邀请码绑定：查 leader（role=leader + leaderCode）
+// =====================================================
+async function findLeaderByCode(leaderCodeRaw) {
+  const leaderCode = String(leaderCodeRaw || "").trim().toUpperCase();
+  if (!leaderCode) return null;
+
+  const leader = await User.findOne({ role: "leader", leaderCode })
+    .select("_id leaderCode role")
+    .lean();
+
+  return leader || null;
 }
 
 // =====================================================
@@ -254,7 +267,7 @@ router.post("/send-code", async (req, res) => {
 
 // =====================================================
 // ✅ POST /api/auth/verify-register
-// body: { phone, code, name, password, autoLogin? }
+// body: { phone, code, name, password, autoLogin?, leaderCode? }
 // =====================================================
 router.post("/verify-register", async (req, res) => {
   const reqId = makeReqId();
@@ -282,6 +295,9 @@ router.post("/verify-register", async (req, res) => {
     const password = String(req.body.password ?? "");
     const autoLogin = req.body.autoLogin === true || req.body.autoLogin === "true";
 
+    // ✅ 新增：团长邀请码（可选）
+    const leaderCode = String(req.body.leaderCode ?? "").trim();
+
     console.log("🧾 VERIFY-REGISTER HIT", {
       reqId,
       ip: req.headers["x-forwarded-for"] || req.socket?.remoteAddress,
@@ -294,6 +310,7 @@ router.post("/verify-register", async (req, res) => {
       hasName: !!name,
       passwordLen: password ? password.length : 0,
       autoLogin,
+      hasLeaderCode: !!leaderCode,
       verifySidTail: (TWILIO_VERIFY_SERVICE_SID || "").slice(-6),
     });
 
@@ -382,14 +399,21 @@ router.post("/verify-register", async (req, res) => {
     }
 
     // ✅ 注册写库（统一存纯数字：1 + 10位）
-    const hashed = await bcrypt.hash(password, 10);
     const phoneDigits = String(phone).replace(/[^\d]/g, ""); // 1xxxxxxxxxx
 
+    // ✅ 可选：邀请码绑定团长（找不到就不绑定）
+    const leader = await findLeaderByCode(leaderCode);
+
+    // ✅ 关键修复：不要在路由里 bcrypt.hash（否则 userSchema.pre("save") 会再 hash 一次）
     const user = await User.create({
       phone: phoneDigits,
       name,
-      password: hashed,
+      password, // ✅ 交给 model 的 pre-save 去 hash
       role: "customer",
+
+      // ✅ 团长绑定字段（你需要在 user model 里已添加这些字段）
+      invitedByLeaderId: leader ? leader._id : null,
+      invitedByLeaderCode: leader ? leader.leaderCode : "",
     });
 
     const token = autoLogin ? signToken(user) : null;
@@ -399,6 +423,7 @@ router.post("/verify-register", async (req, res) => {
       userId: String(user._id),
       phoneTail: String(phone).slice(-4),
       autoLogin,
+      invitedBy: leader ? leader.leaderCode : "",
     });
 
     return res.json({
@@ -410,6 +435,7 @@ router.post("/verify-register", async (req, res) => {
         phone: user.phone,
         role: user.role,
         name: user.name,
+        invitedByLeaderCode: user.invitedByLeaderCode || "",
       },
       reqId,
     });

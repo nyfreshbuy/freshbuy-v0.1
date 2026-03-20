@@ -1,7 +1,8 @@
 // backend/src/routes/public_zones.js
 import express from "express";
 import Zone from "../models/Zone.js";
-import Order from "../models/order.js"; // ✅ 新增：用于统计真实订单（如报错改成 ../models/Order.js）
+import Order from "../models/order.js";
+import PickupPoint from "../models/PickupPoint.js";
 
 console.log("🚀public_zones.js 已加载");
 
@@ -10,7 +11,6 @@ router.use(express.json());
 
 // =======================================================
 // 小工具：统一 zone 的 zip 字段兼容
-// ✅ 只取“非空数组”，避免 zips:[] 覆盖 zipWhitelist
 // =======================================================
 function pickZips(z) {
   const candidates = [z.zips, z.zipWhitelist, z.zipWhiteList, z.zipList];
@@ -20,13 +20,13 @@ function pickZips(z) {
   return [];
 }
 
-// ✅ 小工具：deliveryDays 归一化（只保留 0..6）
+// ✅ 小工具：deliveryDays 归一化
 function pickDeliveryDays(z) {
   const arr = Array.isArray(z.deliveryDays) ? z.deliveryDays : [];
   const days = arr
     .map((d) => Number(d))
     .filter((d) => Number.isFinite(d) && d >= 0 && d <= 6);
-  return Array.from(new Set(days)); // 去重
+  return Array.from(new Set(days));
 }
 
 function normalizeZone(z) {
@@ -44,14 +44,35 @@ function normalizeZone(z) {
     serviceMode: z.serviceMode || z.deliveryMode || "groupDay",
     updatedAt: z.updatedAt || null,
 
-    // ✅ 带给前台：配送字段
     deliveryDays,
     cutoffTime: String(z.cutoffTime || "").trim(),
     deliveryModes: Array.isArray(z.deliveryModes) ? z.deliveryModes.map(String) : [],
 
-    // ✅ 可选：拼团假数据 / 目标单（如果你 Zone 里有这些字段就会生效）
     fakeJoinedOrders: Number(z.fakeJoinedOrders ?? z.fakeBoost ?? 0) || 0,
     needOrders: Number(z.needOrders ?? z.groupNeedOrders ?? 50) || 50,
+  };
+}
+
+function normalizePickupPoint(p) {
+  return {
+    id: String(p._id),
+    name: String(p.name || "").trim(),
+    leaderName: String(p.leaderName || "").trim(),
+    leaderPhone: String(p.leaderPhone || "").trim(),
+
+    addressLine1: String(p.addressLine1 || "").trim(),
+    city: String(p.city || "").trim(),
+    state: String(p.state || "").trim(),
+    zip: String(p.zip || "").trim(),
+
+    displayArea: String(p.displayArea || "").trim(),
+    maskedAddress: String(p.maskedAddress || "").trim(),
+    pickupTimeText: String(p.pickupTimeText || "").trim(),
+
+    lat: Number.isFinite(Number(p.lat)) ? Number(p.lat) : null,
+    lng: Number.isFinite(Number(p.lng)) ? Number(p.lng) : null,
+
+    enabled: p.enabled !== false,
   };
 }
 
@@ -61,12 +82,8 @@ router.get("/ping", (req, res) => {
 });
 
 // =======================================================
-// ✅ GET /api/public/zones/by-zip?zip=11357
-// 返回 zone 基本信息 + deliveryDays/cutoffTime/deliveryModes
-// =======================================================
-// =======================================================
-// ✅ GET /api/public/zones/by-zip?zip=11357
-// 返回：zone 基本信息 + 配送字段 + 拼团统计（真实+虚假）
+// GET /api/public/zones/by-zip?zip=11357
+// 返回：zone 基本信息 + 配送字段 + 拼团统计 + 自提点
 // =======================================================
 router.get("/by-zip", async (req, res) => {
   const zip = String(req.query.zip || "").trim();
@@ -76,16 +93,35 @@ router.get("/by-zip", async (req, res) => {
     const docs = await Zone.find({}).sort({ updatedAt: -1 }).lean();
     const zones = docs.map(normalizeZone);
 
-    // 只匹配 isActive != false 的 zone
     const hit = zones.find((z) => z.isActive !== false && z.zips.includes(zip));
 
+    // ✅ 查询可用自提点
+    const pickupDocs = await PickupPoint.find({
+      enabled: true,
+    })
+      .sort({ updatedAt: -1, createdAt: -1 })
+      .lean();
+
+    let pickupPoints = pickupDocs.map(normalizePickupPoint);
+
+    // ✅ 优先显示同 ZIP 的点；如果没有同 ZIP，就返回全部点
+    const sameZipPickupPoints = pickupPoints.filter((p) => String(p.zip) === zip);
+    if (sameZipPickupPoints.length > 0) {
+      pickupPoints = sameZipPickupPoints;
+    }
+
     if (!hit) {
-      return res.json({ success: true, supported: false, zip, zone: null });
+      return res.json({
+        success: true,
+        supported: false,
+        zip,
+        zone: null,
+        pickupPoints,
+      });
     }
 
     const zoneId = String(hit.id);
 
-    // ✅ 统计真实订单数（区域团 + 已支付/有效订单）
     const realJoined = await Order.countDocuments({
       $and: [
         {
@@ -113,7 +149,6 @@ router.get("/by-zip", async (req, res) => {
       ],
     });
 
-    // ✅ 虚假加成 & 目标单
     const fakeJoined = Math.max(0, Math.floor(Number(hit.fakeJoinedOrders || 0) || 0));
     const needOrders = Math.max(1, Math.floor(Number(hit.needOrders || 50) || 50));
 
@@ -129,19 +164,16 @@ router.get("/by-zip", async (req, res) => {
         name: hit.name,
         note: hit.note,
         serviceMode: hit.serviceMode,
-
-        // 配送字段
         deliveryDays: hit.deliveryDays || [],
         cutoffTime: hit.cutoffTime || "",
         deliveryModes: hit.deliveryModes || [],
-
-        // ✅ 拼团字段（首页直接展示用这些）
         realJoinedOrders: realJoined,
         fakeJoinedOrders: fakeJoined,
         needOrders,
         joinedTotal,
         remainOrders,
       },
+      pickupPoints,
     });
   } catch (err) {
     console.error("❌ public_zones by-zip error:", err?.message || err);
@@ -152,16 +184,15 @@ router.get("/by-zip", async (req, res) => {
     });
   }
 });
+
 // =======================================================
-// ✅ 新增：GET /api/public/zones/group-stats?zip=11365
-// 返回：真实订单数 + 虚假加成 + 目标单数 + 还差多少
+// GET /api/public/zones/group-stats?zip=11365
 // =======================================================
 router.get("/group-stats", async (req, res) => {
   const zip = String(req.query.zip || "").trim();
   if (!zip) return res.status(400).json({ success: false, message: "Missing zip" });
 
   try {
-    // 1) 先定位 zone（复用 normalize）
     const docs = await Zone.find({}).sort({ updatedAt: -1 }).lean();
     const zones = docs.map(normalizeZone);
 
@@ -182,32 +213,21 @@ router.get("/group-stats", async (req, res) => {
       });
     }
 
-    const zoneId = String(hit.id);
-
-    // 2) 统计真实订单数（尽量兼容你 Order 里 zone 字段各种写法）
-    //    条件：区域团(groupDay) + 已支付/已付款（你也可以按你的状态体系再收紧）
-    // ✅ 按 ZIP 统计真实已拼（因为订单里没有 zoneId）
-const realJoined = await Order.countDocuments({
-  $and: [
-    // 订单属于这个 ZIP（优先用结构化字段，其次用 addressText）
-    {
-      $or: [
-        { "address.zip": zip },
-        { "address.postalCode": zip },
-        { addressZip: zip },
-        { addressText: { $regex: zip } }, // 兜底
+    const realJoined = await Order.countDocuments({
+      $and: [
+        {
+          $or: [
+            { "address.zip": zip },
+            { "address.postalCode": zip },
+            { addressZip: zip },
+            { addressText: { $regex: zip } },
+          ],
+        },
+        { deliveryMode: "groupDay" },
+        { status: { $in: ["paid", "packing", "shipping", "delivered"] } },
       ],
-    },
+    });
 
-    // 只算区域团
-    { deliveryMode: "groupDay" },
-
-    // 只算已支付/有效
-    { status: { $in: ["paid", "packing", "shipping", "delivered"] } },
-  ],
-});
-
-    // 3) 虚假加成 & 目标单（从 Zone 取，如果没字段就默认）
     const fakeJoined = Math.max(0, Math.floor(Number(hit.fakeJoinedOrders || 0) || 0));
     const needOrders = Math.max(1, Math.floor(Number(hit.needOrders || 50) || 50));
 
@@ -223,8 +243,6 @@ const realJoined = await Order.countDocuments({
         name: hit.name,
         note: hit.note,
         serviceMode: hit.serviceMode,
-
-        // ✅ 也顺便带回去，方便前台不用再调 by-zip
         deliveryDays: hit.deliveryDays || [],
         cutoffTime: hit.cutoffTime || "",
         deliveryModes: hit.deliveryModes || [],

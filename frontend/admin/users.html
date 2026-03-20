@@ -9,7 +9,6 @@
     <link rel="stylesheet" href="assets/css/admin.css" />
 
     <style>
-      /* ===== 整体深色后台风格（类似你截图） ===== */
       :root {
         --bg-main: #020617;
         --bg-elevated: rgba(15, 23, 42, 0.96);
@@ -42,130 +41,47 @@
         text-decoration: none;
       }
 
-      /* ===== 布局：左侧侧边栏 + 右侧主内容 ===== */
+      /* ===== 布局：左侧 sidebar（注入容器）+ 右侧 main ===== */
       .admin-layout {
         display: flex;
         min-height: 100vh;
       }
 
-      .admin-sidebar {
+      /* ✅ sidebar 注入容器：PC 固定 240px 占位 */
+      #adminSidebar {
         width: 240px;
-        background: radial-gradient(
-          circle at top left,
-          #020617 0,
-          #020617 30%,
-          #020617 100%
-        );
-        border-right: 1px solid rgba(15, 23, 42, 0.9);
-        padding: 18px 18px 24px;
-        display: flex;
-        flex-direction: column;
-        gap: 18px;
+        flex: 0 0 240px;
       }
 
-      .sidebar-logo {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        padding: 4px 6px;
-      }
-
-      .sidebar-logo-badge {
-        width: 36px;
-        height: 36px;
-        border-radius: 999px;
-        background: radial-gradient(circle at 30% 0, #3b82f6 0, #1d4ed8 45%);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: #e5f2ff;
-        font-weight: 700;
-        font-size: 18px;
-      }
-
-      .sidebar-logo-text {
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-      }
-
-      .sidebar-logo-text-main {
-        font-size: 16px;
-        font-weight: 600;
-      }
-
-      .sidebar-logo-text-sub {
-        font-size: 11px;
-        color: var(--text-sub);
-      }
-
-      .sidebar-section-title {
-        font-size: 11px;
-        text-transform: uppercase;
-        letter-spacing: 0.15em;
-        color: rgba(148, 163, 184, 0.9);
-        margin: 8px 6px 4px;
-      }
-
-      .sidebar-nav {
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-      }
-
-      .sidebar-link {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 8px 10px;
-        margin: 0 4px;
-        border-radius: 999px;
-        font-size: 14px;
-        color: #e5e7eb;
-        opacity: 0.8;
-        transition: 0.15s ease;
-      }
-
-      .sidebar-link span.icon-dot {
-        width: 6px;
-        height: 6px;
-        border-radius: 999px;
-        background: rgba(148, 163, 184, 0.6);
-      }
-
-      .sidebar-link:hover {
-        background: rgba(15, 23, 42, 0.85);
-        opacity: 1;
-      }
-
-      .sidebar-link.active {
-        background: radial-gradient(circle at top left, #1d4ed8 0, #020617 80%);
-        opacity: 1;
-        box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.5);
-      }
-
-      .sidebar-footer {
-        margin-top: auto;
-        padding-top: 10px;
-        border-top: 1px solid rgba(15, 23, 42, 0.9);
-        font-size: 11px;
-        color: rgba(148, 163, 184, 0.85);
-      }
-
-      /* ===== 右侧主内容 ===== */
+      /* ✅ 主内容：不再 margin-left，避免双重偏移 */
       .admin-main {
         flex: 1;
         padding: 18px 26px 26px;
         display: flex;
         flex-direction: column;
         gap: 18px;
+        min-width: 0;
       }
 
+      /* 手机端：sidebar 通常会变成抽屉（由 admin_sidebar.js 控制）
+         这里把注入容器占位取消，避免挤压 */
+      @media (max-width: 768px) {
+        #adminSidebar {
+          width: auto;
+          flex: 0 0 auto;
+        }
+        .admin-main {
+          padding: 14px 14px 20px;
+        }
+      }
+
+      /* ===== 顶部条 ===== */
       .main-topbar {
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 16px;
+        flex-wrap: wrap;
       }
 
       .main-title-block {
@@ -188,6 +104,7 @@
         display: flex;
         align-items: center;
         gap: 10px;
+        flex-wrap: wrap;
       }
 
       .search-input {
@@ -259,6 +176,8 @@
         justify-content: space-between;
         align-items: center;
         margin-bottom: 12px;
+        gap: 10px;
+        flex-wrap: wrap;
       }
 
       .card-title-block {
@@ -338,6 +257,7 @@
       td {
         padding: 10px 14px;
         text-align: left;
+        vertical-align: top;
       }
 
       th {
@@ -358,48 +278,6 @@
         background: rgba(30, 64, 175, 0.45);
       }
 
-      .badge-role {
-        padding: 2px 8px;
-        border-radius: 999px;
-        font-size: 11px;
-        border: 1px solid rgba(148, 163, 184, 0.5);
-      }
-
-      .badge-role.leader {
-        border-color: rgba(52, 211, 153, 0.7);
-        color: #a7f3d0;
-        background: rgba(22, 163, 74, 0.15);
-      }
-
-      .badge-role.driver {
-        border-color: rgba(59, 130, 246, 0.7);
-        color: #bfdbfe;
-        background: rgba(37, 99, 235, 0.16);
-      }
-
-      .badge-role.admin {
-        border-color: rgba(249, 115, 22, 0.8);
-        color: #fed7aa;
-        background: rgba(248, 113, 22, 0.14);
-      }
-
-      .status-pill {
-        padding: 2px 10px;
-        border-radius: 999px;
-        font-size: 11px;
-        font-weight: 500;
-      }
-
-      .status-pill.active {
-        background: rgba(34, 197, 94, 0.24);
-        color: #bbf7d0;
-      }
-
-      .status-pill.disabled {
-        background: rgba(148, 163, 184, 0.25);
-        color: #e5e7eb;
-      }
-
       .link-btn {
         background: none;
         border: none;
@@ -410,7 +288,11 @@
       }
 
       .link-btn + .link-btn {
-        margin-left: 4px;
+        margin-left: 6px;
+      }
+
+      .link-btn.danger {
+        color: #fca5a5;
       }
 
       /* ===== 分页 ===== */
@@ -423,7 +305,7 @@
         font-size: 12px;
       }
 
-      .pager-btn {
+      .pagination button {
         border-radius: 999px;
         padding: 3px 9px;
         border: 1px solid rgba(148, 163, 184, 0.5);
@@ -432,12 +314,12 @@
         cursor: pointer;
       }
 
-      .pager-btn:disabled {
+      .pagination button:disabled {
         opacity: 0.4;
         cursor: default;
       }
 
-      /* ===== 弹窗（沿用深色风格） ===== */
+      /* ===== 弹窗 ===== */
       .modal {
         position: fixed;
         inset: 0;
@@ -454,6 +336,7 @@
 
       .modal-content {
         width: 380px;
+        max-width: calc(100vw - 28px);
         background: radial-gradient(
           circle at top left,
           rgba(30, 64, 175, 0.9) 0,
@@ -486,6 +369,7 @@
       .field .input-dark {
         border-radius: 10px;
         width: 100%;
+        min-width: 0;
       }
 
       .modal-actions {
@@ -499,11 +383,9 @@
 
   <body>
     <div class="admin-layout">
-      <!-- 侧边栏 -->
-      <aside class="admin-sidebar">
       <!-- ✅ 统一 sidebar：由 /admin/assets/js/admin_sidebar.js 注入 -->
       <div id="adminSidebar"></div>
-    </aside>
+
       <!-- 主内容 -->
       <main class="admin-main">
         <!-- 顶部条 -->
@@ -517,10 +399,7 @@
           <div class="main-actions">
             <div class="search-input">
               <span style="font-size: 13px; color: #64748b">🔍</span>
-              <input
-                type="text"
-                placeholder="搜索订单 / 用户 / 商品..."
-              />
+              <input type="text" placeholder="搜索订单 / 用户 / 商品..." />
             </div>
             <button class="btn-pill" id="refreshBtn">刷新数据</button>
           </div>
@@ -537,7 +416,7 @@
                   支持按角色 / 状态 / 关键词快速查询
                 </div>
               </div>
-              <div class="pill-soft">本页数据来自内存 · 仅测试使用</div>
+              <div class="pill-soft">本页数据来自 API</div>
             </div>
 
             <div class="filters-row">
@@ -563,7 +442,9 @@
               </select>
 
               <button id="searchBtn" class="btn-primary">搜索</button>
-              <button class="btn btn-outline" id="btnCreateUser">＋ 创建用户</button>
+              <button class="btn btn-outline" id="btnCreateUser">
+                ＋ 创建用户
+              </button>
             </div>
           </section>
 
@@ -583,13 +464,13 @@
                 <thead>
                   <tr>
                     <th>姓名</th>
-                    <th>手机号</th>             
+                    <th>手机号</th>
                     <th>角色</th>
                     <th>状态</th>
                     <th>订单数</th>
-                     <th>累计消费</th>
-                    <th>账户余额</th>                  
-                     <th>地址</th>
+                    <th>累计消费</th>
+                    <th>账户余额</th>
+                    <th>地址</th>
                     <th>注册时间</th>
                     <th>操作</th>
                   </tr>
@@ -604,7 +485,7 @@
       </main>
     </div>
 
-    <!-- 编辑弹窗 -->
+    <!-- 编辑用户弹窗 -->
     <div class="modal" id="editModal">
       <div class="modal-content">
         <h2 class="modal-title">编辑用户</h2>
@@ -643,57 +524,113 @@
         </div>
       </div>
     </div>
-<!-- 创建用户弹窗（✅ 复用 editModal 的 modal-content 样式） -->
-<div class="modal" id="createModal">
-  <div class="modal-content">
-    <h2 class="modal-title">创建用户</h2>
 
-    <label class="field">
-      <span>姓名</span>
-      <input id="createName" type="text" class="input-dark" placeholder="如：linqi dai" />
-    </label>
+    <!-- 创建用户弹窗 -->
+    <div class="modal" id="createModal">
+      <div class="modal-content">
+        <h2 class="modal-title">创建用户</h2>
 
-    <label class="field">
-      <span>手机号</span>
-      <input id="createPhone" type="text" class="input-dark" placeholder="10位手机号（仅数字）" />
-    </label>
+        <label class="field">
+          <span>姓名</span>
+          <input
+            id="createName"
+            type="text"
+            class="input-dark"
+            placeholder="如：linqi dai"
+          />
+        </label>
 
-    <label class="field">
-      <span>角色</span>
-      <select id="createRole" class="input-dark">
-        <option value="customer">普通用户</option>
-        <option value="leader">团长</option>
-        <option value="driver">司机</option>
-        <option value="admin">管理员</option>
-      </select>
-    </label>
+        <label class="field">
+          <span>手机号</span>
+          <input
+            id="createPhone"
+            type="text"
+            class="input-dark"
+            placeholder="10位手机号（仅数字）"
+          />
+        </label>
 
-    <label class="field">
-      <span>状态</span>
-      <select id="createStatus" class="input-dark">
-        <option value="active">正常</option>
-        <option value="disabled">禁用</option>
-      </select>
-    </label>
+        <label class="field">
+          <span>角色</span>
+          <select id="createRole" class="input-dark">
+            <option value="customer">普通用户</option>
+            <option value="leader">团长</option>
+            <option value="driver">司机</option>
+            <option value="admin">管理员</option>
+          </select>
+        </label>
 
-    <label class="field">
-      <span>初始密码（可选）</span>
-      <input id="createPassword" type="text" class="input-dark" placeholder="留空则系统生成" />
-    </label>
+        <label class="field">
+          <span>状态</span>
+          <select id="createStatus" class="input-dark">
+            <option value="active">正常</option>
+            <option value="disabled">禁用</option>
+          </select>
+        </label>
 
-    <div id="createHint" style="display:none; margin-top:8px; color:#bbf7d0; font-size:12px;"></div>
+        <label class="field">
+          <span>初始密码（可选）</span>
+          <input
+            id="createPassword"
+            type="text"
+            class="input-dark"
+            placeholder="留空则系统生成"
+          />
+        </label>
 
-    <div class="modal-actions">
-      <button id="cancelCreateBtn" class="btn-pill">取消</button>
-      <button id="createUserBtn" class="btn-primary">创建</button>
+        <div
+          id="createHint"
+          style="display:none; margin-top:8px; color:#bbf7d0; font-size:12px;"
+        ></div>
+
+        <div class="modal-actions">
+          <button id="cancelCreateBtn" class="btn-pill">取消</button>
+          <button id="createUserBtn" class="btn-primary">创建</button>
+        </div>
+      </div>
     </div>
-  </div>
-</div>
-<script src="/admin/assets/js/admin_guard.js"></script>
-<script src="./assets/js/admin_auth_ui.js"></script>  
-<!-- 功能脚本（沿用你现在的 users.js） -->
+
+    <!-- 修改密码弹窗 -->
+    <div class="modal" id="pwdModal">
+      <div class="modal-content">
+        <h2 class="modal-title">修改密码</h2>
+
+        <div class="field">
+          <span>新密码（至少 6 位）</span>
+          <input
+            id="pwdNew1"
+            type="password"
+            class="input-dark"
+            placeholder="输入新密码"
+          />
+        </div>
+
+        <div class="field">
+          <span>确认新密码</span>
+          <input
+            id="pwdNew2"
+            type="password"
+            class="input-dark"
+            placeholder="再输入一次"
+          />
+        </div>
+
+        <div id="pwdHint" style="min-height:18px;font-size:12px;color:#fca5a5;"></div>
+
+        <div class="modal-actions">
+          <button id="cancelPwdBtn" class="btn-pill">取消</button>
+          <button id="savePwdBtn" class="btn-primary">保存新密码</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="/admin/assets/js/admin_guard.js"></script>
+    <script src="./assets/js/admin_auth_ui.js"></script>
+
+    <!-- ✅ 功能脚本 -->
     <script src="users.js"></script>
-   <!-- ✅ 统一 sidebar 注入脚本（必须加） -->
-    <script src="/admin/assets/js/admin_sidebar.js"></script>  
+
+    <!-- ✅ sidebar 注入 -->
+    <script src="/admin/assets/js/admin_sidebar.js"></script>
   </body>
 </html>

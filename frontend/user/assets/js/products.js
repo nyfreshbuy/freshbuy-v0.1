@@ -1,5 +1,7 @@
 // ===========================================================
 // 在鲜购拼好货 · 后台商品管理 products.js（完整版 + 小修复）
+// ✅ 新增：整箱规格在前台展示 p_boxVisibleOnFrontend
+// ✅ 新增：售价低于成本价时弹窗提示
 // ===========================================================
 
 // 全局状态
@@ -19,6 +21,44 @@ const defaultCategories = [
   "其他",
 ];
 const defaultSubCategories = [];
+
+// ===========================================================
+// 工具
+// ===========================================================
+function toLocalInputValue(dt) {
+  if (!dt) return "";
+  const d = new Date(dt);
+  const pad = (n) => (n < 10 ? "0" + n : n);
+  const yyyy = d.getFullYear();
+  const MM = pad(d.getMonth() + 1);
+  const dd = pad(d.getDate());
+  const hh = pad(d.getHours());
+  const mm = pad(d.getMinutes());
+  return `${yyyy}-${MM}-${dd}T${hh}:${mm}`;
+}
+
+function findProductAnyId(anyId) {
+  const key = String(anyId || "").trim();
+  if (!key) return null;
+  return (
+    productsCache.find((x) => String(x?._id || "") === key) ||
+    productsCache.find((x) => String(x?.id || "") === key) ||
+    null
+  );
+}
+
+function confirmIfSellPriceBelowCost({ originPrice, cost }) {
+  const sellPrice = Number(originPrice);
+  const costPrice = Number(cost);
+
+  if (!Number.isFinite(sellPrice) || sellPrice <= 0) return true;
+  if (!Number.isFinite(costPrice) || costPrice <= 0) return true;
+  if (sellPrice >= costPrice) return true;
+
+  return window.confirm(
+    `检测到售价低于成本价：\n售价 $${sellPrice.toFixed(2)}，成本价 $${costPrice.toFixed(2)}。\n\n确定继续保存吗？`
+  );
+}
 
 // ===========================================================
 // 🌟 重置商品编辑表单 resetForm（纯原生 JS 版）
@@ -72,6 +112,10 @@ function resetForm() {
   document.getElementById("p_stock").value = "";
   document.getElementById("p_minStock").value = "";
   document.getElementById("p_allowZeroStock").checked = true;
+
+  // ✅ 整箱前台展示默认开启
+  const boxVisibleEl = document.getElementById("p_boxVisibleOnFrontend");
+  if (boxVisibleEl) boxVisibleEl.checked = true;
 
   // ⭐ 导航大类（你新加的字段）
   const topCat = document.getElementById("p_topCategoryKey");
@@ -232,7 +276,9 @@ async function loadProducts() {
   tbody.innerHTML = `<tr><td colspan="11">正在加载商品...</td></tr>`;
 
   try {
-    const res = await fetch("/api/admin/products?" + params.toString());
+    const res = await fetch("/api/admin/products?" + params.toString(), {
+      cache: "no-store",
+    });
     const data = await res.json();
     if (!data.success) {
       tbody.innerHTML = `<tr><td colspan="11">加载失败：${
@@ -258,11 +304,13 @@ async function loadProducts() {
         ? `<img src="${p.image}" style="height:40px;border-radius:6px;object-fit:cover;">`
         : `<span style="font-size:11px;color:#9ca3af">无</span>`;
 
-      const tr = document.createElement("tr");
+      const rowId = String(p._id || p.id || "");
+
+      tr = document.createElement("tr");
       tr.innerHTML = `
-        <td>${p.id}</td>
+        <td>${p.id || "—"}</td>
         <td>${imgHtml}</td>
-        <td>${p.name}</td>
+        <td>${p.name || "—"}</td>
         <td>${p.category || "—"}</td>
         <td>${renderType(p.type)}</td>
         <td>
@@ -278,12 +326,12 @@ async function loadProducts() {
         <td>${p.stock || 0}</td>
         <td>${renderStatus(p)}</td>
         <td>
-          <button class="admin-btn admin-btn-ghost" onclick="editProduct('${p.id}')">编辑</button>
-          <button class="admin-btn admin-btn-ghost" onclick="toggleProductStatus('${p.id}','${p.status || "on"}')">
+          <button class="admin-btn admin-btn-ghost" onclick="editProduct('${rowId}')">编辑</button>
+          <button class="admin-btn admin-btn-ghost" onclick="toggleProductStatus('${rowId}','${p.status || "on"}')">
             ${(p.status || "on") === "off" ? "上架" : "下架"}
           </button>
-          <button class="admin-btn admin-btn-ghost" onclick="goToPurchase('${p.id}')">进货/成本</button>
-          <button class="admin-btn admin-btn-ghost" onclick="deleteProduct('${p.id}')">删除</button>
+          <button class="admin-btn admin-btn-ghost" onclick="goToPurchase('${rowId}')">进货/成本</button>
+          <button class="admin-btn admin-btn-ghost" onclick="deleteProduct('${rowId}')">删除</button>
         </td>
       `;
       tbody.appendChild(tr);
@@ -319,6 +367,9 @@ async function saveProduct() {
 
   const minStock = document.getElementById("p_minStock").value;
   const allowZeroStock = document.getElementById("p_allowZeroStock").checked;
+  const boxVisibleOnFrontend =
+    document.getElementById("p_boxVisibleOnFrontend")?.checked !== false;
+
   const topCategoryKey =
     document.getElementById("p_topCategoryKey").value || "";
 
@@ -387,6 +438,22 @@ async function saveProduct() {
     return;
   }
 
+  // ✅ 售价低于成本价提示
+  const editingProduct = currentEditingId ? findProductAnyId(currentEditingId) : null;
+  const currentCost =
+    editingProduct && editingProduct.cost != null && editingProduct.cost !== ""
+      ? Number(editingProduct.cost)
+      : null;
+
+  if (
+    !confirmIfSellPriceBelowCost({
+      originPrice,
+      cost: currentCost,
+    })
+  ) {
+    return;
+  }
+
   // 图片上传（本地文件）
   const fileInput = document.getElementById("p_imageFile");
   const file = fileInput && fileInput.files[0];
@@ -431,6 +498,7 @@ async function saveProduct() {
     image,
     minStock: Number.isFinite(minStockNum) && minStockNum >= 0 ? minStockNum : 0,
     allowZeroStock,
+    boxVisibleOnFrontend,
     // ⭐ 新增：首页导航大类
     topCategoryKey,
     category,
@@ -472,7 +540,7 @@ async function saveProduct() {
     }
 
     const saved = data.product || data;
-    currentEditingId = saved.id;
+    currentEditingId = saved._id || saved.id || currentEditingId;
 
     alert(isEdit ? "商品已更新" : "商品已新增");
 
@@ -500,13 +568,13 @@ async function saveProduct() {
 // 编辑商品（列表按钮 / 进货按钮）
 // ===========================================================
 function editProduct(id, tab) {
-  const p = productsCache.find((x) => x.id === id) || null;
+  const p = findProductAnyId(id);
   if (!p) {
     alert("未找到商品：" + id);
     return;
   }
 
-  currentEditingId = id;
+  currentEditingId = String(p._id || p.id || id || "");
 
   // 基本字段
   document.getElementById("p_name").value = p.name || "";
@@ -542,6 +610,12 @@ function editProduct(id, tab) {
   document.getElementById("p_allowZeroStock").checked =
     p.allowZeroStock !== false;
 
+  // ✅ 回填整箱前台展示
+  const boxVisibleEl = document.getElementById("p_boxVisibleOnFrontend");
+  if (boxVisibleEl) {
+    boxVisibleEl.checked = p.boxVisibleOnFrontend !== false;
+  }
+
   // 分类
   document.getElementById("p_topCategoryKey").value = p.topCategoryKey || "";
   document.getElementById("p_category").value = p.category || "";
@@ -559,18 +633,6 @@ function editProduct(id, tab) {
   // 上下架状态
   document.getElementById("p_isActive").checked =
     p.isActive !== false && (p.status || "on") !== "off";
-
-  function toLocalInputValue(dt) {
-    if (!dt) return "";
-    const d = new Date(dt);
-    const pad = (n) => (n < 10 ? "0" + n : n);
-    const yyyy = d.getFullYear();
-    const MM = pad(d.getMonth() + 1);
-    const dd = pad(d.getDate());
-    const hh = pad(d.getHours());
-    const mm = pad(d.getMinutes());
-    return `${yyyy}-${MM}-${dd}T${hh}:${mm}`;
-  }
 
   document.getElementById("p_activeFrom").value =
     toLocalInputValue(p.activeFrom);
@@ -603,12 +665,12 @@ function editProduct(id, tab) {
 
   // 顶部提示
   const hint = document.getElementById("editHint");
-  if (hint) hint.textContent = "当前模式：编辑商品（ID = " + id + "）";
+  if (hint) hint.textContent = "当前模式：编辑商品（ID = " + currentEditingId + "）";
   const btn = document.getElementById("btnSaveProduct");
   if (btn) btn.textContent = "💾 保存修改";
   const info = document.getElementById("currentEditingInfo");
   if (info) {
-    info.textContent = "当前商品 ID：" + id;
+    info.textContent = "当前商品 ID：" + currentEditingId;
     info.style.display = "inline-flex";
   }
 
@@ -636,7 +698,8 @@ function goToPurchase(id) {
 async function toggleProductStatus(id, currentStatus) {
   if (!id) return;
 
-  const next = (currentStatus || "on") === "off" ? "on" : "off";
+  const next =
+    (currentStatus || "on") === "off" ? "on" : "off";
   const msg =
     next === "on"
       ? "确定要将该商品【上架】吗？"
@@ -667,7 +730,8 @@ async function toggleProductStatus(id, currentStatus) {
 // 删除商品
 // ===========================================================
 async function deleteProduct(id) {
- if (!confirm("确定要删除这个商品吗？此操作会从数据库中删除，无法恢复。")) return;
+  if (!confirm("确定要删除这个商品吗？此操作会从数据库中删除，无法恢复。")) return;
+
   try {
     const res = await fetch("/api/admin/products/" + id, {
       method: "DELETE",
@@ -728,7 +792,8 @@ function bindPurchasePanelToProduct(p) {
   const enabled = document.getElementById("purchaseEnabledBox");
   const label = document.getElementById("purchaseProductLabel");
 
-  if (!p || !p.id) {
+  const productId = String(p?._id || p?.id || "");
+  if (!p || !productId) {
     lockPurchasePanelNoProduct();
     return;
   }
@@ -736,9 +801,9 @@ function bindPurchasePanelToProduct(p) {
   if (enabled) enabled.style.display = "block";
   if (label)
     label.textContent =
-      (p.name || "未命名商品") + " （ID：" + p.id + "）";
+      (p.name || "未命名商品") + " （ID：" + (p.id || productId) + "）";
 
-  loadPurchaseBatches(p.id);
+  loadPurchaseBatches(productId);
 }
 
 function resetPurchaseForm() {

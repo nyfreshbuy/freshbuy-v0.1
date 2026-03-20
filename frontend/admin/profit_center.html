@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>利润中心 - Freshbuy Admin</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <link rel="stylesheet" href="/admin/assets/css/admin.css" />
+
+  <style>
+    body {
+      margin: 0;
+      background: #0b1020;
+      color: #e5e7eb;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Noto Sans SC", sans-serif;
+    }
+
+    .admin-layout {
+      display: flex;
+      min-height: 100vh;
+    }
+
+    .admin-sidebar-wrap {
+      width: 260px;
+      min-width: 260px;
+      background: #111827;
+      border-right: 1px solid rgba(255,255,255,.06);
+    }
+
+    .admin-main {
+      flex: 1;
+      min-width: 0;
+      padding: 22px;
+      background:
+        radial-gradient(circle at top right, rgba(59,130,246,.16), transparent 26%),
+        radial-gradient(circle at top left, rgba(16,185,129,.08), transparent 18%),
+        #0b1020;
+    }
+
+    .page-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+
+    .page-title {
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: .3px;
+    }
+
+    .page-sub {
+      margin-top: 6px;
+      color: #94a3b8;
+      font-size: 13px;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      background: rgba(17,24,39,.88);
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 18px;
+      padding: 14px;
+      margin-bottom: 18px;
+      box-shadow: 0 12px 30px rgba(0,0,0,.22);
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .field label {
+      font-size: 12px;
+      color: #94a3b8;
+    }
+
+    .toolbar select,
+    .toolbar input,
+    .toolbar button {
+      height: 42px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.10);
+      background: #0f172a;
+      color: #e5e7eb;
+      padding: 0 12px;
+      outline: none;
+    }
+
+    .toolbar button {
+      cursor: pointer;
+      background: linear-gradient(135deg, #2563eb, #1d4ed8);
+      border: none;
+      font-weight: 800;
+      padding: 0 18px;
+      box-shadow: 0 10px 20px rgba(37,99,235,.25);
+    }
+
+    .toolbar button:hover {
+      transform: translateY(-1px);
+    }
+
+    .toolbar .btn-secondary {
+      background: #111827;
+      border: 1px solid rgba(255,255,255,.10);
+      box-shadow: none;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+
+    .kpi-card {
+      background: rgba(17,24,39,.92);
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 18px;
+      padding: 16px;
+      box-shadow: 0 10px 24px rgba(0,0,0,.20);
+      min-height: 112px;
+    }
+
+    .kpi-label {
+      color: #94a3b8;
+      font-size: 13px;
+      margin-bottom: 12px;
+    }
+
+    .kpi-value {
+      font-size: 28px;
+      font-weight: 800;
+      line-height: 1.1;
+      word-break: break-word;
+    }
+
+    .kpi-sub {
+      margin-top: 10px;
+      font-size: 12px;
+      color: #64748b;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1.2fr .8fr;
+      gap: 18px;
+      margin-bottom: 18px;
+    }
+
+    .panel {
+      background: rgba(17,24,39,.92);
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 18px;
+      padding: 16px;
+      box-shadow: 0 10px 24px rgba(0,0,0,.20);
+      min-width: 0;
+    }
+
+    .panel-title {
+      font-size: 18px;
+      font-weight: 800;
+      margin-bottom: 12px;
+    }
+
+    .summary-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .summary-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      padding: 12px 0;
+      border-bottom: 1px solid rgba(255,255,255,.06);
+    }
+
+    .summary-row:last-child {
+      border-bottom: none;
+    }
+
+    .summary-key {
+      color: #94a3b8;
+      font-size: 14px;
+    }
+
+    .summary-val {
+      font-weight: 700;
+      font-size: 15px;
+      color: #f8fafc;
+      text-align: right;
+    }
+
+    .table-wrap {
+      overflow: auto;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,.06);
+      background: rgba(2,6,23,.45);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 860px;
+    }
+
+    th, td {
+      padding: 12px 14px;
+      text-align: left;
+      border-bottom: 1px solid rgba(255,255,255,.06);
+      font-size: 14px;
+      vertical-align: middle;
+    }
+
+    th {
+      color: #94a3b8;
+      font-size: 12px;
+      font-weight: 700;
+      background: rgba(15,23,42,.85);
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+
+    td {
+      color: #e5e7eb;
+    }
+
+    tr:hover td {
+      background: rgba(255,255,255,.02);
+    }
+
+    .num {
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    .empty {
+      padding: 28px 14px;
+      text-align: center;
+      color: #94a3b8;
+      font-size: 14px;
+    }
+
+    .positive {
+      color: #22c55e;
+    }
+
+    .negative {
+      color: #ef4444;
+    }
+
+    .muted {
+      color: #94a3b8;
+    }
+
+    .loading {
+      opacity: .7;
+      pointer-events: none;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      background: rgba(59,130,246,.12);
+      color: #93c5fd;
+      border: 1px solid rgba(59,130,246,.20);
+    }
+
+    @media (max-width: 1400px) {
+      .cards {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 1024px) {
+      .admin-sidebar-wrap {
+        display: none;
+      }
+
+      .admin-main {
+        padding: 14px;
+      }
+
+      .grid-2 {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 720px) {
+      .cards {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .page-head {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+    }
+
+    @media (max-width: 520px) {
+      .cards {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="admin-layout">
+    <aside class="admin-sidebar-wrap">
+      <div id="adminSidebar"></div>
+    </aside>
+
+    <main class="admin-main" id="profitPage">
+      <div class="page-head">
+        <div>
+          <div class="page-title">利润中心</div>
+          <div class="page-sub">
+            统一查看 Orders + Invoices 的营业额、成本、毛利、净利润、商品利润排行、团长利润分析和低利润订单
+          </div>
+        </div>
+        <div class="badge" id="rangeBadge">统计区间：全部</div>
+      </div>
+
+      <section class="toolbar">
+        <div class="field">
+          <label for="startDate">开始日期</label>
+          <input type="date" id="startDate" />
+        </div>
+
+        <div class="field">
+          <label for="endDate">结束日期</label>
+          <input type="date" id="endDate" />
+        </div>
+
+        <div class="field">
+          <label for="quickRange">快捷区间</label>
+          <select id="quickRange">
+            <option value="">自定义</option>
+            <option value="today">今天</option>
+            <option value="last7">最近7天</option>
+            <option value="thisMonth">本月</option>
+            <option value="last30">最近30天</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label>&nbsp;</label>
+          <button id="btnLoad">查询</button>
+        </div>
+
+        <div class="field">
+          <label>&nbsp;</label>
+          <button id="btnReset" class="btn-secondary">重置</button>
+        </div>
+      </section>
+
+      <section class="cards">
+        <div class="kpi-card">
+          <div class="kpi-label">总营业额</div>
+          <div class="kpi-value" id="kpiRevenue">$0.00</div>
+          <div class="kpi-sub">Orders + Invoices</div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-label">总成本</div>
+          <div class="kpi-value" id="kpiCost">$0.00</div>
+          <div class="kpi-sub">订单成本 + 发票成本</div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-label">毛利</div>
+          <div class="kpi-value" id="kpiGrossProfit">$0.00</div>
+          <div class="kpi-sub">营业额 - 成本</div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-label">毛利率</div>
+          <div class="kpi-value" id="kpiMargin">0.00%</div>
+          <div class="kpi-sub">毛利 / 营业额</div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-label">团长佣金</div>
+          <div class="kpi-value" id="kpiCommission">$0.00</div>
+          <div class="kpi-sub">按 leaderCommission.amount</div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-label">净利润</div>
+          <div class="kpi-value" id="kpiNetProfit">$0.00</div>
+          <div class="kpi-sub">毛利 - 团长佣金</div>
+        </div>
+      </section>
+
+      <section class="grid-2">
+        <div class="panel">
+          <div class="panel-title">利润拆解</div>
+          <div class="summary-list">
+            <div class="summary-row">
+              <div class="summary-key">订单数</div>
+              <div class="summary-val" id="sumOrderCount">0</div>
+            </div>
+            <div class="summary-row">
+              <div class="summary-key">发票数</div>
+              <div class="summary-val" id="sumInvoiceCount">0</div>
+            </div>
+            <div class="summary-row">
+              <div class="summary-key">总营业额</div>
+              <div class="summary-val" id="sumRevenue">$0.00</div>
+            </div>
+            <div class="summary-row">
+              <div class="summary-key">总成本</div>
+              <div class="summary-val" id="sumCost">$0.00</div>
+            </div>
+            <div class="summary-row">
+              <div class="summary-key">毛利</div>
+              <div class="summary-val" id="sumGrossProfit">$0.00</div>
+            </div>
+            <div class="summary-row">
+              <div class="summary-key">毛利率</div>
+              <div class="summary-val" id="sumMargin">0.00%</div>
+            </div>
+            <div class="summary-row">
+              <div class="summary-key">团长佣金</div>
+              <div class="summary-val" id="sumCommission">$0.00</div>
+            </div>
+            <div class="summary-row">
+              <div class="summary-key">销售税</div>
+              <div class="summary-val" id="sumTax">$0.00</div>
+            </div>
+            <div class="summary-row">
+              <div class="summary-key">净利润</div>
+              <div class="summary-val" id="sumNetProfit">$0.00</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-title">Orders / Invoices 拆分</div>
+          <div class="summary-list">
+            <div class="summary-row">
+              <div class="summary-key">订单营业额</div>
+              <div class="summary-val" id="orderRevenue">$0.00</div>
+            </div>
+            <div class="summary-row">
+              <div class="summary-key">订单成本</div>
+              <div class="summary-val" id="orderCost">$0.00</div>
+            </div>
+            <div class="summary-row">
+              <div class="summary-key">订单毛利</div>
+              <div class="summary-val" id="orderGrossProfit">$0.00</div>
+            </div>
+            <div class="summary-row">
+              <div class="summary-key">订单毛利率</div>
+              <div class="summary-val" id="orderMargin">0.00%</div>
+            </div>
+            <div class="summary-row">
+              <div class="summary-key">发票营业额</div>
+              <div class="summary-val" id="invoiceRevenue">$0.00</div>
+            </div>
+            <div class="summary-row">
+              <div class="summary-key">发票成本</div>
+              <div class="summary-val" id="invoiceCost">$0.00</div>
+            </div>
+            <div class="summary-row">
+              <div class="summary-key">发票毛利</div>
+              <div class="summary-val" id="invoiceGrossProfit">$0.00</div>
+            </div>
+            <div class="summary-row">
+              <div class="summary-key">发票毛利率</div>
+              <div class="summary-val" id="invoiceMargin">0.00%</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" style="margin-bottom:18px;">
+        <div class="panel-title">商品利润排行 Top 50</div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:72px;">#</th>
+                <th>商品</th>
+                <th class="num">销量</th>
+                <th class="num">营业额</th>
+                <th class="num">成本</th>
+                <th class="num">利润</th>
+                <th class="num">利润率</th>
+              </tr>
+            </thead>
+            <tbody id="productsTbody">
+              <tr><td colspan="7" class="empty">暂无数据</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="grid-2">
+        <div class="panel">
+          <div class="panel-title">团长利润分析</div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th style="width:72px;">#</th>
+                  <th>团长ID</th>
+                  <th class="num">订单数</th>
+                  <th class="num">营业额</th>
+                  <th class="num">成本</th>
+                  <th class="num">毛利</th>
+                  <th class="num">佣金</th>
+                  <th class="num">净利润</th>
+                  <th class="num">利润率</th>
+                </tr>
+              </thead>
+              <tbody id="leadersTbody">
+                <tr><td colspan="9" class="empty">暂无数据</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-title">低利润订单 Top 50</div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th style="width:72px;">#</th>
+                  <th>订单号</th>
+                  <th class="num">营业额</th>
+                  <th class="num">成本</th>
+                  <th class="num">毛利</th>
+                  <th class="num">佣金</th>
+                  <th class="num">净利润</th>
+                  <th class="num">利润率</th>
+                </tr>
+              </thead>
+              <tbody id="lowProfitTbody">
+                <tr><td colspan="8" class="empty">暂无数据</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/admin/assets/js/admin_sidebar.js"></script>
+  <script src="/admin/assets/js/profit_center.js"></script>
+</body>
+</html>

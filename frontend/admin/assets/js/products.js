@@ -88,7 +88,42 @@ function toLocalInputValue(dt) {
   const mm = pad(d.getMinutes());
   return `${yyyy}-${MM}-${dd}T${hh}:${mm}`;
 }
+function getLowestVariantSellPrice(variants = [], fallbackPrice = null) {
+  const arr = Array.isArray(variants) ? variants : [];
+  let min = null;
 
+  for (const v of arr) {
+    if (v?.enabled === false) continue;
+    if (v?.price === null || v?.price === undefined || v?.price === "") continue;
+
+    const price = Number(v.price);
+    if (!Number.isFinite(price) || price <= 0) continue;
+
+    if (min === null || price < min) min = price;
+  }
+
+  if (min === null) {
+    const base = Number(fallbackPrice);
+    if (Number.isFinite(base) && base > 0) return base;
+  }
+
+  return min;
+}
+
+function confirmIfSellPriceBelowCost({ originPrice, cost, variants }) {
+  const costNum = Number(cost);
+  if (!Number.isFinite(costNum) || costNum <= 0) return true;
+
+  const basePriceNum = Number(originPrice);
+  const lowestSellPrice = getLowestVariantSellPrice(variants, basePriceNum);
+
+  if (!Number.isFinite(lowestSellPrice) || lowestSellPrice <= 0) return true;
+  if (lowestSellPrice >= costNum) return true;
+
+  return window.confirm(
+    `检测到售价低于成本价：\n最低售价 $${money(lowestSellPrice)}，成本价 $${money(costNum)}。\n\n确定继续保存吗？`
+  );
+}
 // ✅ 用 _id / id 都能找到商品
 function findProductAnyId(anyId) {
   const key = String(anyId || "").trim();
@@ -157,10 +192,12 @@ function resetForm() {
   document.getElementById("p_tag").value = "";
   document.getElementById("p_type").value = "normal";
 
-  document.getElementById("p_stock").value = "";
+    document.getElementById("p_stock").value = "";
   document.getElementById("p_minStock").value = "";
   document.getElementById("p_allowZeroStock").checked = true;
 
+  const boxVisibleEl = document.getElementById("p_boxVisibleOnFrontend");
+  if (boxVisibleEl) boxVisibleEl.checked = true;
   // ✅ 税：默认不收税
   const taxable = document.getElementById("p_taxable");
   if (taxable) taxable.checked = false;
@@ -551,8 +588,10 @@ async function saveProduct() {
 
   const minStock = document.getElementById("p_minStock").value;
   const allowZeroStock = document.getElementById("p_allowZeroStock").checked;
-
-  // ✅ 税：是否收税（NY）
+    const boxVisibleOnFrontend =
+    document.getElementById("p_boxVisibleOnFrontend")?.checked !== false;
+    console.log("boxVisibleOnFrontend =", boxVisibleOnFrontend);
+    // ✅ 税：是否收税（NY）
   const taxable = !!document.getElementById("p_taxable")?.checked;
 
   // ⭐ 首页导航大类
@@ -647,7 +686,21 @@ async function saveProduct() {
     alert("库存低自动取消特价：阈值必须大于 0");
     return;
   }
+  const editingProduct = currentEditingId ? findProductAnyId(currentEditingId) : null;
+  const currentCost =
+    editingProduct && editingProduct.cost != null && editingProduct.cost !== ""
+      ? Number(editingProduct.cost)
+      : null;
 
+  if (
+    !confirmIfSellPriceBelowCost({
+      originPrice,
+      cost: currentCost,
+      variants: currentVariants,
+    })
+  ) {
+    return;
+  }
   // 图片上传（本地文件）
   const fileInput = document.getElementById("p_imageFile");
   const file = fileInput && fileInput.files && fileInput.files[0];
@@ -693,6 +746,7 @@ async function saveProduct() {
     image,
     minStock,
     allowZeroStock,
+    boxVisibleOnFrontend,
     taxable,
     deposit,
     topCategoryKey,

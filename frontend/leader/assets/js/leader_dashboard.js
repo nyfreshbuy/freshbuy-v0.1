@@ -1,0 +1,173 @@
+function safeMoney(n) {
+  const x = Number(n || 0);
+  return x.toFixed(2);
+}
+
+function safeText(v, fallback = "-") {
+  if (v === null || v === undefined || v === "") return fallback;
+  return String(v);
+}
+
+function renderEmptyRow(tbody, text, colSpan = 4) {
+  tbody.innerHTML = `
+    <tr>
+      <td colspan="${colSpan}" style="color:#999;text-align:center;padding:16px;">
+        ${text}
+      </td>
+    </tr>
+  `;
+}
+
+function makeStatusBadge(text) {
+  const t = String(text || "待处理");
+
+  let bg = "#f3f4f6";
+  let color = "#374151";
+
+  if (t.includes("已完成")) {
+    bg = "#dcfce7";
+    color = "#166534";
+  } else if (t.includes("待自提")) {
+    bg = "#dbeafe";
+    color = "#1d4ed8";
+  } else if (t.includes("已通知")) {
+    bg = "#fef3c7";
+    color = "#92400e";
+  } else if (t.includes("处理中") || t.includes("待处理")) {
+    bg = "#ede9fe";
+    color = "#6d28d9";
+  } else if (t.includes("已取消")) {
+    bg = "#fee2e2";
+    color = "#991b1b";
+  }
+
+  return `
+    <span style="
+      display:inline-block;
+      padding:4px 10px;
+      border-radius:999px;
+      font-size:12px;
+      font-weight:600;
+      background:${bg};
+      color:${color};
+      white-space:nowrap;
+    ">
+      ${t}
+    </span>
+  `;
+}
+
+async function loadStats() {
+  const data = await api("/api/leader/dashboard/stats?_t=" + Date.now());
+
+  const todayOrdersEl = document.getElementById("todayOrders");
+  const pendingPickupEl = document.getElementById("pendingPickup");
+  const weekCommissionEl = document.getElementById("weekCommission");
+  const totalCustomersEl = document.getElementById("totalCustomers");
+
+  if (!data || !data.ok) {
+    if (todayOrdersEl) todayOrdersEl.innerText = "0";
+    if (pendingPickupEl) pendingPickupEl.innerText = "0";
+    if (weekCommissionEl) weekCommissionEl.innerText = "$0.00";
+    if (totalCustomersEl) totalCustomersEl.innerText = "0";
+    return;
+  }
+
+  const stats = data.stats || {};
+
+  if (todayOrdersEl) {
+    todayOrdersEl.innerText = Number(stats.todayOrders || 0);
+  }
+
+  if (pendingPickupEl) {
+    pendingPickupEl.innerText = Number(stats.pendingPickupOrders || 0);
+  }
+
+  if (weekCommissionEl) {
+    weekCommissionEl.innerText = "$" + safeMoney(stats.weekCommission);
+  }
+
+  if (totalCustomersEl) {
+    totalCustomersEl.innerText = Number(stats.totalCustomers || 0);
+  }
+}
+
+async function loadOrders() {
+  const data = await api("/api/leader/orders?status=pending&_t=" + Date.now());
+
+  const tbody = document.getElementById("orderList");
+  if (!tbody) return;
+
+  if (!data || !data.ok) {
+    renderEmptyRow(tbody, "订单加载失败");
+    return;
+  }
+
+  const items = Array.isArray(data.items) ? data.items : [];
+
+  if (!items.length) {
+    renderEmptyRow(tbody, "暂无待处理订单");
+    return;
+  }
+
+  tbody.innerHTML = "";
+
+  items.forEach((o) => {
+    const tr = document.createElement("tr");
+
+    const statusText = safeText(o.statusText || o.status, "待处理");
+
+    tr.innerHTML = `
+      <td>${safeText(o.orderNo)}</td>
+      <td>${safeText(o.customerName)}</td>
+      <td>$${safeMoney(o.total)}</td>
+      <td>${makeStatusBadge(statusText)}</td>
+    `;
+
+    tbody.appendChild(tr);
+  });
+}
+
+async function loadPickups() {
+  const data = await api("/api/leader/pickups/today?_t=" + Date.now());
+
+  const tbody = document.getElementById("pickupList");
+  if (!tbody) return;
+
+  if (!data || !data.ok) {
+    renderEmptyRow(tbody, "今日自提加载失败");
+    return;
+  }
+
+  const items = Array.isArray(data.items) ? data.items : [];
+
+  if (!items.length) {
+    renderEmptyRow(tbody, "今天暂无自提订单");
+    return;
+  }
+
+  tbody.innerHTML = "";
+
+  items.forEach((o) => {
+    const tr = document.createElement("tr");
+
+    const statusText = safeText(o.statusText || o.status, "待处理");
+
+    tr.innerHTML = `
+      <td>${safeText(o.orderNo)}</td>
+      <td>${safeText(o.customerName)}</td>
+      <td>${safeText(o.pickupCode, "-")}</td>
+      <td>${makeStatusBadge(statusText)}</td>
+    `;
+
+    tbody.appendChild(tr);
+  });
+}
+
+async function init() {
+  await loadStats();
+  await loadOrders();
+  await loadPickups();
+}
+
+init();

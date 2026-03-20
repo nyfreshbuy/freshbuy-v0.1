@@ -77,20 +77,30 @@ function getSpecialText(p) {
 }
 
 function buildVariantPriceLines(p) {
-  const vs = Array.isArray(p?.variants) ? p.variants.filter((v) => v && v.enabled !== false) : [];
+  const vs = Array.isArray(p?.variants)
+    ? p.variants.filter(
+        (v) => v && v.enabled !== false && !shouldHideBoxVariant(p, v)
+      )
+    : [];
+
   if (!vs.length) return "";
+
   const boxes = vs
     .filter((v) => Number(v.unitCount || 1) > 1)
     .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+
   if (!boxes.length) return "";
+
   const lines = boxes.map((v) => {
     const boxPrice =
       v.price != null && Number(v.price) > 0
         ? Number(v.price)
         : Number(p.price || p.originPrice || 0) * Number(v.unitCount || 1);
+
     const label = v.label || `整箱(${Number(v.unitCount || 1)}个)`;
     return `<div class="variant-line">📦 ${label}：$${money(boxPrice)}</div>`;
   });
+
   return `<div class="variant-box">${lines.join("")}</div>`;
 }
 
@@ -321,9 +331,119 @@ function updateFriendCountdown() {
   if (el2) el2.textContent = text;
   if (friendEndTime - now <= 0 && friendCountdownTimer) clearInterval(friendCountdownTimer);
 }
+async function getRecommendedPickupPointsByZip(zip) {
+  const z = String(zip || "").trim();
+  if (!z) return [];
 
+  const url = `/api/public/zones/by-zip?zip=${encodeURIComponent(z)}&ts=${Date.now()}`;
+
+  const res = await fetch(url, { cache: "no-store" });
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok || !data?.success) {
+    throw new Error(data?.message || "获取自提点失败");
+  }
+
+  const items = Array.isArray(data.pickupPoints) ? data.pickupPoints : [];
+  return items;
+}
+const PICKUP_SELECTED_KEY = "freshbuy_selected_pickup_point";
+
+function saveSelectedPickupPoint(point) {
+  try {
+    localStorage.setItem(PICKUP_SELECTED_KEY, JSON.stringify(point || {}));
+  } catch {}
+}
+
+function getSelectedPickupPoint() {
+  try {
+    return JSON.parse(localStorage.getItem(PICKUP_SELECTED_KEY) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function deg2rad(d) {
+  return (Number(d) * Math.PI) / 180;
+}
+
+function calcDistanceMiles(lat1, lng1, lat2, lng2) {
+  const a1 = Number(lat1);
+  const o1 = Number(lng1);
+  const a2 = Number(lat2);
+  const o2 = Number(lng2);
+
+  if (![a1, o1, a2, o2].every(Number.isFinite)) return null;
+
+  const R = 3958.8; // miles
+  const dLat = deg2rad(a2 - a1);
+  const dLng = deg2rad(o2 - o1);
+
+  const s1 =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(deg2rad(a1)) *
+      Math.cos(deg2rad(a2)) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
+
+  const s2 = 2 * Math.atan2(Math.sqrt(s1), Math.sqrt(1 - s1));
+  return R * s2;
+}
+
+function getBrowserLocation() {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) {
+      resolve(null);
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        resolve({
+          lat: Number(pos.coords.latitude),
+          lng: Number(pos.coords.longitude),
+        });
+      },
+      () => resolve(null),
+      {
+        enableHighAccuracy: false,
+        timeout: 5000,
+        maximumAge: 5 * 60 * 1000,
+      }
+    );
+  });
+}
+
+async function enrichAndSortPickupPoints(points) {
+  const arr = Array.isArray(points) ? [...points] : [];
+  if (!arr.length) return arr;
+
+  const userLoc = await getBrowserLocation();
+
+  const enriched = arr.map((p) => {
+    const distanceMiles = userLoc
+      ? calcDistanceMiles(userLoc.lat, userLoc.lng, p.lat, p.lng)
+      : null;
+
+    return {
+      ...p,
+      distanceMiles,
+    };
+  });
+
+  enriched.sort((a, b) => {
+    const ad = Number.isFinite(a.distanceMiles) ? a.distanceMiles : Infinity;
+    const bd = Number.isFinite(b.distanceMiles) ? b.distanceMiles : Infinity;
+    return ad - bd;
+  });
+
+  return enriched.map((p, idx) => ({
+    ...p,
+    recommended: idx === 0,
+  }));
+}
 // ✅ 统一：只写 #deliveryInfoBody，不覆盖右侧 ZIP box
-function renderDeliveryInfo(mode) {
+async function renderDeliveryInfo(mode) {
   if (!deliveryHint || !deliveryInfoBody) return;
 
   const z = getSavedZoneBrief();
@@ -379,16 +499,132 @@ function renderDeliveryInfo(mode) {
     startFriendCountdownToMidnight();
     return;
   }
+ if (mode === "pickup") {
+  const zip = String(getEffectiveZip(getSavedZip()) || "").trim();
 
+  deliveryHint.textContent = `当前：自提点自提 · 系统推荐附近自提点`;
+
+  try {
+    const rawPoints = await getRecommendedPickupPointsByZip(zip);
+    const pickupPoints = await enrichAndSortPickupPoints(rawPoints);
+
+    if (!pickupPoints.length) {
+      deliveryInfoBody.innerHTML = `
+        <div class="delivery-info-title">自提点自提</div>
+        <ul class="delivery-info-list">
+          <li>当前暂无可用自提点</li>
+          <li>请稍后再试，或联系客服咨询开通区域</li>
+        </ul>
+      `;
+      return;
+    }
+
+    const selected = getSelectedPickupPoint();
+    const selectedId = String(selected?.id || "");
+
+    deliveryInfoBody.innerHTML = `
+      <div class="delivery-info-title">推荐自提点</div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px;">
+        ${pickupPoints
+          .map((p) => {
+            const pointId = String(p.id || "");
+            const checked = selectedId && selectedId === pointId;
+            const distText = Number.isFinite(p.distanceMiles)
+              ? `距离约 ${p.distanceMiles.toFixed(1)} miles`
+              : "";
+
+            return `
+              <label
+                style="
+                  padding:10px 12px;
+                  border:1px solid ${checked ? "#16a34a" : "#e5e7eb"};
+                  border-radius:12px;
+                  background:${checked ? "#f0fdf4" : "#fff"};
+                  display:block;
+                  cursor:pointer;
+                "
+              >
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+                  <div style="font-size:13px;font-weight:700;color:#111827;">
+                    ${p.name || ""}
+                    ${p.recommended ? ' <span style="color:#16a34a;font-size:12px;">推荐</span>' : ""}
+                  </div>
+                  <input
+                    type="radio"
+                    name="pickupPointChoice"
+                    value="${pointId}"
+                    ${checked ? "checked" : ""}
+                    data-pickup-select
+                    data-pickup-id="${pointId}"
+                    style="transform:scale(1.05);"
+                  />
+                </div>
+
+                <div style="margin-top:4px;font-size:12px;color:#6b7280;">
+                  ${p.maskedAddress || p.addressLine1 || "地址待更新"}
+                </div>
+
+                <div style="margin-top:4px;font-size:12px;color:#6b7280;">
+                  取货时间：${p.pickupTimeText || "—"}
+                </div>
+
+                ${p.displayArea ? `<div style="margin-top:4px;font-size:12px;color:#6b7280;">区域：${p.displayArea}</div>` : ""}
+                ${distText ? `<div style="margin-top:4px;font-size:12px;color:#16a34a;">${distText}</div>` : ""}
+              </label>
+            `;
+          })
+          .join("")}
+      </div>
+      <div style="margin-top:10px;font-size:12px;color:#6b7280;">
+        已选自提点会保存到本地，结算页可继续确认。
+      </div>
+    `;
+
+    // ✅ 默认自动选最近点
+    const selectedNow = getSelectedPickupPoint();
+    if (!selectedNow?.id && pickupPoints[0]) {
+      saveSelectedPickupPoint(pickupPoints[0]);
+    }
+
+    deliveryInfoBody.querySelectorAll("[data-pickup-select]").forEach((radio) => {
+      radio.addEventListener("change", () => {
+        const id = String(radio.dataset.pickupId || "");
+        const picked = pickupPoints.find((x) => String(x.id) === id);
+        if (!picked) return;
+
+        saveSelectedPickupPoint(picked);
+
+        try {
+          localStorage.setItem("freshbuy_pref_mode", "pickup");
+          window.dispatchEvent(
+            new CustomEvent("freshbuy:pickupPointChanged", {
+              detail: { pickupPoint: picked },
+            })
+          );
+        } catch {}
+
+        void renderDeliveryInfo("pickup");
+      });
+    });
+  } catch (err) {
+    console.error("加载真实自提点失败：", err);
+    deliveryInfoBody.innerHTML = `
+      <div class="delivery-info-title">自提点自提</div>
+      <ul class="delivery-info-list">
+        <li>自提点加载失败</li>
+        <li style="color:#b00020;">${err?.message || "请稍后再试"}</li>
+      </ul>
+    `;
+  }
+
+  return;
+}
   deliveryHint.textContent = `当前：区域团拼单配送 · ${zoneName}`;
   deliveryInfoBody.innerHTML = `
     <div class="delivery-info-title">配送信息</div>
     <div style="color:#6b7280;">请选择配送方式</div>
   `;
 }
-
-// 默认区域团拼单
-renderDeliveryInfo("area-group");
 
 // 点击切换配送模式（+ 好友拼单弹窗）
 document.addEventListener("click", (e) => {
@@ -401,15 +637,16 @@ document.addEventListener("click", (e) => {
   const mode = pill.dataset.mode;
  
   localStorage.setItem(MODE_USER_SELECTED_KEY, "1");
-  renderDeliveryInfo(mode);
+  void renderDeliveryInfo(mode);
 
   try {
     function toCartModeKey(m) {
-      if (m === "area-group") return "groupDay";
-      if (m === "next-day") return "normal";
-      if (m === "friend-group") return "friendGroup";
-      return "groupDay";
-    }
+  if (m === "area-group") return "groupDay";
+  if (m === "next-day") return "normal";
+  if (m === "friend-group") return "friendGroup";
+  if (m === "pickup") return "pickup";
+  return "groupDay";
+}
     const mapped = toCartModeKey(mode || "");
     localStorage.setItem("freshbuy_pref_mode", mapped);
     window.dispatchEvent(new CustomEvent("freshbuy:deliveryModeChanged", { detail: { mode: mapped } }));
@@ -481,6 +718,19 @@ setTimeout(() => {
 // =========================
 
 // ✅ variants 展开：同一商品 -> 多个“展示商品”（单个/整箱）
+function shouldHideBoxVariant(product, variant) {
+  if (!product || product.boxVisibleOnFrontend !== false) return false;
+  if (!variant) return false;
+
+  const unitCount = Math.max(1, Math.floor(Number(variant.unitCount || 1) || 1));
+  const label = String(variant.label || variant.key || "").trim();
+  const isBox = unitCount > 1 || /整箱|箱|box/i.test(label);
+
+  return isBox;
+}
+
+// ✅ variants 展开：同一商品 -> 多个“展示商品”（单个/整箱）
+// ✅ 新增：支持 boxVisibleOnFrontend=false 时隐藏整箱规格
 function expandProductsWithVariants(list) {
   const out = [];
   const arr = Array.isArray(list) ? list : [];
@@ -504,7 +754,10 @@ function expandProductsWithVariants(list) {
       continue;
     }
 
-    const enabledVars = variants.filter((v) => v && v.enabled !== false);
+    const enabledVars = variants.filter(
+      (v) => v && v.enabled !== false && !shouldHideBoxVariant(p, v)
+    );
+
     if (!enabledVars.length) {
       const vKey = "single";
       out.push({
@@ -522,11 +775,13 @@ function expandProductsWithVariants(list) {
 
     for (const v of enabledVars) {
       const vKey = String(v.key || "single").trim() || "single";
-      const unitCount = Math.max(1, Math.floor(Number(v.unitCount || 1)));
+      const unitCount = Math.max(1, Math.floor(Number(v.unitCount || 1) || 1));
 
-      const vLabel = String(v.label || "").trim() || (unitCount > 1 ? `整箱(${unitCount}个)` : "单个");
+      const vLabel =
+        String(v.label || "").trim() || (unitCount > 1 ? `整箱(${unitCount}个)` : "单个");
 
-      const vPrice = v.price != null && Number.isFinite(Number(v.price)) ? Number(v.price) : null;
+      const vPrice =
+        v.price != null && Number.isFinite(Number(v.price)) ? Number(v.price) : null;
 
       out.push({
         ...p,
@@ -1300,7 +1555,19 @@ const fixedAdd = article.querySelector(`.product-add-fixed[data-add-pid="${pid}"
   // 初次渲染：根据购物车数量决定显示“加入购物车”还是“黑框”
   return article;
 }
+// =====================================================
+// ✅ 共享给 hot.html 使用：把爆品页需要的能力挂到 window.FB
+// 插入位置：createProductCard() 结束后
+// =====================================================
+window.FB = window.FB || {};
+window.FB.createProductCard = createProductCard;
+window.FB.expandProductsWithVariants = expandProductsWithVariants;
+window.FB.isHotProduct = isHotProduct;
+window.FB.money = money;
 
+// 购物车徽章/按钮切换（hot 页也要用）
+window.FB.scheduleBadgeSync = scheduleBadgeSync;
+window.FB.renderAllCardsAction = renderAllCardsAction;
 /* ====== 下一段从：库存刷新 refreshStockAndCards + loadHomeProductsFromSimple 开始 ====== */
 // IP 建议 ZIP（不强制）—— ✅ 如果 ZIP 已被“默认地址锁定”，则不要再用 IP 覆盖
 async function tryPrefillZipFromIP() {
@@ -1835,9 +2102,20 @@ function toUiModeKey(cartMode) {
   if (cartMode === "groupDay") return "area-group";
   if (cartMode === "normal") return "next-day";
   if (cartMode === "friendGroup") return "friend-group";
+  if (cartMode === "pickup") return "pickup";
   return "area-group";
 }
+function getCurrentUiDeliveryMode() {
+  // ✅ 先以用户保存的偏好为准
+  const pref = localStorage.getItem("freshbuy_pref_mode");
+  if (pref) return toUiModeKey(pref);
 
+  // ✅ 没有保存偏好时，才看当前激活按钮
+  const active = document.querySelector(".delivery-pill.active");
+  if (active?.dataset?.mode) return active.dataset.mode;
+
+  return "area-group";
+}
 function getSavedZoneBrief() {
   try {
     return JSON.parse(localStorage.getItem("freshbuy_zone") || "{}");
@@ -1869,18 +2147,31 @@ async function applyZoneToUI(zip, payload) {
   }
 
   if (!deliverable || !zone) {
-    deliveryHintEl.textContent = "当前：未开通配送";
-    deliveryInfoBodyEl.innerHTML = `
-      <div class="delivery-info-title">当前 ZIP 暂未开通配送</div>
-      <ul class="delivery-info-list">
-        <li>你输入的 ZIP：<span class="delivery-highlight">${zip || "--"}</span></li>
-        <li style="color:#b00020;">${reason}</li>
-        <li>如需查询你所在区域什么时候开通：<strong>加微信 nyfreshbuy</strong> 咨询</li>
-      </ul>
-    `;
+  const savedPref = localStorage.getItem("freshbuy_pref_mode");
+  const currentMode = savedPref ? toUiModeKey(savedPref) : getCurrentUiDeliveryMode();
+
+  // ✅ 如果用户上次选的是“自提点自提”，即使当前 ZIP 不支持区域团，也优先显示自提点
+  if (currentMode === "pickup") {
+    document.querySelectorAll(".delivery-pill").forEach((b) => b.classList.remove("active"));
+    const pickupBtn = document.querySelector('.delivery-pill[data-mode="pickup"]');
+    if (pickupBtn) pickupBtn.classList.add("active");
+
+    deliveryHintEl.textContent = "当前：自提点自提 · 系统推荐附近自提点";
+    await renderDeliveryInfo("pickup");
     return;
   }
 
+  deliveryHintEl.textContent = "当前：未开通配送";
+  deliveryInfoBodyEl.innerHTML = `
+    <div class="delivery-info-title">当前 ZIP 暂未开通配送</div>
+    <ul class="delivery-info-list">
+      <li>你输入的 ZIP：<span class="delivery-highlight">${zip || "--"}</span></li>
+      <li style="color:#b00020;">${reason}</li>
+      <li>如需查询你所在区域什么时候开通：<strong>加微信 nyfreshbuy</strong> 咨询</li>
+    </ul>
+  `;
+  return;
+}
  const briefZone = {
   id: zone.id || zone._id || "",
   name: zone.name || "",
@@ -1914,11 +2205,11 @@ try {
       document.querySelectorAll(".delivery-pill").forEach((b) => b.classList.remove("active"));
       areaBtn.classList.add("active");
     }
-    renderDeliveryInfo("area-group");
+    void renderDeliveryInfo("area-group");
   } else {
     const active = document.querySelector(".delivery-pill.active");
     const currentMode = active?.dataset?.mode || toUiModeKey(localStorage.getItem("freshbuy_pref_mode"));
-    renderDeliveryInfo(currentMode || "area-group");
+    void renderDeliveryInfo(currentMode || "area-group");
   }
 
   window.dispatchEvent(new CustomEvent("freshbuy:zoneChanged", { detail: { zip, zone: briefZone } }));
@@ -2010,9 +2301,34 @@ async function applyZip(zip, { silent = false, force = false } = {}) {
     saveZone({});
   }
 
-  applyZoneToUI(z, payload);
+  await applyZoneToUI(z, payload);
 }
+async function restoreHomepageDeliveryState() {
+  try {
+    const zipInput = document.getElementById("zipInput");
+    const currentZip = String(
+      getEffectiveZip(getSavedZip() || zipInput?.value || "")
+    ).trim();
 
+    const pref = localStorage.getItem("freshbuy_pref_mode");
+    const uiMode = pref ? toUiModeKey(pref) : "area-group";
+
+    // ✅ 先恢复按钮状态
+    document.querySelectorAll(".delivery-pill").forEach((b) => b.classList.remove("active"));
+    const btn = document.querySelector(`.delivery-pill[data-mode="${uiMode}"]`);
+    if (btn) btn.classList.add("active");
+
+    // ✅ 再重新拉 ZIP 对应数据
+    if (isValidZip(currentZip)) {
+      await applyZip(currentZip, { silent: true, force: true });
+    }
+
+    // ✅ 最后再强制渲染一次当前模式，防止被 applyZip 内部覆盖
+    await renderDeliveryInfo(uiMode);
+  } catch (err) {
+    console.error("restoreHomepageDeliveryState error:", err);
+  }
+}
 async function initZipAutoZone() {
   const zipInput = $("zipInput");
   const zipApplyBtn = $("zipApplyBtn");
@@ -2226,21 +2542,41 @@ window.addEventListener("DOMContentLoaded", async () => {
   await initZipAutoZone();
 
   // ✅ 恢复用户选择的配送偏好
-  const pref = localStorage.getItem("freshbuy_pref_mode");
-  if (pref) {
-    const uiMode = toUiModeKey(pref);
-    const btn = document.querySelector(`.delivery-pill[data-mode="${uiMode}"]`);
-    if (btn) btn.click();
-  } else {
-    renderDeliveryInfo("area-group");
-  }
+   const pref = localStorage.getItem("freshbuy_pref_mode");
+const uiMode = pref ? toUiModeKey(pref) : "area-group";
+
+document.querySelectorAll(".delivery-pill").forEach((b) => b.classList.remove("active"));
+const btn = document.querySelector(`.delivery-pill[data-mode="${uiMode}"]`);
+if (btn) btn.classList.add("active");
+
+await renderDeliveryInfo(uiMode);
+
     // 🚫 暂时隐藏/禁用：好友拼单按钮
   const fg = document.querySelector('.delivery-pill[data-mode="friend-group"]');
   if (fg) {
     fg.style.display = "none"; // 或者 fg.disabled = true; 取决于你用的元素类型
   }
 });
+window.addEventListener("pageshow", async (event) => {
+  try {
+    console.log("✅ index pageshow fired", {
+      persisted: !!event.persisted,
+    });
 
+    await restoreHomepageDeliveryState();
+  } catch (err) {
+    console.error("pageshow restore failed:", err);
+  }
+});
+document.addEventListener("visibilitychange", async () => {
+  if (document.visibilityState !== "visible") return;
+
+  try {
+    await restoreHomepageDeliveryState();
+  } catch (err) {
+    console.error("visibilitychange restore failed:", err);
+  }
+});
 // =========================
 // 🔍 搜索实现：过滤首页商品
 // =========================

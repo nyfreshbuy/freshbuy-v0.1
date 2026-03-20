@@ -46,6 +46,7 @@ async function apiFetch(url, options = {}) {
   if (res.status === 401) clearToken();
   return { res, data };
 }
+
 async function apiMe() {
   const tk = getToken();
   if (!tk) return null;
@@ -70,8 +71,8 @@ const searchInputEl = document.getElementById("searchInput");
 const globalSearchInput = document.getElementById("globalSearchInput");
 
 let currentCatKey = "fresh";
-let currentProductsRaw = [];      // 原始商品（不拆卡）
-let currentProductsView = [];     // 拆卡后的视图（单卖/整箱两张）
+let currentProductsRaw = [];   // 原始商品（不拆卡）
+let currentProductsView = [];  // 拆卡后的视图（单卖/整箱两张，整箱隐藏逻辑由 FBCard.expand 统一处理）
 let currentFilter = "all";
 
 // ============================
@@ -120,6 +121,11 @@ let currentFilter = "all";
 // 2) 判断商品属于哪个大类
 // ============================
 function isProductInCategory(p, catKey) {
+  const topKey = String(p?.topCategoryKey || "").trim().toLowerCase();
+  if (topKey && topKey === String(catKey || "").trim().toLowerCase()) {
+    return true;
+  }
+
   const cat = (p.category || "").toString();
   const sub = (p.subCategory || "").toString();
   const tag = (p.tag || "").toString();
@@ -154,8 +160,10 @@ function isTrueFlag(v) {
 
 function hasKeywordSimple(p, keyword) {
   if (!p) return false;
+
   const kw = String(keyword).toLowerCase();
   const norm = (v) => (v ? String(v).toLowerCase() : "");
+
   const fields = [
     p.tag,
     p.type,
@@ -165,9 +173,11 @@ function hasKeywordSimple(p, keyword) {
     p.subcategory,
     p.section,
   ];
+
   if (fields.some((f) => norm(f).includes(kw))) return true;
   if (Array.isArray(p.tags) && p.tags.some((t) => norm(t).includes(kw))) return true;
   if (Array.isArray(p.labels) && p.labels.some((t) => norm(t).includes(kw))) return true;
+
   return false;
 }
 
@@ -224,7 +234,6 @@ async function loadCategoryProducts() {
   gridEl.innerHTML = "";
   if (emptyTipEl) emptyTipEl.style.display = "none";
 
-  // ✅ 必须有渲染器
   if (!window.FBCard) {
     console.error("❌ FBCard 不存在：请检查是否引入 product_card_renderer.js");
     if (emptyTipEl) {
@@ -243,14 +252,20 @@ async function loadCategoryProducts() {
     if (!res.ok) throw new Error(data?.message || data?.msg || "加载失败");
 
     const list = window.FBCard.extractList(data);
-    const cleaned = list.filter((p) => !p.isDeleted && p.deleted !== true && p.status !== "deleted");
+    const cleaned = list.filter(
+      (p) => !p.isDeleted && p.deleted !== true && p.status !== "deleted"
+    );
 
     // ✅ 分类页：先按大类筛，再排除爆品（只保留普通商品）
-    currentProductsRaw = cleaned.filter((p) => isProductInCategory(p, currentCatKey) && !isHotProduct(p));
+    currentProductsRaw = cleaned.filter(
+      (p) => isProductInCategory(p, currentCatKey) && !isHotProduct(p)
+    );
 
     if (categoryStatEl) categoryStatEl.textContent = `共 ${currentProductsRaw.length} 个商品`;
 
-    // ✅ 拆卡：单卖/整箱两张卡（跟首页一致）
+    // ✅ 关键：
+    // 这里继续统一交给 FBCard.expand()
+    // product_card_renderer.js 里已经处理 boxVisibleOnFrontend=false 时隐藏整箱规格
     currentProductsView = window.FBCard.expand(currentProductsRaw);
 
     currentFilter = "all";
@@ -278,9 +293,10 @@ function getNum(p, keys, def = 0) {
 }
 
 function getPriceForSort(p) {
-  // ✅ 对拆卡视图：如果是整箱卡，优先用 variant price（__displayPrice）
+  // ✅ 对拆卡视图：如果是规格卡，优先用 __displayPrice
   const vPrice = p?.__displayPrice;
   if (vPrice != null && Number.isFinite(Number(vPrice))) return Number(vPrice);
+
   return getNum(p, ["price", "flashPrice", "specialPrice", "originPrice"], 0);
 }
 
@@ -330,9 +346,10 @@ function applyFilterAndRender() {
     }
     return;
   }
+
   if (emptyTipEl) emptyTipEl.style.display = "none";
 
-  // ✅ 关键：统一用公共渲染器输出卡片（HTML/overlay/动作区/跳转规则/徽章/库存上限）
+  // ✅ 统一用公共渲染器输出卡片
   window.FBCard.renderGrid(gridEl, list, { badgeText: "" });
 }
 
@@ -362,8 +379,11 @@ function applyLoggedOutUI() {
   const userProfile = document.getElementById("userProfile");
   if (userProfile) userProfile.style.display = "none";
 }
+
 async function initAuthUIFromStorage() {
-  try { localStorage.removeItem("freshbuy_is_logged_in"); } catch {}
+  try {
+    localStorage.removeItem("freshbuy_is_logged_in");
+  } catch {}
 
   const me = await apiMe().catch(() => null);
   if (me?.phone) {
@@ -372,6 +392,7 @@ async function initAuthUIFromStorage() {
     applyLoggedOutUI();
   }
 }
+
 // ============================
 // 8) DOMContentLoaded 初始化
 // ============================
@@ -381,9 +402,9 @@ document.addEventListener("DOMContentLoaded", () => {
     window.FBCard.ensureGlobalBindings();
   }
 
-  // ✅ 分类页也开启库存轮询（跟首页一样，库存变化会 clamp 数量 + 更新“已售罄/剩余”）
+  // ✅ 分类页也开启库存轮询
   if (window.FBCard && typeof window.FBCard.startStockPolling === "function") {
-    window.FBCard.startStockPolling(); // 默认 15s，可传 ms
+    window.FBCard.startStockPolling();
   }
 
   loadCategoryProducts();
@@ -403,7 +424,11 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   const btnGoHome = document.getElementById("btnGoHome");
-  if (btnGoHome) btnGoHome.addEventListener("click", () => (window.location.href = "/user/index.html"));
+  if (btnGoHome) {
+    btnGoHome.addEventListener("click", () => {
+      window.location.href = "/user/index.html";
+    });
+  }
 
   const userProfile = document.getElementById("userProfile");
   if (userProfile) {

@@ -17,8 +17,22 @@
 
     const res = await fetch(url, { headers });
     let data = null;
-    try { data = await res.json(); } catch {}
+    try {
+      data = await res.json();
+    } catch {}
     return { res, data };
+  }
+
+  async function loadCompanyHeader() {
+    try {
+      const res = await fetch("/admin/components/company_header.html", { cache: "no-store" });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const html = await res.text();
+      const el = document.getElementById("companyHeader");
+      if (el) el.innerHTML = html;
+    } catch (e) {
+      console.warn("company_header.html 加载失败：", e);
+    }
   }
 
   function qs(name) {
@@ -29,20 +43,32 @@
     const x = Number(n || 0);
     return "$" + (Number.isFinite(x) ? x.toFixed(2) : "0.00");
   }
-const LOGO_URL = "/admin/assets/images/invoice_logo.png"; // ✅ 你的logo路径
-const SITE_URL = "网站：www.nyfreshbuy.com";
-const COMPANY_ADDR = "公司地址：19926 48th Ave, Fresh Meadows, NY 11365";
-const COMPANY_TEL  = "电话: 929-707-0098";                      // ✅ 你的网站
+
+  function esc(v) {
+    return String(v ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
   const hint = document.getElementById("hint");
   const root = document.getElementById("root");
   const btnPrint = document.getElementById("btnPrint");
   const btnClose = document.getElementById("btnClose");
 
-  if (btnPrint) btnPrint.onclick = () => window.print();
-  if (btnClose) btnClose.onclick = () => history.length > 1 ? history.back() : window.close();
+  if (btnPrint) {
+    btnPrint.onclick = () => window.print();
+  }
+
+  if (btnClose) {
+    btnClose.onclick = () => (history.length > 1 ? history.back() : window.close());
+  }
 
   (async function init() {
     const id = qs("id");
+
     if (!id) {
       root.textContent = "缺少参数：id";
       return;
@@ -50,7 +76,8 @@ const COMPANY_TEL  = "电话: 929-707-0098";                      // ✅ 你的�
 
     hint.textContent = "⏳ 正在加载发票…";
 
-    const { res, data } = await apiGet(`/api/admin/invoices/${id}`);
+    const { res, data } = await apiGet(`/api/admin/invoices/${encodeURIComponent(id)}`);
+
     if (!res.ok || !data?.success) {
       root.textContent = "加载失败：" + (data?.message || res.status);
       hint.textContent = "❌";
@@ -60,44 +87,48 @@ const COMPANY_TEL  = "电话: 929-707-0098";                      // ✅ 你的�
     const inv = data.invoice || data.data || {};
     const items = Array.isArray(inv.items) ? inv.items : [];
 
-    document.title = inv.invoiceNo ? `Invoice ${inv.invoiceNo}` : "Invoice Print";
+    const invoiceNo = esc(inv.invoiceNo || "");
+    const invoiceDate = esc((inv.date || inv.createdAt || "").toString().slice(0, 10));
 
-    // 简洁打印排版（你要更像正式发票我也能再美化）
+    document.title = invoiceNo ? `Invoice ${invoiceNo}` : "Invoice Print";
+
+    const soldToName = esc(inv.soldTo?.name || "");
+    const soldToPhone = esc(inv.soldTo?.phone || "");
+    const soldToAddress = esc(inv.soldTo?.address || "");
+
+    const shipToName = esc(inv.shipTo?.name || "");
+    const shipToPhone = esc(inv.shipTo?.phone || "");
+    const shipToAddress = esc(inv.shipTo?.address || "");
+
+    const subtotal = Number(inv.subtotal ?? inv.total ?? 0);
+    const total = Number(inv.total ?? inv.grandTotal ?? inv.subtotal ?? 0);
+
     root.innerHTML = `
       <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start;">
-  <div>
-    <div style="font-size:18px;font-weight:700;">Invoice / 发票</div>
-    <div class="muted">No: ${inv.invoiceNo || ""}</div>
-    <div class="muted">Date: ${(inv.date || "").slice(0,10)}</div>
-  </div>
+        <div id="companyHeader" style="min-width:320px;"></div>
 
-  <div style="text-align:right;min-width:220px;">
-  <div style="font-size:26px;font-weight:900;line-height:1.1;">在鲜购商城</div>
-  <div style="font-size:14px;font-weight:700;margin-top:4px;">Margarita Market Inc</div>
+        <div style="text-align:right;">
+          <div style="font-size:18px;font-weight:700;">Invoice / 发票</div>
+          <div class="muted">No: ${invoiceNo}</div>
+          <div class="muted">Date: ${invoiceDate}</div>
+        </div>
+      </div>
 
-  <div class="muted" style="margin-top:2px;">${COMPANY_ADDR}</div>
-  <div class="muted" style="margin-top:2px;">${COMPANY_TEL}</div>
-
-  <div class="muted" style="margin-top:2px;">${SITE_URL}</div>
-  <div style="margin-top:8px;">
-    <img src="${LOGO_URL}" alt="logo" style="height:52px;object-fit:contain;" />
-  </div>
-</div>
-</div>
       <hr style="border:none;border-top:1px solid #e5e7eb;margin:12px 0;" />
 
       <div style="display:flex;gap:14px;flex-wrap:wrap;">
         <div style="flex:1;min-width:240px;">
           <div style="font-weight:700;margin-bottom:6px;">Sold To</div>
-          <div>${inv.soldTo?.name || ""}</div>
-          <div>${inv.soldTo?.phone || ""}</div>
-          <div class="muted" style="white-space:pre-wrap;">${inv.soldTo?.address || ""}</div>
+          <div>${soldToName}</div>
+          <div>${soldToPhone}</div>
+          <div class="muted" style="white-space:pre-wrap;">${soldToAddress}</div>
         </div>
+
         <div style="flex:1;min-width:240px;">
           <div style="font-weight:700;margin-bottom:6px;">Ship To</div>
-          <div>${inv.shipTo?.name || ""}</div>
-          <div>${inv.shipTo?.phone || ""}</div>
-          <div class="muted" style="white-space:pre-wrap;">${inv.shipTo?.address || ""}</div>
+          <div>${shipToName}</div>
+          <div>${shipToPhone}</div>
+          <div class="muted" style="white-space:pre-wrap;">${shipToAddress}</div>
         </div>
       </div>
 
@@ -111,39 +142,54 @@ const COMPANY_TEL  = "电话: 929-707-0098";                      // ✅ 你的�
           </tr>
         </thead>
         <tbody>
-          ${items.map(it => {
-  const qty = Number(it.qty || 0);
-  const unitPrice = Number(it.unitPrice || 0);
-  const line = Math.round(qty * unitPrice * 100)/100;
+          ${
+            items.length
+              ? items
+                  .map((it) => {
+                    const qty = Number(it.qty || 0);
+                    const unitPrice = Number(it.unitPrice || 0);
+                    const line = Math.round(qty * unitPrice * 100) / 100;
 
-  // ✅ 规格显示：description + (variantLabel)
-  const baseDesc = (it.description || "").toString();
-  const vlab = (it.variantLabel || "").toString().trim();
-  const showDesc = vlab ? `${baseDesc} (${vlab})` : baseDesc;
+                    const baseDesc = (it.description || "").toString();
+                    const vlab = (it.variantLabel || "").toString().trim();
+                    const showDesc = vlab ? `${baseDesc} (${vlab})` : baseDesc;
 
-  return `
-    <tr>
-      <td>${showDesc}</td>
-      <td>${qty}</td>
-      <td>${money(unitPrice)}</td>
-      <td>${money(line)}</td>
-    </tr>`;
-}).join("")}
+                    return `
+                      <tr>
+                        <td>${esc(showDesc)}</td>
+                        <td>${qty}</td>
+                        <td>${money(unitPrice)}</td>
+                        <td>${money(line)}</td>
+                      </tr>
+                    `;
+                  })
+                  .join("")
+              : `
+                <tr>
+                  <td colspan="4" class="muted" style="text-align:center;padding:20px 8px;">
+                    暂无商品明细
+                  </td>
+                </tr>
+              `
+          }
         </tbody>
       </table>
 
       <div style="display:flex;justify-content:flex-end;margin-top:10px;">
         <div style="min-width:260px;">
           <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
-            <span>Subtotal</span><b>${money(inv.subtotal ?? inv.total ?? 0)}</b>
+            <span>Subtotal</span>
+            <b>${money(subtotal)}</b>
           </div>
           <div style="display:flex;justify-content:space-between;font-size:18px;">
-            <span>Total</span><b>${money(inv.total ?? inv.grandTotal ?? inv.subtotal ?? 0)}</b>
+            <span>Total</span>
+            <b>${money(total)}</b>
           </div>
         </div>
       </div>
     `;
 
+    await loadCompanyHeader();
     hint.textContent = "✅ 可打印";
   })();
 })();

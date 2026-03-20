@@ -1,15 +1,51 @@
+<!-- FILE: frontend/admin/recharge_audit.html -->
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
   <title>Zelle 充值审核 - Freshbuy Admin</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <link rel="stylesheet" href="../user/assets/css/main.css" />
+
+  <!-- ✅ 后台统一样式（包含 sidebar 样式） -->
+  <link rel="stylesheet" href="/admin/assets/css/admin.css" />
+
   <style>
-    body { background:#f3f4f6; }
-    .wrap{ max-width: 980px; margin: 20px auto; padding: 0 14px; }
+    body { margin:0; background:#f3f4f6; }
+
+    /* ===============================
+       ✅ Sidebar Layout Fix
+       - admin_sidebar.js 会注入 #adminSidebar
+       - sidebar 默认宽度 240px
+    =============================== */
+    #adminSidebar{
+      position: fixed;
+      left: 0;
+      top: 0;
+      width: 240px;
+      height: 100vh;
+      overflow: auto;
+      z-index: 9999;
+    }
+
+    /* ✅ 主内容给 sidebar 留位置 */
+    .admin-main { margin-left: 240px; }
+
+    /* ✅ 手机端：sidebar 不固定，不留左边空 */
+    @media (max-width: 768px) {
+      #adminSidebar{
+        position: static;
+        width: auto;
+        height: auto;
+      }
+      .admin-main { margin-left: 0; }
+    }
+
+    .wrap{ max-width: 980px; margin: 20px auto; padding: 0 14px 60px; }
     .card{ background:#fff; border-radius:16px; box-shadow:0 6px 20px rgba(0,0,0,.08); padding:16px; }
-    .title{ font-size:18px; font-weight:800; color:#111827; margin-bottom:12px; display:flex; justify-content:space-between; gap:10px; align-items:center; }
+    .title{
+      font-size:18px; font-weight:800; color:#111827; margin-bottom:12px;
+      display:flex; justify-content:space-between; gap:10px; align-items:center; flex-wrap:wrap;
+    }
     .btn{ border:0; border-radius:12px; padding:10px 12px; cursor:pointer; font-weight:800; }
     .btn-ghost{ background:#eef2ff; color:#111827; }
     table{ width:100%; border-collapse:collapse; font-size:14px; }
@@ -27,34 +63,40 @@
 </head>
 
 <body>
-  <div class="wrap">
-    <div class="card">
-      <div class="title">
-        <div>💸 Zelle 充值审核（Pending） <span class="badge" id="countBadge">0</span></div>
-        <div class="topbar">
-          <input class="note" id="adminNote" placeholder="备注（可选，例如：已到账 1/25）" />
-          <button class="btn btn-ghost" id="btnRefresh">刷新</button>
+  <!-- ✅ 必须：sidebar 注入容器 -->
+  <div id="adminSidebar"></div>
+
+  <!-- ✅ 主内容：让出 sidebar 的区域 -->
+  <main class="admin-main">
+    <div class="wrap">
+      <div class="card">
+        <div class="title">
+          <div>💸 Zelle 充值审核（Pending） <span class="badge" id="countBadge">0</span></div>
+          <div class="topbar">
+            <input class="note" id="adminNote" placeholder="备注（可选，例如：已到账 1/25）" />
+            <button class="btn btn-ghost" id="btnRefresh">刷新</button>
+          </div>
+        </div>
+
+        <div class="muted" id="statusText">加载中…</div>
+
+        <div style="overflow:auto; margin-top:10px;">
+          <table>
+            <thead>
+              <tr>
+                <th>时间</th>
+                <th>用户</th>
+                <th>金额</th>
+                <th>备注（ref/memo）</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="tbody"></tbody>
+          </table>
         </div>
       </div>
-
-      <div class="muted" id="statusText">加载中…</div>
-
-      <div style="overflow:auto; margin-top:10px;">
-        <table>
-          <thead>
-            <tr>
-              <th>时间</th>
-              <th>用户</th>
-              <th>金额</th>
-              <th>备注（ref/memo）</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody id="tbody"></tbody>
-        </table>
-      </div>
     </div>
-  </div>
+  </main>
 
 <script>
   // ✅ 管理员 token 兜底（按你项目可能的 key 来）
@@ -110,7 +152,6 @@
     countBadge.textContent = "0";
 
     try{
-      // ✅ 后端：{ success, total, items }，items = Recharge 原始结构，userId populate 后是对象
       const data = await api("/api/admin/recharge/pending?limit=200");
       const items = data.items || [];
 
@@ -124,7 +165,7 @@
 
       tbody.innerHTML = items.map(r => {
         const rid = r._id || r.id || "";
-        const u = r.userId || {}; // populate 后：{_id,name,phone}
+        const u = r.userId || {};
         const userLine = (u.name || "") + (u.phone ? (" / " + u.phone) : "");
         const userIdText = (u._id || r.userId || "");
         const amt = Number(r.amount || 0);
@@ -166,7 +207,6 @@
     const act = btn.dataset.act;
     const amount = Number(tr.dataset.amt || 0) || 0;
 
-    // ✅ 二次确认
     if(!strongConfirm(act, amount)) return;
 
     const note = (adminNote.value || "").trim();
@@ -181,11 +221,7 @@
           ? ("/api/admin/recharge/" + encodeURIComponent(id) + "/approve")
           : ("/api/admin/recharge/" + encodeURIComponent(id) + "/reject");
 
-      await api(url, {
-        method:"POST",
-        body: JSON.stringify({ note })
-      });
-
+      await api(url, { method:"POST", body: JSON.stringify({ note }) });
       await load();
     }catch(e){
       alert(e.message || "操作失败");
@@ -195,8 +231,10 @@
   });
 
   document.getElementById("btnRefresh").addEventListener("click", load);
-
   load();
 </script>
+
+<!-- ✅ 最后加载：sidebar 注入脚本（建议加版本号，避免缓存） -->
+<script src="/admin/assets/js/admin_sidebar.js?v=20260227_1"></script>
 </body>
 </html>

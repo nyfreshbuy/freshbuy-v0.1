@@ -3,11 +3,20 @@
 
 import express from "express";
 import Product from "../models/product.js";
+import User from "../models/user.js";               // ✅ 新增
+import { requireLogin } from "../middlewares/auth.js"; // ✅ 新增
 // 如果你有管理员鉴权，可打开：import { requireAdmin } from "../middlewares/admin.js";
 
 const router = express.Router();
 router.use(express.json());
-
+// ✅ 简单管理员校验（如果你项目里已有 requireAdmin，就用你自己的替换它）
+function requireAdmin(req, res, next) {
+  const role = String(req.user?.role || "").toLowerCase();
+  if (role !== "admin") {
+    return res.status(403).json({ success: false, message: "无权限（仅管理员）" });
+  }
+  next();
+}
 // router.use(requireAdmin); // 你如果已经有管理员鉴权，就打开这行
 
 // ========== 工具：统一返回结构 ==========

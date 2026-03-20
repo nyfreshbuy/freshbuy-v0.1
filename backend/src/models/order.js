@@ -88,6 +88,7 @@ const orderItemSchema = new mongoose.Schema(
     // ✅ 兼容旧字段（有些前端会传 taxable / isSpecial 等）
     taxable: { type: Boolean, default: false },
     isSpecial: { type: Boolean, default: false },
+    hotFlag: { type: Boolean, default: false },
     tag: { type: String, default: "" },
     type: { type: String, default: "" },
 
@@ -98,11 +99,34 @@ const orderItemSchema = new mongoose.Schema(
     deposit: { type: Number, default: 0 }, // 每个基础单位押金（例如 2）
     specialQty: { type: Number, default: 0 },
     specialTotalPrice: { type: Number, default: 0 },
+    // =========================
+// ✅ 成本 & 利润（FIFO）
+// =========================
+costLayers: [
+  {
+    batchId: { type: String, default: "" },
+    qty: { type: Number, default: 0 },
+    unitCost: { type: Number, default: 0 },
+    cost: { type: Number, default: 0 }
+  }
+],
+
+batchUnitsConsumed: { type: Number, default: 0 },
+
+// 每库存单位成本（FIFO平均）
+unitCostSnapshot: { type: Number, default: 0 },
+
+// 总成本
+totalCost: { type: Number, default: 0 },
+
+// 利润 = 收入 - 成本
+grossProfit: { type: Number, default: 0 },
   },
   { _id: false }
+  
 );
 
-// ✅ 新增：预扣库存明细（取消/失败时回滚用）
+// ✅ 预扣库存明细（取消/失败时回滚用）
 const stockReserveItemSchema = new mongoose.Schema(
   {
     productId: { type: mongoose.Schema.Types.ObjectId, ref: "Product", index: true },
@@ -135,11 +159,45 @@ const orderSchema = new mongoose.Schema(
     customerName: { type: String, default: "" },
     customerPhone: { type: String, default: "", index: true },
 
-    deliveryType: { type: String, default: "home", index: true },
+    // ✅ 履约方式：home / leader_pickup
+    deliveryType: {
+      type: String,
+      enum: ["home", "leader_pickup"],
+      default: "home",
+      index: true,
+    },
 
+    // =========================
+    // 自提点真实归属字段
+    // 位置：deliveryType 后面、deliveryMode 前面
+    // =========================
+    pickupPointId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "PickupPoint",
+      default: null,
+      index: true,
+    },
+    pickupPointName: { type: String, default: "" },
+    pickupPointCode: { type: String, default: "", index: true },
+
+    pickupDisplayArea: { type: String, default: "" },
+    pickupMaskedAddress: { type: String, default: "" },
+    pickupTimeText: { type: String, default: "" },
+
+    // 真实地址快照（后台 / 团长可见）
+    pickupAddressLine1: { type: String, default: "" },
+    pickupAddressLine2: { type: String, default: "" },
+    pickupCity: { type: String, default: "" },
+    pickupState: { type: String, default: "" },
+    pickupZip: { type: String, default: "", index: true },
+
+    pickupLeaderName: { type: String, default: "" },
+    pickupLeaderPhone: { type: String, default: "" },
+
+    // ✅ 业务批次模式，不直接表示自提/送货
     deliveryMode: {
       type: String,
-      enum: ["normal", "groupDay", "dealsDay", "friendGroup"],
+      enum: ["normal", "pickup", "groupDay", "dealsDay", "friendGroup"],
       default: "normal",
       index: true,
     },
@@ -164,7 +222,16 @@ const orderSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["pending", "paid", "packing", "shipping", "done", "completed", "cancel", "cancelled"],
+      enum: [
+        "pending",
+        "paid",
+        "packing",
+        "shipping",
+        "done",
+        "completed",
+        "cancel",
+        "cancelled",
+      ],
       default: "pending",
       index: true,
     },
@@ -188,9 +255,10 @@ const orderSchema = new mongoose.Schema(
         index: true,
       },
 
+      // ✅ 支持现金支付
       method: {
         type: String,
-        enum: ["stripe", "wallet", "zelle", "none"],
+        enum: ["stripe", "wallet", "zelle", "cash", "none"],
         default: "none",
         index: true,
       },
@@ -221,13 +289,22 @@ const orderSchema = new mongoose.Schema(
         confirmedAt: Date,
       },
 
+      // ✅ 现金支付扩展信息
+      cash: {
+        paid: { type: Number, default: 0 },
+        receivedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+        receivedByName: { type: String, default: "" },
+        receivedAt: { type: Date },
+        note: { type: String, default: "" },
+      },
+
       lastError: { type: String, default: "" },
       paidAt: Date,
 
       amountSubtotal: { type: Number, default: 0 },
       amountDeliveryFee: { type: Number, default: 0 },
       amountTax: { type: Number, default: 0 },
-      amountDeposit: { type: Number, default: 0 }, // ✅ NEW
+      amountDeposit: { type: Number, default: 0 },
       amountPlatformFee: { type: Number, default: 0 },
       amountTip: { type: Number, default: 0 },
       amountDiscount: { type: Number, default: 0 },
@@ -255,7 +332,7 @@ const orderSchema = new mongoose.Schema(
     taxableSubtotal: { type: Number, default: 0 },
     salesTax: { type: Number, default: 0 },
 
-    depositTotal: { type: Number, default: 0 }, // ✅ NEW（押金总额）
+    depositTotal: { type: Number, default: 0 },
 
     platformFee: { type: Number, default: 0 },
     tipFee: { type: Number, default: 0 },
@@ -295,35 +372,54 @@ const orderSchema = new mongoose.Schema(
     },
 
     deliveredAt: { type: Date, index: true },
+
     // ✅ 送达照片（司机上传）
-proofPhotos: {
-  type: [
-    {
-      url: { type: String, default: "" },
-      uploadedAt: { type: Date },
-      uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    proofPhotos: {
+      type: [
+        {
+          url: { type: String, default: "" },
+          uploadedAt: { type: Date },
+          uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+        },
+      ],
+      default: [],
     },
-  ],
-  default: [],
-},
 
-// ✅ 送达操作者/备注
-deliveredBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", index: true },
-deliveryNote: { type: String, default: "" },
+    // ✅ 送达操作者/备注
+    deliveredBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", index: true },
+    deliveryNote: { type: String, default: "" },
 
-// ✅ 送达短信记录（mark-delivered 里会写）
-deliverySms: {
-  sentAt: { type: Date },
-  to: { type: String, default: "" },
-  photoUrl: { type: String, default: "" },
-},
+    // ✅ 送达短信记录（mark-delivered 里会写）
+    deliverySms: {
+      sentAt: { type: Date },
+      to: { type: String, default: "" },
+      photoUrl: { type: String, default: "" },
+    },
+
+    // =========================================================
+    // 👑 团长佣金（推荐团长）结算快照
+    // =========================================================
+    leaderCommission: {
+      settled: { type: Boolean, default: false, index: true },
+      settledAt: { type: Date },
+      amount: { type: Number, default: 0 },
+
+      leaderId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        index: true,
+        default: null,
+      },
+      leaderCode: { type: String, default: "" },
+
+      buyerInvitedByCode: { type: String, default: "" },
+    },
+
     settlementGenerated: { type: Boolean, default: false, index: true },
     settlementId: { type: mongoose.Schema.Types.ObjectId, ref: "Settlement", index: true },
   },
   {
     timestamps: true,
-
-    // ✅ 关键：让 virtual（remark）在返回 JSON/对象时也能看到
     toJSON: { virtuals: true },
     toObject: { virtuals: true },
   }
@@ -357,14 +453,42 @@ orderSchema.index({ "payment.intentKey": 1 });
 
 orderSchema.index({ "stockReserve.productId": 1 });
 orderSchema.index({ "stockReserve.variantKey": 1 });
+orderSchema.index({ "leaderCommission.settled": 1, createdAt: -1 });
+orderSchema.index({ "leaderCommission.leaderId": 1, createdAt: -1 });
+orderSchema.index({ pickupPointId: 1, createdAt: -1 });
+orderSchema.index({ pickupPointCode: 1, deliveryDate: 1, status: 1 });
 
 // =========================
 // pre-validate：金额 / 批次 / 派单统一
 // ✅ 修复：把押金写入 depositTotal + payment.amountDeposit
 // ✅ 修复：subtotal/taxableSubtotal 用特价口径（N for $X）
-// ✅ 修复：Stripe 平台费 = 0.5 + 2%*subtotal；钱包=0
+// ✅ 修复：Stripe 平台费 = 0.5 + 2%*subtotal；其他支付=0
+// ✅ 兼容：如果前端误传 deliveryMode=pickup，自动纠正为
+//    deliveryType=leader_pickup + deliveryMode=normal
+// ✅ 兼容：自提点订单 + cash 时保持 unpaid，等待线下收款
 // =========================
 orderSchema.pre("validate", function () {
+  // 兼容旧前端：把 pickup 从 deliveryMode 纠正到 deliveryType
+  if (this.deliveryMode === "pickup") {
+    this.deliveryType = "leader_pickup";
+    this.deliveryMode = "normal";
+  }
+
+  // 如果已经选择自提点，也自动标记为 leader_pickup
+  if (
+    this.pickupPointId ||
+    this.pickupPointCode ||
+    this.pickupPointName ||
+    this.pickupMaskedAddress
+  ) {
+    this.deliveryType = "leader_pickup";
+  }
+
+  // 兼容：现金支付只能用于自提点
+  if (this.payment?.method === "cash" && this.deliveryType !== "leader_pickup") {
+    this.invalidate("payment.method", "cash payment is only allowed for pickup orders");
+  }
+
   if (this.packBatchId && this.status === "paid") {
     this.status = "packing";
   }
@@ -375,7 +499,8 @@ orderSchema.pre("validate", function () {
     this.deliveryDate = startOfDay(this.deliveryDate);
   }
 
-  const zoneId = this.dispatch?.zoneId || this.fulfillment?.zoneId || this.address?.zoneId || "";
+  const zoneId =
+    this.dispatch?.zoneId || this.fulfillment?.zoneId || this.address?.zoneId || "";
 
   const ymd = toDateOnlyYMD(this.deliveryDate);
   const batchKey = `${ymd}|zone:${zoneId || ""}`;
@@ -422,7 +547,7 @@ orderSchema.pre("validate", function () {
 
   this.salesTax = round2(this.taxableSubtotal * Number(this.salesTaxRate || 0));
 
-  // ✅ 平台费：Stripe 才收（0.5 + 2% * subtotal）
+  // ✅ 平台费：只有 Stripe 才收
   const method = this.payment?.method || "none";
   const shouldPlatformFee = method === "stripe";
   this.platformFee = shouldPlatformFee ? round2(0.5 + this.subtotal * 0.02) : 0;
@@ -445,11 +570,21 @@ orderSchema.pre("validate", function () {
   this.payment.amountSubtotal = this.subtotal;
   this.payment.amountDeliveryFee = this.deliveryFee;
   this.payment.amountTax = this.salesTax;
-  this.payment.amountDeposit = this.depositTotal; // ✅ NEW
+  this.payment.amountDeposit = this.depositTotal;
   this.payment.amountPlatformFee = this.platformFee;
   this.payment.amountTip = this.tipFee;
   this.payment.amountDiscount = this.discount;
   this.payment.amountTotal = this.totalAmount;
+
+  // ✅ 现金支付默认保持未支付，等后台/团长收款后再改 paid
+  if (this.payment.method === "cash") {
+    if (!this.payment.status || this.payment.status === "requires_payment_method") {
+      this.payment.status = "unpaid";
+    }
+    if (!Number.isFinite(Number(this.payment.paidTotal))) {
+      this.payment.paidTotal = 0;
+    }
+  }
 
   if (!this.payment.intentKey && this.payment.idempotencyKey) {
     this.payment.intentKey = this.payment.idempotencyKey;
@@ -461,7 +596,10 @@ orderSchema.pre("validate", function () {
   if (!this.payment.stripePaymentIntentId && this.payment.stripe?.intentId) {
     this.payment.stripePaymentIntentId = this.payment.stripe.intentId;
   }
-  if (this.payment.stripePaymentIntentId && (!this.payment.stripe || !this.payment.stripe.intentId)) {
+  if (
+    this.payment.stripePaymentIntentId &&
+    (!this.payment.stripe || !this.payment.stripe.intentId)
+  ) {
     this.payment.stripe ||= {};
     this.payment.stripe.intentId = this.payment.stripePaymentIntentId;
   }

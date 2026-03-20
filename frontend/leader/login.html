@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>团长登录 - Freshbuy</title>
+  <link rel="stylesheet" href="/leader/assets/css/leader.css" />
+  <style>
+    body{
+      min-height:100vh;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background:#f3f4f6;
+      margin:0;
+    }
+    .login-wrap{
+      width:100%;
+      max-width:420px;
+      padding:16px;
+    }
+    .login-card{
+      background:#fff;
+      border-radius:16px;
+      box-shadow:0 8px 24px rgba(0,0,0,.08);
+      padding:24px;
+    }
+    .login-title{
+      font-size:24px;
+      font-weight:700;
+      margin:0 0 8px;
+      text-align:center;
+    }
+    .login-subtitle{
+      color:#6b7280;
+      font-size:14px;
+      text-align:center;
+      margin:0 0 20px;
+    }
+    .form-item{
+      margin-bottom:14px;
+    }
+    .form-label{
+      display:block;
+      margin-bottom:6px;
+      font-size:14px;
+      color:#374151;
+    }
+    .form-input{
+      width:100%;
+      height:44px;
+      border:1px solid #d1d5db;
+      border-radius:10px;
+      padding:0 12px;
+      font-size:15px;
+      outline:none;
+      box-sizing:border-box;
+      background:#fff;
+    }
+    .form-input:focus{
+      border-color:#111;
+    }
+    .login-btn{
+      width:100%;
+      height:46px;
+      border:none;
+      border-radius:10px;
+      background:#111;
+      color:#fff;
+      font-size:16px;
+      font-weight:600;
+      cursor:pointer;
+    }
+    .login-btn:disabled{
+      opacity:.65;
+      cursor:not-allowed;
+    }
+    .error-box{
+      min-height:20px;
+      margin-top:12px;
+      color:#dc2626;
+      font-size:14px;
+      text-align:center;
+    }
+    .back-link{
+      margin-top:14px;
+      text-align:center;
+      font-size:14px;
+    }
+    .back-link a{
+      color:#111;
+      text-decoration:none;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-wrap">
+    <div class="login-card">
+      <h1 class="login-title">Freshbuy 团长登录</h1>
+      <p class="login-subtitle">请使用团长账号登录工作台</p>
+
+      <div class="form-item">
+        <label class="form-label" for="phone">手机号</label>
+        <input id="phone" class="form-input" type="text" placeholder="请输入手机号" autocomplete="username" />
+      </div>
+
+      <div class="form-item">
+        <label class="form-label" for="password">密码</label>
+        <input id="password" class="form-input" type="password" placeholder="请输入密码" autocomplete="current-password" />
+      </div>
+
+      <button id="loginBtn" class="login-btn" type="button">登录</button>
+
+      <div id="errorBox" class="error-box"></div>
+
+      <div class="back-link">
+        <a href="/user/index.html">返回用户首页</a>
+      </div>
+    </div>
+  </div>
+
+  <script src="/leader/assets/js/leader_login.js"></script>
+</body>
+</html>

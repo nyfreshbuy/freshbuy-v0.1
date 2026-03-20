@@ -24,26 +24,54 @@ function cleanText(s) {
 // ---------- 金额计算 ----------
 function computeTotals(items = []) {
   let subtotal = 0;
+  let totalCost = 0;
+
   const clean = (items || []).map((it) => {
     const qty = Number(it.qty || 0);
     const unitPrice = Number(it.unitPrice || 0);
+
+    // ✅ 新增：成本（前端填 or 默认 0）
+    const unitCost = Number(it.unitCost || 0);
+
     const lineTotal = Math.round(qty * unitPrice * 100) / 100;
+    const lineCost = Math.round(qty * unitCost * 100) / 100;
+    const grossProfit = Math.round((lineTotal - lineCost) * 100) / 100;
+
     subtotal += lineTotal;
+    totalCost += lineCost;
 
     return {
       ...it,
       qty,
       unitPrice,
+      unitCost,
+
       lineTotal,
-      // unitCount 先给兜底，后面会用 DB 校正
+      totalCost: lineCost,
+      grossProfit,
+
+      // 保留原逻辑
       unitCount: Math.max(1, Math.floor(Number(it.unitCount || 1))),
     };
   });
 
   subtotal = Math.round(subtotal * 100) / 100;
-  return { items: clean, subtotal, total: subtotal };
-}
+  totalCost = Math.round(totalCost * 100) / 100;
+  const grossProfit = Math.round((subtotal - totalCost) * 100) / 100;
+  const grossMargin =
+    subtotal > 0 ? Math.round((grossProfit / subtotal) * 10000) / 100 : 0;
 
+  return {
+    items: clean,
+    subtotal,
+    total: subtotal,
+
+    // ✅ 新增
+    totalCost,
+    grossProfit,
+    grossMargin,
+  };
+}
 // ---------- 当天递增 invoiceNo：YYYYMMDD-001 ----------
 async function genInvoiceNo(dateInput) {
   const now = dateInput ? new Date(dateInput) : new Date();
@@ -157,9 +185,14 @@ router.post("/", async (req, res) => {
 
     // 先算钱
     const calc = computeTotals(body.items || []);
-    body.items = calc.items;
-    body.subtotal = calc.subtotal;
-    body.total = calc.total;
+
+body.items = calc.items;
+body.subtotal = calc.subtotal;
+body.total = calc.total;
+
+body.totalCost = calc.totalCost;
+body.grossProfit = calc.grossProfit;
+body.grossMargin = calc.grossMargin;
 
     // ✅ 用 DB 校正 unitCount / description / productCode
     body.items = await normalizeItemsByDB(body.items, session);
@@ -201,9 +234,15 @@ router.put("/:id", async (req, res) => {
     }
 
     const calc = computeTotals(body.items || []);
-    body.items = calc.items;
-    body.subtotal = calc.subtotal;
-    body.total = calc.total;
+
+body.items = calc.items;
+body.subtotal = calc.subtotal;
+body.total = calc.total;
+
+// ✅ 新增
+body.totalCost = calc.totalCost;
+body.grossProfit = calc.grossProfit;
+body.grossMargin = calc.grossMargin;
 
     // 2) DB 校正 unitCount
     body.items = await normalizeItemsByDB(body.items, session);

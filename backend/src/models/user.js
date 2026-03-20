@@ -120,6 +120,35 @@ const userSchema = new mongoose.Schema(
     },
 
     // =========================
+    // 👑 团长（Leader）字段（新增）
+    // =========================
+    // 团长邀请码（比如 "L9K3P2"）
+    leaderCode: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      index: true,
+      unique: true,
+      sparse: true, // ✅ 允许非团长为空，不会触发 unique 冲突
+      default: "",
+    },
+
+    // 当前用户绑定的推荐团长（注册时写入）
+    invitedByLeaderId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+      index: true,
+    },
+    invitedByLeaderCode: { type: String, default: "" },
+
+    // 团长佣金余额
+    leaderCommissionBalance: { type: Number, default: 0, min: 0 },
+
+    // 累计赚到的佣金（统计用）
+    leaderTotalCommissionEarned: { type: Number, default: 0, min: 0 },
+
+    // =========================
     // ✅ 账号设置
     // =========================
     accountSettings: {
@@ -168,6 +197,17 @@ userSchema.virtual("defaultAddress").get(function () {
 
   return null;
 });
+
+// ✅ 是否团长（前端/接口直接用）
+userSchema.virtual("isLeader").get(function () {
+  return this.role === "leader";
+});
+
+// ✅ leaderCode 只允许 leader 有（非 leader 必须为空）
+userSchema.path("leaderCode").validate(function (v) {
+  if (this.role !== "leader") return !v;
+  return true;
+}, "leaderCode only allowed when role is leader");
 
 // =====================================================
 // 密码加密工具：避免重复 hash

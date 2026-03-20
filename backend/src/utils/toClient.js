@@ -47,9 +47,10 @@ export function toClient(p) {
       : [],
 
     // stock
-    stock: Number(o.stock || 0),
-    minStock: o.minStock == null ? undefined : Number(o.minStock),
-    allowZeroStock: o.allowZeroStock !== false,
+stock: Number(o.stock || 0),
+minStock: o.minStock == null ? undefined : Number(o.minStock),
+allowZeroStock: o.allowZeroStock !== false,
+boxVisibleOnFrontend: o.boxVisibleOnFrontend !== false,
 
     // status
     isActive: o.isActive !== false,

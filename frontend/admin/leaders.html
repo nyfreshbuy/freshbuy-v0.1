@@ -60,22 +60,22 @@
           <section class="admin-grid">
             <article class="admin-card admin-card-ghost">
               <div class="admin-card-title">团长总数</div>
-              <div class="admin-card-value">42</div>
+              <div class="admin-card-value" id="leaderCount">0</div>
               <div class="admin-card-sub">本月新增 6 个团长</div>
             </article>
             <article class="admin-card admin-card-ghost">
               <div class="admin-card-title">本月团长贡献 GMV</div>
-              <div class="admin-card-value">$82,430</div>
+              <div class="admin-card-value" id="leaderGmv">$0.00</div>
               <div class="admin-card-sub">占整体 GMV 的 64.2%</div>
             </article>
             <article class="admin-card admin-card-ghost">
               <div class="admin-card-title">待结算佣金</div>
-              <div class="admin-card-value">$6,280</div>
+              <div class="admin-card-value" id="leaderPendingCommission">$0.00</div>
               <div class="admin-card-sub">本周内需结算</div>
             </article>
             <article class="admin-card admin-card-ghost">
               <div class="admin-card-title">活跃团长（近 30 日）</div>
-              <div class="admin-card-value">27</div>
+              <div class="admin-card-value" id="leaderActiveCount">0</div>
               <div class="admin-card-sub">有下单或分享行为</div>
             </article>
           </section>
@@ -131,73 +131,19 @@
                     <th>操作</th>
                   </tr>
                 </thead>
-                <tbody>
-                  <tr>
-                    <td>L0001</td>
-                    <td>王团长</td>
-                    <td>+1 917-***-8888</td>
-                    <td>Flushing Main St 自提点</td>
-                    <td>326</td>
-                    <td>$28,430</td>
-                    <td>5%</td>
-                    <td>$1,280.50</td>
-                    <td>
-                      <span class="admin-tag admin-tag-success">正常</span>
-                    </td>
-                    <td>
-                      <button class="admin-btn admin-btn-ghost">
-                        明细
-                      </button>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td>L0002</td>
-                    <td>Liqi</td>
-                    <td>+1 646-***-5566</td>
-                    <td>Fresh Meadows 社区</td>
-                    <td>128</td>
-                    <td>$12,890</td>
-                    <td>6%</td>
-                    <td>$620.00</td>
-                    <td>
-                      <span class="admin-tag admin-tag-success">正常</span>
-                    </td>
-                    <td>
-                      <button class="admin-btn admin-btn-ghost">
-                        明细
-                      </button>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td>L0003</td>
-                    <td>Amy</td>
-                    <td>+1 347-***-9911</td>
-                    <td>Bayside 自提点</td>
-                    <td>56</td>
-                    <td>$4,320</td>
-                    <td>4%</td>
-                    <td>$130.00</td>
-                    <td>
-                      <span class="admin-tag admin-tag-warning">待结算</span>
-                    </td>
-                    <td>
-                      <button class="admin-btn admin-btn-ghost">
-                        明细
-                      </button>
-                    </td>
-                  </tr>
-                </tbody>
+                <tbody id="leadersTableBody">
+  <tr>
+    <td colspan="10" style="text-align:center; padding: 24px; color: #9ca3af;">
+      正在加载团长数据...
+    </td>
+  </tr>
+</tbody>
               </table>
             </div>
 
             <div class="admin-pagination">
-              <span>共 42 位团长（示例）</span>
-              <button class="admin-btn admin-btn-ghost">«</button>
-              <button class="admin-btn admin-btn-primary">1</button>
-              <button class="admin-btn admin-btn-ghost">2</button>
-              <button class="admin-btn admin-btn-ghost">3</button>
-              <button class="admin-btn admin-btn-ghost">»</button>
-            </div>
+  <span id="leadersPaginationText">共 0 位团长</span>
+</div>
           </section>
         </main>
       </div>
@@ -207,5 +153,6 @@
     <!-- ✅ 统一 sidebar 注入脚本（必须加） -->
     <script src="/admin/assets/js/admin_sidebar.js"></script>
     <script src="assets/js/admin.js"></script>
+    <script src="/admin/assets/js/admin_leaders.js"></script>
   </body>
 </html>
