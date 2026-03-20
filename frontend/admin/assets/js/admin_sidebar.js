@@ -26,6 +26,7 @@
         { text: "营销中心", href: "/admin/marketing.html", icon: "%" },
         { text: "横幅广告", href: "/admin/banner_edit.html", icon: "🖼️" },
         { text: "结算管理", href: "/admin/settlements.html", icon: "$" },
+        { text: "库存净资产", href: "/admin/inventory_assets.html", icon: "💰" },
         { text: "利润中心", href: "/admin/profit_center.html", icon: "📊" },
         { text: "后台充值", href: "/admin/recharge.html", icon: "💰" },
         { text: "Zelle充值审核", href: "/admin/recharge_audit.html", icon: "✅" },
