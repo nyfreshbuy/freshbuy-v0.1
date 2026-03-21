@@ -68,6 +68,7 @@ import adminLeadersRouter from "./routes/admin_leaders.js";
 import leaderRouter from "./routes/leader.js";
 import publicPickupPointsRouter from "./routes/public_pickup_points.js";
 import adminProfitRouter from "./routes/admin_profit.js";
+import adminInventoryRouter from "./routes/admin_inventory.js";
 // =======================
 // ESM 环境下的 __dirname
 // =======================
@@ -223,7 +224,7 @@ console.log("✅ admin_auth 已挂载到 /api/admin/auth");
 app.use("/api/admin/dispatch", adminDispatchRouter);
 
 app.use("/api/site-config", siteConfigRouter);
-
+app.use("/api/admin/inventory", adminInventoryRouter);
 // 后台：管理员充值
 app.use("/api/admin/recharge", adminRechargeRouter);
 console.log("✅ admin_recharge 已挂载到 /api/admin/recharge");
