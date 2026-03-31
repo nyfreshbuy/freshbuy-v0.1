@@ -581,39 +581,39 @@ pageList.forEach((p) => {
 
       const tr = document.createElement("tr");
       tr.innerHTML = `
-        <td>${p.id || "—"}</td>
-        <td>${imgHtml}</td>
-        <td>${p.name || "—"}</td>
-        <td>${p.category || "—"}</td>
-        <td>${renderType(p.type)}</td>
-        <td>
-          ${p.tag ? `<span class="tag-pill">${p.tag}</span>` : ""}
-          ${renderFlags(p)}
-        </td>
-        <td>${renderSpecialCell(p)}</td>
-        <td>
-  $${money(p.originPrice || 0)}
-  ${Number(p.deposit || 0) > 0 ? `<div style="font-size:11px;color:#9ca3af;margin-top:2px;">押金：$${money(p.deposit)}</div>` : ""}
-  ${renderVariantPrices(p)}
-</td>
-        <td>${p.stock || 0}</td>
-        <td>${renderStatus(p)}</td>
-        <td>
-          <button class="admin-btn admin-btn-ghost" onclick="editProduct('${mongoId}')">编辑</button>
-          <button class="admin-btn admin-btn-ghost" onclick="toggleProductStatus('${mongoId}','${p.status || "on"}')">${
-            (p.status || "on") === "off" ? "上架" : "下架"
-          }</button>
-          <button class="admin-btn admin-btn-ghost" onclick="goToPurchase('${mongoId}')">进货/成本</button>
-          <button class="admin-btn admin-btn-ghost" onclick="deleteProduct('${mongoId}')">删除</button>
-        </td>
-      `;
+  <td>${p.id || "—"}</td>
+  <td>${imgHtml}</td>
+  <td>${p.name || "—"}</td>
+  <td>${p.category || "—"}</td>
+  <td>${renderType(p.type)}</td>
+  <td>
+    ${p.tag ? `<span class="tag-pill">${p.tag}</span>` : ""}
+    ${renderFlags(p)}
+  </td>
+  <td>${renderSpecialCell(p)}</td>
+  <td>
+    $${money(p.originPrice || 0)}
+    ${renderVariantPrices(p)}
+  </td>
+  <td>${Number(p.deposit || 0) > 0 ? `$${money(p.deposit)}` : "—"}</td>
+  <td>${p.stock || 0}</td>
+  <td>${renderStatus(p)}</td>
+  <td>
+    <button class="admin-btn admin-btn-ghost" onclick="editProduct('${mongoId}')">编辑</button>
+    <button class="admin-btn admin-btn-ghost" onclick="toggleProductStatus('${mongoId}','${p.status || "on"}')">${
+      (p.status || "on") === "off" ? "上架" : "下架"
+    }</button>
+    <button class="admin-btn admin-btn-ghost" onclick="goToPurchase('${mongoId}')">进货/成本</button>
+    <button class="admin-btn admin-btn-ghost" onclick="deleteProduct('${mongoId}')">删除</button>
+  </td>
+`;
       tbody.appendChild(tr);
     });
 
    renderPaginationUI(total, totalPages, pageList.length);
   } catch (err) {
     console.error(err);
-    tbody.innerHTML = `<tr><td colspan="12">请求失败，请检查 /api/admin/products</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="11">请求失败，请检查 /api/admin/products</td></tr>`;
   }
 }
 // ===========================================================
