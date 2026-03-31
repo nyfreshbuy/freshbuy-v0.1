@@ -19,8 +19,9 @@ router.get("/", async (req, res) => {
 
     const filter = {};
 
-    // 默认只返回上架
-    filter.isActive = true;
+// 默认只返回前台可见商品
+filter.isActive = true;
+filter.status = { $ne: "off" };
 
     // 按大类过滤
     if (category) {
