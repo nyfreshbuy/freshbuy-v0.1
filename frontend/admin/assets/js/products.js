@@ -12,7 +12,11 @@ console.log("✅ admin products.js loaded");
 let currentEditingId = null; // ✅ Mongo _id（用于 PATCH/DELETE/进货等）
 let productsCache = [];
 let currentEditorTab = "basic"; // basic | purchase
+let currentPage = Number(localStorage.getItem("admin_products_current_page") || 1);
+let pageSize = Number(localStorage.getItem("admin_products_page_size") || 20);
 
+if (![20, 50].includes(pageSize)) pageSize = 20;
+if (!Number.isFinite(currentPage) || currentPage < 1) currentPage = 1;
 // ✅ variants 编辑器：当前编辑商品的 variants
 let currentVariants = []; // [{ key, label, unitCount, price }]
 
@@ -480,6 +484,58 @@ function addVariantRow() {
   });
   renderVariantsEditor();
 }
+function getPagedProducts(list) {
+  const safeList = Array.isArray(list) ? list : [];
+  const total = safeList.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+  if (currentPage > totalPages) currentPage = totalPages;
+  if (currentPage < 1) currentPage = 1;
+
+  const start = (currentPage - 1) * pageSize;
+  const end = start + pageSize;
+
+  return {
+    total,
+    totalPages,
+    pageList: safeList.slice(start, end),
+  };
+}
+
+function savePaginationState() {
+  localStorage.setItem("admin_products_current_page", String(currentPage));
+  localStorage.setItem("admin_products_page_size", String(pageSize));
+}
+
+function renderPaginationUI(total, totalPages, currentCount) {
+  const countTextEl = document.getElementById("productCountText");
+  const pageTextEl = document.getElementById("productPageText");
+  const prevBtn = document.getElementById("btnPrevPage");
+  const nextBtn = document.getElementById("btnNextPage");
+  const pageSizeSelect = document.getElementById("pageSizeSelect");
+  const summaryEl = document.getElementById("productSummary");
+
+  if (summaryEl) {
+    summaryEl.textContent = `共 ${total} 个商品（当前页 ${currentCount} 个）`;
+  }
+
+  if (countTextEl) {
+    countTextEl.textContent = `共 ${total} 条`;
+  }
+
+  if (pageTextEl) {
+    pageTextEl.textContent = `第 ${currentPage} / ${totalPages} 页`;
+  }
+
+  if (prevBtn) prevBtn.disabled = currentPage <= 1;
+  if (nextBtn) nextBtn.disabled = currentPage >= totalPages;
+
+  if (pageSizeSelect) {
+    pageSizeSelect.value = String(pageSize);
+  }
+
+  savePaginationState();
+}
 // ===========================================================
 // 加载商品列表
 // ===========================================================
@@ -491,33 +547,31 @@ async function loadProducts() {
   const params = new URLSearchParams();
   if (keyword) params.append("keyword", keyword);
 
-  tbody.innerHTML = `<tr><td colspan="11">正在加载商品...</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="12">正在加载商品...</td></tr>`;
 
   try {
     const res = await fetch("/api/admin/products?" + params.toString(), { cache: "no-store" });
     const data = await res.json().catch(() => ({}));
 
     if (!data.success) {
-      tbody.innerHTML = `<tr><td colspan="11">加载失败：${data.message || "未知错误"}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="12">加载失败：${data.message || "未知错误"}</td></tr>`;
       return;
     }
 
     const list = data.list || data.products || [];
-    productsCache = list;
-    rebuildCategoryOptions();
+productsCache = list;
+rebuildCategoryOptions();
 
-    const summaryEl = document.getElementById("productSummary");
-    const countTextEl = document.getElementById("productCountText");
+if (!list.length) {
+  tbody.innerHTML = `<tr><td colspan="12">暂无商品，请点击上方「新增 / 编辑商品」</td></tr>`;
+  renderPaginationUI(0, 1, 0);
+  return;
+}
 
-    if (!list.length) {
-      tbody.innerHTML = `<tr><td colspan="11">暂无商品，请点击上方「新增 / 编辑商品」</td></tr>`;
-      if (summaryEl) summaryEl.textContent = "共 0 个商品";
-      if (countTextEl) countTextEl.textContent = "共 0 条";
-      return;
-    }
+const { total, totalPages, pageList } = getPagedProducts(list);
 
-    tbody.innerHTML = "";
-    list.forEach((p) => {
+tbody.innerHTML = "";
+pageList.forEach((p) => {
       const imgHtml = p.image
         ? `<img src="${p.image}" style="height:40px;border-radius:6px;object-fit:cover;">`
         : `<span style="font-size:11px;color:#9ca3af">无</span>`;
@@ -556,11 +610,10 @@ async function loadProducts() {
       tbody.appendChild(tr);
     });
 
-    if (summaryEl) summaryEl.textContent = "共 " + list.length + " 个商品";
-    if (countTextEl) countTextEl.textContent = "共 " + list.length + " 条";
+   renderPaginationUI(total, totalPages, pageList.length);
   } catch (err) {
     console.error(err);
-    tbody.innerHTML = `<tr><td colspan="11">请求失败，请检查 /api/admin/products</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="12">请求失败，请检查 /api/admin/products</td></tr>`;
   }
 }
 // ===========================================================
@@ -1280,7 +1333,38 @@ async function savePurchaseBatch() {
 window.addEventListener("DOMContentLoaded", () => {
   // 初次加载商品
   loadProducts();
+  const pageSizeSelect = document.getElementById("pageSizeSelect");
+if (pageSizeSelect) {
+  pageSizeSelect.value = String(pageSize);
+  pageSizeSelect.addEventListener("change", () => {
+    pageSize = Number(pageSizeSelect.value || 20);
+    if (![20, 50].includes(pageSize)) pageSize = 20;
+    currentPage = 1;
+    savePaginationState();
+    loadProducts();
+  });
+}
 
+const btnPrevPage = document.getElementById("btnPrevPage");
+if (btnPrevPage) {
+  btnPrevPage.addEventListener("click", () => {
+    if (currentPage <= 1) return;
+    currentPage -= 1;
+    savePaginationState();
+    loadProducts();
+  });
+}
+
+const btnNextPage = document.getElementById("btnNextPage");
+if (btnNextPage) {
+  btnNextPage.addEventListener("click", () => {
+    const totalPages = Math.max(1, Math.ceil(productsCache.length / pageSize));
+    if (currentPage >= totalPages) return;
+    currentPage += 1;
+    savePaginationState();
+    loadProducts();
+  });
+}
   // ✅ variants 初始
   currentVariants = normalizeVariants([]);
   renderVariantsEditor();
@@ -1303,8 +1387,14 @@ window.addEventListener("DOMContentLoaded", () => {
   }
 
   // 顶部按钮
-  const btnRefresh = document.getElementById("btnRefresh");
-  if (btnRefresh) btnRefresh.addEventListener("click", loadProducts);
+const btnRefresh = document.getElementById("btnRefresh");
+if (btnRefresh) {
+  btnRefresh.addEventListener("click", () => {
+    currentPage = 1;
+    savePaginationState();
+    loadProducts();
+  });
+}
 
   const btnSave = document.getElementById("btnSaveProduct");
   if (btnSave)
@@ -1333,12 +1423,15 @@ window.addEventListener("DOMContentLoaded", () => {
 
   // 搜索回车
   const kw = document.getElementById("searchKeyword");
-  if (kw) {
-    kw.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") loadProducts();
-    });
-  }
-
+if (kw) {
+  kw.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      currentPage = 1;
+      savePaginationState();
+      loadProducts();
+    }
+  });
+}
   // 特价 & 库存保护开关
   const hasSpecialEl = document.getElementById("p_hasSpecial");
   if (hasSpecialEl) hasSpecialEl.addEventListener("change", updateSpecialArea);

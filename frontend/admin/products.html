@@ -203,7 +203,23 @@
               placeholder="搜索商品ID / 名称 / 进货公司ID / 内部ID / 标签..."
             />
           </div>
-
+          <div style="display:flex;align-items:center;gap:10px;margin-left:12px;">
+  <label style="font-size:12px;color:#e5e7eb;">每页显示</label>
+  <select
+    id="pageSizeSelect"
+    style="
+      height:36px;
+      padding:0 10px;
+      border-radius:8px;
+      border:1px solid rgba(255,255,255,.15);
+      background:rgba(255,255,255,.06);
+      color:#fff;
+    "
+  >
+    <option value="20">20</option>
+    <option value="50">50</option>
+  </select>
+</div>
           <div class="admin-user">
             <div class="admin-user-avatar">A</div>
             <div class="admin-user-info">
@@ -272,9 +288,15 @@
               </table>
             </div>
 
-            <div class="admin-pagination">
-              <span id="productCountText">共 0 条</span>
-            </div>
+            <div class="admin-pagination" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+  <span id="productCountText">共 0 条</span>
+
+  <div id="productPaginationBox" style="display:flex;align-items:center;gap:8px;">
+    <button class="admin-btn admin-btn-ghost" id="btnPrevPage" type="button">上一页</button>
+    <span id="productPageText" style="font-size:12px;color:#e5e7eb;">第 1 / 1 页</span>
+    <button class="admin-btn admin-btn-ghost" id="btnNextPage" type="button">下一页</button>
+  </div>
+</div>
           </section>
 
           <!-- 编辑商品 + 进货成本管理（tab 切换） -->
