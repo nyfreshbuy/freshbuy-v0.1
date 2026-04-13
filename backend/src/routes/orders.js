@@ -364,6 +364,61 @@ async function restoreBatchFromOrder(order, session = null) {
     }
   }
 }
+async function restoreProductStockFromReserve(order, session = null) {
+  if (!order || !Array.isArray(order.stockReserve)) return;
+
+  for (const row of order.stockReserve) {
+    const productId = row?.productId;
+    const needUnits = Number(row?.needUnits || 0);
+
+    if (!productId || needUnits <= 0) continue;
+
+    await Product.updateOne(
+      { _id: productId },
+      { $inc: { stock: needUnits } },
+      { session }
+    );
+  }
+}
+async function attachFifoCostToExistingOrder(orderDoc, session = null) {
+  if (!orderDoc || !Array.isArray(orderDoc.items)) return orderDoc;
+
+  for (let i = 0; i < orderDoc.items.length; i++) {
+    const it = orderDoc.items[i];
+    const productId = it?.productId;
+
+    if (!productId) continue;
+
+    const qty = Math.max(0, Number(it.qty || 0));
+    const unitCount = Math.max(1, Math.floor(Number(it.unitCount || 1)));
+    const needUnits = qty * unitCount;
+
+    if (needUnits <= 0) continue;
+
+    const alreadyLocked =
+      Array.isArray(it.costLayers) &&
+      it.costLayers.length > 0 &&
+      Number(it.totalCost || 0) > 0;
+
+    if (alreadyLocked) continue;
+
+    const costResult = await consumeInventoryFIFO(productId, needUnits, session);
+
+    const revenue = Number(it.lineTotal || calcSpecialLineTotal(it, qty) || 0);
+
+    orderDoc.items[i].batchUnitsConsumed = needUnits;
+    orderDoc.items[i].costLayers = costResult.layers || [];
+    orderDoc.items[i].unitCostSnapshot = Number(costResult.unitCost || 0);
+    orderDoc.items[i].totalCost = round2(costResult.totalCost || 0);
+    orderDoc.items[i].grossProfit = round2(revenue - Number(costResult.totalCost || 0));
+
+    // 兼容旧字段
+    orderDoc.items[i].cost =
+      qty > 0 ? round2(Number(costResult.totalCost || 0) / qty) : 0;
+  }
+
+  return orderDoc;
+}
 async function resolvePickupPointFromPayload(body = {}) {
   const pickupPointId = String(
     body?.pickupPointId ||
@@ -839,7 +894,7 @@ const revenue = lineTotal;
   costLayers: costResult.layers,
   totalCost: costResult.totalCost,
   unitCostSnapshot: costResult.unitCost,
-  grossProfit: revenue - costResult.totalCost,
+  grossProfit: round2(revenue - costResult.totalCost),
   // ✅ 新增 ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑
       variantKey: finalVariantKey,
       unitCount: finalUnitCount,
@@ -1204,7 +1259,7 @@ router.post("/checkout", requireLogin, async (req, res) => {
       const { orderDoc, clientPayMethod, isLeaderPickup } = await buildOrderPayload(
   req,
   session,
-  { consumeBatch: true }
+  { consumeBatch: false }
 );
 
       console.log(
@@ -1512,6 +1567,7 @@ router.post("/checkout", requireLogin, async (req, res) => {
 // =====================================================
 router.post("/:id([0-9a-fA-F]{24})/confirm-stripe", requireLogin, async (req, res) => {
   const session = await mongoose.startSession();
+
   try {
     const orderId = req.params.id;
     const intentId = String(req.body?.intentId || req.body?.stripePaymentIntentId || "").trim();
@@ -1527,6 +1583,7 @@ router.post("/:id([0-9a-fA-F]{24})/confirm-stripe", requireLogin, async (req, re
 
     await session.withTransaction(async () => {
       const doc = await Order.findById(orderId).session(session);
+      
       if (!doc) {
         const e = new Error("订单不存在");
         e.status = 404;
@@ -1557,9 +1614,11 @@ router.post("/:id([0-9a-fA-F]{24})/confirm-stripe", requireLogin, async (req, re
       }
 
       const reserved = await reserveStockForExistingOrder(doc, session);
-      if (reserved.length > 0 && (!doc.stockReserve || doc.stockReserve.length === 0)) {
-        doc.stockReserve = reserved;
-      }
+if (reserved.length > 0 && (!doc.stockReserve || doc.stockReserve.length === 0)) {
+  doc.stockReserve = reserved;
+}
+
+await attachFifoCostToExistingOrder(doc, session);
 
       const total = Number(doc.totalAmount || 0);
       const walletPaid = Number(doc.payment?.wallet?.paid || 0);
@@ -1657,9 +1716,11 @@ router.post("/:id([0-9a-fA-F]{24})/mark-cash-paid", requireLogin, async (req, re
       }
 
       const reserved = await reserveStockForExistingOrder(doc, session);
-      if (reserved.length > 0 && (!doc.stockReserve || doc.stockReserve.length === 0)) {
-        doc.stockReserve = reserved;
-      }
+if (reserved.length > 0 && (!doc.stockReserve || doc.stockReserve.length === 0)) {
+  doc.stockReserve = reserved;
+}
+
+await attachFifoCostToExistingOrder(doc, session);
 
       const now = new Date();
       const total = round2(Number(doc.totalAmount || 0));
@@ -1842,8 +1903,11 @@ router.patch("/:id/status", async (req, res) => {
       const hasCostLayers = Array.isArray(doc.items) &&
   doc.items.some((it) => Array.isArray(it.costLayers) && it.costLayers.length > 0);
 
-if (doc.status !== "cancelled" && doc.status !== "cancel" && hasCostLayers) {
-  await restoreBatchFromOrder(doc, session);
+if (doc.status !== "cancelled" && doc.status !== "cancel") {
+  if (hasCostLayers) {
+    await restoreBatchFromOrder(doc, session);
+  }
+  await restoreProductStockFromReserve(doc, session);
 }
       doc.status = "cancelled";
       await doc.save({ session });
@@ -1911,10 +1975,12 @@ router.patch("/admin/:id/status", requireLogin, async (req, res) => {
       const hasCostLayers = Array.isArray(doc.items) &&
         doc.items.some((it) => Array.isArray(it.costLayers) && it.costLayers.length > 0);
 
-      if (doc.status !== "cancelled" && doc.status !== "cancel" && hasCostLayers) {
-        await restoreBatchFromOrder(doc, session);
-      }
-
+      if (doc.status !== "cancelled" && doc.status !== "cancel") {
+  if (hasCostLayers) {
+    await restoreBatchFromOrder(doc, session);
+  }
+  await restoreProductStockFromReserve(doc, session);
+}
       doc.status = "cancelled";
       await doc.save({ session });
       outDoc = doc;
@@ -1933,6 +1999,11 @@ router.patch("/admin/:id/status", requireLogin, async (req, res) => {
     session.endSession();
   }
 }
+const doc = await Order.findByIdAndUpdate(
+  id,
+  { status },
+  { new: true }
+);
     if (!doc) return res.status(404).json({ success: false, message: "订单不存在" });
 
     return res.json({
