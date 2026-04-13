@@ -42,14 +42,9 @@ function normalizeProduct(p) {
 
 // ========= 工具：在架判断（DB版） =========
 function activeFilter() {
-  // ✅ 你 DB 里建议用 enabled 控制上下架
-  // 兼容你旧字段：isActive / status
   return {
-    $and: [
-      { $or: [{ enabled: { $exists: false } }, { enabled: true }] },
-      { $or: [{ isActive: { $exists: false } }, { isActive: true }] },
-      { $or: [{ status: { $exists: false } }, { status: { $ne: "off" } }] },
-    ],
+    isActive: true,
+    status: { $ne: "off" }
   };
 }
 
