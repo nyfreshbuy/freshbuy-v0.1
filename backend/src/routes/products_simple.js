@@ -11,9 +11,7 @@ const router = express.Router();
  */
 router.get("/products-simple", async (req, res) => {
   try {
-    // 你如果只想展示上架商品，可以换成：
-    // const filter = { isActive: true, status: { $ne: "off" } };
-    const filter = {};
+    const filter = { isActive: true, status: { $ne: "off" } };
 
     const list = await Product.find(filter).sort({ sortOrder: 1, createdAt: -1 }).lean();
 
