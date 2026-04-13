@@ -94,13 +94,22 @@ async function genInvoiceNo(dateInput) {
 // ---------- 从 Product 校正 unitCount（按 variantKey 找） ----------
 async function normalizeItemsByDB(items, session) {
   const out = [];
+
   for (const it of items || []) {
     // 手填行：不校正、不扣库存
     if (!it.productId) {
+      const qty = Number(it.qty || 0);
+      const unitPrice = Number(it.unitPrice || 0);
+      const unitCost = Number(it.unitCost || 0);
+
       out.push({
         ...it,
         unitCount: 1,
         variantKey: "",
+        unitCost,
+        totalCost: Math.round(qty * unitCost * 100) / 100,
+        grossProfit:
+          Math.round((qty * unitPrice - qty * unitCost) * 100) / 100,
       });
       continue;
     }
@@ -109,28 +118,46 @@ async function normalizeItemsByDB(items, session) {
     if (!p) throw new Error(`商品不存在: ${it.productId}`);
 
     const variantKey = String(it.variantKey || "single");
-    const v = Array.isArray(p.variants) ? p.variants.find((x) => x && x.key === variantKey) : null;
+    const v = Array.isArray(p.variants)
+      ? p.variants.find((x) => x && x.key === variantKey)
+      : null;
 
-    // 找不到规格就默认 1（相当于 single）
-    const unitCount = v?.unitCount ? Math.max(1, Math.floor(Number(v.unitCount))) : 1;
+    const unitCount = v?.unitCount
+      ? Math.max(1, Math.floor(Number(v.unitCount)))
+      : 1;
 
-    // code 默认用 sku（你 sku 可能为空，允许前端手填）
     const code = String(it.productCode || p.sku || "");
+    const variantLabel = String(it.variantLabel || v?.label || "").trim();
 
-   const variantLabel = String(it.variantLabel || v?.label || "").trim();
+    const qty = Number(it.qty || 0);
+    const unitPrice = Number(it.unitPrice || 0);
 
-out.push({
-  ...it,
-  variantKey,
-  variantLabel, // ✅ 保存进 DB，PDF 才能打印
-  unitCount,
-  productCode: code,
-  description: String(it.description || p.name || ""),
-});
+    // ✅ 核心：优先用前端传来的 unitCost；没有就尝试用商品成本
+    const fallbackCost =
+      Number(it.unitCost) ||
+      Number(v?.cost) ||
+      Number(p.cost) ||
+      Number(p.unitCost) ||
+      0;
+
+    const totalCost = Math.round(qty * fallbackCost * 100) / 100;
+    const grossProfit = Math.round((qty * unitPrice - totalCost) * 100) / 100;
+
+    out.push({
+      ...it,
+      variantKey,
+      variantLabel,
+      unitCount,
+      productCode: code,
+      description: String(it.description || p.name || ""),
+      unitCost: fallbackCost,
+      totalCost,
+      grossProfit,
+    });
   }
+
   return out;
 }
-
 // ---------- 扣库存：qty * unitCount ----------
 async function applyStockDeduction(items, session) {
   for (const it of items || []) {
@@ -184,18 +211,16 @@ router.post("/", async (req, res) => {
     }
 
     // 先算钱
-    const calc = computeTotals(body.items || []);
+    body.items = await normalizeItemsByDB(body.items || [], session);
+
+const calc = computeTotals(body.items);
 
 body.items = calc.items;
 body.subtotal = calc.subtotal;
 body.total = calc.total;
-
 body.totalCost = calc.totalCost;
 body.grossProfit = calc.grossProfit;
 body.grossMargin = calc.grossMargin;
-
-    // ✅ 用 DB 校正 unitCount / description / productCode
-    body.items = await normalizeItemsByDB(body.items, session);
 
     const created = await Invoice.create([{ ...body }], { session });
 
@@ -233,20 +258,16 @@ router.put("/:id", async (req, res) => {
       body.shipTo = { ...(body.soldTo || {}) };
     }
 
-    const calc = computeTotals(body.items || []);
+    body.items = await normalizeItemsByDB(body.items || [], session);
+
+const calc = computeTotals(body.items);
 
 body.items = calc.items;
 body.subtotal = calc.subtotal;
 body.total = calc.total;
-
-// ✅ 新增
 body.totalCost = calc.totalCost;
 body.grossProfit = calc.grossProfit;
 body.grossMargin = calc.grossMargin;
-
-    // 2) DB 校正 unitCount
-    body.items = await normalizeItemsByDB(body.items, session);
-
     // 3) 更新 invoice
     const updated = await Invoice.findByIdAndUpdate(req.params.id, body, {
       new: true,
