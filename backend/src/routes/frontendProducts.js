@@ -182,7 +182,23 @@ router.get("/friday-deals", async (req, res) => {
     return res.status(500).json({ success: false, message: "加载周五爆品日商品失败" });
   }
 });
+router.get("/__debug-active", async (req, res) => {
+  try {
+    const docs = await Product.find(activeFilter())
+      .select("_id name sku isActive status isFamily isFamilyMustHave isBestSeller isNew isNewArrival enabled")
+      .sort({ createdAt: -1 })
+      .lean();
 
+    return res.json({
+      success: true,
+      total: docs.length,
+      items: docs,
+    });
+  } catch (err) {
+    console.error("debug active error:", err);
+    return res.status(500).json({ success: false, message: err.message || "debug failed" });
+  }
+});
 /**
  * 心跳测试
  * GET /api/frontend/products/ping（看你 server.js 挂载路径）
