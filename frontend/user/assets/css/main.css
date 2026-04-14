@@ -1757,3 +1757,9 @@ html, body {
   margin-right:10px;
 }
 .banner-chip:hover{ opacity:.92; }
+.product-extra-hint {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #ff7a00;
+  font-weight: 600;
+}

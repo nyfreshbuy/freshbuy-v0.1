@@ -75,7 +75,15 @@ function getSpecialText(p) {
   if (Number.isFinite(sp) && sp > 0) return `特价 $${money(sp)}`;
   return "";
 }
+function buildTaxDepositHint(p) {
+  const taxable = p?.taxable === true;
+  const deposit = Number(p?.deposit || 0) > 0;
 
+  if (taxable && deposit) return "+taxable + deposit";
+  if (taxable) return "+taxable";
+  if (deposit) return "+deposit";
+  return "";
+}
 function buildVariantPriceLines(p) {
   const vs = Array.isArray(p?.variants)
     ? p.variants.filter(
@@ -1349,6 +1357,7 @@ function createProductCard(p, extraBadgeText) {
       : `https://picsum.photos/seed/${encodeURIComponent(pid || displayName || "fb")}/500/400`;
 
   const tagline = (p.tag || p.category || "").slice(0, 18);
+  const extraHint = buildTaxDepositHint(p);
   const limitQty = p.limitQty || p.limitPerUser || p.maxQty || p.purchaseLimit || 0;
 
   // ==========================================================
@@ -1432,6 +1441,8 @@ function createProductCard(p, extraBadgeText) {
   </div>
 
   <div class="product-tagline">${tagline}</div>
+
+${extraHint ? `<div class="product-extra-hint">${extraHint}</div>` : ""}
 
     <!-- ✅✅✅ 合并：同一位置切换显示（qty=0 显示加入购物车；qty>=1 显示黑框） -->
   <div class="product-action" data-action-pid="${pid}" style="margin-top:10px;">
