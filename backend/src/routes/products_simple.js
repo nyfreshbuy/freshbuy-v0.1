@@ -67,9 +67,18 @@ router.get("/products-simple", async (req, res) => {
         specialFrom: p.specialFrom || null,
         specialTo: p.specialTo || null,
 
-                variants: Array.isArray(p.variants) ? p.variants : [],
+                        variants: Array.isArray(p.variants)
+          ? p.variants.map((v) => ({
+              ...v,
+              allowZeroStock:
+                v?.allowZeroStock !== undefined
+                  ? v.allowZeroStock !== false
+                  : p.allowZeroStock !== false,
+            }))
+          : [],
 
         stock: Number(p.stock || 0),
+        allowZeroStock: p.allowZeroStock !== false,
         boxVisibleOnFrontend:
           p.boxVisibleOnFrontend === false || p.boxVisibleOnFrontend === "false"
             ? false
