@@ -79,7 +79,7 @@ function buildTaxDepositHint(p) {
   const taxable = p?.taxable === true;
   const deposit = Number(p?.deposit || 0) > 0;
 
-  if (taxable && deposit) return "+taxable + deposit";
+  if (taxable && deposit) return "+taxable + crv";
   if (taxable) return "+taxable";
   if (deposit) return "+deposit";
   return "";
