@@ -40,6 +40,15 @@
   // -----------------------
   // Utils
   // -----------------------
+  function buildTaxDepositHint(p) {
+  const taxable = !!p.taxable;
+  const deposit = Number(p.deposit || 0) > 0;
+
+  if (taxable && deposit) return "+taxable +crv";
+  if (taxable) return "+taxable";
+  if (deposit) return "+crv";
+  return "";
+}
   function money(n) {
     const v = Number(n || 0);
     return v % 1 === 0 ? String(v.toFixed(0)) : String(v.toFixed(2));
@@ -548,7 +557,10 @@ try {
 
     const tagline = (p.tag || p.category || "").slice(0, 18);
     const limitQty = getLimitQty(p);
-
+    const extraHint = buildTaxDepositHint ? buildTaxDepositHint(p) : "";
+const extraHintHtml = extraHint
+  ? `<div class="product-overlay-hint">${extraHint}</div>`
+  : "";
     // ✅ 库存 maxQty（唯一口径）
     const stockUnits = getStockUnits(p);
     let maxQty = variantKey === "single" ? stockUnits : Math.floor(stockUnits / unitCount);
@@ -581,8 +593,9 @@ try {
     // ✅ 卡片 HTML（结构与首页一致）
     article.innerHTML = `
       <div class="product-image-wrap" data-go-detail>
-        ${badgeText ? `<span class="special-badge">${badgeText}</span>` : ""}
-        <img src="${imageUrl}" class="product-image" alt="${displayName}" />
+  ${badgeText ? `<span class="special-badge">${badgeText}</span>` : ""}
+  ${extraHintHtml}
+  <img src="${imageUrl}" class="product-image" alt="${displayName}" />
         <div class="product-qty-badge" data-pid="${pid}"></div>
 
         <div class="product-overlay">
