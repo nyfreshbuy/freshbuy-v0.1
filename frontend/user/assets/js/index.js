@@ -1358,6 +1358,9 @@ function createProductCard(p, extraBadgeText) {
 
   const tagline = (p.tag || p.category || "").slice(0, 18);
   const extraHint = buildTaxDepositHint(p);
+const extraHintHtml = extraHint
+  ? `<div class="product-overlay-hint">${extraHint}</div>`
+  : "";
   const limitQty = p.limitQty || p.limitPerUser || p.maxQty || p.purchaseLimit || 0;
 
   // ==========================================================
@@ -1409,9 +1412,10 @@ function createProductCard(p, extraBadgeText) {
     isDeal: isHotProduct(p),
   };
   article.__normalizedItem = normalized;
-  article.innerHTML = `
+ article.innerHTML = `
   <div class="product-image-wrap" data-go-detail>
     ${badgeText ? `<span class="special-badge">${badgeText}</span>` : ""}
+    ${extraHintHtml}
     <img src="${imageUrl}" class="product-image" alt="${displayName}" />
 
     <div class="product-qty-badge" data-pid="${pid}"></div>
@@ -1441,9 +1445,6 @@ function createProductCard(p, extraBadgeText) {
   </div>
 
   <div class="product-tagline">${tagline}</div>
-
-${extraHint ? `<div class="product-extra-hint">${extraHint}</div>` : ""}
-
     <!-- ✅✅✅ 合并：同一位置切换显示（qty=0 显示加入购物车；qty>=1 显示黑框） -->
   <div class="product-action" data-action-pid="${pid}" style="margin-top:10px;">
 
