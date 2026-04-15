@@ -1377,9 +1377,13 @@ const extraHintHtml = extraHint
   // ==========================================================
   const stockUnits = Math.max(0, Math.floor(Number(p.stock ?? p.inventory ?? 0) || 0));
 
-// ✅ 新增：允许0库存下单
-const allowZero = p.allowZeroStock === true;
+const allowZero =
+  p.allowZeroStock === true ||
+  p.allowZeroStock === "true" ||
+  p.allowZeroStock === 1 ||
+  p.allowZeroStock === "1";
 
+article.__allowZeroStock = allowZero;
 // ✅ 修改 maxQty 逻辑
 let maxQty;
 
@@ -1547,7 +1551,11 @@ if (fixedAdd) fixedAdd.disabled = maxQty <= 0 && !p.allowZeroStock;
     article.__stockUnits = su;
 
     // ✅ 重新计算 maxQty（仍然是唯一口径）
-    const allowZero = p.allowZeroStock === true;
+    const allowZero =
+  p.allowZeroStock === true ||
+  p.allowZeroStock === "true" ||
+  p.allowZeroStock === 1 ||
+  p.allowZeroStock === "1";
 
 let newMax;
 
