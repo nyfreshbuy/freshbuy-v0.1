@@ -1,5 +1,4 @@
 // backend/src/routes/admin_inventory.js
-throw new Error("🚨 admin_inventory.js 被加载了");
 import express from "express";
 import ProductPurchaseBatch from "../models/ProductPurchaseBatch.js";
 import Product from "../models/product.js";
@@ -81,9 +80,13 @@ router.get("/assets/summary", async (req, res) => {
 // =============================
 router.get("/assets/products", async (req, res) => {
   try {
+    console.log("🟡 /api/admin/inventory/assets/products start");
+
     const batches = await ProductPurchaseBatch.find({
       remainingUnits: { $gt: 0 },
     }).lean();
+
+    console.log("🟡 batches length =", batches.length);
 
     const productIds = [
       ...new Set(
@@ -91,19 +94,29 @@ router.get("/assets/products", async (req, res) => {
       ),
     ];
 
-    const products = await Product.find({ _id: { $in: productIds } })
-      .select("name sku stock")
-      .lean();
+    console.log("🟡 productIds =", productIds);
+
+    const products = productIds.length
+      ? await Product.find({ _id: { $in: productIds } })
+          .select("name sku stock")
+          .lean()
+      : [];
+
+    console.log("🟡 products length =", products.length);
 
     const productMap = {};
     for (const p of products) {
       productMap[String(p._id)] = p;
     }
 
+    console.log("🟡 productMap keys =", Object.keys(productMap));
+
     const map = {};
 
     for (const b of batches) {
       const productId = String(b.productId || "");
+      console.log("🟡 batch productId =", productId, "batchId =", String(b._id || ""));
+
       if (!productId) continue;
 
       const productStock = num(productMap[productId]?.stock);
@@ -111,9 +124,7 @@ router.get("/assets/products", async (req, res) => {
       if (!map[productId]) {
         map[productId] = {
           productId,
-          name:
-            productMap[productId]?.name ||
-            "[商品已删除或未匹配]",
+          name: productMap[productId]?.name || "[商品已删除或未匹配]",
           sku: productMap[productId]?.sku || "",
           qty: 0,
           productStock,
@@ -128,8 +139,7 @@ router.get("/assets/products", async (req, res) => {
       map[productId].qty += qty;
       map[productId].asset += qty * unitCost;
       map[productId].productStock = productStock;
-      map[productId].diffQty =
-        productStock - map[productId].qty;
+      map[productId].diffQty = productStock - map[productId].qty;
     }
 
     const list = Object.values(map)
@@ -139,13 +149,16 @@ router.get("/assets/products", async (req, res) => {
       }))
       .sort((a, b) => b.asset - a.asset);
 
-    res.json({
+    console.log("🟡 final list length =", list.length);
+
+    return res.json({
       success: true,
       data: list,
     });
   } catch (e) {
-    console.error("GET /api/admin/inventory/assets/products error:", e);
-    res.status(500).json({
+    console.error("🔥 GET /api/admin/inventory/assets/products error:");
+    console.error(e?.stack || e);
+    return res.status(500).json({
       success: false,
       message: e.message || "inventory assets products failed",
     });
