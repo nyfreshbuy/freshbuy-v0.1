@@ -3,7 +3,7 @@ import express from "express";
 import ProductPurchaseBatch from "../models/ProductPurchaseBatch.js";
 import Product from "../models/product.js";
 import InventoryAudit from "../models/InventoryAudit.js";
-
+import Order from "../models/order.js";
 const router = express.Router();
 router.use(express.json());
 
@@ -27,9 +27,26 @@ router.get("/assets/summary", async (req, res) => {
 
     for (const b of batches) {
       const qty = num(b.remainingUnits);
-      const unitCost = num(b.finalUnitCost || b.unitCost);
+      const unitCost = num(b.finalUnitCost ?? b.unitCost);
+
       totalQty += qty;
       totalAsset += qty * unitCost;
+    }
+
+    // ✅ 正确位置：for循环结束后
+    const pendingOrders = await Order.find({
+      status: { $in: ["pending"] },
+      "payment.status": { $ne: "paid" },
+    })
+      .select("stockReserve")
+      .lean();
+
+    let reservedPendingQty = 0;
+
+    for (const o of pendingOrders) {
+      for (const row of o.stockReserve || []) {
+        reservedPendingQty += num(row.needUnits);
+      }
     }
 
     res.json({
@@ -38,6 +55,13 @@ router.get("/assets/summary", async (req, res) => {
         totalQty,
         totalAsset: Math.round(totalAsset * 100) / 100,
         batchCount: batches.length,
+
+        // ✅ 新增
+        reservedPendingQty,
+        availableQtyAfterReserve: Math.max(
+          0,
+          totalQty - reservedPendingQty
+        ),
       },
     });
   } catch (e) {
@@ -77,24 +101,27 @@ router.get("/assets/products", async (req, res) => {
     const map = {};
 
     for (const b of batches) {
-      const productId = String(b.productId || "");
-      if (!productId) continue;
+      const productStock = num(productMap[productId]?.stock);
 
-      if (!map[productId]) {
-        map[productId] = {
-          productId,
-          name: productMap[productId]?.name || "",
-          sku: productMap[productId]?.sku || "",
-          qty: 0,
-          asset: 0,
-        };
-      }
+if (!map[productId]) {
+  map[productId] = {
+    productId,
+    name: productMap[productId]?.name || "[商品已删除或未匹配]",
+    sku: productMap[productId]?.sku || "",
+    qty: 0,          // 批次剩余
+    productStock,    // 商品表库存
+    diffQty: 0,
+    asset: 0,
+  };
+}
 
-      const qty = num(b.remainingUnits);
-      const unitCost = num(b.finalUnitCost || b.unitCost);
+const qty = num(b.remainingUnits);
+const unitCost = num(b.finalUnitCost ?? b.unitCost);
 
-      map[productId].qty += qty;
-      map[productId].asset += qty * unitCost;
+map[productId].qty += qty;
+map[productId].asset += qty * unitCost;
+map[productId].productStock = productStock;
+map[productId].diffQty = productStock - map[productId].qty;
     }
 
     const list = Object.values(map)
@@ -257,11 +284,33 @@ router.post("/audits", async (req, res) => {
 
     // 先做简单版：同步修正 product.stock
     for (const it of items) {
-      await Product.updateOne(
-        { _id: it.productId },
-        { $set: { stock: it.actualStock } }
-      );
+  await Product.updateOne(
+    { _id: it.productId },
+    { $set: { stock: it.actualStock } }
+  );
+
+  const activeBatches = await ProductPurchaseBatch.find({
+    productId: it.productId,
+    remainingUnits: { $gt: 0 },
+  }).sort({ purchaseDate: 1, createdAt: 1 });
+
+  let left = num(it.actualStock);
+
+  for (const b of activeBatches) {
+    if (left <= 0) {
+      b.remainingUnits = 0;
+      b.status = "depleted";
+      await b.save();
+      continue;
     }
+
+    const canUse = Math.min(num(b.totalUnits), left);
+    b.remainingUnits = canUse;
+    b.status = canUse > 0 ? "active" : "depleted";
+    await b.save();
+    left -= canUse;
+  }
+}
 
     res.json({
       success: true,

@@ -63,5 +63,22 @@ const batchSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+batchSchema.index({ productId: 1, purchaseDate: 1, createdAt: 1 });
+batchSchema.index({ remainingUnits: 1, status: 1 });
+batchSchema.pre("save", function (next) {
+  const remaining = Number(this.remainingUnits || 0);
 
+  if (remaining <= 0) {
+    this.remainingUnits = 0;
+    if (this.status !== "locked") {
+      this.status = "depleted";
+    }
+  } else {
+    if (this.status !== "locked") {
+      this.status = "active";
+    }
+  }
+
+  next();
+});
 export default mongoose.model("ProductPurchaseBatch", batchSchema);
