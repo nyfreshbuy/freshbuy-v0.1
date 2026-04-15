@@ -1439,6 +1439,7 @@ if (stockUnits <= 0 && allowZero) {
     <img src="${imageUrl}" class="product-image" alt="${displayName}" />
 
     <div class="product-qty-badge" data-pid="${pid}"></div>
+</div>   // ✅ 关键：关闭 product-image-wrap
   <div class="product-name" data-go-detail>${displayName}</div>
   <div class="product-desc">${p.desc || ""}</div>
 
