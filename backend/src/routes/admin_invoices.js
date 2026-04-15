@@ -5,6 +5,7 @@ import PDFDocument from "pdfkit";
 import mongoose from "mongoose";
 import Invoice from "../models/Invoice.js";
 import Product from "../models/product.js";
+import ProductPurchaseBatch from "../models/ProductPurchaseBatch.js";
 import { requireLogin } from "../middlewares/auth.js";
 
 const router = express.Router();
@@ -30,12 +31,17 @@ function computeTotals(items = []) {
     const qty = Number(it.qty || 0);
     const unitPrice = Number(it.unitPrice || 0);
 
-    // ✅ 新增：成本（前端填 or 默认 0）
-    const unitCost = Number(it.unitCost || 0);
+    const lineTotal = round2(
+      it.lineTotal != null ? Number(it.lineTotal) : qty * unitPrice
+    );
 
-    const lineTotal = Math.round(qty * unitPrice * 100) / 100;
-    const lineCost = Math.round(qty * unitCost * 100) / 100;
-    const grossProfit = Math.round((lineTotal - lineCost) * 100) / 100;
+    const lineCost = round2(
+      it.totalCost != null
+        ? Number(it.totalCost)
+        : qty * Number(it.unitCost || 0)
+    );
+
+    const grossProfit = round2(lineTotal - lineCost);
 
     subtotal += lineTotal;
     totalCost += lineCost;
@@ -44,20 +50,20 @@ function computeTotals(items = []) {
       ...it,
       qty,
       unitPrice,
-      unitCost,
-
       lineTotal,
       totalCost: lineCost,
       grossProfit,
-
-      // 保留原逻辑
       unitCount: Math.max(1, Math.floor(Number(it.unitCount || 1))),
+      unitCost: Number(it.unitCost || it.unitCostSnapshot || 0),
+      unitCostSnapshot: Number(it.unitCostSnapshot || it.unitCost || 0),
+      batchUnitsConsumed: Number(it.batchUnitsConsumed || 0),
+      costLayers: Array.isArray(it.costLayers) ? it.costLayers : [],
     };
   });
 
-  subtotal = Math.round(subtotal * 100) / 100;
-  totalCost = Math.round(totalCost * 100) / 100;
-  const grossProfit = Math.round((subtotal - totalCost) * 100) / 100;
+  subtotal = round2(subtotal);
+  totalCost = round2(totalCost);
+  const grossProfit = round2(subtotal - totalCost);
   const grossMargin =
     subtotal > 0 ? Math.round((grossProfit / subtotal) * 10000) / 100 : 0;
 
@@ -65,8 +71,6 @@ function computeTotals(items = []) {
     items: clean,
     subtotal,
     total: subtotal,
-
-    // ✅ 新增
     totalCost,
     grossProfit,
     grossMargin,
@@ -90,26 +94,103 @@ async function genInvoiceNo(dateInput) {
   const seq = String(count + 1).padStart(3, "0");
   return `${ymd}-${seq}`;
 }
+function round2(n) {
+  return Math.round(Number(n || 0) * 100) / 100;
+}
 
+async function consumeInventoryFIFO(productId, sellUnits, session) {
+  let remaining = Math.max(0, Number(sellUnits || 0));
+  let totalCost = 0;
+  const layers = [];
+
+  const batches = await ProductPurchaseBatch.find({
+    productId,
+    remainingUnits: { $gt: 0 },
+  })
+    .sort({ purchaseDate: 1, createdAt: 1 })
+    .session(session);
+
+  for (const b of batches) {
+    if (remaining <= 0) break;
+
+    const takeQty = Math.min(Number(b.remainingUnits || 0), remaining);
+    const unitCost = Number(b.finalUnitCost || b.unitCost || 0);
+    const cost = takeQty * unitCost;
+
+    layers.push({
+      batchId: b._id,
+      qty: takeQty,
+      unitCost,
+      cost: round2(cost),
+    });
+
+    b.remainingUnits = Math.max(0, Number(b.remainingUnits || 0) - takeQty);
+
+    if (b.remainingUnits <= 0) {
+      b.remainingUnits = 0;
+      b.status = "depleted";
+    }
+
+    await b.save({ session });
+
+    totalCost += cost;
+    remaining -= takeQty;
+  }
+
+  if (remaining > 0) {
+    throw new Error("批次库存不足");
+  }
+
+  return {
+    layers,
+    totalCost: round2(totalCost),
+    unitCost: sellUnits > 0 ? totalCost / sellUnits : 0,
+  };
+}
+
+async function restoreBatchFromInvoice(invoiceDoc, session) {
+  for (const it of invoiceDoc?.items || []) {
+    if (!Array.isArray(it.costLayers)) continue;
+
+    for (const layer of it.costLayers) {
+      if (!layer?.batchId || !layer?.qty) continue;
+
+      await ProductPurchaseBatch.updateOne(
+        { _id: layer.batchId },
+        {
+          $inc: { remainingUnits: Number(layer.qty || 0) },
+          $set: { status: "active" },
+        },
+        { session }
+      );
+    }
+  }
+}
 // ---------- 从 Product 校正 unitCount（按 variantKey 找） ----------
 async function normalizeItemsByDB(items, session) {
   const out = [];
 
   for (const it of items || []) {
-    // 手填行：不校正、不扣库存
+    // 手填行：不校正、不扣批次
     if (!it.productId) {
       const qty = Number(it.qty || 0);
       const unitPrice = Number(it.unitPrice || 0);
       const unitCost = Number(it.unitCost || 0);
+      const lineTotal = round2(qty * unitPrice);
+      const totalCost = round2(qty * unitCost);
+      const grossProfit = round2(lineTotal - totalCost);
 
       out.push({
         ...it,
         unitCount: 1,
         variantKey: "",
         unitCost,
-        totalCost: Math.round(qty * unitCost * 100) / 100,
-        grossProfit:
-          Math.round((qty * unitPrice - qty * unitCost) * 100) / 100,
+        unitCostSnapshot: unitCost,
+        batchUnitsConsumed: qty,
+        costLayers: [],
+        lineTotal,
+        totalCost,
+        grossProfit,
       });
       continue;
     }
@@ -132,25 +213,28 @@ async function normalizeItemsByDB(items, session) {
     const qty = Number(it.qty || 0);
     const unitPrice = Number(it.unitPrice || 0);
 
-    // ✅ 核心：优先用前端传来的 unitCost；没有就尝试用商品成本
-    const fallbackCost =
-      Number(it.unitCost) ||
-      Number(v?.cost) ||
-      Number(p.cost) ||
-      Number(p.unitCost) ||
-      0;
+    const sellUnits = qty * unitCount;
+    const fifo = await consumeInventoryFIFO(p._id, sellUnits, session);
 
-    const totalCost = Math.round(qty * fallbackCost * 100) / 100;
-    const grossProfit = Math.round((qty * unitPrice - totalCost) * 100) / 100;
+    const lineTotal = round2(qty * unitPrice);
+    const totalCost = round2(fifo.totalCost || 0);
+    const unitCostSnapshot = Number(fifo.unitCost || 0);
+    const grossProfit = round2(lineTotal - totalCost);
 
     out.push({
       ...it,
+      productId: String(p._id),
       variantKey,
       variantLabel,
       unitCount,
       productCode: code,
       description: String(it.description || p.name || ""),
-      unitCost: fallbackCost,
+      unitPrice,
+      unitCost: unitCostSnapshot,
+      unitCostSnapshot,
+      batchUnitsConsumed: sellUnits,
+      costLayers: fifo.layers || [],
+      lineTotal,
       totalCost,
       grossProfit,
     });
@@ -248,8 +332,9 @@ router.put("/:id", async (req, res) => {
     const oldInv = await Invoice.findById(req.params.id).session(session);
     if (!oldInv) return res.status(404).json({ success: false, message: "not found" });
 
-    // 1) 回滚旧扣库存
-    await revertStock(oldInv, session);
+    // 1) 先回滚旧批次，再回滚旧库存
+await restoreBatchFromInvoice(oldInv, session);
+await revertStock(oldInv, session);
 
     const body = req.body || {};
 

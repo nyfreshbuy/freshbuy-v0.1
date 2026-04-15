@@ -1,5 +1,15 @@
 import mongoose from "mongoose";
 
+const invoiceCostLayerSchema = new mongoose.Schema(
+  {
+    batchId: { type: mongoose.Schema.Types.ObjectId, ref: "ProductPurchaseBatch", default: null },
+    qty: { type: Number, default: 0 }, // 扣掉多少基础单位
+    unitCost: { type: Number, default: 0 },
+    cost: { type: Number, default: 0 },
+  },
+  { _id: false }
+);
+
 const invoiceItemSchema = new mongoose.Schema(
   {
     // 从商品管理选才有
@@ -24,14 +34,19 @@ const invoiceItemSchema = new mongoose.Schema(
 
     unitPrice: { type: Number, default: 0 },
 
-    // ✅ 新增：单位成本
+    // ✅ 单位成本（给旧逻辑/前端兼容）
     unitCost: { type: Number, default: 0 },
 
     lineTotal: { type: Number, default: 0 },
 
-    // ✅ 新增：总成本 / 利润
+    // ✅ 总成本 / 利润
     totalCost: { type: Number, default: 0 },
     grossProfit: { type: Number, default: 0 },
+
+    // ✅ 严格 FIFO 需要的字段
+    batchUnitsConsumed: { type: Number, default: 0 }, // 本行总共消耗多少基础单位
+    unitCostSnapshot: { type: Number, default: 0 },   // FIFO 基础单位成本快照
+    costLayers: { type: [invoiceCostLayerSchema], default: [] },
   },
   { _id: false }
 );
@@ -64,7 +79,7 @@ const invoiceSchema = new mongoose.Schema(
     subtotal: { type: Number, default: 0 },
     total: { type: Number, default: 0 },
 
-    // ✅ 新增：成本 / 利润 / 毛利率
+    // ✅ 成本 / 利润 / 毛利率
     totalCost: { type: Number, default: 0 },
     grossProfit: { type: Number, default: 0 },
     grossMargin: { type: Number, default: 0 },
