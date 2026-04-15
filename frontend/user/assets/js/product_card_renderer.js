@@ -563,7 +563,23 @@ const extraHintHtml = extraHint
   : "";
     // ✅ 库存 maxQty（唯一口径）
     const stockUnits = getStockUnits(p);
-    let maxQty = variantKey === "single" ? stockUnits : Math.floor(stockUnits / unitCount);
+
+const allowZeroStock =
+  p.allowZeroStock === true ||
+  p.allowZeroStock === "true" ||
+  p.allowZeroStock === 1 ||
+  p.allowZeroStock === "1";
+
+let maxQty;
+
+if (allowZeroStock) {
+  // ✅ 不限库存（核心）
+  maxQty = 9999;
+} else {
+  maxQty = variantKey === "single"
+    ? stockUnits
+    : Math.floor(stockUnits / unitCount);
+}
     if (Number(limitQty) > 0) {
       const lim = Math.max(0, Math.floor(Number(limitQty)));
       maxQty = Math.max(0, Math.min(maxQty, lim));
@@ -694,7 +710,21 @@ const extraHintHtml = extraHint
       const su = Math.max(0, Math.floor(Number(newStockUnits || 0) || 0));
       article.__stockUnits = su;
 
-      let newMax = variantKey === "single" ? su : Math.floor(su / unitCount);
+      const allowZeroStock =
+  p.allowZeroStock === true ||
+  p.allowZeroStock === "true" ||
+  p.allowZeroStock === 1 ||
+  p.allowZeroStock === "1";
+
+let newMax;
+
+if (allowZeroStock) {
+  newMax = 9999;
+} else {
+  newMax = variantKey === "single"
+    ? su
+    : Math.floor(su / unitCount);
+}
       if (Number(limitQty) > 0) {
         const lim = Math.max(0, Math.floor(Number(limitQty)));
         newMax = Math.max(0, Math.min(newMax, lim));
