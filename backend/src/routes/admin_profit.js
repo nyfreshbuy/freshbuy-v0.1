@@ -56,7 +56,22 @@ function orderItemRevenue(it) {
 }
 
 function orderItemCost(it) {
-  return num(it?.totalCost ?? num(it?.cost) * num(it?.qty));
+  // ✅ 1. 优先使用 FIFO 成本（你已经算好的）
+  if (Number(it?.totalCost || 0) > 0) {
+    return Number(it.totalCost);
+  }
+
+  // ✅ 2. 兼容老数据（没有 totalCost 的情况）
+  const qty = Number(it?.qty || 0);
+  const unitCount = Number(it?.unitCount || 1);
+
+  const unitCost = Number(
+    it?.unitCostSnapshot ??
+    it?.cost ??
+    0
+  );
+
+  return unitCost * qty * unitCount;
 }
 
 function calcMargin(revenue, profit) {
@@ -96,10 +111,23 @@ router.get("/summary", async (req, res) => {
     let invoiceCost = 0;
 
     for (const inv of invoices) {
-      invoiceRevenue += num(inv?.total);
-      invoiceCost += num(inv?.totalCost);
-    }
+  invoiceRevenue += num(inv?.total);
 
+  // ✅ 优先使用总成本（新数据）
+  if (Number(inv?.totalCost || 0) > 0) {
+    invoiceCost += Number(inv.totalCost);
+    continue;
+  }
+
+  // ❗ fallback：老发票没有 totalCost，用每行重算
+  for (const it of inv?.items || []) {
+    const qty = Number(it?.qty || 0);
+    const unitCost = Number(it?.unitCost || 0);
+    const unitCount = Number(it?.unitCount || 1);
+
+    invoiceCost += unitCost * qty * unitCount;
+  }
+}
     const revenue = orderRevenue + invoiceRevenue;
     const cost = orderCost + invoiceCost;
     const grossProfit = revenue - cost;
