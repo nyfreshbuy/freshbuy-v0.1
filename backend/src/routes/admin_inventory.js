@@ -1,4 +1,5 @@
 // backend/src/routes/admin_inventory.js
+throw new Error("🚨 admin_inventory.js 被加载了");
 import express from "express";
 import ProductPurchaseBatch from "../models/ProductPurchaseBatch.js";
 import Product from "../models/product.js";
