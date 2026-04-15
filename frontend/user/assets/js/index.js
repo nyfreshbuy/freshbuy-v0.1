@@ -1257,9 +1257,15 @@ function renderCardAction(card) {
   const qtyDisplay = card.querySelector("[data-qty-display]");
 
   // 库存上限（你已有 __maxQty）
-  const cap0 = Number(card.__maxQty);
-  const cap = Number.isFinite(cap0) ? Math.max(0, Math.floor(cap0)) : 0;
+  const allowZero = card.__allowZeroStock === true;
 
+const cap0 = Number(card.__maxQty);
+let cap = Number.isFinite(cap0) ? Math.max(0, Math.floor(cap0)) : 0;
+
+// ✅ 关键修复
+if (cap <= 0 && allowZero) {
+  cap = 999;
+}
   // 显示逻辑
   if (addBtn) addBtn.style.display = qty <= 0 ? "" : "none";
   if (qtyRow) qtyRow.style.display = qty > 0 ? "flex" : "none";
@@ -1370,8 +1376,22 @@ const extraHintHtml = extraHint
   // 整箱：maxQty=floor(stockUnits/unitCount)
   // ==========================================================
   const stockUnits = Math.max(0, Math.floor(Number(p.stock ?? p.inventory ?? 0) || 0));
-  let maxQty = variantKey === "single" ? stockUnits : Math.floor(stockUnits / unitCount);
 
+// ✅ 新增：允许0库存下单
+const allowZero = p.allowZeroStock === true;
+
+// ✅ 修改 maxQty 逻辑
+let maxQty;
+
+if (stockUnits <= 0 && allowZero) {
+  // 👉 允许下单：给一个很大上限（或者你可以改成 999）
+  maxQty = 999;
+} else {
+  maxQty =
+    variantKey === "single"
+      ? stockUnits
+      : Math.floor(stockUnits / unitCount);
+}
   // 叠加“每人限购”（如果有）
   if (Number(limitQty) > 0) {
     const lim = Math.max(0, Math.floor(Number(limitQty)));
@@ -1419,17 +1439,6 @@ const extraHintHtml = extraHint
     <img src="${imageUrl}" class="product-image" alt="${displayName}" />
 
     <div class="product-qty-badge" data-pid="${pid}"></div>
-
-    <div class="product-overlay">
-      <div class="overlay-btn-row">
-        <button type="button" class="overlay-btn fav">⭐ 收藏</button>
-        <button type="button" class="overlay-btn add" data-add-pid="${pid}" ${maxQty <= 0 ? "disabled" : ""}>
-          ${maxQty <= 0 ? "已售罄" : `加入购物车${limitQty > 0 ? `（限购${limitQty}）` : ""}`}
-        </button>
-      </div>
-    </div>
-  </div>
-
   <div class="product-name" data-go-detail>${displayName}</div>
   <div class="product-desc">${p.desc || ""}</div>
 
@@ -1481,8 +1490,8 @@ const extraHintHtml = extraHint
       data-add-pid="${pid}"
       data-add-only
       style="width:100%;"
-      ${maxQty <= 0 ? "disabled" : ""}>
-      ${maxQty <= 0 ? "已售罄" : "加入购物车"}
+      ${maxQty <= 0 && !p.allowZeroStock ? "disabled" : ""}>
+      ${maxQty <= 0 && !p.allowZeroStock ? "已售罄" : "加入购物车"}
     </button>
   </div>
 `;
@@ -1527,17 +1536,9 @@ const extraHintHtml = extraHint
 
   const overlayAdd = article.querySelector(`.overlay-btn.add[data-add-pid="${pid}"]`);
 const fixedAdd = article.querySelector(`.product-add-fixed[data-add-pid="${pid}"]`);
-  if (overlayAdd) overlayAdd.disabled = maxQty <= 0;
-  if (fixedAdd) fixedAdd.disabled = maxQty <= 0;
+  if (overlayAdd) overlayAdd.disabled = maxQty <= 0 && !p.allowZeroStock;
+if (fixedAdd) fixedAdd.disabled = maxQty <= 0 && !p.allowZeroStock;
 }
-  const favBtn = article.querySelector(".overlay-btn.fav");
-  if (favBtn) {
-    favBtn.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      alert("收藏功能后续接入，这里先做占位提示。");
-    });
-  }
-
   // ✅ 提供一个公开的“库存刷新入口”，给 refreshStockAndCards 调用
   // 这样库存变化时：maxQty、提示文案、按钮、+/- 都能立刻更新
   article.__refreshStockUI = function refreshStockUI(newStockUnits) {
@@ -1545,7 +1546,15 @@ const fixedAdd = article.querySelector(`.product-add-fixed[data-add-pid="${pid}"
     article.__stockUnits = su;
 
     // ✅ 重新计算 maxQty（仍然是唯一口径）
-    let newMax = variantKey === "single" ? su : Math.floor(su / unitCount);
+    const allowZero = p.allowZeroStock === true;
+
+let newMax;
+
+if (su <= 0 && allowZero) {
+  newMax = 999;
+} else {
+  newMax = variantKey === "single" ? su : Math.floor(su / unitCount);
+}
     if (Number(limitQty) > 0) {
       const lim = Math.max(0, Math.floor(Number(limitQty)));
       newMax = Math.max(0, Math.min(newMax, lim));
@@ -2770,9 +2779,15 @@ document.addEventListener("click", (e) => {
   // 从卡片上取 normalizedItem（我们在 createProductCard 里挂）
   const normalizedItem = card.__normalizedItem || { id: pid };
 
-  const cap0 = Number(card.__maxQty);
-  const cap = Number.isFinite(cap0) ? Math.max(0, Math.floor(cap0)) : 0;
+  const allowZero = card.__allowZeroStock === true;
 
+const cap0 = Number(card.__maxQty);
+let cap = Number.isFinite(cap0) ? Math.max(0, Math.floor(cap0)) : 0;
+
+// ✅ 关键修复
+if (cap <= 0 && allowZero) {
+  cap = 999;
+}
   const cur = getCartQty(pid);
     // ✅ 立即渲染（不依赖 getCartQty 立刻读到）
 function renderActionInstant(nextQty) {
