@@ -921,7 +921,11 @@ function editProduct(anyId, tab) {
   document.getElementById("p_internalCompanyId").value = p.internalCompanyId || "";
   document.getElementById("p_minStock").value = p.minStock != null ? p.minStock : "";
   document.getElementById("p_allowZeroStock").checked = p.allowZeroStock !== false;
-
+  // ✅ 修复：回填整箱前台展示开关
+const boxVisibleEl = document.getElementById("p_boxVisibleOnFrontend");
+if (boxVisibleEl) {
+  boxVisibleEl.checked = p.boxVisibleOnFrontend !== false;
+}
   // ✅ 税：回填 taxable
   const taxableEl = document.getElementById("p_taxable");
   if (taxableEl) taxableEl.checked = !!p.taxable;
