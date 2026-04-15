@@ -4,6 +4,7 @@ import ProductPurchaseBatch from "../models/ProductPurchaseBatch.js";
 import Product from "../models/product.js";
 import InventoryAudit from "../models/InventoryAudit.js";
 import Order from "../models/order.js";
+console.log("✅ admin_inventory.js 最新版本已加载 v20260415");
 const router = express.Router();
 router.use(express.json());
 
@@ -90,7 +91,7 @@ router.get("/assets/products", async (req, res) => {
     ];
 
     const products = await Product.find({ _id: { $in: productIds } })
-      .select("name sku")
+      .select("name sku stock")
       .lean();
 
     const productMap = {};
@@ -101,27 +102,33 @@ router.get("/assets/products", async (req, res) => {
     const map = {};
 
     for (const b of batches) {
+      const productId = String(b.productId || "");
+      if (!productId) continue;
+
       const productStock = num(productMap[productId]?.stock);
 
-if (!map[productId]) {
-  map[productId] = {
-    productId,
-    name: productMap[productId]?.name || "[商品已删除或未匹配]",
-    sku: productMap[productId]?.sku || "",
-    qty: 0,          // 批次剩余
-    productStock,    // 商品表库存
-    diffQty: 0,
-    asset: 0,
-  };
-}
+      if (!map[productId]) {
+        map[productId] = {
+          productId,
+          name:
+            productMap[productId]?.name ||
+            "[商品已删除或未匹配]",
+          sku: productMap[productId]?.sku || "",
+          qty: 0,
+          productStock,
+          diffQty: 0,
+          asset: 0,
+        };
+      }
 
-const qty = num(b.remainingUnits);
-const unitCost = num(b.finalUnitCost ?? b.unitCost);
+      const qty = num(b.remainingUnits);
+      const unitCost = num(b.finalUnitCost ?? b.unitCost);
 
-map[productId].qty += qty;
-map[productId].asset += qty * unitCost;
-map[productId].productStock = productStock;
-map[productId].diffQty = productStock - map[productId].qty;
+      map[productId].qty += qty;
+      map[productId].asset += qty * unitCost;
+      map[productId].productStock = productStock;
+      map[productId].diffQty =
+        productStock - map[productId].qty;
     }
 
     const list = Object.values(map)
@@ -143,7 +150,6 @@ map[productId].diffQty = productStock - map[productId].qty;
     });
   }
 });
-
 // =============================
 // 3. 按批次库存资产
 // GET /api/admin/inventory/assets/batches
