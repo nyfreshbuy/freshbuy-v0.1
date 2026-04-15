@@ -50,8 +50,10 @@ export function toClient(p) {
 stock: Number(o.stock || 0),
 minStock: o.minStock == null ? undefined : Number(o.minStock),
 allowZeroStock: o.allowZeroStock !== false,
-boxVisibleOnFrontend: o.boxVisibleOnFrontend !== false,
-
+boxVisibleOnFrontend:
+  o.boxVisibleOnFrontend === false || o.boxVisibleOnFrontend === "false"
+    ? false
+    : true,
     // status
     isActive: o.isActive !== false,
     status: o.status || "on",
