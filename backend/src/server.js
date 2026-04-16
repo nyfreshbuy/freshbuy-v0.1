@@ -231,7 +231,7 @@ console.log("✅ admin_recharge 已挂载到 /api/admin/recharge");
 app.use("/api/banners", bannersRouter);
 app.use("/api/admin/banners", adminBannersRouter);
 // 营销中心
-app.use("/api/admin", adminMarketingRouter);
+// app.use("/api/admin", adminMarketingRouter);
 console.log("✅ admin_marketing 已挂载到 /api/admin");
 
 // ✅ DEBUG: 确认 adminOrdersRouter 是否真的挂载生效
