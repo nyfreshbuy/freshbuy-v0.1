@@ -609,7 +609,21 @@ pageList.forEach((p) => {
 `;
       tbody.appendChild(tr);
     });
+// ✅ 绑定编辑库存按钮
+document.querySelectorAll(".btn-edit-batch-stock").forEach((btn) => {
+  btn.addEventListener("click", async () => {
+    const batchId = btn.getAttribute("data-batch-id");
+    const oldValue = Number(btn.getAttribute("data-remaining-units") || 0);
+    const productId = currentEditingId;
 
+    if (!productId || !batchId) {
+      alert("缺少 productId 或 batchId");
+      return;
+    }
+
+    await editBatchRemainingUnits(productId, batchId, oldValue);
+  });
+});
    renderPaginationUI(total, totalPages, pageList.length);
   } catch (err) {
     console.error(err);
@@ -1250,6 +1264,16 @@ async function loadPurchaseBatches(productId) {
         <td>$${retailVal || "0.00"}</td>
         <td>${expireStr}</td>
         <td>${b.remainingUnits != null ? b.remainingUnits : b.totalUnits || 0}</td>
+<td>
+  <button
+    type="button"
+    class="btn-edit-batch-stock"
+    data-batch-id="${b._id}"
+    data-remaining-units="${Number(b.remainingUnits || 0)}"
+  >
+    编辑库存
+  </button>
+</td>
       `;
       tbody.appendChild(tr);
     });
@@ -1329,6 +1353,41 @@ async function savePurchaseBatch() {
   } catch (err) {
     console.error("保存进货批次出错:", err);
     alert("保存进货批次请求失败");
+  }
+}
+async function editBatchRemainingUnits(productId, batchId, oldValue) {
+  try {
+    const input = prompt("请输入新的批次剩余库存：", oldValue);
+    if (input === null) return;
+
+    const val = Number(input);
+    if (!Number.isFinite(val) || val < 0) {
+      alert("请输入大于等于 0 的数字");
+      return;
+    }
+
+    const res = await fetch(
+      `/api/admin/products/${productId}/purchase-batches/${batchId}/remaining-units`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ remainingUnits: val }),
+      }
+    );
+
+    const data = await res.json().catch(() => null);
+
+    if (!res.ok || !data?.success) {
+      throw new Error(data?.message || "修改失败");
+    }
+
+    alert(`修改成功，新库存：${data.data?.stock ?? 0}`);
+
+    await loadPurchaseBatches(productId);
+    await loadProducts(); // 同步刷新商品库存
+  } catch (err) {
+    console.error(err);
+    alert("修改失败：" + err.message);
   }
 }
 // ===========================================================

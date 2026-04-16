@@ -874,7 +874,76 @@ await p.save();
     return res.status(500).json({ success: false, message: err.message || "服务器错误" });
   }
 });
+router.patch("/:id/purchase-batches/:batchId/remaining-units", async (req, res) => {
+  try {
+    const productId = String(req.params.id || "").trim();
+    const batchId = String(req.params.batchId || "").trim();
+    const nextRemainingUnits = Number(req.body?.remainingUnits);
 
+    if (!productId || !batchId) {
+      return res.status(400).json({ success: false, message: "缺少参数" });
+    }
+
+    if (!Number.isFinite(nextRemainingUnits) || nextRemainingUnits < 0) {
+      return res.status(400).json({
+        success: false,
+        message: "remainingUnits 必须是大于等于 0 的数字"
+      });
+    }
+
+    const product = await Product.findById(productId);
+    if (!product) {
+      return res.status(404).json({ success: false, message: "商品不存在" });
+    }
+
+    const batch = await ProductPurchaseBatch.findOne({
+      _id: batchId,
+      productId: productId
+    });
+
+    if (!batch) {
+      return res.status(404).json({ success: false, message: "批次不存在" });
+    }
+
+    const totalUnits = Number(batch.totalUnits || 0);
+    if (nextRemainingUnits > totalUnits) {
+      return res.status(400).json({
+        success: false,
+        message: `剩余库存不能大于该批次总件数（${totalUnits}）`
+      });
+    }
+
+    batch.remainingUnits = nextRemainingUnits;
+    await batch.save();
+
+    const allBatches = await ProductPurchaseBatch.find({ productId });
+    const sumRemaining = allBatches.reduce(
+      (sum, item) => sum + Number(item.remainingUnits || 0),
+      0
+    );
+
+    product.stock = sumRemaining;
+    await product.save();
+
+    return res.json({
+      success: true,
+      message: "批次库存修改成功",
+      data: {
+        productId: String(product._id),
+        batchId: String(batch._id),
+        remainingUnits: Number(batch.remainingUnits || 0),
+        stock: Number(product.stock || 0)
+      }
+    });
+  } catch (err) {
+    console.error("❌ update batch remainingUnits error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "修改批次库存失败",
+      error: err.message || String(err)
+    });
+  }
+});
 // ===================== 路由：删除商品 =====================
 
 // DELETE /api/admin/products/:id
