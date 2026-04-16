@@ -313,11 +313,29 @@ body.grossMargin = calc.grossMargin;
     await session.commitTransaction();
     res.json({ success: true, invoice: created[0] });
   } catch (e) {
-    await session.abortTransaction();
-    res.status(400).json({ success: false, message: e.message || "create failed" });
-  } finally {
-    session.endSession();
+  console.error("🔥 POST /api/admin/invoices error:", e?.stack || e);
+
+  if (session) {
+    try {
+      await session.abortTransaction();
+    } catch (err) {
+      console.error("🔥 abortTransaction error:", err?.stack || err);
+    }
   }
+
+  return res.status(400).json({
+    success: false,
+    message: e.message || "create failed",
+  });
+} finally {
+  if (session) {
+    try {
+      await session.endSession();
+    } catch (err) {
+      console.error("🔥 endSession error:", err?.stack || err);
+    }
+  }
+}
 });
 
 // =====================
@@ -364,11 +382,29 @@ body.grossMargin = calc.grossMargin;
     await session.commitTransaction();
     res.json({ success: true, invoice: updated });
   } catch (e) {
-    await session.abortTransaction();
-    res.status(400).json({ success: false, message: e.message || "update failed" });
-  } finally {
-    session.endSession();
+  console.error("🔥 PUT /api/admin/invoices/:id error:", e?.stack || e);
+
+  if (session) {
+    try {
+      await session.abortTransaction();
+    } catch (err) {
+      console.error("🔥 abortTransaction error:", err?.stack || err);
+    }
   }
+
+  return res.status(400).json({
+    success: false,
+    message: e.message || "update failed",
+  });
+} finally {
+  if (session) {
+    try {
+      await session.endSession();
+    } catch (err) {
+      console.error("🔥 endSession error:", err?.stack || err);
+    }
+  }
+}
 });
 
 // 列表/详情
