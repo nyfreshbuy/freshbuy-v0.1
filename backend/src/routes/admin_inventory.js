@@ -4,7 +4,6 @@ import ProductPurchaseBatch from "../models/ProductPurchaseBatch.js";
 import Product from "../models/product.js";
 import InventoryAudit from "../models/InventoryAudit.js";
 import Order from "../models/order.js";
-console.log("✅ admin_inventory.js 最新版本已加载 v20260415");
 const router = express.Router();
 router.use(express.json());
 
