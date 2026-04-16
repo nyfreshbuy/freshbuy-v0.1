@@ -65,7 +65,7 @@ const batchSchema = new mongoose.Schema(
 );
 batchSchema.index({ productId: 1, purchaseDate: 1, createdAt: 1 });
 batchSchema.index({ remainingUnits: 1, status: 1 });
-batchSchema.pre("save", function (next) {
+batchSchema.pre("save", function () {
   const remaining = Number(this.remainingUnits || 0);
 
   if (remaining <= 0) {
@@ -78,7 +78,5 @@ batchSchema.pre("save", function (next) {
       this.status = "active";
     }
   }
-
-  next();
 });
 export default mongoose.model("ProductPurchaseBatch", batchSchema);
