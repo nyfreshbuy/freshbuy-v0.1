@@ -609,21 +609,6 @@ pageList.forEach((p) => {
 `;
       tbody.appendChild(tr);
     });
-// ✅ 绑定编辑库存按钮
-document.querySelectorAll(".btn-edit-batch-stock").forEach((btn) => {
-  btn.addEventListener("click", async () => {
-    const batchId = btn.getAttribute("data-batch-id");
-    const oldValue = Number(btn.getAttribute("data-remaining-units") || 0);
-    const productId = currentEditingId;
-
-    if (!productId || !batchId) {
-      alert("缺少 productId 或 batchId");
-      return;
-    }
-
-    await editBatchRemainingUnits(productId, batchId, oldValue);
-  });
-});
    renderPaginationUI(total, totalPages, pageList.length);
   } catch (err) {
     console.error(err);
@@ -1277,6 +1262,23 @@ async function loadPurchaseBatches(productId) {
       `;
       tbody.appendChild(tr);
     });
+    // ✅ 正确位置：批次表格渲染完后绑定事件
+document.querySelectorAll(".btn-edit-batch-stock").forEach((btn) => {
+  btn.addEventListener("click", async () => {
+    console.log("✅ 点击编辑库存按钮");
+
+    const batchId = btn.getAttribute("data-batch-id");
+    const oldValue = Number(btn.getAttribute("data-remaining-units") || 0);
+    const productId = currentEditingId;
+
+    if (!productId || !batchId) {
+      alert("缺少 productId 或 batchId");
+      return;
+    }
+
+    await editBatchRemainingUnits(productId, batchId, oldValue);
+  });
+});
   } catch (err) {
     console.error("加载进货批次出错:", err);
     tbody.innerHTML =
