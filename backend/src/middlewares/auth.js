@@ -37,9 +37,13 @@ export function requireLogin(req, res, next) {
     };
 
     return next();
-  } catch (err) {
-    console.error("❌ requireLogin verify error:", err?.message || err);
-    return res.status(401).json({ success: false, message: "登录已过期，请重新登录" });
+    } catch (err) {
+    console.error("❌ requireLogin verify error stack:");
+    console.error(err?.stack || err);
+    return res.status(401).json({
+      success: false,
+      message: err?.message || "登录已过期，请重新登录",
+    });
   }
 }
 
