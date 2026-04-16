@@ -10,7 +10,6 @@ import { requireLogin } from "../middlewares/auth.js";
 
 const router = express.Router();
 router.use(express.json());
-router.use(requireLogin);
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 
@@ -281,7 +280,7 @@ async function revertStock(invoiceDoc, session) {
 // =====================
 // POST /api/admin/invoices
 // =====================
-router.post("/", async (req, res) => {
+router.post("/", requireLogin, async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
   try {
@@ -325,7 +324,7 @@ body.grossMargin = calc.grossMargin;
 // PUT /api/admin/invoices/:id
 // 回滚旧库存 -> DB 校正 -> 重新扣库存
 // =====================
-router.put("/:id", async (req, res) => {
+router.put("/:id", requireLogin, async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
   try {
