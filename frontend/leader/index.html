@@ -103,7 +103,79 @@
 
       <input id="pp_pickupTimeText" placeholder="营业时间简述，例如 周六 2PM-6PM">
 
-      <textarea id="pp_businessHours" placeholder='营业时间 JSON，例如 [{"day":1,"open":"09:00","close":"18:00","closed":false}]'></textarea>
+      <div class="business-hours-box" style="grid-column: 1 / -1;">
+  <div style="font-weight:700;margin:8px 0 12px;">营业时间</div>
+
+  <div class="bh-row" data-day="1" style="display:grid;grid-template-columns:80px 100px 140px 140px;gap:10px;align-items:center;margin-bottom:8px;">
+    <div>周一</div>
+    <select class="bh-status">
+      <option value="open" selected>open</option>
+      <option value="closed">close</option>
+    </select>
+    <input type="time" class="bh-open" value="09:00">
+    <input type="time" class="bh-close" value="18:00">
+  </div>
+
+  <div class="bh-row" data-day="2" style="display:grid;grid-template-columns:80px 100px 140px 140px;gap:10px;align-items:center;margin-bottom:8px;">
+    <div>周二</div>
+    <select class="bh-status">
+      <option value="open" selected>open</option>
+      <option value="closed">close</option>
+    </select>
+    <input type="time" class="bh-open" value="09:00">
+    <input type="time" class="bh-close" value="18:00">
+  </div>
+
+  <div class="bh-row" data-day="3" style="display:grid;grid-template-columns:80px 100px 140px 140px;gap:10px;align-items:center;margin-bottom:8px;">
+    <div>周三</div>
+    <select class="bh-status">
+      <option value="open" selected>open</option>
+      <option value="closed">close</option>
+    </select>
+    <input type="time" class="bh-open" value="09:00">
+    <input type="time" class="bh-close" value="18:00">
+  </div>
+
+  <div class="bh-row" data-day="4" style="display:grid;grid-template-columns:80px 100px 140px 140px;gap:10px;align-items:center;margin-bottom:8px;">
+    <div>周四</div>
+    <select class="bh-status">
+      <option value="open" selected>open</option>
+      <option value="closed">close</option>
+    </select>
+    <input type="time" class="bh-open" value="09:00">
+    <input type="time" class="bh-close" value="18:00">
+  </div>
+
+  <div class="bh-row" data-day="5" style="display:grid;grid-template-columns:80px 100px 140px 140px;gap:10px;align-items:center;margin-bottom:8px;">
+    <div>周五</div>
+    <select class="bh-status">
+      <option value="open" selected>open</option>
+      <option value="closed">close</option>
+    </select>
+    <input type="time" class="bh-open" value="09:00">
+    <input type="time" class="bh-close" value="18:00">
+  </div>
+
+  <div class="bh-row" data-day="6" style="display:grid;grid-template-columns:80px 100px 140px 140px;gap:10px;align-items:center;margin-bottom:8px;">
+    <div>周六</div>
+    <select class="bh-status">
+      <option value="open" selected>open</option>
+      <option value="closed">close</option>
+    </select>
+    <input type="time" class="bh-open" value="09:00">
+    <input type="time" class="bh-close" value="18:00">
+  </div>
+
+  <div class="bh-row" data-day="0" style="display:grid;grid-template-columns:80px 100px 140px 140px;gap:10px;align-items:center;margin-bottom:8px;">
+    <div>周日</div>
+    <select class="bh-status">
+      <option value="open" selected>open</option>
+      <option value="closed">close</option>
+    </select>
+    <input type="time" class="bh-open" value="09:00">
+    <input type="time" class="bh-close" value="18:00">
+  </div>
+</div>
       <textarea id="pp_leaderRemark" placeholder="备注（可选）"></textarea>
     </div>
 

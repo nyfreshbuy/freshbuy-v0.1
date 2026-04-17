@@ -236,20 +236,77 @@ async function loadPickupRequestList() {
     box.innerHTML = "<div class='card'>加载失败</div>";
   }
 }
+function collectBusinessHours() {
+  try {
+    const rows = Array.from(document.querySelectorAll(".bh-row"));
 
+    return rows.map((row) => {
+      const day = Number(row.getAttribute("data-day"));
+      const statusEl = row.querySelector(".bh-status");
+      const openEl = row.querySelector(".bh-open");
+      const closeEl = row.querySelector(".bh-close");
+
+      const isClosed = statusEl?.value === "closed";
+      const open = (openEl?.value || "").trim();
+      const close = (closeEl?.value || "").trim();
+
+      if (!isClosed) {
+        if (!open || !close) {
+          throw new Error("营业时间不能为空");
+        }
+      }
+
+      return {
+        day,
+        open: isClosed ? "" : open,
+        close: isClosed ? "" : close,
+        closed: isClosed
+      };
+    });
+  } catch (e) {
+    console.error("collectBusinessHours error:", e);
+    return null;
+  }
+}
+
+function bindBusinessHourToggles() {
+  const rows = Array.from(document.querySelectorAll(".bh-row"));
+
+  rows.forEach((row) => {
+    const statusEl = row.querySelector(".bh-status");
+    const openEl = row.querySelector(".bh-open");
+    const closeEl = row.querySelector(".bh-close");
+
+    const sync = () => {
+      const isClosed = statusEl?.value === "closed";
+
+      if (openEl) {
+        openEl.disabled = isClosed;
+        openEl.style.opacity = isClosed ? "0.5" : "1";
+      }
+
+      if (closeEl) {
+        closeEl.disabled = isClosed;
+        closeEl.style.opacity = isClosed ? "0.5" : "1";
+      }
+    };
+
+    if (statusEl) {
+      statusEl.addEventListener("change", sync);
+    }
+
+    sync();
+  });
+}
 async function submitPickupPointRequest() {
   const msg = document.getElementById("pickupPointSubmitMsg");
   if (msg) msg.innerText = "提交中...";
 
-  let businessHours = [];
-  try {
-    const raw = document.getElementById("pp_businessHours")?.value?.trim() || "";
-    businessHours = raw ? JSON.parse(raw) : [];
-  } catch (e) {
-    if (msg) msg.innerText = "营业时间 JSON 格式不正确";
+    const businessHours = collectBusinessHours();
+  if (!businessHours) {
+    if (msg) msg.innerText = "营业时间填写不正确";
     return;
   }
-
   const payload = {
     requestType: "add",
     name: document.getElementById("pp_name")?.value?.trim() || "",
@@ -282,28 +339,39 @@ async function submitPickupPointRequest() {
       if (msg) msg.innerText = "提交成功，等待管理员审核";
 
       const ids = [
-        "pp_name",
-        "pp_contactName",
-        "pp_contactPhone",
-        "pp_addressLine1",
-        "pp_addressLine2",
-        "pp_city",
-        "pp_state",
-        "pp_zip",
-        "pp_fullAddress",
-        "pp_displayArea",
-        "pp_nearStreet",
-        "pp_maskedAddress",
-        "pp_pickupTimeText",
-        "pp_businessHours",
-        "pp_leaderRemark"
-      ];
-
+  "pp_name",
+  "pp_contactName",
+  "pp_contactPhone",
+  "pp_addressLine1",
+  "pp_addressLine2",
+  "pp_city",
+  "pp_state",
+  "pp_zip",
+  "pp_fullAddress",
+  "pp_displayArea",
+  "pp_nearStreet",
+  "pp_maskedAddress",
+  "pp_pickupTimeText",
+  "pp_leaderRemark"
+];
       ids.forEach((id) => {
         const el = document.getElementById(id);
         if (el) el.value = "";
       });
+// ✅ 重置营业时间
+const rows = Array.from(document.querySelectorAll(".bh-row"));
+rows.forEach((row) => {
+  const statusEl = row.querySelector(".bh-status");
+  const openEl = row.querySelector(".bh-open");
+  const closeEl = row.querySelector(".bh-close");
 
+  if (statusEl) statusEl.value = "open";
+  if (openEl) openEl.value = "09:00";
+  if (closeEl) closeEl.value = "18:00";
+});
+
+// 重新绑定状态
+bindBusinessHourToggles();
       await loadPickupRequestList();
     } else {
       if (msg) msg.innerText = data?.message || "提交失败";
@@ -320,11 +388,13 @@ async function init() {
     btn.addEventListener("click", submitPickupPointRequest);
   }
 
+  // ✅ 加这一行（关键）
+  bindBusinessHourToggles();
+
   await loadStats();
   await loadOrders();
   await loadPickups();
   await loadPickupPoints();
   await loadPickupRequestList();
 }
-
 init();
