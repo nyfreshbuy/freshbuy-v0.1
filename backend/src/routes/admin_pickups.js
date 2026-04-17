@@ -3,6 +3,8 @@ import mongoose from "mongoose";
 import PickupPoint from "../models/PickupPoint.js";
 import LeaderPickupChangeRequest from "../models/LeaderPickupChangeRequest.js";
 import { requireLogin } from "../middlewares/auth.js";
+import User from "../models/user.js";
+import { geocodeAddress } from "../utils/geocode.js";
 
 const router = express.Router();
 router.use(express.json());
@@ -31,6 +33,54 @@ function requireAdmin(req, res, next) {
   }
 
   next();
+}
+
+function formatBusinessHoursText(hours = []) {
+  if (!Array.isArray(hours) || !hours.length) return "";
+
+  const dayMap = {
+    1: "周一",
+    2: "周二",
+    3: "周三",
+    4: "周四",
+    5: "周五",
+    6: "周六",
+    0: "周日"
+  };
+
+  const openDays = hours
+    .filter((x) => x && !x.closed && x.open && x.close)
+    .map((x) => `${dayMap[x.day] || x.day} ${x.open}-${x.close}`);
+
+  if (!openDays.length) return "暂停营业";
+  return openDays.join(" / ");
+}
+
+async function tryGeocodePickupPoint(data) {
+  const fullAddress = [
+    data.addressLine1,
+    data.addressLine2,
+    data.city,
+    data.state,
+    data.zip
+  ]
+    .filter(Boolean)
+    .join(", ");
+
+  if (!fullAddress) {
+    return { lat: null, lng: null };
+  }
+
+  try {
+    const geo = await geocodeAddress(fullAddress);
+    return {
+      lat: Number.isFinite(Number(geo?.lat)) ? Number(geo.lat) : null,
+      lng: Number.isFinite(Number(geo?.lng)) ? Number(geo.lng) : null
+    };
+  } catch (e) {
+    console.warn("tryGeocodePickupPoint failed:", e?.message || e);
+    return { lat: null, lng: null };
+  }
 }
 
 // =========================
@@ -106,6 +156,22 @@ router.post("/change-requests/:id/approve", requireAdmin, async (req, res) => {
     const d = reqDoc.submittedData || {};
     let point = null;
 
+    const leaderUser = await User.findById(reqDoc.leaderUserId)
+      .select("name phone")
+      .lean();
+
+    const businessHours = Array.isArray(d.businessHours) ? d.businessHours : [];
+    const pickupTimeText = formatBusinessHoursText(businessHours);
+
+    let lat = d.lat ?? null;
+    let lng = d.lng ?? null;
+
+    if (lat === null || lng === null) {
+      const geo = await tryGeocodePickupPoint(d);
+      lat = geo.lat;
+      lng = geo.lng;
+    }
+
     if (reqDoc.requestType === "add") {
       point = await PickupPoint.create({
         enabled: true,
@@ -115,9 +181,9 @@ router.post("/change-requests/:id/approve", requireAdmin, async (req, res) => {
         code: "",
         note: "",
 
-        leaderUserId: reqDoc.leaderUserId,
-        leaderName: "",
-        leaderPhone: "",
+        leaderUserId: new mongoose.Types.ObjectId(String(reqDoc.leaderUserId)),
+        leaderName: leaderUser?.name || "",
+        leaderPhone: leaderUser?.phone || "",
 
         contactName: d.contactName || "",
         contactPhone: d.contactPhone || "",
@@ -129,18 +195,18 @@ router.post("/change-requests/:id/approve", requireAdmin, async (req, res) => {
         zip: d.zip || "",
         fullAddress: d.fullAddress || "",
 
-        displayArea: d.displayArea || "",
+        displayArea: d.displayArea || d.city || "",
         nearStreet: d.nearStreet || "",
         maskedAddress: d.maskedAddress || "",
 
-        lat: d.lat ?? null,
-        lng: d.lng ?? null,
+        lat,
+        lng,
 
-        serviceZips: [],
-        pickupTimeText: d.pickupTimeText || "",
+        serviceZips: d.zip ? [String(d.zip)] : [],
+        pickupTimeText,
         minOrderAmount: 0,
         pickupFee: 0,
-        businessHours: Array.isArray(d.businessHours) ? d.businessHours : [],
+        businessHours,
 
         revealFullAddressAfterOrder: false
       });
@@ -156,22 +222,38 @@ router.post("/change-requests/:id/approve", requireAdmin, async (req, res) => {
         });
       }
 
+      point.enabled = true;
+      point.status = "active";
+
       point.name = d.name || "";
+      point.leaderUserId = new mongoose.Types.ObjectId(String(reqDoc.leaderUserId));
+      point.leaderName = leaderUser?.name || point.leaderName || "";
+      point.leaderPhone = leaderUser?.phone || point.leaderPhone || "";
+
       point.contactName = d.contactName || "";
       point.contactPhone = d.contactPhone || "";
+
       point.addressLine1 = d.addressLine1 || "";
       point.addressLine2 = d.addressLine2 || "";
       point.city = d.city || "";
       point.state = d.state || "NY";
       point.zip = d.zip || "";
       point.fullAddress = d.fullAddress || "";
-      point.displayArea = d.displayArea || "";
+
+      point.displayArea = d.displayArea || d.city || "";
       point.nearStreet = d.nearStreet || "";
       point.maskedAddress = d.maskedAddress || "";
-      point.lat = d.lat ?? null;
-      point.lng = d.lng ?? null;
-      point.pickupTimeText = d.pickupTimeText || "";
-      point.businessHours = Array.isArray(d.businessHours) ? d.businessHours : [];
+
+      point.lat = lat;
+      point.lng = lng;
+
+      point.serviceZips = d.zip
+        ? [String(d.zip)]
+        : (Array.isArray(point.serviceZips) ? point.serviceZips : []);
+
+      point.pickupTimeText = pickupTimeText;
+      point.businessHours = businessHours;
+
       await point.save();
     }
 
@@ -184,7 +266,8 @@ router.post("/change-requests/:id/approve", requireAdmin, async (req, res) => {
     return res.json({
       ok: true,
       success: true,
-      message: "审核通过"
+      message: "审核通过",
+      pickupPointId: point ? String(point._id) : ""
     });
   } catch (err) {
     console.error("POST /api/admin/pickups/change-requests/:id/approve error:", err);

@@ -487,8 +487,8 @@ router.get("/earnings/summary", ensureLeader, async (req, res) => {
 router.get("/pickup-points", ensureLeader, async (req, res) => {
   try {
     const list = await PickupPoint.find({
-      leaderUserId: req.leader._id
-    })
+  leaderUserId: new mongoose.Types.ObjectId(String(req.leader._id))
+})
       .sort({ createdAt: -1 })
       .lean();
 
@@ -529,8 +529,8 @@ router.get("/pickup-points", ensureLeader, async (req, res) => {
 router.get("/pickup-change-requests", ensureLeader, async (req, res) => {
   try {
     const list = await LeaderPickupChangeRequest.find({
-      leaderUserId: req.leader._id
-    })
+  leaderUserId: new mongoose.Types.ObjectId(String(req.leader._id))
+})
       .sort({ createdAt: -1 })
       .lean();
 
@@ -616,9 +616,9 @@ router.post("/pickup-change-requests", ensureLeader, async (req, res) => {
       }
 
       const oldPoint = await PickupPoint.findOne({
-        _id: pickupPointId,
-        leaderUserId: req.leader._id
-      }).lean();
+  _id: pickupPointId,
+  leaderUserId: new mongoose.Types.ObjectId(String(req.leader._id))
+}).lean();
 
       if (!oldPoint) {
         return res.status(404).json({
@@ -629,12 +629,40 @@ router.post("/pickup-change-requests", ensureLeader, async (req, res) => {
       }
     }
 
-    const existingPending = await LeaderPickupChangeRequest.findOne({
-      leaderUserId: req.leader._id,
-      pickupPointId: requestType === "edit" ? pickupPointId : null,
-      status: "pending"
-    }).lean();
+    let existingPending = null;
 
+if (requestType === "edit") {
+  existingPending = await LeaderPickupChangeRequest.findOne({
+    leaderUserId: new mongoose.Types.ObjectId(String(req.leader._id)),
+    pickupPointId: pickupPointId,
+    status: "pending"
+  }).lean();
+
+  if (existingPending) {
+    return res.status(400).json({
+      ok: false,
+      success: false,
+      message: "这个自提点已有待审核修改申请，请先等待管理员处理"
+    });
+  }
+}
+
+if (requestType === "add") {
+  existingPending = await LeaderPickupChangeRequest.findOne({
+    leaderUserId: new mongoose.Types.ObjectId(String(req.leader._id)),
+    requestType: "add",
+    status: "pending",
+    "submittedData.fullAddress": String(fullAddress).trim()
+  }).lean();
+
+  if (existingPending) {
+    return res.status(400).json({
+      ok: false,
+      success: false,
+      message: "这个地址已有待审核新增申请，请不要重复提交"
+    });
+  }
+}
     if (existingPending) {
       return res.status(400).json({
         ok: false,
@@ -644,8 +672,8 @@ router.post("/pickup-change-requests", ensureLeader, async (req, res) => {
     }
 
     const pointCount = await PickupPoint.countDocuments({
-      leaderUserId: req.leader._id
-    });
+  leaderUserId: new mongoose.Types.ObjectId(String(req.leader._id))
+});
 
     if (requestType === "add" && pointCount >= 20) {
       return res.status(400).json({
@@ -709,10 +737,10 @@ router.post("/pickup-change-requests/:id/cancel", ensureLeader, async (req, res)
     }
 
     const doc = await LeaderPickupChangeRequest.findOne({
-      _id: id,
-      leaderUserId: req.leader._id,
-      status: "pending"
-    });
+  _id: id,
+  leaderUserId: new mongoose.Types.ObjectId(String(req.leader._id)),
+  status: "pending"
+});
 
     if (!doc) {
       return res.status(404).json({
