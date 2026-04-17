@@ -4,7 +4,7 @@ import PickupPoint from "../models/PickupPoint.js";
 import LeaderPickupChangeRequest from "../models/LeaderPickupChangeRequest.js";
 import { requireLogin } from "../middlewares/auth.js";
 import User from "../models/user.js";
-import { geocodeAddress } from "../utils/geocode.js";
+import { geocodeAddress } from "../utils/geocoding.js";
 
 const router = express.Router();
 router.use(express.json());
@@ -164,13 +164,38 @@ router.post("/change-requests/:id/approve", requireAdmin, async (req, res) => {
     const pickupTimeText = formatBusinessHoursText(businessHours);
 
     let lat = d.lat ?? null;
-    let lng = d.lng ?? null;
+let lng = d.lng ?? null;
+let zip = d.zip || "";
+let fullAddress = d.fullAddress || "";
 
-    if (lat === null || lng === null) {
-      const geo = await tryGeocodePickupPoint(d);
-      lat = geo.lat;
-      lng = geo.lng;
+if (lat === null || lng === null) {
+  const geo = await geocodeAddress(
+    [
+      d.addressLine1,
+      d.addressLine2,
+      d.city,
+      d.state,
+      d.zip
+    ]
+      .filter(Boolean)
+      .join(", ")
+  );
+
+  if (geo) {
+    lat = geo.lat ?? null;
+    lng = geo.lng ?? null;
+
+    // ✅ 自动修正 zip
+    if (geo.zip) {
+      zip = geo.zip;
     }
+
+    // ✅ 使用 Google 标准地址
+    if (geo.formattedAddress) {
+      fullAddress = geo.formattedAddress;
+    }
+  }
+}
 
     if (reqDoc.requestType === "add") {
       point = await PickupPoint.create({
@@ -192,8 +217,8 @@ router.post("/change-requests/:id/approve", requireAdmin, async (req, res) => {
         addressLine2: d.addressLine2 || "",
         city: d.city || "",
         state: d.state || "NY",
-        zip: d.zip || "",
-        fullAddress: d.fullAddress || "",
+        zip,
+fullAddress,
 
         displayArea: d.displayArea || d.city || "",
         nearStreet: d.nearStreet || "",
@@ -237,8 +262,8 @@ router.post("/change-requests/:id/approve", requireAdmin, async (req, res) => {
       point.addressLine2 = d.addressLine2 || "";
       point.city = d.city || "";
       point.state = d.state || "NY";
-      point.zip = d.zip || "";
-      point.fullAddress = d.fullAddress || "";
+      point.zip = zip;
+point.fullAddress = fullAddress;
 
       point.displayArea = d.displayArea || d.city || "";
       point.nearStreet = d.nearStreet || "";
