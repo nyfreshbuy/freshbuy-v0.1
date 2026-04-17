@@ -4,7 +4,8 @@ import User from "../models/user.js";
 import Order from "../models/order.js";
 import Wallet from "../models/Wallet.js";
 import { requireLogin } from "../middlewares/auth.js";
-
+import PickupPoint from "../models/PickupPoint.js";
+import LeaderPickupChangeRequest from "../models/LeaderPickupChangeRequest.js";
 const router = express.Router();
 router.use(express.json());
 router.use(requireLogin);
@@ -483,5 +484,261 @@ router.get("/earnings/summary", ensureLeader, async (req, res) => {
     },
   });
 });
+router.get("/pickup-points", ensureLeader, async (req, res) => {
+  try {
+    const list = await PickupPoint.find({
+      leaderUserId: req.leader._id
+    })
+      .sort({ createdAt: -1 })
+      .lean();
 
+    return res.json({
+      ok: true,
+      success: true,
+      items: list.map((p) => ({
+        _id: String(p._id),
+        name: p.name || "",
+        code: p.code || "",
+        leaderName: p.leaderName || "",
+        leaderPhone: p.leaderPhone || "",
+        contactName: p.contactName || "",
+        contactPhone: p.contactPhone || "",
+        addressLine1: p.addressLine1 || "",
+        addressLine2: p.addressLine2 || "",
+        city: p.city || "",
+        state: p.state || "",
+        zip: p.zip || "",
+        fullAddress: p.fullAddress || "",
+        maskedAddress: p.maskedAddress || "",
+        pickupTimeText: p.pickupTimeText || "",
+        businessHours: Array.isArray(p.businessHours) ? p.businessHours : [],
+        status: p.status || "active",
+        enabled: !!p.enabled,
+        createdAt: p.createdAt
+      }))
+    });
+  } catch (err) {
+    console.error("GET /api/leader/pickup-points error:", err);
+    return res.status(500).json({
+      ok: false,
+      success: false,
+      message: "加载自提点失败"
+    });
+  }
+});
+router.get("/pickup-change-requests", ensureLeader, async (req, res) => {
+  try {
+    const list = await LeaderPickupChangeRequest.find({
+      leaderUserId: req.leader._id
+    })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    return res.json({
+      ok: true,
+      success: true,
+      items: list.map((r) => ({
+        _id: String(r._id),
+        requestType: r.requestType || "add",
+        pickupPointId: r.pickupPointId ? String(r.pickupPointId) : "",
+        submittedData: r.submittedData || {},
+        status: r.status || "pending",
+        leaderRemark: r.leaderRemark || "",
+        adminRemark: r.adminRemark || "",
+        reviewedAt: r.reviewedAt || null,
+        createdAt: r.createdAt
+      }))
+    });
+  } catch (err) {
+    console.error("GET /api/leader/pickup-change-requests error:", err);
+    return res.status(500).json({
+      ok: false,
+      success: false,
+      message: "加载申请记录失败"
+    });
+  }
+});
+router.post("/pickup-change-requests", ensureLeader, async (req, res) => {
+  try {
+    const {
+      requestType = "add",
+      pickupPointId = "",
+      name = "",
+      contactName = "",
+      contactPhone = "",
+      addressLine1 = "",
+      addressLine2 = "",
+      city = "",
+      state = "NY",
+      zip = "",
+      fullAddress = "",
+      displayArea = "",
+      nearStreet = "",
+      maskedAddress = "",
+      lat = null,
+      lng = null,
+      pickupTimeText = "",
+      businessHours = [],
+      leaderRemark = ""
+    } = req.body || {};
+
+    if (!["add", "edit"].includes(String(requestType))) {
+      return res.status(400).json({
+        ok: false,
+        success: false,
+        message: "requestType 不合法"
+      });
+    }
+
+    if (!String(name).trim()) {
+      return res.status(400).json({
+        ok: false,
+        success: false,
+        message: "自提点名称不能为空"
+      });
+    }
+
+    if (!String(fullAddress).trim()) {
+      return res.status(400).json({
+        ok: false,
+        success: false,
+        message: "完整地址不能为空"
+      });
+    }
+
+    if (requestType === "edit") {
+      if (!pickupPointId || !mongoose.Types.ObjectId.isValid(String(pickupPointId))) {
+        return res.status(400).json({
+          ok: false,
+          success: false,
+          message: "pickupPointId 不合法"
+        });
+      }
+
+      const oldPoint = await PickupPoint.findOne({
+        _id: pickupPointId,
+        leaderUserId: req.leader._id
+      }).lean();
+
+      if (!oldPoint) {
+        return res.status(404).json({
+          ok: false,
+          success: false,
+          message: "自提点不存在"
+        });
+      }
+    }
+
+    const existingPending = await LeaderPickupChangeRequest.findOne({
+      leaderUserId: req.leader._id,
+      pickupPointId: requestType === "edit" ? pickupPointId : null,
+      status: "pending"
+    }).lean();
+
+    if (existingPending) {
+      return res.status(400).json({
+        ok: false,
+        success: false,
+        message: "你已有待审核申请，请先等待管理员处理"
+      });
+    }
+
+    const pointCount = await PickupPoint.countDocuments({
+      leaderUserId: req.leader._id
+    });
+
+    if (requestType === "add" && pointCount >= 20) {
+      return res.status(400).json({
+        ok: false,
+        success: false,
+        message: "最多只能管理20个自提点"
+      });
+    }
+
+    const doc = await LeaderPickupChangeRequest.create({
+      leaderUserId: req.leader._id,
+      requestType,
+      pickupPointId: requestType === "edit" ? pickupPointId : null,
+      submittedData: {
+        name: String(name).trim(),
+        contactName: String(contactName).trim(),
+        contactPhone: String(contactPhone).trim(),
+        addressLine1: String(addressLine1).trim(),
+        addressLine2: String(addressLine2).trim(),
+        city: String(city).trim(),
+        state: String(state || "NY").trim(),
+        zip: String(zip).trim(),
+        fullAddress: String(fullAddress).trim(),
+        displayArea: String(displayArea).trim(),
+        nearStreet: String(nearStreet).trim(),
+        maskedAddress: String(maskedAddress).trim(),
+        lat: lat === null || lat === "" ? null : Number(lat),
+        lng: lng === null || lng === "" ? null : Number(lng),
+        pickupTimeText: String(pickupTimeText).trim(),
+        businessHours: Array.isArray(businessHours) ? businessHours : []
+      },
+      leaderRemark: String(leaderRemark).trim(),
+      status: "pending"
+    });
+
+    return res.json({
+      ok: true,
+      success: true,
+      message: "提交成功，等待管理员审核",
+      item: doc
+    });
+  } catch (err) {
+    console.error("POST /api/leader/pickup-change-requests error:", err);
+    return res.status(500).json({
+      ok: false,
+      success: false,
+      message: "提交申请失败"
+    });
+  }
+});
+router.post("/pickup-change-requests/:id/cancel", ensureLeader, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(String(id))) {
+      return res.status(400).json({
+        ok: false,
+        success: false,
+        message: "申请ID不合法"
+      });
+    }
+
+    const doc = await LeaderPickupChangeRequest.findOne({
+      _id: id,
+      leaderUserId: req.leader._id,
+      status: "pending"
+    });
+
+    if (!doc) {
+      return res.status(404).json({
+        ok: false,
+        success: false,
+        message: "待审核申请不存在"
+      });
+    }
+
+    doc.status = "rejected";
+    doc.adminRemark = "团长主动取消";
+    doc.reviewedAt = new Date();
+    await doc.save();
+
+    return res.json({
+      ok: true,
+      success: true,
+      message: "已取消申请"
+    });
+  } catch (err) {
+    console.error("POST /api/leader/pickup-change-requests/:id/cancel error:", err);
+    return res.status(500).json({
+      ok: false,
+      success: false,
+      message: "取消失败"
+    });
+  }
+});
 export default router;

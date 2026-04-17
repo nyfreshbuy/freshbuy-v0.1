@@ -77,7 +77,47 @@
       </table>
     </div>
   </section>
+  <section class="section">
+    <h2>我的自提点</h2>
+    <div id="pickupPointList" class="pickup-point-list"></div>
+  </section>
 
+  <section class="section">
+    <h2>新增自提点申请</h2>
+
+    <div class="leader-form-grid">
+      <input id="pp_name" placeholder="自提点名称">
+      <input id="pp_contactName" placeholder="联系人">
+      <input id="pp_contactPhone" placeholder="联系电话">
+
+      <input id="pp_addressLine1" placeholder="地址1">
+      <input id="pp_addressLine2" placeholder="地址2（可选）">
+      <input id="pp_city" placeholder="城市">
+      <input id="pp_state" placeholder="州（默认 NY）">
+      <input id="pp_zip" placeholder="邮编">
+
+      <input id="pp_fullAddress" placeholder="完整地址">
+      <input id="pp_displayArea" placeholder="展示区域，例如 Fresh Meadows">
+      <input id="pp_nearStreet" placeholder="附近街道">
+      <input id="pp_maskedAddress" placeholder="前台遮罩地址">
+
+      <input id="pp_pickupTimeText" placeholder="营业时间简述，例如 周六 2PM-6PM">
+
+      <textarea id="pp_businessHours" placeholder='营业时间 JSON，例如 [{"day":1,"open":"09:00","close":"18:00","closed":false}]'></textarea>
+      <textarea id="pp_leaderRemark" placeholder="备注（可选）"></textarea>
+    </div>
+
+    <div style="margin-top:12px;">
+      <button id="submitPickupPointBtn">提交审核</button>
+    </div>
+
+    <div id="pickupPointSubmitMsg" style="margin-top:10px;"></div>
+  </section>
+
+  <section class="section">
+    <h2>我的申请记录</h2>
+    <div id="pickupRequestList" class="pickup-point-list"></div>
+  </section>
 </main>
 
 <nav class="tabbar">

@@ -69,6 +69,7 @@ import leaderRouter from "./routes/leader.js";
 import publicPickupPointsRouter from "./routes/public_pickup_points.js";
 import adminProfitRouter from "./routes/admin_profit.js";
 import adminInventoryRouter from "./routes/admin_inventory.js";
+import adminPickupsRouter from "./routes/admin_pickups.js";
 // =======================
 // ESM 环境下的 __dirname
 // =======================
@@ -136,6 +137,7 @@ app.get("/api/__debug_server_version", (req, res) => {
 });
 
 // ✅ DEBUG：确认 /api/admin/products 请求是否进入 server.js 这层
+app.use("/api/admin/pickups", adminPickupsRouter);
 app.use("/api/admin/products", (req, res, next) => {
   console.log("🧭 ENTER /api/admin/products:", req.method, req.originalUrl);
   return next();

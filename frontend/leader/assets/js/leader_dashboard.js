@@ -164,10 +164,167 @@ async function loadPickups() {
   });
 }
 
+async function loadPickupPoints() {
+  const box = document.getElementById("pickupPointList");
+  if (!box) return;
+
+  box.innerHTML = "加载中...";
+
+  try {
+    const data = await api("/api/leader/pickup-points?_t=" + Date.now());
+
+    if (!data || !data.ok || !Array.isArray(data.items)) {
+      box.innerHTML = "<div class='card'>暂无数据</div>";
+      return;
+    }
+
+    if (!data.items.length) {
+      box.innerHTML = "<div class='card'>暂无自提点</div>";
+      return;
+    }
+
+    box.innerHTML = data.items.map((p) => `
+      <div class="card" style="margin-bottom:12px;">
+        <div><b>${safeText(p.name)}</b></div>
+        <div>联系人：${safeText(p.contactName)}</div>
+        <div>电话：${safeText(p.contactPhone)}</div>
+        <div>地址：${safeText(p.fullAddress)}</div>
+        <div>营业时间：${safeText(p.pickupTimeText)}</div>
+        <div>状态：${safeText(p.status, "active")}</div>
+      </div>
+    `).join("");
+  } catch (e) {
+    console.error("loadPickupPoints error:", e);
+    box.innerHTML = "<div class='card'>加载失败</div>";
+  }
+}
+
+async function loadPickupRequestList() {
+  const box = document.getElementById("pickupRequestList");
+  if (!box) return;
+
+  box.innerHTML = "加载中...";
+
+  try {
+    const data = await api("/api/leader/pickup-change-requests?_t=" + Date.now());
+
+    if (!data || !data.ok || !Array.isArray(data.items)) {
+      box.innerHTML = "<div class='card'>暂无记录</div>";
+      return;
+    }
+
+    if (!data.items.length) {
+      box.innerHTML = "<div class='card'>暂无申请记录</div>";
+      return;
+    }
+
+    box.innerHTML = data.items.map((r) => `
+      <div class="card" style="margin-bottom:12px;">
+        <div><b>${safeText(r.submittedData?.name)}</b></div>
+        <div>类型：${r.requestType === "edit" ? "修改" : "新增"}</div>
+        <div>联系人：${safeText(r.submittedData?.contactName)}</div>
+        <div>电话：${safeText(r.submittedData?.contactPhone)}</div>
+        <div>地址：${safeText(r.submittedData?.fullAddress)}</div>
+        <div>营业时间：${safeText(r.submittedData?.pickupTimeText)}</div>
+        <div>状态：${safeText(r.status, "pending")}</div>
+        <div>团长备注：${safeText(r.leaderRemark)}</div>
+        <div>管理员备注：${safeText(r.adminRemark)}</div>
+      </div>
+    `).join("");
+  } catch (e) {
+    console.error("loadPickupRequestList error:", e);
+    box.innerHTML = "<div class='card'>加载失败</div>";
+  }
+}
+
+async function submitPickupPointRequest() {
+  const msg = document.getElementById("pickupPointSubmitMsg");
+  if (msg) msg.innerText = "提交中...";
+
+  let businessHours = [];
+  try {
+    const raw = document.getElementById("pp_businessHours")?.value?.trim() || "";
+    businessHours = raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    if (msg) msg.innerText = "营业时间 JSON 格式不正确";
+    return;
+  }
+
+  const payload = {
+    requestType: "add",
+    name: document.getElementById("pp_name")?.value?.trim() || "",
+    contactName: document.getElementById("pp_contactName")?.value?.trim() || "",
+    contactPhone: document.getElementById("pp_contactPhone")?.value?.trim() || "",
+    addressLine1: document.getElementById("pp_addressLine1")?.value?.trim() || "",
+    addressLine2: document.getElementById("pp_addressLine2")?.value?.trim() || "",
+    city: document.getElementById("pp_city")?.value?.trim() || "",
+    state: document.getElementById("pp_state")?.value?.trim() || "NY",
+    zip: document.getElementById("pp_zip")?.value?.trim() || "",
+    fullAddress: document.getElementById("pp_fullAddress")?.value?.trim() || "",
+    displayArea: document.getElementById("pp_displayArea")?.value?.trim() || "",
+    nearStreet: document.getElementById("pp_nearStreet")?.value?.trim() || "",
+    maskedAddress: document.getElementById("pp_maskedAddress")?.value?.trim() || "",
+    pickupTimeText: document.getElementById("pp_pickupTimeText")?.value?.trim() || "",
+    businessHours,
+    leaderRemark: document.getElementById("pp_leaderRemark")?.value?.trim() || ""
+  };
+
+  try {
+    const data = await api("/api/leader/pickup-change-requests", {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: {
+        "Content-Type": "application/json"
+      }
+    });
+
+    if (data?.success) {
+      if (msg) msg.innerText = "提交成功，等待管理员审核";
+
+      const ids = [
+        "pp_name",
+        "pp_contactName",
+        "pp_contactPhone",
+        "pp_addressLine1",
+        "pp_addressLine2",
+        "pp_city",
+        "pp_state",
+        "pp_zip",
+        "pp_fullAddress",
+        "pp_displayArea",
+        "pp_nearStreet",
+        "pp_maskedAddress",
+        "pp_pickupTimeText",
+        "pp_businessHours",
+        "pp_leaderRemark"
+      ];
+
+      ids.forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.value = "";
+      });
+
+      await loadPickupRequestList();
+    } else {
+      if (msg) msg.innerText = data?.message || "提交失败";
+    }
+  } catch (e) {
+    console.error("submitPickupPointRequest error:", e);
+    if (msg) msg.innerText = "提交失败";
+  }
+}
+
 async function init() {
+  const btn = document.getElementById("submitPickupPointBtn");
+  if (btn) {
+    btn.addEventListener("click", submitPickupPointRequest);
+  }
+
   await loadStats();
   await loadOrders();
   await loadPickups();
+  await loadPickupPoints();
+  await loadPickupRequestList();
 }
 
 init();
