@@ -46,27 +46,30 @@
           </div>
 
           <section class="admin-grid">
-            <article class="admin-card admin-card-ghost">
-              <div class="admin-card-title">自提点数量</div>
-              <div class="admin-card-value">12</div>
-              <div class="admin-card-sub">Flushing / Fresh Meadows / Bayside 等</div>
-            </article>
-            <article class="admin-card admin-card-ghost">
-              <div class="admin-card-title">本周自提订单</div>
-              <div class="admin-card-value">286</div>
-              <div class="admin-card-sub">占总订单 41.2%</div>
-            </article>
-            <article class="admin-card admin-card-ghost">
-              <div class="admin-card-title">最忙自提点</div>
-              <div class="admin-card-value">Flushing Main St</div>
-              <div class="admin-card-sub">本周 86 单</div>
-            </article>
-            <article class="admin-card admin-card-ghost">
-              <div class="admin-card-title">待开通自提点</div>
-              <div class="admin-card-value">3</div>
-              <div class="admin-card-sub">审核中的团长申请</div>
-            </article>
-          </section>
+  <article class="admin-card admin-card-ghost">
+    <div class="admin-card-title">自提点数量</div>
+    <div id="pickupTotalCount" class="admin-card-value">0</div>
+    <div id="pickupTotalSub" class="admin-card-sub">加载中...</div>
+  </article>
+
+  <article class="admin-card admin-card-ghost">
+    <div class="admin-card-title">启用自提点</div>
+    <div id="pickupActiveCount" class="admin-card-value">0</div>
+    <div class="admin-card-sub">当前可用自提点</div>
+  </article>
+
+  <article class="admin-card admin-card-ghost">
+    <div class="admin-card-title">最新自提点</div>
+    <div id="pickupLatestName" class="admin-card-value">-</div>
+    <div id="pickupLatestSub" class="admin-card-sub">加载中...</div>
+  </article>
+
+  <article class="admin-card admin-card-ghost">
+    <div class="admin-card-title">待开通自提点</div>
+    <div id="pickupPendingCount" class="admin-card-value">0</div>
+    <div class="admin-card-sub">审核中的团长申请</div>
+  </article>
+</section>
 
           <section class="admin-table-card" style="margin-top: 12px">
             <div class="admin-card-header">
@@ -91,35 +94,11 @@
                     <th>状态</th>
                   </tr>
                 </thead>
-                <tbody>
-                  <tr>
-                    <td>PUP-001</td>
-                    <td>Flushing Main St 自提点</td>
-                    <td>王团长</td>
-                    <td>Main St &amp; Franklin Ave</td>
-                    <td>17:00 - 21:00</td>
-                    <td>86</td>
-                    <td><span class="admin-tag admin-tag-success">启用</span></td>
-                  </tr>
-                  <tr>
-                    <td>PUP-002</td>
-                    <td>Fresh Meadows 社区自提点</td>
-                    <td>Liqi</td>
-                    <td>Utopia Pkwy &amp; 73 Ave</td>
-                    <td>18:00 - 21:00</td>
-                    <td>54</td>
-                    <td><span class="admin-tag admin-tag-success">启用</span></td>
-                  </tr>
-                  <tr>
-                    <td>PUP-003</td>
-                    <td>Bayside 社区自提点</td>
-                    <td>Amy</td>
-                    <td>Bell Blvd &amp; 42 Ave</td>
-                    <td>17:30 - 20:30</td>
-                    <td>32</td>
-                    <td><span class="admin-tag admin-tag-warning">筹备中</span></td>
-                  </tr>
-                </tbody>
+                <tbody id="pickupTableBody">
+  <tr>
+    <td colspan="7" style="text-align:center;padding:20px;color:#999;">加载中...</td>
+  </tr>
+</tbody>
               </table>
             </div>
           </section>
@@ -131,5 +110,6 @@
     <!-- ✅ 统一 sidebar 注入脚本（必须加） -->
     <script src="/admin/assets/js/admin_sidebar.js"></script>
     <script src="assets/js/admin.js"></script>
+    <script src="/admin/assets/js/pickups.js"></script>
   </body>
 </html>

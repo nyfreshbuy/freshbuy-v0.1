@@ -357,5 +357,54 @@ router.post("/change-requests/:id/reject", requireAdmin, async (req, res) => {
     });
   }
 });
+// =========================
+// 管理员：自提点真实列表
+// =========================
+router.get("/", requireAdmin, async (req, res) => {
+  try {
+    const list = await PickupPoint.find({})
+      .sort({ createdAt: -1 })
+      .lean();
 
+    return res.json({
+      ok: true,
+      success: true,
+      items: list.map((p, idx) => ({
+        _id: String(p._id),
+        pickupId: p.code || `PUP-${String(idx + 1).padStart(3, "0")}`,
+        name: p.name || "",
+        leaderName: p.leaderName || "",
+        leaderPhone: p.leaderPhone || "",
+        contactName: p.contactName || "",
+        contactPhone: p.contactPhone || "",
+        address:
+          p.maskedAddress ||
+          p.fullAddress ||
+          [p.addressLine1, p.addressLine2, p.city, p.state, p.zip]
+            .filter(Boolean)
+            .join(", "),
+        pickupTimeText: p.pickupTimeText || "",
+        zip: p.zip || "",
+        city: p.city || "",
+        status: p.status || (p.enabled ? "active" : "disabled"),
+        enabled: !!p.enabled,
+        serviceZips: Array.isArray(p.serviceZips) ? p.serviceZips : [],
+        businessHours: Array.isArray(p.businessHours) ? p.businessHours : [],
+        createdAt: p.createdAt
+      })),
+      summary: {
+        total: list.length,
+        active: list.filter((x) => x.enabled !== false && (x.status || "active") === "active").length,
+        pending: list.filter((x) => (x.status || "") === "pending").length
+      }
+    });
+  } catch (err) {
+    console.error("GET /api/admin/pickups error:", err);
+    return res.status(500).json({
+      ok: false,
+      success: false,
+      message: "加载自提点失败"
+    });
+  }
+});
 export default router;
