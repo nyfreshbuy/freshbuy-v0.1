@@ -196,8 +196,7 @@ box.innerHTML = payload.items.map((p) => `
     <div>状态：${safeText(p.status, "active")}</div>
 
     <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;">
-      <button type="button" onclick="openBasicEdit('${p._id}')">编辑营业时间/联系人/电话</button>
-      <button type="button" onclick="openAuditEdit('${p._id}')">修改名字/地址（需审核）</button>
+      <button onclick="startEdit('${p._id}')">编辑</button>
     </div>
   </div>
 `).join("");
@@ -530,6 +529,20 @@ async function submitAuditEditRequest(payload) {
     alert("提交失败");
   }
 }
+function startEdit(id) {
+  const p = CURRENT_PICKUP_POINTS.find(x => String(x._id) === String(id));
+  if (!p) return;
+
+  document.getElementById("pickupEditor").style.display = "block";
+
+  document.getElementById("edit_id").value = p._id;
+  document.getElementById("edit_name").value = p.name || "";
+  document.getElementById("edit_contactName").value = p.contactName || "";
+  document.getElementById("edit_contactPhone").value = p.contactPhone || "";
+  document.getElementById("edit_addressLine1").value = p.addressLine1 || "";
+  document.getElementById("edit_city").value = p.city || "";
+  document.getElementById("edit_zip").value = p.zip || "";
+}
 async function init() {
   const btn = document.getElementById("submitPickupPointBtn");
   if (btn) {
@@ -538,13 +551,37 @@ async function init() {
 
   bindBusinessHourToggles();
 
+  // ✅ 就是这里开始新增
+  document.getElementById("saveBasicBtn")?.addEventListener("click", async () => {
+    const id = document.getElementById("edit_id").value;
+
+    await saveBasicPickupPoint(id, {
+      contactName: document.getElementById("edit_contactName").value,
+      contactPhone: document.getElementById("edit_contactPhone").value,
+      businessHours: []
+    });
+  });
+
+  document.getElementById("submitAuditBtn")?.addEventListener("click", async () => {
+    const id = document.getElementById("edit_id").value;
+
+    await submitAuditEditRequest({
+      requestType: "edit",
+      pickupPointId: id,
+      name: document.getElementById("edit_name").value,
+      addressLine1: document.getElementById("edit_addressLine1").value,
+      city: document.getElementById("edit_city").value,
+      zip: document.getElementById("edit_zip").value
+    });
+  });
+  // ✅ 新增结束
+
   await loadStats();
   await loadOrders();
   await loadPickups();
   await loadPickupPoints();
   await loadPickupRequestList();
 }
-
 window.openBasicEdit = openBasicEdit;
 window.openAuditEdit = openAuditEdit;
 
