@@ -607,28 +607,49 @@ router.post("/pickup-change-requests", ensureLeader, async (req, res) => {
     }
 
     if (requestType === "edit") {
-      if (!pickupPointId || !mongoose.Types.ObjectId.isValid(String(pickupPointId))) {
-        return res.status(400).json({
-          ok: false,
-          success: false,
-          message: "pickupPointId 不合法"
-        });
-      }
+  if (!pickupPointId || !mongoose.Types.ObjectId.isValid(String(pickupPointId))) {
+    return res.status(400).json({
+      ok: false,
+      success: false,
+      message: "pickupPointId 不合法"
+    });
+  }
 
-      const oldPoint = await PickupPoint.findOne({
-  _id: pickupPointId,
-  leaderUserId: new mongoose.Types.ObjectId(String(req.leader._id))
-}).lean();
+  const oldPoint = await PickupPoint.findOne({
+    _id: pickupPointId,
+    leaderUserId: new mongoose.Types.ObjectId(String(req.leader._id))
+  }).lean();
 
-      if (!oldPoint) {
-        return res.status(404).json({
-          ok: false,
-          success: false,
-          message: "自提点不存在"
-        });
-      }
-    }
+  if (!oldPoint) {
+    return res.status(404).json({
+      ok: false,
+      success: false,
+      message: "自提点不存在"
+    });
+  }
 
+  const sameName =
+    String(name || "").trim() === String(oldPoint.name || "").trim();
+
+  const sameAddress =
+    String(addressLine1 || "").trim() === String(oldPoint.addressLine1 || "").trim() &&
+    String(addressLine2 || "").trim() === String(oldPoint.addressLine2 || "").trim() &&
+    String(city || "").trim() === String(oldPoint.city || "").trim() &&
+    String(state || "").trim() === String(oldPoint.state || "").trim() &&
+    String(zip || "").trim() === String(oldPoint.zip || "").trim() &&
+    String(fullAddress || "").trim() === String(oldPoint.fullAddress || "").trim() &&
+    String(displayArea || "").trim() === String(oldPoint.displayArea || "").trim() &&
+    String(nearStreet || "").trim() === String(oldPoint.nearStreet || "").trim() &&
+    String(maskedAddress || "").trim() === String(oldPoint.maskedAddress || "").trim();
+
+  if (sameName && sameAddress) {
+    return res.status(400).json({
+      ok: false,
+      success: false,
+      message: "你没有修改需要审核的内容"
+    });
+  }
+}
     let existingPending = null;
 
 if (requestType === "edit") {
@@ -766,6 +787,87 @@ router.post("/pickup-change-requests/:id/cancel", ensureLeader, async (req, res)
       ok: false,
       success: false,
       message: "取消失败"
+    });
+  }
+});
+// =========================
+// 团长：直接修改自提点可编辑信息
+// 仅允许修改：联系人 / 电话 / 营业时间
+// =========================
+router.patch("/pickup-points/:id/basic", ensureLeader, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(String(id))) {
+      return res.status(400).json({
+        ok: false,
+        success: false,
+        message: "自提点ID不合法"
+      });
+    }
+
+    const {
+      contactName = "",
+      contactPhone = "",
+      businessHours = []
+    } = req.body || {};
+
+    const point = await PickupPoint.findOne({
+      _id: id,
+      leaderUserId: new mongoose.Types.ObjectId(String(req.leader._id))
+    });
+
+    if (!point) {
+      return res.status(404).json({
+        ok: false,
+        success: false,
+        message: "自提点不存在"
+      });
+    }
+
+    point.contactName = String(contactName).trim();
+    point.contactPhone = String(contactPhone).trim();
+    point.businessHours = Array.isArray(businessHours) ? businessHours : [];
+
+    const dayMap = {
+      1: "周一",
+      2: "周二",
+      3: "周三",
+      4: "周四",
+      5: "周五",
+      6: "周六",
+      0: "周日"
+    };
+
+    const openDays = point.businessHours
+      .filter((x) => x && !x.closed && x.open && x.close)
+      .map((x) => `${dayMap[x.day] || x.day} ${x.open}-${x.close}`);
+
+    point.pickupTimeText = openDays.length ? openDays.join(" / ") : "暂停营业";
+
+    await point.save();
+
+    return res.json({
+      ok: true,
+      success: true,
+      message: "保存成功",
+      item: {
+        _id: String(point._id),
+        name: point.name || "",
+        contactName: point.contactName || "",
+        contactPhone: point.contactPhone || "",
+        fullAddress: point.fullAddress || "",
+        pickupTimeText: point.pickupTimeText || "",
+        businessHours: Array.isArray(point.businessHours) ? point.businessHours : [],
+        status: point.status || "active"
+      }
+    });
+  } catch (err) {
+    console.error("PATCH /api/leader/pickup-points/:id/basic error:", err);
+    return res.status(500).json({
+      ok: false,
+      success: false,
+      message: "保存失败"
     });
   }
 });

@@ -185,15 +185,20 @@ async function loadPickupPoints() {
     }
 
     box.innerHTML = payload.items.map((p) => `
-      <div class="card" style="margin-bottom:12px;">
-        <div><b>${safeText(p.name)}</b></div>
-        <div>联系人：${safeText(p.contactName || p.leaderName)}</div>
-        <div>电话：${safeText(p.contactPhone || p.leaderPhone)}</div>
-        <div>地址：${safeText(p.fullAddress || p.maskedAddress)}</div>
-        <div>营业时间：${safeText(p.pickupTimeText)}</div>
-        <div>状态：${safeText(p.status, "active")}</div>
-      </div>
-    `).join("");
+  <div class="card" style="margin-bottom:12px;">
+    <div><b>${safeText(p.name)}</b></div>
+    <div>联系人：${safeText(p.contactName || p.leaderName)}</div>
+    <div>电话：${safeText(p.contactPhone || p.leaderPhone)}</div>
+    <div>地址：${safeText(p.fullAddress || p.maskedAddress)}</div>
+    <div>营业时间：${safeText(p.pickupTimeText)}</div>
+    <div>状态：${safeText(p.status, "active")}</div>
+
+    <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;">
+      <button onclick="openBasicEdit('${p._id}')">编辑营业时间/联系人/电话</button>
+      <button onclick="openAuditEdit('${p._id}', ${encodeURIComponent(JSON.stringify(p))})">修改名字/地址（需审核）</button>
+    </div>
+  </div>
+`).join("");
   } catch (e) {
     console.error("loadPickupPoints error:", e);
     box.innerHTML = "<div class='card'>加载失败</div>";
@@ -383,7 +388,148 @@ bindBusinessHourToggles();
     if (msg) msg.innerText = "提交失败";
   }
 }
+let CURRENT_PICKUP_POINTS = [];
 
+function openBasicEdit(id) {
+  const point = CURRENT_PICKUP_POINTS.find(x => String(x._id) === String(id));
+  if (!point) return;
+
+  const contactName = prompt("联系人", point.contactName || point.leaderName || "");
+  if (contactName === null) return;
+
+  const contactPhone = prompt("联系电话", point.contactPhone || point.leaderPhone || "");
+  if (contactPhone === null) return;
+
+  const rawHours = prompt(
+    '营业时间 JSON（例如 [{"day":6,"open":"14:00","close":"18:00","closed":false}]）',
+    JSON.stringify(point.businessHours || [])
+  );
+  if (rawHours === null) return;
+
+  let businessHours = [];
+  try {
+    businessHours = rawHours ? JSON.parse(rawHours) : [];
+  } catch (e) {
+    alert("营业时间格式不正确");
+    return;
+  }
+
+  saveBasicPickupPoint(id, {
+    contactName,
+    contactPhone,
+    businessHours
+  });
+}
+
+async function saveBasicPickupPoint(id, payload) {
+  try {
+    const resp = await api(`/api/leader/pickup-points/${id}/basic`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+      headers: {
+        "Content-Type": "application/json"
+      }
+    });
+
+    const data = resp?.data && typeof resp.data === "object" ? resp.data : resp;
+
+    if (!data?.success) {
+      alert(data?.message || "保存失败");
+      return;
+    }
+
+    alert("保存成功");
+    await loadPickupPoints();
+  } catch (e) {
+    console.error("saveBasicPickupPoint error:", e);
+    alert("保存失败");
+  }
+}
+
+function openAuditEdit(id, encodedJson) {
+  let point = null;
+  try {
+    point = JSON.parse(decodeURIComponent(encodedJson));
+  } catch (e) {
+    point = null;
+  }
+  if (!point) return;
+
+  const name = prompt("自提点名字（修改后需审核）", point.name || "");
+  if (name === null) return;
+
+  const addressLine1 = prompt("地址1（修改后需审核）", point.addressLine1 || "");
+  if (addressLine1 === null) return;
+
+  const addressLine2 = prompt("地址2（可选）", point.addressLine2 || "");
+  if (addressLine2 === null) return;
+
+  const city = prompt("城市", point.city || "");
+  if (city === null) return;
+
+  const state = prompt("州", point.state || "NY");
+  if (state === null) return;
+
+  const zip = prompt("ZIP", point.zip || "");
+  if (zip === null) return;
+
+  const fullAddress = prompt("完整地址", point.fullAddress || "");
+  if (fullAddress === null) return;
+
+  const displayArea = prompt("展示区域", point.displayArea || "");
+  if (displayArea === null) return;
+
+  const nearStreet = prompt("附近街道", point.nearStreet || "");
+  if (nearStreet === null) return;
+
+  const maskedAddress = prompt("前台遮罩地址", point.maskedAddress || "");
+  if (maskedAddress === null) return;
+
+  submitAuditEditRequest({
+    requestType: "edit",
+    pickupPointId: id,
+    name,
+    contactName: point.contactName || "",
+    contactPhone: point.contactPhone || "",
+    addressLine1,
+    addressLine2,
+    city,
+    state,
+    zip,
+    fullAddress,
+    displayArea,
+    nearStreet,
+    maskedAddress,
+    pickupTimeText: point.pickupTimeText || "",
+    businessHours: Array.isArray(point.businessHours) ? point.businessHours : [],
+    leaderRemark: "团长修改自提点名字/地址，等待审核"
+  });
+}
+
+async function submitAuditEditRequest(payload) {
+  try {
+    const resp = await api("/api/leader/pickup-change-requests", {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: {
+        "Content-Type": "application/json"
+      }
+    });
+
+    const data = resp?.data && typeof resp.data === "object" ? resp.data : resp;
+
+    if (!data?.success) {
+      alert(data?.message || "提交失败");
+      return;
+    }
+
+    alert("已提交审核");
+    await loadPickupRequestList();
+  } catch (e) {
+    console.error("submitAuditEditRequest error:", e);
+    alert("提交失败");
+  }
+}
 async function init() {
   const btn = document.getElementById("submitPickupPointBtn");
   if (btn) {
