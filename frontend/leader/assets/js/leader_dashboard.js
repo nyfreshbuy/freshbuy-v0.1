@@ -171,24 +171,25 @@ async function loadPickupPoints() {
   box.innerHTML = "加载中...";
 
   try {
-    const data = await api("/api/leader/pickup-points?_t=" + Date.now());
+    const resp = await api("/api/leader/pickup-points?_t=" + Date.now());
+    const payload = resp?.data && typeof resp.data === "object" ? resp.data : resp;
 
-    if (!data || !data.ok || !Array.isArray(data.items)) {
+    if (!payload || !payload.ok || !Array.isArray(payload.items)) {
       box.innerHTML = "<div class='card'>暂无数据</div>";
       return;
     }
 
-    if (!data.items.length) {
+    if (!payload.items.length) {
       box.innerHTML = "<div class='card'>暂无自提点</div>";
       return;
     }
 
-    box.innerHTML = data.items.map((p) => `
+    box.innerHTML = payload.items.map((p) => `
       <div class="card" style="margin-bottom:12px;">
         <div><b>${safeText(p.name)}</b></div>
-        <div>联系人：${safeText(p.contactName)}</div>
-        <div>电话：${safeText(p.contactPhone)}</div>
-        <div>地址：${safeText(p.fullAddress)}</div>
+        <div>联系人：${safeText(p.contactName || p.leaderName)}</div>
+        <div>电话：${safeText(p.contactPhone || p.leaderPhone)}</div>
+        <div>地址：${safeText(p.fullAddress || p.maskedAddress)}</div>
         <div>营业时间：${safeText(p.pickupTimeText)}</div>
         <div>状态：${safeText(p.status, "active")}</div>
       </div>
@@ -206,19 +207,20 @@ async function loadPickupRequestList() {
   box.innerHTML = "加载中...";
 
   try {
-    const data = await api("/api/leader/pickup-change-requests?_t=" + Date.now());
+    const resp = await api("/api/leader/pickup-change-requests?_t=" + Date.now());
+    const payload = resp?.data && typeof resp.data === "object" ? resp.data : resp;
 
-    if (!data || !data.ok || !Array.isArray(data.items)) {
+    if (!payload || !payload.ok || !Array.isArray(payload.items)) {
       box.innerHTML = "<div class='card'>暂无记录</div>";
       return;
     }
 
-    if (!data.items.length) {
+    if (!payload.items.length) {
       box.innerHTML = "<div class='card'>暂无申请记录</div>";
       return;
     }
 
-    box.innerHTML = data.items.map((r) => `
+    box.innerHTML = payload.items.map((r) => `
       <div class="card" style="margin-bottom:12px;">
         <div><b>${safeText(r.submittedData?.name)}</b></div>
         <div>类型：${r.requestType === "edit" ? "修改" : "新增"}</div>
