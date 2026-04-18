@@ -184,7 +184,9 @@ async function loadPickupPoints() {
       return;
     }
 
-    box.innerHTML = payload.items.map((p) => `
+    CURRENT_PICKUP_POINTS = Array.isArray(payload.items) ? payload.items : [];
+
+box.innerHTML = payload.items.map((p) => `
   <div class="card" style="margin-bottom:12px;">
     <div><b>${safeText(p.name)}</b></div>
     <div>联系人：${safeText(p.contactName || p.leaderName)}</div>
@@ -194,8 +196,8 @@ async function loadPickupPoints() {
     <div>状态：${safeText(p.status, "active")}</div>
 
     <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;">
-      <button onclick="openBasicEdit('${p._id}')">编辑营业时间/联系人/电话</button>
-      <button onclick="openAuditEdit('${p._id}', ${encodeURIComponent(JSON.stringify(p))})">修改名字/地址（需审核）</button>
+      <button type="button" onclick="openBasicEdit('${p._id}')">编辑营业时间/联系人/电话</button>
+      <button type="button" onclick="openAuditEdit('${p._id}')">修改名字/地址（需审核）</button>
     </div>
   </div>
 `).join("");
@@ -446,14 +448,12 @@ async function saveBasicPickupPoint(id, payload) {
   }
 }
 
-function openAuditEdit(id, encodedJson) {
-  let point = null;
-  try {
-    point = JSON.parse(decodeURIComponent(encodedJson));
-  } catch (e) {
-    point = null;
+function openAuditEdit(id) {
+  const point = CURRENT_PICKUP_POINTS.find(x => String(x._id) === String(id));
+  if (!point) {
+    alert("找不到自提点数据");
+    return;
   }
-  if (!point) return;
 
   const name = prompt("自提点名字（修改后需审核）", point.name || "");
   if (name === null) return;
@@ -536,7 +536,6 @@ async function init() {
     btn.addEventListener("click", submitPickupPointRequest);
   }
 
-  // ✅ 加这一行（关键）
   bindBusinessHourToggles();
 
   await loadStats();
@@ -545,4 +544,8 @@ async function init() {
   await loadPickupPoints();
   await loadPickupRequestList();
 }
+
+window.openBasicEdit = openBasicEdit;
+window.openAuditEdit = openAuditEdit;
+
 init();
