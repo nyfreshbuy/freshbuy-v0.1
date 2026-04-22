@@ -137,7 +137,13 @@
         <td>${idx + 1}</td>
         <td>${esc(it.name || "-")}</td>
         <td>${esc(it.sku || "-")}</td>
-        <td class="num">${safeNum(it.qty)}</td>
+        <td class="num">
+  ${
+    it.boxCount > 0
+      ? `${it.boxCount}箱${it.looseUnits > 0 ? " + " + it.looseUnits : ""}`
+      : `${it.looseUnits}`
+  }
+</td>
         <td class="num">${money(it.asset)}</td>
       </tr>
     `).join("");
@@ -160,7 +166,13 @@
         <td>${esc(it.batchNo || "-")}</td>
         <td>${esc(it.supplierName || "-")}</td>
         <td>${fmtDate(it.purchaseDate)}</td>
-        <td class="num">${safeNum(it.remainingUnits)}</td>
+        <td class="num">
+  ${
+    it.boxCount > 0
+      ? `${it.boxCount}箱${it.looseUnits > 0 ? " + " + it.looseUnits : ""}`
+      : `${it.looseUnits}`
+  }
+</td>
         <td class="num">${money(it.unitCost)}</td>
         <td class="num">${money(it.asset)}</td>
       </tr>

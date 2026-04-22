@@ -26,12 +26,12 @@ router.get("/assets/summary", async (req, res) => {
     let totalAsset = 0;
 
     for (const b of batches) {
-      const qty = num(b.remainingUnits);
-      const unitCost = num(b.finalUnitCost ?? b.unitCost);
+  const qty = num(b.remainingUnits);
+  const unitCost = num(b.finalUnitCost ?? b.unitCost);
 
-      totalQty += qty;
-      totalAsset += qty * unitCost;
-    }
+  totalQty += qty;
+  totalAsset += qty * unitCost;
+}
 
     // ✅ 正确位置：for循环结束后
     const pendingOrders = await Order.find({
@@ -126,6 +126,8 @@ router.get("/assets/products", async (req, res) => {
           name: productMap[productId]?.name || "[商品已删除或未匹配]",
           sku: productMap[productId]?.sku || "",
           qty: 0,
+          boxCount: 0,
+          looseUnits: 0,
           productStock,
           diffQty: 0,
           asset: 0,
@@ -133,19 +135,28 @@ router.get("/assets/products", async (req, res) => {
       }
 
       const qty = num(b.remainingUnits);
-      const unitCost = num(b.finalUnitCost ?? b.unitCost);
+const unitsPerBox = num(b.unitsPerBox) || 1;
 
-      map[productId].qty += qty;
-      map[productId].asset += qty * unitCost;
-      map[productId].productStock = productStock;
-      map[productId].diffQty = productStock - map[productId].qty;
+const boxCount = Math.floor(qty / unitsPerBox);
+const looseUnits = qty % unitsPerBox;
+
+const unitCost = num(b.finalUnitCost ?? b.unitCost);
+
+map[productId].qty += qty;
+map[productId].boxCount += boxCount;
+map[productId].looseUnits += looseUnits;
+map[productId].asset += qty * unitCost;
+map[productId].productStock = productStock;
+map[productId].diffQty = productStock - map[productId].qty;
     }
 
     const list = Object.values(map)
       .map((x) => ({
-        ...x,
-        asset: Math.round(x.asset * 100) / 100,
-      }))
+  ...x,
+  boxCount: x.boxCount,
+  looseUnits: x.looseUnits,
+  asset: Math.round(x.asset * 100) / 100,
+}))
       .sort((a, b) => b.asset - a.asset);
 
     console.log("🟡 final list length =", list.length);
@@ -191,23 +202,30 @@ router.get("/assets/batches", async (req, res) => {
     }
 
     const list = batches.map((b) => {
-      const qty = num(b.remainingUnits);
-      const unitCost = num(b.finalUnitCost || b.unitCost);
+  const qty = num(b.remainingUnits);
+  const unitsPerBox = num(b.unitsPerBox) || 1;
 
-      return {
-        _id: b._id,
-        productId: b.productId,
-        name: productMap[String(b.productId)]?.name || "",
-        sku: productMap[String(b.productId)]?.sku || "",
-        batchNo: b.batchNo || "",
-        purchaseDate: b.purchaseDate || null,
-        remainingUnits: qty,
-        unitCost,
-        asset: Math.round(qty * unitCost * 100) / 100,
-        supplierName: b.supplierName || "",
-      };
-    });
+  const boxCount = Math.floor(qty / unitsPerBox);
+  const looseUnits = qty % unitsPerBox;
 
+  const unitCost = num(b.finalUnitCost ?? b.unitCost);
+
+  return {
+    _id: b._id,
+    productId: b.productId,
+    name: productMap[String(b.productId)]?.name || "",
+    sku: productMap[String(b.productId)]?.sku || "",
+    batchNo: b.batchNo || "",
+    purchaseDate: b.purchaseDate || null,
+    remainingUnits: qty,
+    boxCount,
+    looseUnits,
+    unitsPerBox,
+    unitCost,
+    asset: Math.round(qty * unitCost * 100) / 100,
+    supplierName: b.supplierName || "",
+  };
+});
     res.json({
       success: true,
       data: list,
