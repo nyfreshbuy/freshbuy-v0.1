@@ -533,15 +533,33 @@ function startEdit(id) {
   const p = CURRENT_PICKUP_POINTS.find(x => String(x._id) === String(id));
   if (!p) return;
 
-  document.getElementById("pickupEditor").style.display = "block";
+  const editor = document.getElementById("pickupEditor");
+  if (!editor) {
+    console.error("❌ pickupEditor 不存在");
+    return;
+  }
 
-  document.getElementById("edit_id").value = p._id;
-  document.getElementById("edit_name").value = p.name || "";
-  document.getElementById("edit_contactName").value = p.contactName || "";
-  document.getElementById("edit_contactPhone").value = p.contactPhone || "";
-  document.getElementById("edit_addressLine1").value = p.addressLine1 || "";
-  document.getElementById("edit_city").value = p.city || "";
-  document.getElementById("edit_zip").value = p.zip || "";
+  editor.style.display = "block";
+
+// ✅ 自动滚动到编辑框
+editor.scrollIntoView({ behavior: "smooth", block: "center" });
+
+  const setVal = (id, val) => {
+    const el = document.getElementById(id);
+    if (!el) {
+      console.warn("找不到元素:", id);
+      return;
+    }
+    el.value = val || "";
+  };
+
+  setVal("edit_id", p._id);
+  setVal("edit_name", p.name);
+  setVal("edit_contactName", p.contactName);
+  setVal("edit_contactPhone", p.contactPhone);
+  setVal("edit_addressLine1", p.addressLine1);
+  setVal("edit_city", p.city);
+  setVal("edit_zip", p.zip);
 }
 async function init() {
   const btn = document.getElementById("submitPickupPointBtn");
@@ -584,5 +602,7 @@ async function init() {
 }
 window.openBasicEdit = openBasicEdit;
 window.openAuditEdit = openAuditEdit;
-
+document.addEventListener("DOMContentLoaded", () => {
+  console.log("DOM 已加载");
+});
 init();
