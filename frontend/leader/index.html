@@ -281,13 +281,15 @@
       <input id="pp_contactName" placeholder="联系人">
       <input id="pp_contactPhone" placeholder="联系电话">
 
-      <input id="pp_addressLine1" placeholder="地址1">
-      <input id="pp_addressLine2" placeholder="地址2（可选）">
-      <input id="pp_city" placeholder="城市">
-      <input id="pp_state" placeholder="州（默认 NY）">
-      <input id="pp_zip" placeholder="邮编">
+      <input id="pp_addressLine1" placeholder="美国地址，例如 4900 Maspeth Ave" autocomplete="off">
+      <input id="pp_addressLine2" placeholder="Apt / Suite / Unit（可选）">
+      <input id="pp_city" placeholder="City，例如 Maspeth">
+      <input id="pp_state" placeholder="State，例如 NY">
+      <input id="pp_zip" placeholder="ZIP，例如 11378">
 
-      <input id="pp_fullAddress" placeholder="完整地址">
+      <input id="pp_fullAddress" placeholder="Google 标准完整地址" readonly>
+      <input type="hidden" id="pp_lat">
+      <input type="hidden" id="pp_lng">
       <input id="pp_displayArea" placeholder="展示区域，例如 Fresh Meadows">
       <input id="pp_nearStreet" placeholder="附近街道">
       <input id="pp_maskedAddress" placeholder="前台遮罩地址">
@@ -389,7 +391,7 @@
   <a href="/leader/orders.html">订单</a>
   <a href="/leader/team.html">团队</a>
 </nav>
-
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCFgt7ksBZeFbkPJIYTo9bhJ_5U311zOYQ&libraries=places&callback=__initPlaces"></script>
 <script src="/leader/assets/js/leader_common.js?v=20260417-2"></script>
 <script src="/leader/assets/js/leader_dashboard.js?v=20260417-2"></script>
 </body>
