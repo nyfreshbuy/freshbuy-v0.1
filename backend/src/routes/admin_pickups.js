@@ -163,12 +163,18 @@ router.post("/change-requests/:id/approve", requireAdmin, async (req, res) => {
     const businessHours = Array.isArray(d.businessHours) ? d.businessHours : [];
     const pickupTimeText = formatBusinessHoursText(businessHours);
 
-    let lat = d.lat ?? null;
-let lng = d.lng ?? null;
+    let lat = Number(d.lat);
+let lng = Number(d.lng);
 let zip = d.zip || "";
 let fullAddress = d.fullAddress || "";
 
-if (lat === null || lng === null) {
+const needGeocode =
+  !Number.isFinite(lat) ||
+  !Number.isFinite(lng) ||
+  lat === 0 ||
+  lng === 0;
+
+if (needGeocode) {
   const geo = await geocodeAddress(
     [
       d.addressLine1,

@@ -6,7 +6,7 @@ import Address from "../models/Address.js";
 import { genLeaderCode } from "../utils/leaderCode.js";
 import { maskPickupAddress } from "../utils/address_mask.js";
 // import { requireAdmin } from "../middlewares/admin.js";
-
+import { geocodeAddress } from "../utils/geocoding.js";
 const router = express.Router();
 router.use(express.json());
 // router.use(requireAdmin);
@@ -260,13 +260,19 @@ router.post("/make-leader", async (req, res) => {
     const state = String(addr?.state || "").trim();
     const zip = String(addr?.zip || "").trim();
 
-    const lat = Number.isFinite(Number(addr?.lat))
-      ? Number(addr.lat)
-      : undefined;
-    const lng = Number.isFinite(Number(addr?.lng))
-      ? Number(addr.lng)
-      : undefined;
+    let lat = Number.isFinite(Number(addr?.lat)) ? Number(addr.lat) : null;
+let lng = Number.isFinite(Number(addr?.lng)) ? Number(addr.lng) : null;
 
+if (!lat || !lng || lat === 0 || lng === 0) {
+  const geo = await geocodeAddress(
+    [addressLine1, city, state, zip].filter(Boolean).join(", ")
+  );
+
+  if (geo?.lat && geo?.lng) {
+    lat = Number(geo.lat);
+    lng = Number(geo.lng);
+  }
+}
     const displayArea = String(city || "").trim();
     const nearStreet = "";
     const pickupTimeText = "周六 2:00 PM - 6:00 PM";
@@ -307,8 +313,8 @@ router.post("/make-leader", async (req, res) => {
             maskedAddress,
             pickupTimeText,
 
-            ...(lat !== undefined ? { lat } : {}),
-            ...(lng !== undefined ? { lng } : {}),
+            ...(Number.isFinite(lat) && lat !== 0 ? { lat } : {}),
+            ...(Number.isFinite(lng) && lng !== 0 ? { lng } : {}),
 
             minOrderAmount: 0,
             pickupFee: 0,
