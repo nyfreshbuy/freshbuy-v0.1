@@ -205,9 +205,10 @@
   }
 
   function genInvoiceNoPreview(dateStr) {
-    const s = String(dateStr || "").replaceAll("-", "");
-    if (!/^\d{8}$/.test(s)) return "";
-    return `${s}001`;
+  const s = String(dateStr || "").replaceAll("-", "").replaceAll("/", "");
+  if (!/^\d{8}$/.test(s)) return "";
+  return `${s}001`;
+}
   }
 
   // =========================
