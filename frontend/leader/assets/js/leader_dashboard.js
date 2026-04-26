@@ -244,6 +244,85 @@ async function loadPickupRequestList() {
     box.innerHTML = "<div class='card'>加载失败</div>";
   }
 }
+function collectEditBusinessHours() {
+  const rows = document.querySelectorAll(".edit-bh-row");
+
+  const result = [];
+
+  rows.forEach(row => {
+    const day = Number(row.dataset.day);
+
+    const status = row.querySelector(".edit-status").value;
+    const open = row.querySelector(".edit-open").value;
+    const close = row.querySelector(".edit-close").value;
+
+    result.push({
+      day,
+      open: status === "closed" ? "" : open,
+      close: status === "closed" ? "" : close,
+      closed: status === "closed"
+    });
+  });
+
+  return result;
+}
+function bindEditBusinessHourUI() {
+  const rows = Array.from(document.querySelectorAll(".edit-bh-row"));
+
+  const syncRow = (row) => {
+    const statusEl = row.querySelector(".edit-status");
+    const openEl = row.querySelector(".edit-open");
+    const closeEl = row.querySelector(".edit-close");
+
+    const isClosed = statusEl?.value === "closed";
+
+    row.classList.toggle("closed-row", isClosed);
+
+    if (openEl) openEl.disabled = isClosed;
+    if (closeEl) closeEl.disabled = isClosed;
+  };
+
+  rows.forEach(row => {
+    const statusEl = row.querySelector(".edit-status");
+    statusEl?.addEventListener("change", () => syncRow(row));
+    syncRow(row);
+  });
+
+  // ✅ 复制周一
+  document.getElementById("copyFirstDayBtn")?.addEventListener("click", () => {
+    const first = document.querySelector('.edit-bh-row[data-day="1"]');
+    if (!first) return;
+
+    const status = first.querySelector(".edit-status")?.value || "open";
+    const open = first.querySelector(".edit-open")?.value || "09:00";
+    const close = first.querySelector(".edit-close")?.value || "18:00";
+
+    rows.forEach(row => {
+      row.querySelector(".edit-status").value = status;
+      row.querySelector(".edit-open").value = open;
+      row.querySelector(".edit-close").value = close;
+      syncRow(row);
+    });
+  });
+
+  // ✅ 全部营业
+  document.getElementById("setAllOpenBtn")?.addEventListener("click", () => {
+    rows.forEach(row => {
+      row.querySelector(".edit-status").value = "open";
+      if (!row.querySelector(".edit-open").value) row.querySelector(".edit-open").value = "09:00";
+      if (!row.querySelector(".edit-close").value) row.querySelector(".edit-close").value = "18:00";
+      syncRow(row);
+    });
+  });
+
+  // ✅ 全部休息
+  document.getElementById("setAllClosedBtn")?.addEventListener("click", () => {
+    rows.forEach(row => {
+      row.querySelector(".edit-status").value = "closed";
+      syncRow(row);
+    });
+  });
+}
 function collectBusinessHours() {
   try {
     const rows = Array.from(document.querySelectorAll(".bh-row"));
@@ -553,13 +632,29 @@ editor.scrollIntoView({ behavior: "smooth", block: "center" });
     el.value = val || "";
   };
 
-  setVal("edit_id", p._id);
+    setVal("edit_id", p._id);
   setVal("edit_name", p.name);
   setVal("edit_contactName", p.contactName);
   setVal("edit_contactPhone", p.contactPhone);
   setVal("edit_addressLine1", p.addressLine1);
   setVal("edit_city", p.city);
   setVal("edit_zip", p.zip);
+
+  // ✅ 回填营业时间
+  if (Array.isArray(p.businessHours)) {
+    p.businessHours.forEach(h => {
+      const row = document.querySelector(`.edit-bh-row[data-day="${h.day}"]`);
+      if (!row) return;
+
+      const statusEl = row.querySelector(".edit-status");
+      const openEl = row.querySelector(".edit-open");
+      const closeEl = row.querySelector(".edit-close");
+
+      if (statusEl) statusEl.value = h.closed ? "closed" : "open";
+      if (openEl) openEl.value = h.open || "";
+      if (closeEl) closeEl.value = h.close || "";
+    });
+  }
 }
 async function init() {
   const btn = document.getElementById("submitPickupPointBtn");
@@ -568,6 +663,7 @@ async function init() {
   }
 
   bindBusinessHourToggles();
+bindEditBusinessHourUI();   // 👈 加这一行
 
   // ✅ 就是这里开始新增
   document.getElementById("saveBasicBtn")?.addEventListener("click", async () => {
@@ -576,7 +672,7 @@ async function init() {
     await saveBasicPickupPoint(id, {
       contactName: document.getElementById("edit_contactName").value,
       contactPhone: document.getElementById("edit_contactPhone").value,
-      businessHours: []
+      businessHours: collectEditBusinessHours()
     });
   });
 
