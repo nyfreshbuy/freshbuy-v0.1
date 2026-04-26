@@ -323,6 +323,56 @@ function bindEditBusinessHourUI() {
     });
   });
 }
+function initPickupAddressAutocomplete() {
+  const input = document.getElementById("pp_fullAddress");
+  if (!input || !window.google?.maps?.places) return;
+
+  const autocomplete = new google.maps.places.Autocomplete(input, {
+    componentRestrictions: { country: "us" },
+    types: ["address"],
+    fields: ["address_components", "geometry", "formatted_address"]
+  });
+
+  autocomplete.addListener("place_changed", () => {
+    const place = autocomplete.getPlace();
+
+    if (!place?.geometry?.location) {
+      alert("Google 无法验证这个地址，请从下拉建议里选择地址");
+      return;
+    }
+
+    let streetNumber = "";
+    let route = "";
+    let city = "";
+    let state = "";
+    let zip = "";
+
+    (place.address_components || []).forEach((c) => {
+      const types = c.types || [];
+
+      if (types.includes("street_number")) streetNumber = c.long_name;
+      if (types.includes("route")) route = c.long_name;
+      if (types.includes("locality")) city = c.long_name;
+      if (!city && types.includes("neighborhood")) city = c.long_name;
+      if (!city && types.includes("sublocality")) city = c.long_name;
+      if (types.includes("administrative_area_level_1")) state = c.short_name;
+      if (types.includes("postal_code")) zip = c.long_name;
+    });
+
+    const addressLine1 = [streetNumber, route].filter(Boolean).join(" ").trim();
+    const lat = place.geometry.location.lat();
+    const lng = place.geometry.location.lng();
+
+    if (addressLine1) document.getElementById("pp_addressLine1").value = addressLine1;
+    if (city) document.getElementById("pp_city").value = city;
+    if (state) document.getElementById("pp_state").value = state;
+    if (zip) document.getElementById("pp_zip").value = zip;
+
+    document.getElementById("pp_fullAddress").value = place.formatted_address || "";
+    document.getElementById("pp_lat").value = String(lat);
+    document.getElementById("pp_lng").value = String(lng);
+  });
+}
 function collectBusinessHours() {
   try {
     const rows = Array.from(document.querySelectorAll(".bh-row"));
@@ -405,7 +455,9 @@ async function submitPickupPointRequest() {
     state: document.getElementById("pp_state")?.value?.trim() || "NY",
     zip: document.getElementById("pp_zip")?.value?.trim() || "",
     fullAddress: document.getElementById("pp_fullAddress")?.value?.trim() || "",
-    displayArea: document.getElementById("pp_displayArea")?.value?.trim() || "",
+lat: document.getElementById("pp_lat")?.value || null,
+lng: document.getElementById("pp_lng")?.value || null,
+displayArea: document.getElementById("pp_displayArea")?.value?.trim() || "",
     nearStreet: document.getElementById("pp_nearStreet")?.value?.trim() || "",
     maskedAddress: document.getElementById("pp_maskedAddress")?.value?.trim() || "",
     pickupTimeText: document.getElementById("pp_pickupTimeText")?.value?.trim() || "",
@@ -657,6 +709,8 @@ editor.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 }
 async function init() {
+  initPickupAddressAutocomplete();
+
   const btn = document.getElementById("submitPickupPointBtn");
   if (btn) {
     btn.addEventListener("click", submitPickupPointRequest);
