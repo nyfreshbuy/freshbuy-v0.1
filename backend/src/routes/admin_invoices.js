@@ -91,7 +91,7 @@ async function genInvoiceNo(dateInput) {
   // ✅ 按发票 date 统计（更合理）
   const count = await Invoice.countDocuments({ date: { $gte: start, $lte: end } });
   const seq = String(count + 1).padStart(3, "0");
-  return `${ymd}-${seq}`;
+  return `${ymd}${seq}`;
 }
 function round2(n) {
   return Math.round(Number(n || 0) * 100) / 100;
@@ -701,7 +701,12 @@ doc.fontSize(10).text("电话: 929-707-0098", { align: "center" });
     doc.text(cleanText(it.productCode), 76, yy, { width: 90 });
     const baseDesc = cleanText(it.description);
 const vlab = cleanText(it.variantLabel);
-const showDesc = vlab ? `${baseDesc} (${vlab})` : baseDesc;
+
+let showDesc = baseDesc;
+
+if (vlab && !baseDesc.includes(vlab)) {
+  showDesc = `${baseDesc} (${vlab})`;
+}
 
 doc.text(showDesc, 166, yy, { width: 220 });
     doc.text(`$${Number(it.unitPrice || 0).toFixed(2)}`, 386, yy, { width: 80, align: "right" });

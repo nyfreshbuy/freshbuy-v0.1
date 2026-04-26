@@ -207,7 +207,7 @@
   function genInvoiceNoPreview(dateStr) {
     const s = String(dateStr || "").replaceAll("-", "");
     if (!/^\d{8}$/.test(s)) return "";
-    return `${s}-001`;
+    return `${s}001`;
   }
 
   // =========================
@@ -725,6 +725,16 @@
   // =========================
   // Save / Print
   // =========================
+  async function loadNextInvoiceNo() {
+  const date = (invDate?.value || "").trim();
+  if (!date) return;
+
+  const { res, data } = await apiFetch(`/api/admin/invoices/next-no?date=${encodeURIComponent(date)}`);
+
+  if (res.ok && data?.success && data?.nextNo) {
+    if (invNo) invNo.value = data.nextNo;
+  }
+}
   async function saveInvoice() {
     const payload = buildInvoicePayload();
 
@@ -762,6 +772,7 @@
 
       if (btnPrint) btnPrint.disabled = !currentInvoiceId;
       setHint(`✅ 已保存：${invNo?.value || "(no)"}（库存已按 qty*unitCount 扣减）`);
+      await loadNextInvoiceNo();
     } finally {
       if (btnSave) btnSave.disabled = false;
     }
