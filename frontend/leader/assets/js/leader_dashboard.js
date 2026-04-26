@@ -420,6 +420,18 @@ function initEditPickupAddressAutocomplete() {
     document.getElementById("edit_lng").value = String(place.geometry.location.lng());
   });
 }
+function buildMaskedAddress(addressLine1) {
+  const s = String(addressLine1 || "").trim();
+  if (!s) return "";
+
+  const m = s.match(/^(\d+)-?(\d*)\s+(.+)$/i);
+  if (m) {
+    const num = m[2] ? `${m[1]}-**` : `${m[1].slice(0, 2)}**`;
+    return `${m[3]} ${num}`;
+  }
+
+  return "";
+}
 function collectBusinessHours() {
   try {
     const rows = Array.from(document.querySelectorAll(".bh-row"));
@@ -506,7 +518,9 @@ lat: document.getElementById("pp_lat")?.value || null,
 lng: document.getElementById("pp_lng")?.value || null,
 displayArea: document.getElementById("pp_displayArea")?.value?.trim() || "",
     nearStreet: document.getElementById("pp_nearStreet")?.value?.trim() || "",
-    maskedAddress: document.getElementById("pp_maskedAddress")?.value?.trim() || "",
+    maskedAddress:
+  document.getElementById("pp_maskedAddress")?.value?.trim() ||
+  buildMaskedAddress(document.getElementById("pp_addressLine1")?.value),
     pickupTimeText: document.getElementById("pp_pickupTimeText")?.value?.trim() || "",
     businessHours,
     leaderRemark: document.getElementById("pp_leaderRemark")?.value?.trim() || ""
@@ -794,7 +808,8 @@ bindEditBusinessHourUI();   // 👈 加这一行
   zip: document.getElementById("edit_zip").value,
   fullAddress: document.getElementById("edit_fullAddress")?.value || "",
   lat: document.getElementById("edit_lat")?.value || null,
-  lng: document.getElementById("edit_lng")?.value || null
+  lng: document.getElementById("edit_lng")?.value || null,
+  maskedAddress: buildMaskedAddress(document.getElementById("edit_addressLine1")?.value)
 });
   });
   // ✅ 新增结束
