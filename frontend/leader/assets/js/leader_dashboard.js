@@ -373,6 +373,53 @@ function initPickupAddressAutocomplete() {
     document.getElementById("pp_lng").value = String(lng);
   });
 }
+function initEditPickupAddressAutocomplete() {
+  const input = document.getElementById("edit_fullAddress");
+  if (!input || !window.google?.maps?.places) return;
+
+  const autocomplete = new google.maps.places.Autocomplete(input, {
+    componentRestrictions: { country: "us" },
+    types: ["address"],
+    fields: ["address_components", "geometry", "formatted_address"]
+  });
+
+  autocomplete.addListener("place_changed", () => {
+    const place = autocomplete.getPlace();
+
+    if (!place?.geometry?.location) {
+      alert("Google 无法验证这个地址，请从下拉建议里选择地址");
+      return;
+    }
+
+    let streetNumber = "";
+    let route = "";
+    let city = "";
+    let state = "";
+    let zip = "";
+
+    (place.address_components || []).forEach((c) => {
+      const types = c.types || [];
+      if (types.includes("street_number")) streetNumber = c.long_name;
+      if (types.includes("route")) route = c.long_name;
+      if (types.includes("locality")) city = c.long_name;
+      if (!city && types.includes("neighborhood")) city = c.long_name;
+      if (!city && types.includes("sublocality")) city = c.long_name;
+      if (types.includes("administrative_area_level_1")) state = c.short_name;
+      if (types.includes("postal_code")) zip = c.long_name;
+    });
+
+    const addressLine1 = [streetNumber, route].filter(Boolean).join(" ").trim();
+
+    if (addressLine1) document.getElementById("edit_addressLine1").value = addressLine1;
+    if (city) document.getElementById("edit_city").value = city;
+    if (state) document.getElementById("edit_state").value = state;
+    if (zip) document.getElementById("edit_zip").value = zip;
+
+    document.getElementById("edit_fullAddress").value = place.formatted_address || "";
+    document.getElementById("edit_lat").value = String(place.geometry.location.lat());
+    document.getElementById("edit_lng").value = String(place.geometry.location.lng());
+  });
+}
 function collectBusinessHours() {
   try {
     const rows = Array.from(document.querySelectorAll(".bh-row"));
@@ -691,7 +738,10 @@ editor.scrollIntoView({ behavior: "smooth", block: "center" });
   setVal("edit_addressLine1", p.addressLine1);
   setVal("edit_city", p.city);
   setVal("edit_zip", p.zip);
-
+  setVal("edit_state", p.state || "NY");
+setVal("edit_fullAddress", p.fullAddress);
+setVal("edit_lat", p.lat);
+setVal("edit_lng", p.lng);
   // ✅ 回填营业时间
   if (Array.isArray(p.businessHours)) {
     p.businessHours.forEach(h => {
@@ -710,6 +760,7 @@ editor.scrollIntoView({ behavior: "smooth", block: "center" });
 }
 async function init() {
   initPickupAddressAutocomplete();
+  initEditPickupAddressAutocomplete();
 
   const btn = document.getElementById("submitPickupPointBtn");
   if (btn) {
@@ -734,13 +785,17 @@ bindEditBusinessHourUI();   // 👈 加这一行
     const id = document.getElementById("edit_id").value;
 
     await submitAuditEditRequest({
-      requestType: "edit",
-      pickupPointId: id,
-      name: document.getElementById("edit_name").value,
-      addressLine1: document.getElementById("edit_addressLine1").value,
-      city: document.getElementById("edit_city").value,
-      zip: document.getElementById("edit_zip").value
-    });
+  requestType: "edit",
+  pickupPointId: id,
+  name: document.getElementById("edit_name").value,
+  addressLine1: document.getElementById("edit_addressLine1").value,
+  city: document.getElementById("edit_city").value,
+  state: document.getElementById("edit_state")?.value || "NY",
+  zip: document.getElementById("edit_zip").value,
+  fullAddress: document.getElementById("edit_fullAddress")?.value || "",
+  lat: document.getElementById("edit_lat")?.value || null,
+  lng: document.getElementById("edit_lng")?.value || null
+});
   });
   // ✅ 新增结束
 
