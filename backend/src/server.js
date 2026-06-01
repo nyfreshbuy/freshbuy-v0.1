@@ -2,6 +2,7 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
+import { applySecurity, authLimiter, createCorsOptionsDelegate } from "./middlewares/security.js";
 import path from "path";
 import * as url from "url";
 import fs from "fs";
@@ -91,6 +92,17 @@ console.log("🔥 当前运行的 server.js 来自 =====> ", url.fileURLToPath(i
 // 创建 app
 // =======================
 const app = express();
+applySecurity(app);
+app.use(cors(createCorsOptionsDelegate));
+app.options("*", cors(createCorsOptionsDelegate));
+app.use([
+  "/api/auth/login",
+  "/api/auth/register",
+  "/api/auth/admin-login",
+  "/api/admin/auth/login",
+  "/api/driver/login",
+  "/api/auth-otp",
+], authLimiter);
 
 const userStaticDir = path.join(__dirname, "../../frontend/user");
 app.use("/user", express.static(userStaticDir));
@@ -123,8 +135,7 @@ app.use("/api/admin/invoices", adminInvoicesRouter);
  * - 这里只需要确保 /api/pay/stripe 在 express.json() 之前挂载
  */
 app.use("/api/public/pickup-points", publicPickupPointsRouter);
-// cors 放在这里是安全的（不影响 webhook raw）
-app.use(cors());
+// cors/security 已在 app 创建后统一挂载，避免早期路由漏掉。
 
 // ✅ 你真正的 Stripe 支付路由
 app.use("/api/pay/stripe", stripePayRouter);
@@ -132,6 +143,13 @@ app.use("/api/pay/stripe", stripePayRouter);
 // 其它 API 才用 json
 app.use(express.json());
 // ✅ DEBUG：确认新代码已部署（浏览器打开这个地址必须看到 ok:true）
+app.get("/api/public/client-config", (req, res) => {
+  res.json({
+    success: true,
+    googleMapsBrowserKey:
+      process.env.GOOGLE_MAPS_BROWSER_KEY || process.env.GOOGLE_MAPS_PUBLIC_KEY || "",
+  });
+});
 app.get("/api/__debug_server_version", (req, res) => {
   res.json({ ok: true, ts: new Date().toISOString(), file: "backend/src/server.js" });
 });

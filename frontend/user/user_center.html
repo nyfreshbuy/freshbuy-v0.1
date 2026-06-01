@@ -923,9 +923,7 @@
     <script src="./assets/js/orders.js?v=20260112"></script>
 
     <!-- ✅ Google Places：只引一次，callback 触发 user_center.js 里的 window._initPlaces -->
-    <script
-      src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCFgt7ksBZeFbkPJIYTo9bhJ_5U311zOYQ&libraries=places&callback=_initPlaces"
-      defer
-    ></script>
+    <script src="/shared/google_maps_loader.js"></script>
+<script>window.loadFreshbuyGoogleMaps({ libraries: "places", callbackName: "_initPlaces" }).catch(console.error);</script>
   </body>
 </html>

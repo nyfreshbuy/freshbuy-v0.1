@@ -47,7 +47,11 @@ router.post("/login", async (req, res) => {
       return res.status(401).json({ success: false, message: "账号或密码错误" });
     }
 
-    const secret = process.env.JWT_SECRET || process.env.SECRET || "freshbuy_dev_secret";
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+      return res.status(500).json({ success: false, message: "JWT_SECRET 未配置" });
+    }
+
     const token = jwt.sign(
       { id: user._id.toString(), role: user.role, phone: user.phone },
       secret,

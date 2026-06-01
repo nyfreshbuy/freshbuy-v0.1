@@ -2552,10 +2552,7 @@ if (token) {
     <script src="/user/components/footer.js"></script>
 
     <!-- Google Maps Places（✅ callback 方式加载） -->
-    <script
-      src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCFgt7ksBZeFbkPJIYTo9bhJ_5U311zOYQ&libraries=places&callback=__initPlaces"
-      async
-      defer
-    ></script>
+    <script src="/shared/google_maps_loader.js"></script>
+<script>window.loadFreshbuyGoogleMaps({ libraries: "places", callbackName: "__initPlaces" }).catch(console.error);</script>
   </body>
 </html>

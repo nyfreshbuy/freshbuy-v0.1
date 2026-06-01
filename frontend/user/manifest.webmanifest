@@ -1,15 +1,59 @@
 {
+  "id": "/user/index.html",
   "name": "在鲜购拼好货",
   "short_name": "在鲜购",
+  "description": "纽约华人社区生鲜团购平台",
   "start_url": "/user/index.html?source=pwa",
   "scope": "/",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui", "browser"],
   "background_color": "#ffffff",
   "theme_color": "#22c55e",
+  "orientation": "portrait-primary",
+  "categories": ["food", "shopping", "business"],
+  "lang": "zh-CN",
+  "dir": "ltr",
   "icons": [
-    { "src": "/user/assets/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/user/assets/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
-    { "src": "/user/assets/icons/maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
-    { "src": "/user/assets/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
-  ]
+    {
+      "src": "/user/assets/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/user/assets/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/user/assets/icons/maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/user/assets/icons/maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "购物车",
+      "short_name": "购物车",
+      "url": "/user/cart.html",
+      "icons": [{ "src": "/user/assets/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "我的订单",
+      "short_name": "订单",
+      "url": "/user/orders.html",
+      "icons": [{ "src": "/user/assets/icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ],
+  "launch_handler": {
+    "client_mode": "navigate-existing"
+  }
 }

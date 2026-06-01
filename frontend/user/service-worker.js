@@ -14,13 +14,14 @@
 //   - Optional: allow page to trigger SKIP_WAITING via postMessage
 // =========================================================
 
-const CACHE_VERSION = "2026-02-24_v1"; // ✅ 每次改SW都要改版本号
+const CACHE_VERSION = "2026-05-28_app_v2"; // ✅ 每次改SW都要改版本号
 const STATIC_CACHE = `freshbuy-static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `freshbuy-runtime-${CACHE_VERSION}`;
 
 // ✅ 预缓存（尽量只放稳定的静态文件）
 const PRECACHE_URLS = [
   "/user/index.html",
+  "/user/offline.html",
   "/user/manifest.webmanifest",
   "/user/assets/css/main.css",
   "/user/assets/js/index.js",
@@ -127,7 +128,7 @@ self.addEventListener("fetch", (event) => {
         } catch {
           const cached = await caches.match(req);
           if (cached) return cached;
-          const fallback = await caches.match("/user/index.html");
+          const fallback = await caches.match("/user/offline.html") || await caches.match("/user/index.html");
           return fallback || new Response("Offline", { status: 503 });
         }
       })()

@@ -36,7 +36,8 @@
     <script src="/admin/assets/js/admin_guard.js"></script>
     <script src="./assets/js/admin_auth_ui.js"></script>
     <!-- 先同步加载 Google Maps JS（不带 callback） -->
-    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyA6GEAhetFXnP-y9iYaE7oewv-mLKrELN0"></script>
+    <script src="/shared/google_maps_loader.js"></script>
+<script>window.loadFreshbuyGoogleMaps({  }).catch(console.error);</script>
     <!-- 再加载我们的测试脚本 -->
     <script src="assets/js/driver_map_test.js"></script>
   </body>

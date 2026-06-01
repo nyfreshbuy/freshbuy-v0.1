@@ -395,7 +395,8 @@
   <a href="/leader/orders.html">订单</a>
   <a href="/leader/team.html">团队</a>
 </nav>
-<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCFgt7ksBZeFbkPJIYTo9bhJ_5U311zOYQ&libraries=places&callback=__initPlaces"></script>
+<script src="/shared/google_maps_loader.js"></script>
+<script>window.loadFreshbuyGoogleMaps({ libraries: "places", callbackName: "__initPlaces" }).catch(console.error);</script>
 <script src="/leader/assets/js/leader_common.js?v=20260417-3"></script>
 <script src="/leader/assets/js/leader_dashboard.js?v=20260417-3"></script>
 </body>
