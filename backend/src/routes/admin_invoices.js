@@ -7,6 +7,7 @@ import Invoice from "../models/Invoice.js";
 import Product from "../models/product.js";
 import ProductPurchaseBatch from "../models/ProductPurchaseBatch.js";
 import { requireLogin } from "../middlewares/auth.js";
+import { formatInvoiceItemDescription } from "../utils/invoiceItemDescription.js";
 
 const router = express.Router();
 router.use(express.json());
@@ -227,7 +228,11 @@ async function normalizeItemsByDB(items, session) {
       variantLabel,
       unitCount,
       productCode: code,
-      description: String(it.description || p.name || ""),
+      description: formatInvoiceItemDescription({
+        description: it.description || p.name || "",
+        name: p.name || "",
+        variantLabel,
+      }),
       unitPrice,
       unitCost: unitCostSnapshot,
       unitCostSnapshot,
@@ -699,11 +704,8 @@ doc.fontSize(10).text("电话: 929-707-0098", { align: "center" });
     const yy = doc.y;
     doc.text(String(it.qty ?? 0), 36, yy, { width: 40 });
     doc.text(cleanText(it.productCode), 76, yy, { width: 90 });
-    const baseDesc = cleanText(it.description);
-const vlab = cleanText(it.variantLabel);
-const showDesc = vlab ? `${baseDesc} (${vlab})` : baseDesc;
-
-doc.text(showDesc, 166, yy, { width: 220 });
+    const showDesc = cleanText(formatInvoiceItemDescription(it));
+    doc.text(showDesc, 166, yy, { width: 220 });
     doc.text(`$${Number(it.unitPrice || 0).toFixed(2)}`, 386, yy, { width: 80, align: "right" });
     doc.text(`$${Number(it.lineTotal || 0).toFixed(2)}`, 466, yy, { width: 100, align: "right" });
     doc.moveDown(0.9);

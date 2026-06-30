@@ -150,9 +150,9 @@
                     const unitPrice = Number(it.unitPrice || 0);
                     const line = Math.round(qty * unitPrice * 100) / 100;
 
-                    const baseDesc = (it.description || "").toString();
-                    const vlab = (it.variantLabel || "").toString().trim();
-                    const showDesc = vlab ? `${baseDesc} (${vlab})` : baseDesc;
+                    const showDesc =
+                      window.FreshbuyInvoiceFormat?.formatInvoiceItemDescription?.(it) ||
+                      (it.description || "").toString();
 
                     return `
                       <tr>
