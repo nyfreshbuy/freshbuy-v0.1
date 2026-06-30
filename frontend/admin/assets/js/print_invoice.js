@@ -53,6 +53,44 @@
       .replace(/'/g, "&#39;");
   }
 
+  function cleanValue(value) {
+    return String(value || "").replace(/\s+/g, " ").trim();
+  }
+
+  function escapeRegExp(value) {
+    return cleanValue(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  function formatItemDescription(item) {
+    item = item || {};
+    const spec = cleanValue(
+      item.variantLabel ||
+        item.specLabel ||
+        item.spec ||
+        item.unit ||
+        item.packageSize ||
+        item.variantName ||
+        ""
+    );
+    let desc = cleanValue(item.description || item.name || item.productName || "");
+    if (!spec) return desc;
+
+    const escSpec = escapeRegExp(spec);
+    const trailing = new RegExp("\\s*[（(]\\s*" + escSpec + "\\s*[)）]\\s*$", "i");
+    const explicitBefore = new RegExp("(?:-|\\(|（)\\s*" + escSpec + "\\s*(?:\\)|）)?\\s*$", "i");
+
+    while (trailing.test(desc)) {
+      const next = desc.replace(trailing, "").trim();
+      if (!explicitBefore.test(next)) break;
+      desc = next;
+    }
+
+    if (new RegExp("(^|[-\\s(（])" + escSpec + "([\\s)）]|$)", "i").test(desc)) {
+      return desc;
+    }
+    return desc ? desc + " - " + spec : spec;
+  }
+
   const hint = document.getElementById("hint");
   const root = document.getElementById("root");
   const btnPrint = document.getElementById("btnPrint");
@@ -152,7 +190,7 @@
 
                     const showDesc =
                       window.FreshbuyInvoiceFormat?.formatInvoiceItemDescription?.(it) ||
-                      (it.description || "").toString();
+                      formatItemDescription(it);
 
                     return `
                       <tr>
