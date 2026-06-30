@@ -1132,7 +1132,8 @@
         border-radius: 12px;
       }
     </style>
-  </head>
+    <link rel="stylesheet" href="/shared/app-mobile.css?v=20260630-2" />
+</head>
 
   <body>
     <!-- 顶部导航 -->
@@ -2052,11 +2053,12 @@
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
         navigator.serviceWorker
-          .register("/user/service-worker.js?v=20260528_app_v2") // ✅ 改版本号强制更新
+          .register("/user/service-worker.js?v=20260630_mobile_app_v1") // ✅ 改版本号强制更新
           .catch(console.error);
       });
     }
   })();
 </script>
-  </body>
+    <script src="/shared/app-mobile.js?v=20260630-2"></script>
+</body>
 </html>

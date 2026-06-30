@@ -89,6 +89,70 @@
     host.innerHTML = html;
   }
 
+  function setupMobileDrawer() {
+    const sidebar =
+      document.querySelector(".admin-sidebar") ||
+      document.querySelector("#sidebar") ||
+      document.querySelector(".sidebar");
+    if (!sidebar) return;
+
+    let backdrop = document.querySelector(".fb-admin-backdrop");
+    if (!backdrop) {
+      backdrop = document.createElement("div");
+      backdrop.className = "fb-admin-backdrop";
+      document.body.appendChild(backdrop);
+    }
+
+    let toggle =
+      document.querySelector("[data-toggle-sidebar]") ||
+      document.querySelector(".admin-topbar-toggle") ||
+      document.querySelector(".fb-admin-menu-button");
+
+    const topbar =
+      document.querySelector(".admin-topbar") ||
+      document.querySelector("header") ||
+      document.body;
+
+    if (!toggle) {
+      toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "fb-admin-menu-button";
+      toggle.setAttribute("aria-label", "打开后台菜单");
+      toggle.textContent = "☰";
+      topbar.insertBefore(toggle, topbar.firstChild);
+    }
+
+    toggle.classList.add("fb-admin-menu-button");
+    if (toggle.dataset.fbDrawerBound === "true") return;
+    toggle.dataset.fbDrawerBound = "true";
+
+    const close = () => {
+      sidebar.classList.remove("is-open");
+      backdrop.classList.remove("is-open");
+      document.body.classList.remove("fb-admin-drawer-open");
+      toggle.setAttribute("aria-expanded", "false");
+    };
+
+    const open = () => {
+      sidebar.classList.add("is-open");
+      backdrop.classList.add("is-open");
+      document.body.classList.add("fb-admin-drawer-open");
+      toggle.setAttribute("aria-expanded", "true");
+    };
+
+    toggle.addEventListener("click", (e) => {
+      e.preventDefault();
+      sidebar.classList.contains("is-open") ? close() : open();
+    });
+    backdrop.addEventListener("click", close);
+    sidebar.addEventListener("click", (e) => {
+      if (e.target.closest("a")) close();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") close();
+    });
+  }
+
   // ✅ 给没有统一样式的页面，补一份最低限度的 sidebar 样式
   function injectStyleIfNeeded() {
     if (document.getElementById("adminSidebarStyle")) return;
@@ -118,4 +182,5 @@
 
   injectStyleIfNeeded();
   renderSidebar();
+  setupMobileDrawer();
 })();

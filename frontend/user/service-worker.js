@@ -14,7 +14,7 @@
 //   - Optional: allow page to trigger SKIP_WAITING via postMessage
 // =========================================================
 
-const CACHE_VERSION = "2026-05-28_app_v2"; // ✅ 每次改SW都要改版本号
+const CACHE_VERSION = "2026-06-30_mobile_app_v1"; // ✅ 每次改SW都要改版本号
 const STATIC_CACHE = `freshbuy-static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `freshbuy-runtime-${CACHE_VERSION}`;
 
@@ -24,6 +24,8 @@ const PRECACHE_URLS = [
   "/user/offline.html",
   "/user/manifest.webmanifest",
   "/user/assets/css/main.css",
+  "/shared/app-mobile.css",
+  "/shared/app-mobile.js",
   "/user/assets/js/index.js",
   "/user/assets/js/cart.js",
 ];

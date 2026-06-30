@@ -547,7 +547,8 @@
         font-size: 12px;
       }
     </style>
-  </head>
+    <link rel="stylesheet" href="/shared/app-mobile.css?v=20260630-2" />
+</head>
 
   <body>
     <!-- 顶部导航 -->
@@ -925,5 +926,6 @@
     <!-- ✅ Google Places：只引一次，callback 触发 user_center.js 里的 window._initPlaces -->
     <script src="/shared/google_maps_loader.js"></script>
 <script>window.loadFreshbuyGoogleMaps({ libraries: "places", callbackName: "_initPlaces" }).catch(console.error);</script>
-  </body>
+    <script src="/shared/app-mobile.js?v=20260630-2"></script>
+</body>
 </html>

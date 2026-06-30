@@ -7,6 +7,7 @@ import Recharge from "../models/Recharge.js";
 
 const router = express.Router();
 router.use(express.json());
+const IS_PROD = process.env.NODE_ENV === "production";
 
 console.log("✅ wallet_recharge.js loaded");
 const MIN_RECHARGE_AMOUNT = 200;
@@ -47,6 +48,7 @@ router.get("/ping", (req, res) => {
 // 用来确认 Render 是否部署了最新代码
 // ===================================================
 router.get("/__debug", (req, res) => {
+  if (IS_PROD) return res.status(404).json({ success: false, message: "Not found" });
   res.json({
     ok: true,
     file: "backend/src/routes/wallet_recharge.js",

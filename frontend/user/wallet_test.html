@@ -3,6 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <title>用户充值</title>
+  <script>
+    (function () {
+      var local = /^(localhost|127\.0\.0\.1|0\.0\.0\.0)$/i.test(location.hostname) || location.protocol === "file:";
+      if (!local && localStorage.getItem("freshbuy_dev_mode") !== "1") {
+        location.replace("/user/index.html");
+      }
+    })();
+  </script>
   <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-KP7J1LKVFJ"></script>
 <script>
@@ -47,6 +55,7 @@
       font-size: 16px;
     }
   </style>
+  <link rel="stylesheet" href="/shared/app-mobile.css?v=20260630-2" />
 </head>
 <body>
   <div class="card">
@@ -103,5 +112,6 @@
 
     setInterval(loadWallet, 1500);
   </script>
+  <script src="/shared/app-mobile.js?v=20260630-2"></script>
 </body>
 </html>

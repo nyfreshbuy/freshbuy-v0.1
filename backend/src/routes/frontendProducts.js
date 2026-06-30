@@ -7,6 +7,7 @@ import FlashSale from "../models/FlashSale.js"; // ✅ 需要你有这个模型�
 
 const router = express.Router();
 router.use(express.json());
+const IS_PROD = process.env.NODE_ENV === "production";
 
 // ========= 工具：统一前端字段 =========
 function normalizeProduct(p) {
@@ -183,6 +184,7 @@ router.get("/friday-deals", async (req, res) => {
   }
 });
 router.get("/__debug-active", async (req, res) => {
+  if (IS_PROD) return res.status(404).json({ success: false, message: "Not found" });
   try {
     const docs = await Product.find(activeFilter())
       .select("_id name sku isActive status isFamily isFamilyMustHave isBestSeller isNew isNewArrival enabled")

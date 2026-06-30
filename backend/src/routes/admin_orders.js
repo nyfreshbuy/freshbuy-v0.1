@@ -6,6 +6,7 @@ import { requireLogin } from "../middlewares/auth.js";
 const router = express.Router();
 router.use(express.json());
 router.use(requireLogin); // ✅ 让后面所有路由都有 req.user
+const IS_PROD = process.env.NODE_ENV === "production";
 console.log("✅ admin_orders.js loaded ✅  VERSION=2026-01-15");
 function requireAdmin(req, res, next) {
   if (!req.user) return res.status(401).json({ success: false, message: "未登录" });
@@ -110,6 +111,7 @@ function normalizeOrder(o) {
 // 0) 测试路由
 // =============================
 router.get("/test-ping", async (req, res) => {
+  if (IS_PROD) return res.status(404).json({ success: false, message: "Not found" });
   const total = await Order.countDocuments({});
   const sample = await Order.findOne({}).sort({ createdAt: -1 }).lean();
   res.json({

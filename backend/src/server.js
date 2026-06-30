@@ -92,6 +92,13 @@ console.log("🔥 当前运行的 server.js 来自 =====> ", url.fileURLToPath(i
 // 创建 app
 // =======================
 const app = express();
+const IS_PROD = process.env.NODE_ENV === "production";
+const devOnly = (handler) => (req, res, next) => {
+  if (IS_PROD) {
+    return res.status(404).json({ success: false, message: "Not found" });
+  }
+  return handler(req, res, next);
+};
 applySecurity(app);
 app.use(cors(createCorsOptionsDelegate));
 app.options("*", cors(createCorsOptionsDelegate));
@@ -150,20 +157,20 @@ app.get("/api/public/client-config", (req, res) => {
       process.env.GOOGLE_MAPS_BROWSER_KEY || process.env.GOOGLE_MAPS_PUBLIC_KEY || "",
   });
 });
-app.get("/api/__debug_server_version", (req, res) => {
+app.get("/api/__debug_server_version", devOnly((req, res) => {
   res.json({ ok: true, ts: new Date().toISOString(), file: "backend/src/server.js" });
-});
+}));
 
 // ✅ DEBUG：确认 /api/admin/products 请求是否进入 server.js 这层
 app.use("/api/admin/pickups", adminPickupsRouter);
 app.use("/api/admin/products", (req, res, next) => {
-  console.log("🧭 ENTER /api/admin/products:", req.method, req.originalUrl);
+  if (!IS_PROD) console.log("🧭 ENTER /api/admin/products:", req.method, req.originalUrl);
   return next();
 });
 app.use(express.urlencoded({ extended: true }));
 // ✅ DEBUG：确认 /api/admin/products 请求是否真的进入 products router
 app.use("/api/admin/products", (req, res, next) => {
-  console.log("🧭 ENTER /api/admin/products:", req.method, req.originalUrl);
+  if (!IS_PROD) console.log("🧭 ENTER /api/admin/products:", req.method, req.originalUrl);
   return next();
 });
 app.use("/api/zones", zonesPublicListRouter);
@@ -255,14 +262,14 @@ app.use("/api/admin/marketing", adminMarketingRouter);
 console.log("✅ admin_marketing 已挂载到 /api/admin");
 
 // ✅ DEBUG: 确认 adminOrdersRouter 是否真的挂载生效
-app.get("/api/admin/orders/__mounted", (req, res) => {
+app.get("/api/admin/orders/__mounted", devOnly((req, res) => {
   res.json({ ok: true, where: "server.js", mounted: "/api/admin/orders" });
-});
+}));
 
 // ✅ DEBUG: 直接测试 status 路由是否存在（不进 admin_orders.js 也能确认路径）
-app.patch("/api/admin/orders/__ping-status", (req, res) => {
+app.patch("/api/admin/orders/__ping-status", devOnly((req, res) => {
   res.json({ ok: true, hit: "/api/admin/orders/__ping-status" });
-});
+}));
 // 司机管理
 app.use("/api/admin", adminDriversRouter);
 
@@ -342,25 +349,25 @@ app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 // =======================
 // 测试接口
 // =======================
-app.get("/api/whoami-server", (req, res) => {
+app.get("/api/whoami-server", devOnly((req, res) => {
   res.json({
     ok: true,
     file: url.fileURLToPath(import.meta.url),
     cwd: process.cwd(),
     time: new Date().toISOString(),
   });
-});
+}));
 
-app.get("/api/driver/test-ping", (req, res) => {
+app.get("/api/driver/test-ping", devOnly((req, res) => {
   res.json({
     success: true,
     message: "server.js · /api/driver/test-ping OK",
   });
-});
+}));
 
-app.get("/api/debug-settings", (req, res) => {
+app.get("/api/debug-settings", devOnly((req, res) => {
   res.json({ success: true, msg: "来自 server.js 的 debug-settings 测试接口" });
-});
+}));
 
 // =======================
 // 页面路由：用户首页 + 后台首页

@@ -3,6 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <title>团长本地代充值（测试版）</title>
+  <script>
+    (function () {
+      var local = /^(localhost|127\.0\.0\.1|0\.0\.0\.0)$/i.test(location.hostname) || location.protocol === "file:";
+      if (!local && localStorage.getItem("freshbuy_dev_mode") !== "1") {
+        location.replace("/leader/index.html");
+      }
+    })();
+  </script>
   <style>
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial;
@@ -73,6 +81,7 @@
       color: #166534;
     }
   </style>
+  <link rel="stylesheet" href="/shared/app-mobile.css?v=20260630-2" />
 </head>
 <body>
   <div class="card">
@@ -146,5 +155,6 @@
       }
     }
   </script>
+  <script src="/shared/app-mobile.js?v=20260630-2"></script>
 </body>
 </html>

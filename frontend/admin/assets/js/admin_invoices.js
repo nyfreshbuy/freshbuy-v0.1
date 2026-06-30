@@ -587,7 +587,11 @@
       hiddenVariantLabel.value = item.specLabel || "";
       hiddenUnitCount.value = String(Math.max(1, Math.floor(parseNum(item.unitCount, 1))));
 
-      inpDesc.value = item.specLabel ? `${item.name || ""} - ${item.specLabel}` : (item.name || "");
+      inpDesc.value =
+        window.FreshbuyInvoiceFormat?.formatInvoiceItemDescription?.({
+          description: item.name || "",
+          variantLabel: item.specLabel || "",
+        }) || (item.specLabel ? `${item.name || ""} - ${item.specLabel}` : (item.name || ""));
       tr.dataset.manualPrice = "0";
 
       const price = parseNum(item.price, 0);
@@ -678,7 +682,11 @@
         productId: productId || "",
         variantKey: variantKey || "",
         variantLabel: variantLabel || "",
-        description: String(description || "").trim(),
+        description:
+          window.FreshbuyInvoiceFormat?.formatInvoiceItemDescription?.({
+            description,
+            variantLabel,
+          }) || String(description || "").trim(),
         qty,
         unitPrice,
         unitCount,
