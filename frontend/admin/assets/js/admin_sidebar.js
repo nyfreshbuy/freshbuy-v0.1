@@ -63,7 +63,9 @@
 
     if (!host) return; // 页面没侧边栏容器就跳过
 
-    host.classList.add("admin-sidebar");
+    const shell = host.closest(".admin-sidebar, .sidebar") || host;
+    shell.classList.add("admin-sidebar");
+    if (host !== shell) host.classList.add("admin-sidebar-content");
 
     const cur = location.pathname;
 
@@ -98,6 +100,8 @@
 
   function setupMobileDrawer() {
     const sidebar =
+      document.querySelector(".admin-layout > .admin-sidebar") ||
+      document.querySelector("aside.admin-sidebar") ||
       document.querySelector(".admin-sidebar") ||
       document.getElementById("adminSidebar") ||
       document.querySelector("#sidebar") ||
@@ -106,14 +110,18 @@
 
     sidebar.classList.add("admin-sidebar");
 
-    let backdrop = document.querySelector(".sidebar-backdrop");
+    let backdrop = document.querySelector(".sidebar-backdrop, .fb-admin-backdrop");
     if (!backdrop) {
       backdrop = document.createElement("div");
-      backdrop.className = "sidebar-backdrop";
+      backdrop.className = "sidebar-backdrop fb-admin-backdrop";
       document.body.appendChild(backdrop);
     }
 
     let toggle =
+      document.querySelector("#mobileMenuBtn") ||
+      document.querySelector(".mobile-menu-btn") ||
+      document.querySelector(".hamburger") ||
+      document.querySelector(".menu-toggle") ||
       document.querySelector("[data-toggle-sidebar]") ||
       document.querySelector(".admin-topbar-toggle") ||
       document.querySelector(".fb-admin-menu-button");
@@ -152,9 +160,16 @@
       toggle.setAttribute("aria-expanded", "true");
     };
 
+    window.FBAdminSidebarDrawer = {
+      open,
+      close,
+      toggle: () => (sidebar.classList.contains("open") || sidebar.classList.contains("is-open") ? close() : open()),
+    };
+
     toggle.addEventListener("click", (e) => {
       e.preventDefault();
-      sidebar.classList.contains("is-open") ? close() : open();
+      e.stopImmediatePropagation();
+      sidebar.classList.contains("open") || sidebar.classList.contains("is-open") ? close() : open();
     });
 
     backdrop.addEventListener("click", close);
@@ -219,6 +234,53 @@
       .nav-ic{width:22px;text-align:center;opacity:.9}
       .nav-t{font-weight:700;font-size:14px}
       @media (max-width:768px){
+        html,body{width:100%;max-width:100%;overflow-x:hidden!important}
+        body.sidebar-open{overflow:hidden!important}
+        .admin-layout{display:block!important}
+        .admin-layout>.admin-sidebar,
+        aside.admin-sidebar,
+        body>#adminSidebar.admin-sidebar,
+        body>.admin-sidebar{
+          position:fixed!important;
+          top:0!important;left:0!important;
+          width:82vw!important;max-width:320px!important;
+          height:100dvh!important;max-height:100dvh!important;
+          overflow-x:hidden!important;overflow-y:auto!important;
+          -webkit-overflow-scrolling:touch;
+          transform:translateX(-105%)!important;
+          transition:transform .25s ease;
+          z-index:9999!important;
+          padding:12px 10px calc(32px + env(safe-area-inset-bottom,0px))!important;
+          margin:0!important;
+          background:#020617;color:#e5e7eb;
+          box-shadow:18px 0 42px rgba(15,23,42,.28);
+        }
+        .admin-layout>.admin-sidebar.open,
+        .admin-layout>.admin-sidebar.is-open,
+        aside.admin-sidebar.open,
+        aside.admin-sidebar.is-open,
+        body.sidebar-open .admin-layout>.admin-sidebar,
+        body.sidebar-open aside.admin-sidebar,
+        body.sidebar-open #adminSidebar.admin-sidebar,
+        .admin-sidebar.open{
+          transform:translateX(0)!important;
+        }
+        .admin-main,.admin-content,main{
+          margin-left:0!important;
+          width:100%!important;max-width:100%!important;
+          overflow-x:hidden!important;
+        }
+        .sidebar-backdrop,.fb-admin-backdrop{display:none}
+        body.sidebar-open .sidebar-backdrop,
+        body.sidebar-open .fb-admin-backdrop,
+        .sidebar-backdrop.open,
+        .fb-admin-backdrop.open,
+        .fb-admin-backdrop.is-open{
+          display:block!important;
+          position:fixed;inset:0;
+          z-index:9998;
+          background:rgba(0,0,0,.45);
+        }
         .fb-admin-menu-button{
           position:fixed;top:10px;left:10px;z-index:10000;
           display:inline-flex;align-items:center;justify-content:center;

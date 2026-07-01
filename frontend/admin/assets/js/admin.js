@@ -1,12 +1,24 @@
 // 简单的 sidebar 开关（移动端）
-const sidebar = document.querySelector(".admin-sidebar");
-const toggleBtn = document.querySelector("[data-toggle-sidebar]");
+(function () {
+  if (window.FBAdminSidebarDrawer) return;
 
-if (toggleBtn && sidebar) {
+  const sidebar =
+    document.querySelector(".admin-layout > .admin-sidebar") ||
+    document.querySelector("aside.admin-sidebar") ||
+    document.querySelector(".admin-sidebar, .sidebar");
+  const toggleBtn = document.querySelector(
+    "#mobileMenuBtn, .mobile-menu-btn, .hamburger, .menu-toggle, [data-toggle-sidebar], .admin-topbar-toggle"
+  );
+
+  if (!toggleBtn || !sidebar) return;
+
   toggleBtn.addEventListener("click", () => {
-    sidebar.classList.toggle("is-open");
+    const willOpen = !(sidebar.classList.contains("open") || sidebar.classList.contains("is-open"));
+    sidebar.classList.toggle("is-open", willOpen);
+    sidebar.classList.toggle("open", willOpen);
+    document.body.classList.toggle("sidebar-open", willOpen);
   });
-}
+})();
 
 // 根据 body data-page 自动高亮菜单
 (function () {
