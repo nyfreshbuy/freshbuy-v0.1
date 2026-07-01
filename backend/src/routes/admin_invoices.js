@@ -76,24 +76,47 @@ function computeTotals(items = []) {
     grossMargin,
   };
 }
-// ---------- 当天递增 invoiceNo：YYYYMMDD-001 ----------
-async function genInvoiceNo(dateInput) {
+function invoiceDateKey(dateInput) {
+  const raw = String(dateInput || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw.replaceAll("-", "");
+
   const now = dateInput ? new Date(dateInput) : new Date();
   const y = now.getFullYear();
   const m = String(now.getMonth() + 1).padStart(2, "0");
   const d = String(now.getDate()).padStart(2, "0");
-  const ymd = `${y}${m}${d}`;
-
-  const start = new Date(now);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(now);
-  end.setHours(23, 59, 59, 999);
-
-  // ✅ 按发票 date 统计（更合理）
-  const count = await Invoice.countDocuments({ date: { $gte: start, $lte: end } });
-  const seq = String(count + 1).padStart(3, "0");
-  return `${ymd}-${seq}`;
+  return `${y}${m}${d}`;
 }
+
+async function genInvoiceNo(dateInput, session = null) {
+  const ymd = invoiceDateKey(dateInput);
+  const rx = new RegExp(`^${ymd}-(\\d+)$`);
+
+  const docs = await Invoice.find({ invoiceNo: rx })
+    .select("invoiceNo")
+    .lean()
+    .session(session);
+
+  let maxSeq = 0;
+  for (const doc of docs || []) {
+    const m = String(doc.invoiceNo || "").match(rx);
+    const n = m ? Number(m[1]) : 0;
+    if (Number.isFinite(n) && n > maxSeq) maxSeq = n;
+  }
+
+  return `${ymd}-${String(maxSeq + 1).padStart(3, "0")}`;
+}
+
+async function assertInvoiceNoUnique(invoiceNo, excludeId = null, session = null) {
+  const no = String(invoiceNo || "").trim();
+  if (!no) throw new Error("invoiceNo required");
+
+  const filter = { invoiceNo: no };
+  if (excludeId) filter._id = { $ne: excludeId };
+
+  const exists = await Invoice.exists(filter).session(session);
+  if (exists) throw new Error(`Invoice No already exists: ${no}`);
+}
+
 function round2(n) {
   return Math.round(Number(n || 0) * 100) / 100;
 }
@@ -290,7 +313,8 @@ router.post("/", requireLogin, async (req, res) => {
   session.startTransaction();
   try {
     const body = req.body || {};
-    body.invoiceNo = body.invoiceNo || (await genInvoiceNo(body.date));
+    body.invoiceNo = String(body.invoiceNo || "").trim() || (await genInvoiceNo(body.date, session));
+    await assertInvoiceNoUnique(body.invoiceNo, null, session);
 
     // shipTo 默认同步 soldTo
     if (body.shipToSameAsSoldTo !== false) {
@@ -330,7 +354,7 @@ body.grossMargin = calc.grossMargin;
 
   return res.status(400).json({
     success: false,
-    message: e.message || "create failed",
+    message: e?.code === 11000 ? "Invoice No already exists" : e.message || "create failed",
   });
 } finally {
   if (session) {
@@ -359,6 +383,8 @@ await restoreBatchFromInvoice(oldInv, session);
 await revertStock(oldInv, session);
 
     const body = req.body || {};
+    body.invoiceNo = String(body.invoiceNo || "").trim() || oldInv.invoiceNo || (await genInvoiceNo(body.date, session));
+    await assertInvoiceNoUnique(body.invoiceNo, req.params.id, session);
 
     if (body.shipToSameAsSoldTo !== false) {
       body.shipToSameAsSoldTo = true;
@@ -399,7 +425,7 @@ body.grossMargin = calc.grossMargin;
 
   return res.status(400).json({
     success: false,
-    message: e.message || "update failed",
+    message: e?.code === 11000 ? "Invoice No already exists" : e.message || "update failed",
   });
 } finally {
   if (session) {
@@ -599,13 +625,25 @@ router.get("/statements/pdf", async (req, res) => {
   doc.end();
 });
 // =====================
+// GET /api/admin/invoices/next-number?date=YYYY-MM-DD
+// =====================
+router.get("/next-number", async (req, res) => {
+  try {
+    const { date } = req.query;
+    const nextNo = await genInvoiceNo(date);
+    res.json({ success: true, nextNo, invoiceNo: nextNo, nextNumber: nextNo });
+  } catch (e) {
+    res.status(400).json({ success: false, message: e.message || "next-number failed" });
+  }
+});
+
 // GET /api/admin/invoices/next-no?date=YYYY-MM-DD (可选)
 // =====================
 router.get("/next-no", async (req, res) => {
   try {
     const { date } = req.query;
     const nextNo = await genInvoiceNo(date);
-    res.json({ success: true, nextNo });
+    res.json({ success: true, nextNo, invoiceNo: nextNo, nextNumber: nextNo });
   } catch (e) {
     res.status(400).json({ success: false, message: e.message || "next-no failed" });
   }

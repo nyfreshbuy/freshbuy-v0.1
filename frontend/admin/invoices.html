@@ -125,7 +125,13 @@
     .totals .line {
       display: flex;
       justify-content: space-between;
+      gap: 12px;
       margin-bottom: 6px;
+    }
+
+    .totals .line span:last-child {
+      text-align: right;
+      overflow-wrap: anywhere;
     }
 
     .totals .grand { font-size: 18px; font-weight: bold; }
@@ -398,6 +404,35 @@
         max-width: 100%;
         margin-left: 0;
       }
+
+      .totals .line {
+        width: 100%;
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 12px;
+      }
+
+      .totals .line span:first-child {
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+
+      .totals .line span:last-child {
+        flex: 0 1 50%;
+        max-width: 50%;
+        min-width: 0;
+        text-align: right;
+        overflow-wrap: anywhere;
+      }
+
+      #stResult {
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+        white-space: pre-wrap;
+        overflow-x: hidden;
+      }
     }
   </style>
   <link rel="stylesheet" href="/admin/assets/css/admin-mobile.css?v=20260701-2" />
@@ -579,9 +614,9 @@
 
   <!-- ✅ 功能脚本 -->
   <script src="/admin/assets/js/invoice_item_description.js?v=20260630_hotfix2"></script>
-  <script src="/admin/assets/js/admin_invoices.js?v=20260630_hotfix2"></script>
+  <script src="/admin/assets/js/admin_invoices.js?v=20260701-4"></script>
 
   <!-- ✅ sidebar 注入脚本（必须放在 body 末尾） -->
-  <script src="/admin/assets/js/admin_sidebar.js?v=20260701-2"></script>
+  <script src="/admin/assets/js/admin_sidebar.js?v=20260701-3"></script>
 </body>
 </html>

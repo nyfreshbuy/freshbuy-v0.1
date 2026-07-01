@@ -210,6 +210,41 @@
     return `${s}-001`;
   }
 
+  async function fetchNextInvoiceNo(dateStr) {
+    const date = dateStr || invDate?.value || todayLocalInput();
+    const qs = new URLSearchParams();
+    qs.set("date", date);
+
+    const endpoints = [
+      `/api/admin/invoices/next-number?${qs.toString()}`,
+      `/api/admin/invoices/next-no?${qs.toString()}`,
+    ];
+
+    for (const url of endpoints) {
+      const { res, data } = await apiFetch(url);
+      if (!res.ok || !data?.success) continue;
+
+      const nextNo = data.nextNo || data.invoiceNo || data.nextNumber || "";
+      if (nextNo) return String(nextNo);
+    }
+
+    return genInvoiceNoPreview(date);
+  }
+
+  async function refreshNextInvoiceNo(dateStr) {
+    const date = dateStr || invDate?.value || todayLocalInput();
+    if (invNo) invNo.value = genInvoiceNoPreview(date);
+
+    try {
+      const nextNo = await fetchNextInvoiceNo(date);
+      if (invNo && nextNo) invNo.value = nextNo;
+      return nextNo;
+    } catch (e) {
+      console.warn("fetch next invoice no failed", e);
+      return invNo?.value || "";
+    }
+  }
+
   // =========================
   // UI helpers
   // =========================
@@ -742,7 +777,8 @@
     }
 
     if (!payload.invoiceNo) {
-      payload.invoiceNo = genInvoiceNoPreview(payload.date);
+      payload.invoiceNo = await fetchNextInvoiceNo(payload.date);
+      if (invNo) invNo.value = payload.invoiceNo;
     }
 
     if (btnSave) btnSave.disabled = true;
@@ -996,7 +1032,7 @@
   // =========================
   // Init / Reset
   // =========================
-  function resetForm() {
+  async function resetForm() {
     currentInvoiceId = "";
     if (btnPrint) btnPrint.disabled = true;
 
@@ -1032,6 +1068,7 @@
     if (stResult) stResult.textContent = "";
 
     recalcTotals();
+    await refreshNextInvoiceNo(invDate?.value);
   }
 
   // =========================
@@ -1068,7 +1105,18 @@
   if (soldPhone) soldPhone.oninput = syncShipFromSold;
   if (soldAddr) soldAddr.oninput = syncShipFromSold;
 
-  if (btnNew) btnNew.onclick = resetForm;
+  if (btnNew) {
+    btnNew.onclick = async () => {
+      btnNew.disabled = true;
+      setHint("鈴?姝ｅ湪鐢熸垚鏂板彂绁ㄥ彿鈥?");
+      try {
+        await resetForm();
+        setHint(`鉁?宸茬敓鎴愭柊鍙戠エ鍙凤細${invNo?.value || ""}`);
+      } finally {
+        btnNew.disabled = false;
+      }
+    };
+  }
   if (btnAddRow) btnAddRow.onclick = () => addRow({ qty: 1, unitPrice: 0 });
   if (btnSave) btnSave.onclick = saveInvoice;
 
@@ -1096,10 +1144,7 @@
   if (invDate) {
     invDate.onchange = () => {
       const cur = (invNo?.value || "").trim();
-      const auto = genInvoiceNoPreview(invDate.value);
-      if (!cur || /^\d{8}-\d{3}$/.test(cur)) {
-        if (invNo) invNo.value = auto;
-      }
+      if (!cur || /^\d{8}-\d{3,}$/.test(cur)) refreshNextInvoiceNo(invDate.value);
     };
   }
 
@@ -1127,7 +1172,7 @@
   // Boot
   // =========================
   (async function init() {
-    resetForm();
+    await resetForm();
     setHint("⏳ 正在加载用户/商品…");
 
     await loadProducts("");

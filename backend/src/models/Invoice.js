@@ -91,4 +91,12 @@ const invoiceSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+invoiceSchema.index(
+  { invoiceNo: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { invoiceNo: { $type: "string", $gt: "" } },
+  }
+);
+
 export default mongoose.model("Invoice", invoiceSchema);
