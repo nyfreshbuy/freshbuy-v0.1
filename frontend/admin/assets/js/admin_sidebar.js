@@ -63,6 +63,8 @@
 
     if (!host) return; // 页面没侧边栏容器就跳过
 
+    host.classList.add("admin-sidebar");
+
     const cur = location.pathname;
 
     const html = LINKS.map((sec) => {
@@ -86,7 +88,76 @@
       `;
     }).join("");
 
-    host.innerHTML = html;
+    host.innerHTML = `
+      <button type="button" class="fb-admin-sidebar-close" data-close-sidebar aria-label="Close admin menu">
+        <span aria-hidden="true">&times;</span>
+      </button>
+      ${html}
+    `;
+  }
+
+  function setupMobileDrawer() {
+    const sidebar =
+      document.querySelector(".admin-sidebar") ||
+      document.getElementById("adminSidebar") ||
+      document.querySelector("#sidebar") ||
+      document.querySelector(".sidebar");
+    if (!sidebar) return;
+
+    sidebar.classList.add("admin-sidebar");
+
+    let backdrop = document.querySelector(".fb-admin-backdrop");
+    if (!backdrop) {
+      backdrop = document.createElement("div");
+      backdrop.className = "fb-admin-backdrop";
+      document.body.appendChild(backdrop);
+    }
+
+    let toggle =
+      document.querySelector("[data-toggle-sidebar]") ||
+      document.querySelector(".admin-topbar-toggle") ||
+      document.querySelector(".fb-admin-menu-button");
+
+    if (!toggle) {
+      toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "fb-admin-menu-button";
+      toggle.dataset.toggleSidebar = "true";
+      toggle.setAttribute("aria-label", "Open admin menu");
+      toggle.innerHTML = "&#9776;";
+      document.body.insertBefore(toggle, document.body.firstChild);
+    }
+
+    toggle.classList.add("fb-admin-menu-button");
+    if (toggle.dataset.fbDrawerBound === "true") return;
+    toggle.dataset.fbDrawerBound = "true";
+
+    const close = () => {
+      sidebar.classList.remove("is-open");
+      backdrop.classList.remove("is-open");
+      document.body.classList.remove("admin-sidebar-open");
+      toggle.setAttribute("aria-expanded", "false");
+    };
+
+    const open = () => {
+      sidebar.classList.add("is-open");
+      backdrop.classList.add("is-open");
+      document.body.classList.add("admin-sidebar-open");
+      toggle.setAttribute("aria-expanded", "true");
+    };
+
+    toggle.addEventListener("click", (e) => {
+      e.preventDefault();
+      sidebar.classList.contains("is-open") ? close() : open();
+    });
+
+    backdrop.addEventListener("click", close);
+    sidebar.addEventListener("click", (e) => {
+      if (e.target.closest("[data-close-sidebar]") || e.target.closest("a")) close();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") close();
+    });
   }
 
   // ✅ 给没有统一样式的页面，补一份最低限度的 sidebar 样式
@@ -96,6 +167,29 @@
     style.id = "adminSidebarStyle";
     style.textContent = `
       .nav-section{margin:14px 0}
+      .fb-admin-backdrop{
+        position:fixed;inset:0;z-index:9998;
+        display:none;background:rgba(15,23,42,.48);
+      }
+      .fb-admin-backdrop.is-open{display:block}
+      .fb-admin-menu-button{
+        display:none;
+        min-width:44px;min-height:44px;
+        border:0;border-radius:12px;
+        background:#111827;color:#fff;
+        font-size:22px;line-height:1;
+        box-shadow:0 8px 24px rgba(15,23,42,.18);
+      }
+      .fb-admin-sidebar-close{
+        display:none;
+        width:100%;min-height:44px;
+        margin:0 0 10px;
+        border:1px solid rgba(255,255,255,.14);
+        border-radius:12px;
+        background:rgba(255,255,255,.08);
+        color:inherit;
+        font-size:26px;line-height:1;
+      }
       .nav-title{opacity:.7;font-size:12px;margin:10px 12px}
       .nav-list{display:flex;flex-direction:column;gap:6px;padding:0 8px}
       .nav-item{
@@ -112,10 +206,22 @@
       }
       .nav-ic{width:22px;text-align:center;opacity:.9}
       .nav-t{font-weight:700;font-size:14px}
+      @media (max-width:768px){
+        .fb-admin-menu-button{
+          position:fixed;top:10px;left:10px;z-index:10000;
+          display:inline-flex;align-items:center;justify-content:center;
+        }
+        .fb-admin-sidebar-close{
+          position:sticky;top:0;z-index:2;
+          display:flex;align-items:center;justify-content:center;
+          backdrop-filter:blur(12px);
+        }
+      }
     `;
     document.head.appendChild(style);
   }
 
   injectStyleIfNeeded();
   renderSidebar();
+  setupMobileDrawer();
 })();
