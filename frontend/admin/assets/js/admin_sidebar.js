@@ -89,7 +89,7 @@
     }).join("");
 
     host.innerHTML = `
-      <button type="button" class="fb-admin-sidebar-close" data-close-sidebar aria-label="Close admin menu">
+      <button type="button" class="fb-admin-sidebar-close sidebar-close" data-close-sidebar aria-label="Close admin menu">
         <span aria-hidden="true">&times;</span>
       </button>
       ${html}
@@ -106,10 +106,10 @@
 
     sidebar.classList.add("admin-sidebar");
 
-    let backdrop = document.querySelector(".fb-admin-backdrop");
+    let backdrop = document.querySelector(".sidebar-backdrop");
     if (!backdrop) {
       backdrop = document.createElement("div");
-      backdrop.className = "fb-admin-backdrop";
+      backdrop.className = "sidebar-backdrop";
       document.body.appendChild(backdrop);
     }
 
@@ -134,15 +134,21 @@
 
     const close = () => {
       sidebar.classList.remove("is-open");
+      sidebar.classList.remove("open");
       backdrop.classList.remove("is-open");
+      backdrop.classList.remove("open");
       document.body.classList.remove("admin-sidebar-open");
+      document.body.classList.remove("sidebar-open");
       toggle.setAttribute("aria-expanded", "false");
     };
 
     const open = () => {
       sidebar.classList.add("is-open");
+      sidebar.classList.add("open");
       backdrop.classList.add("is-open");
+      backdrop.classList.add("open");
       document.body.classList.add("admin-sidebar-open");
+      document.body.classList.add("sidebar-open");
       toggle.setAttribute("aria-expanded", "true");
     };
 
@@ -172,6 +178,12 @@
         display:none;background:rgba(15,23,42,.48);
       }
       .fb-admin-backdrop.is-open{display:block}
+      .sidebar-backdrop{
+        position:fixed;inset:0;z-index:9998;
+        display:none;background:rgba(15,23,42,.48);
+      }
+      .sidebar-backdrop.open,
+      body.sidebar-open .sidebar-backdrop{display:block}
       .fb-admin-menu-button{
         display:none;
         min-width:44px;min-height:44px;

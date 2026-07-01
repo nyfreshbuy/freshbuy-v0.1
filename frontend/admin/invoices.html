@@ -46,15 +46,6 @@
     .admin-main { margin-left: 240px; }
 
     /* ✅ 手机端：不固定 sidebar，不留左边空 */
-    @media (max-width: 768px) {
-      #adminSidebar{
-        position: static;
-        width: auto;
-        height: auto;
-      }
-      .admin-main { margin-left: 0; }
-    }
-
     .wrap {
       max-width: 1100px;
       margin: 20px auto;
@@ -409,9 +400,10 @@
       }
     }
   </style>
+  <link rel="stylesheet" href="/admin/assets/css/admin-mobile.css?v=20260701-2" />
 </head>
 
-<body>
+<body class="invoice-page">
   <!-- ✅ Sidebar 注入容器（必须在最顶部） -->
   <div id="adminSidebar"></div>
 
@@ -590,6 +582,6 @@
   <script src="/admin/assets/js/admin_invoices.js?v=20260630_hotfix2"></script>
 
   <!-- ✅ sidebar 注入脚本（必须放在 body 末尾） -->
-  <script src="/admin/assets/js/admin_sidebar.js?v=20260701_mobile1"></script>
+  <script src="/admin/assets/js/admin_sidebar.js?v=20260701-2"></script>
 </body>
 </html>
