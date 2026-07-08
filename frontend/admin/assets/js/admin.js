@@ -1,23 +1,32 @@
 // 简单的 sidebar 开关（移动端）
 (function () {
-  if (window.FBAdminSidebarDrawer) return;
+  function initLegacySidebarFallback() {
+    if (window.FBAdminSidebarDrawer) return;
 
-  const sidebar =
-    document.querySelector(".admin-layout > .admin-sidebar") ||
-    document.querySelector("aside.admin-sidebar") ||
-    document.querySelector(".admin-sidebar, .sidebar");
-  const toggleBtn = document.querySelector(
-    "#mobileMenuBtn, .mobile-menu-btn, .hamburger, .menu-toggle, [data-toggle-sidebar], .admin-topbar-toggle"
-  );
+    const sidebar =
+      document.querySelector(".admin-layout > .admin-sidebar") ||
+      document.querySelector("aside.admin-sidebar") ||
+      document.querySelector(".admin-sidebar, .sidebar, #adminSidebar");
+    const toggleBtn = document.querySelector(
+      "#mobileMenuBtn, .mobile-menu-btn, .hamburger, .menu-toggle, [data-sidebar-toggle], [data-toggle-sidebar], .admin-topbar-toggle"
+    );
 
-  if (!toggleBtn || !sidebar) return;
+    if (!toggleBtn || !sidebar) return;
 
-  toggleBtn.addEventListener("click", () => {
-    const willOpen = !(sidebar.classList.contains("open") || sidebar.classList.contains("is-open"));
-    sidebar.classList.toggle("is-open", willOpen);
-    sidebar.classList.toggle("open", willOpen);
-    document.body.classList.toggle("sidebar-open", willOpen);
-  });
+    toggleBtn.addEventListener("click", () => {
+      const willOpen = !(sidebar.classList.contains("open") || sidebar.classList.contains("is-open"));
+      sidebar.classList.toggle("is-open", willOpen);
+      sidebar.classList.toggle("open", willOpen);
+      document.body.classList.toggle("sidebar-open", willOpen);
+      document.body.classList.toggle("admin-sidebar-open", willOpen);
+    });
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initLegacySidebarFallback);
+  } else {
+    setTimeout(initLegacySidebarFallback, 0);
+  }
 })();
 
 // 根据 body data-page 自动高亮菜单

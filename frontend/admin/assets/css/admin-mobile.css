@@ -95,6 +95,7 @@
     color: #fff;
     font-size: 22px;
     line-height: 1;
+    pointer-events: auto;
     box-shadow: 0 8px 24px rgba(15, 23, 42, .18);
   }
 

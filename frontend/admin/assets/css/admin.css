@@ -558,6 +558,78 @@ body {
     align-items: flex-start;
   }
 }
+
+@media (max-width: 768px) {
+  html,
+  body {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  body.sidebar-open {
+    overflow: hidden;
+  }
+
+  .admin-layout {
+    display: block;
+  }
+
+  .admin-sidebar,
+  aside.admin-sidebar,
+  #adminSidebar.admin-sidebar {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 82vw !important;
+    max-width: 320px !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+    transform: translateX(-105%) !important;
+    transition: transform .25s ease;
+    z-index: 9999 !important;
+    padding-bottom: calc(32px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  .admin-sidebar.open,
+  .admin-sidebar.is-open,
+  body.sidebar-open .admin-sidebar,
+  body.sidebar-open #adminSidebar {
+    transform: translateX(0) !important;
+  }
+
+  .sidebar-backdrop,
+  .fb-admin-backdrop {
+    display: none;
+  }
+
+  body.sidebar-open .sidebar-backdrop,
+  body.sidebar-open .fb-admin-backdrop,
+  .sidebar-backdrop.open,
+  .fb-admin-backdrop.open,
+  .fb-admin-backdrop.is-open {
+    display: block !important;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, .45);
+    z-index: 9998;
+  }
+
+  .fb-admin-menu-button,
+  [data-sidebar-toggle],
+  [data-toggle-sidebar],
+  .admin-topbar-toggle,
+  #mobileMenuBtn,
+  .mobile-menu-btn,
+  .hamburger,
+  .menu-toggle {
+    z-index: 10000 !important;
+    pointer-events: auto !important;
+  }
+}
 .invoice-suggest {
   position: absolute;
   top: calc(100% + 6px);

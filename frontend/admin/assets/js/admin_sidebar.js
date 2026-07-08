@@ -122,6 +122,7 @@
       document.querySelector(".mobile-menu-btn") ||
       document.querySelector(".hamburger") ||
       document.querySelector(".menu-toggle") ||
+      document.querySelector("[data-sidebar-toggle]") ||
       document.querySelector("[data-toggle-sidebar]") ||
       document.querySelector(".admin-topbar-toggle") ||
       document.querySelector(".fb-admin-menu-button");
@@ -130,6 +131,7 @@
       toggle = document.createElement("button");
       toggle.type = "button";
       toggle.className = "fb-admin-menu-button";
+      toggle.dataset.sidebarToggle = "true";
       toggle.dataset.toggleSidebar = "true";
       toggle.setAttribute("aria-label", "Open admin menu");
       toggle.innerHTML = "&#9776;";
@@ -170,7 +172,7 @@
       e.preventDefault();
       e.stopImmediatePropagation();
       sidebar.classList.contains("open") || sidebar.classList.contains("is-open") ? close() : open();
-    });
+    }, true);
 
     backdrop.addEventListener("click", close);
     sidebar.addEventListener("click", (e) => {
@@ -205,6 +207,7 @@
         border:0;border-radius:12px;
         background:#111827;color:#fff;
         font-size:22px;line-height:1;
+        pointer-events:auto;
         box-shadow:0 8px 24px rgba(15,23,42,.18);
       }
       .fb-admin-sidebar-close{
@@ -284,6 +287,7 @@
         .fb-admin-menu-button{
           position:fixed;top:10px;left:10px;z-index:10000;
           display:inline-flex;align-items:center;justify-content:center;
+          pointer-events:auto;
         }
         .fb-admin-sidebar-close{
           position:sticky;top:0;z-index:2;
@@ -295,7 +299,19 @@
     document.head.appendChild(style);
   }
 
-  injectStyleIfNeeded();
-  renderSidebar();
-  setupMobileDrawer();
+  function initAdminSidebar() {
+    try {
+      injectStyleIfNeeded();
+      renderSidebar();
+      setupMobileDrawer();
+    } catch (e) {
+      console.error("admin sidebar init failed", e);
+    }
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initAdminSidebar);
+  } else {
+    initAdminSidebar();
+  }
 })();
