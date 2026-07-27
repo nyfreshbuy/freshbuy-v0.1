@@ -1,16 +1,37 @@
-// 简单的 sidebar 开关（移动端）
-const sidebar = document.querySelector(".admin-sidebar");
-const toggleBtn = document.querySelector("[data-toggle-sidebar]");
-
-if (toggleBtn && sidebar) {
-  toggleBtn.addEventListener("click", () => {
-    sidebar.classList.toggle("is-open");
-  });
-}
-
-// 根据 body data-page 自动高亮菜单
+// Shared admin page behavior. The drawer is owned by admin_sidebar.js; this
+// file only keeps a fallback for pages that do not load the shared drawer.
 (function () {
-  const currentPage = document.body.dataset.page; // 比如 "dashboard" / "products"
+  function initLegacySidebarFallback() {
+    if (window.FBAdminSidebarDrawer) return;
+
+    const sidebar =
+      document.querySelector(".admin-layout > .admin-sidebar") ||
+      document.querySelector("aside.admin-sidebar") ||
+      document.querySelector(".admin-sidebar, .sidebar, #adminSidebar");
+    const toggleBtn = document.querySelector(
+      "[data-sidebar-toggle], [data-toggle-sidebar], button.admin-topbar-toggle, .admin-topbar-toggle, #mobileMenuBtn, .mobile-menu-btn, .menu-toggle, .hamburger"
+    );
+
+    if (!toggleBtn || !sidebar) return;
+
+    toggleBtn.addEventListener("click", () => {
+      const willOpen = !(sidebar.classList.contains("open") || sidebar.classList.contains("is-open"));
+      sidebar.classList.toggle("open", willOpen);
+      sidebar.classList.toggle("is-open", willOpen);
+      document.body.classList.toggle("sidebar-open", willOpen);
+      document.body.classList.toggle("admin-sidebar-open", willOpen);
+    });
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initLegacySidebarFallback);
+  } else {
+    setTimeout(initLegacySidebarFallback, 0);
+  }
+})();
+
+(function () {
+  const currentPage = document.body.dataset.page;
   if (!currentPage) return;
 
   const links = document.querySelectorAll("[data-link]");
@@ -21,7 +42,6 @@ if (toggleBtn && sidebar) {
   });
 })();
 
-// 预留：不同页面的初始化（如果以后要加页面专属 JS）
 window.addEventListener("DOMContentLoaded", () => {
   const page = document.body.dataset.page;
 
