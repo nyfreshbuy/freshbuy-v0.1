@@ -11,6 +11,74 @@ html.freshbuy-ios-app body {
   -webkit-touch-callout: none;
 }
 
+/* iPhone app header: stay clear of Dynamic Island and avoid crowded controls. */
+html.freshbuy-ios-app .top-nav {
+  padding-top: var(--freshbuy-safe-top);
+}
+
+html.freshbuy-ios-app .top-nav-inner {
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "logo user"
+    "search search";
+  gap: 8px 10px;
+  padding: 8px 12px 7px;
+}
+
+html.freshbuy-ios-app .logo-area {
+  grid-area: logo;
+  min-width: 0;
+}
+
+html.freshbuy-ios-app .logo-text-main,
+html.freshbuy-ios-app .logo-text-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+html.freshbuy-ios-app .logo-text-main { font-size: 17px; }
+html.freshbuy-ios-app .logo-text-sub { font-size: 10px; }
+
+html.freshbuy-ios-app .search-area {
+  grid-area: search;
+  width: 100%;
+}
+
+html.freshbuy-ios-app .user-area {
+  grid-area: user;
+  gap: 6px;
+}
+
+html.freshbuy-ios-app #btnInstallPWA,
+html.freshbuy-ios-app #mobileTawkBtn,
+html.freshbuy-ios-app .user-profile .user-name {
+  display: none !important;
+}
+
+html.freshbuy-ios-app .link-btn {
+  padding: 6px 10px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+html.freshbuy-ios-app .cart-icon {
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+}
+
+@media (max-width: 390px) {
+  html.freshbuy-ios-app .logo-badge {
+    width: 30px;
+    height: 30px;
+    font-size: 16px;
+  }
+
+  html.freshbuy-ios-app .logo-text-main { font-size: 15px; }
+  html.freshbuy-ios-app .link-btn { padding: 5px 8px; }
+}
+
 html.freshbuy-ios-app input,
 html.freshbuy-ios-app textarea,
 html.freshbuy-ios-app select {
