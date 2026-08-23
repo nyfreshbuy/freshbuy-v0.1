@@ -13,14 +13,14 @@ html.freshbuy-ios-app body {
 
 /* iPhone app header: stay clear of Dynamic Island and avoid crowded controls. */
 html.freshbuy-ios-app .top-nav {
-  padding-top: var(--freshbuy-safe-top);
+  padding-top: 0;
 }
 
 html.freshbuy-ios-app .top-nav-inner {
   grid-template-columns: minmax(0, 1fr) auto;
   grid-template-areas:
-    "logo user"
-    "search search";
+    "logo logo"
+    "search user";
   gap: 8px 10px;
   padding: 8px 12px 7px;
 }
@@ -28,6 +28,9 @@ html.freshbuy-ios-app .top-nav-inner {
 html.freshbuy-ios-app .logo-area {
   grid-area: logo;
   min-width: 0;
+  width: 132px;
+  min-height: 42px;
+  align-self: start;
 }
 
 html.freshbuy-ios-app .logo-text-main,
@@ -37,7 +40,7 @@ html.freshbuy-ios-app .logo-text-sub {
   white-space: nowrap;
 }
 
-html.freshbuy-ios-app .logo-text-main { font-size: 17px; }
+html.freshbuy-ios-app .logo-text-main { font-size: 17px; letter-spacing: 0.02em; }
 html.freshbuy-ios-app .logo-text-sub { font-size: 10px; }
 
 html.freshbuy-ios-app .search-area {
@@ -48,6 +51,10 @@ html.freshbuy-ios-app .search-area {
 html.freshbuy-ios-app .user-area {
   grid-area: user;
   gap: 6px;
+}
+
+html.freshbuy-ios-app .search-box {
+  min-height: 36px;
 }
 
 html.freshbuy-ios-app #btnInstallPWA,

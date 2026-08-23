@@ -9,6 +9,13 @@
 
   document.documentElement.classList.add("freshbuy-ios-app");
 
+  function shortenAppBrand() {
+    var title = document.querySelector(".logo-text-main");
+    var subtitle = document.querySelector(".logo-text-sub");
+    if (title) title.textContent = "在鲜购";
+    if (subtitle) subtitle.textContent = "Freshbuy";
+  }
+
   function currentTab() {
     var path = window.location.pathname.toLowerCase();
     if (path.indexOf("category") >= 0) return "category";
@@ -63,6 +70,7 @@
   }
 
   function start() {
+    shortenAppBrand();
     addBottomNavigation();
     bindKeyboard();
     bindExternalLinks();
