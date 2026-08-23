@@ -23,3 +23,23 @@ GOOGLE_MAPS_SERVER_KEY=your_server_key
 ```
 
 The browser key must be restricted in Google Cloud to your production domains. The server key should stay private and only be used by backend routes.
+
+## iPhone app (Capacitor)
+
+The iOS container uses the production user site at `https://www.nyfreshbuy.com/user/index.html`, so the existing login, catalog, cart, checkout, orders, address, and Stripe APIs remain the single source of truth. Admin pages are not included in the app navigation.
+
+```bash
+pnpm install
+pnpm ios:sync
+pnpm ios:open
+```
+
+In Xcode, select the `App` target and configure your Apple Development Team. The initial settings are:
+
+- App name: `在鲜购`
+- Bundle ID: `com.nyfreshbuy.app`
+- Marketing version: `1.0.0`
+- Build number: `1`
+- Minimum iOS version: `14.0`
+
+Before every archive, deploy the matching web changes first, run `pnpm ios:sync`, test login and Stripe on a real device, then use **Product → Archive** and upload through Organizer to TestFlight.

@@ -1,0 +1,37 @@
+{
+  "appId": "com.nyfreshbuy.app",
+  "appName": "在鲜购",
+  "webDir": "frontend/user",
+  "server": {
+    "url": "https://www.nyfreshbuy.com/user/index.html",
+    "allowNavigation": [
+      "nyfreshbuy.com",
+      "*.nyfreshbuy.com",
+      "js.stripe.com",
+      "*.stripe.com"
+    ]
+  },
+  "ios": {
+    "contentInset": "automatic",
+    "allowsLinkPreview": false,
+    "scrollEnabled": true,
+    "preferredContentMode": "mobile"
+  },
+  "plugins": {
+    "Keyboard": {
+      "resize": "native",
+      "resizeOnFullScreen": true
+    },
+    "SplashScreen": {
+      "launchShowDuration": 1200,
+      "launchAutoHide": true,
+      "backgroundColor": "#ffffff",
+      "showSpinner": false
+    },
+    "StatusBar": {
+      "style": "DARK",
+      "backgroundColor": "#ffffff",
+      "overlaysWebView": false
+    }
+  }
+}

@@ -1,0 +1,63 @@
+html.freshbuy-ios-app {
+  --freshbuy-safe-top: env(safe-area-inset-top, 0px);
+  --freshbuy-safe-bottom: env(safe-area-inset-bottom, 0px);
+  overscroll-behavior-y: none;
+}
+
+html.freshbuy-ios-app body {
+  min-height: 100dvh;
+  padding-bottom: calc(68px + var(--freshbuy-safe-bottom));
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}
+
+html.freshbuy-ios-app input,
+html.freshbuy-ios-app textarea,
+html.freshbuy-ios-app select {
+  font-size: 16px;
+}
+
+.freshbuy-app-nav {
+  position: fixed;
+  z-index: 2147483000;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 2px;
+  padding: 8px 6px calc(7px + env(safe-area-inset-bottom, 0px));
+  background: rgba(255, 255, 255, 0.96);
+  border-top: 1px solid rgba(15, 23, 42, 0.1);
+  box-shadow: 0 -8px 24px rgba(15, 23, 42, 0.08);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+}
+
+.freshbuy-app-nav a {
+  min-width: 0;
+  color: #64748b;
+  text-align: center;
+  text-decoration: none;
+  font: 500 11px/1.15 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+}
+
+.freshbuy-app-nav a::before {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 21px;
+  line-height: 22px;
+}
+
+.freshbuy-app-nav a[data-tab="home"]::before { content: "⌂"; }
+.freshbuy-app-nav a[data-tab="category"]::before { content: "▦"; }
+.freshbuy-app-nav a[data-tab="cart"]::before { content: "🛒"; font-size: 18px; }
+.freshbuy-app-nav a[data-tab="orders"]::before { content: "≡"; }
+.freshbuy-app-nav a[data-tab="account"]::before { content: "○"; }
+.freshbuy-app-nav a[aria-current="page"] { color: #15803d; font-weight: 700; }
+
+html.freshbuy-keyboard-open .freshbuy-app-nav { display: none; }
+
+@media (min-width: 768px) {
+  .freshbuy-app-nav { max-width: 560px; margin: 0 auto; border-radius: 18px 18px 0 0; }
+}
