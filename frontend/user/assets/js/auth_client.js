@@ -852,6 +852,33 @@ location.reload();
     // ✅ Tab 切换
     if (tabLogin) tabLogin.addEventListener("click", () => setMode("login"));
     if (tabRegister) tabRegister.addEventListener("click", () => setMode("register"));
+    // ✅ 忘记密码面板切换
+    const forgotPwdLink = document.getElementById("forgotPwdLink");
+    const backToLoginBtn = document.getElementById("backToLoginBtn");
+    const fpPhone = document.getElementById("fpPhone");
+    const fpMsg = document.getElementById("fpMsg");
+
+    if (forgotPwdLink && !forgotPwdLink.dataset.bound) {
+      forgotPwdLink.dataset.bound = "1";
+      forgotPwdLink.addEventListener("click", (event) => {
+        event.preventDefault();
+        if (fpPhone && !fpPhone.value.trim()) {
+          fpPhone.value = String(document.getElementById("loginPhone")?.value || "").trim();
+        }
+        if (fpMsg) fpMsg.textContent = "";
+        showAuthMsg("");
+        setMode("forgot");
+      });
+    }
+
+    if (backToLoginBtn && !backToLoginBtn.dataset.bound) {
+      backToLoginBtn.dataset.bound = "1";
+      backToLoginBtn.addEventListener("click", () => {
+        if (fpMsg) fpMsg.textContent = "";
+        showAuthMsg("");
+        setMode("login");
+      });
+    }
 
     // ✅ 关闭
     if (closeBtn) closeBtn.addEventListener("click", closeModal);
