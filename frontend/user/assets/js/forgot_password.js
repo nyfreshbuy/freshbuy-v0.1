@@ -15,6 +15,7 @@
     if (!msg) return;
     msg.textContent = text || "";
     msg.className = "msg" + (ok ? " ok" : "");
+    msg.style.color = ok ? "#16a34a" : "#ef4444";
   }
 
   function isValidPhone(phone) {
@@ -83,7 +84,7 @@
     try {
       // ✅ 复用你现有接口：/api/sms/send-code
       // 如果你后端支持 purpose，可一起传；不支持也没关系
-      await postJson("/api/sms/send-code", { phone, purpose: "reset_password" });
+      await postJson("/api/auth/forgot-send", { phone });
 
       setMsg("✅ 验证码已发送，请查收短信", true);
       setSendBtnCooldown(60);
