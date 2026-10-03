@@ -340,12 +340,68 @@
     };
   }
 
+  // ===== Mobile table card enhancement =====
+  function annotateMobileTables(root = document) {
+    const tables = Array.from(root.querySelectorAll ? root.querySelectorAll("table") : []);
+    tables.forEach((table) => {
+      if (table.closest(".print-area, .print-only") || table.dataset.mobileCards === "off") return;
+
+      const headers = Array.from(table.querySelectorAll("thead th"));
+      if (headers.length < 4) return;
+
+      const labels = headers.map((th) => (th.textContent || "").trim());
+      table.classList.add("fb-mobile-card-table");
+
+      Array.from(table.querySelectorAll("tbody tr")).forEach((tr) => {
+        const cells = Array.from(tr.children).filter((el) => el.tagName === "TD");
+        if (!cells.length) return;
+
+        if (cells.length === 1 && Number(cells[0].getAttribute("colspan") || 1) > 1) {
+          tr.classList.add("fb-mobile-card-empty-row");
+          return;
+        }
+
+        tr.classList.add("fb-mobile-card-row");
+        cells.forEach((td, index) => {
+          td.dataset.mobileLabel = labels[index] || "";
+          if (/操作|action/i.test(labels[index] || "")) td.classList.add("fb-mobile-actions-cell");
+          if (/图片|image/i.test(labels[index] || "")) td.classList.add("fb-mobile-image-cell");
+          if (/选择|勾选/i.test(labels[index] || "") || td.querySelector('input[type="checkbox"]')) {
+            td.classList.add("fb-mobile-select-cell");
+          }
+        });
+      });
+    });
+  }
+
+  function setupMobileTableObserver() {
+    annotateMobileTables(document);
+
+    let queued = false;
+    const observer = new MutationObserver((mutations) => {
+      if (queued) return;
+      const relevant = mutations.some((m) =>
+        m.type === "childList" &&
+        (m.target.closest?.("table") || Array.from(m.addedNodes || []).some((n) => n.nodeType === 1 && (n.matches?.("table") || n.querySelector?.("table"))))
+      );
+      if (!relevant) return;
+      queued = true;
+      requestAnimationFrame(() => {
+        queued = false;
+        annotateMobileTables(document);
+      });
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+
   function initAdminSidebar() {
     try {
       console.log("[sidebar] script loaded");
       injectStyleIfNeeded();
       renderSidebar();
       setupSidebarEvents();
+      setupMobileTableObserver();
     } catch (error) {
       console.error("[sidebar] init failed", error);
     }
