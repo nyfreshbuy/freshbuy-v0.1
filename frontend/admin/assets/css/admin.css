@@ -1082,3 +1082,111 @@ body {
     }
   }
 }
+
+
+/* ======= Mobile Admin Page Compatibility v2 ======= */
+@media (max-width: 768px) {
+  .wrap {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+
+  .top,
+  .main-topbar,
+  .top-actions,
+  .controls,
+  .main-actions,
+  .right-tools,
+  .actions-inline,
+  .filters-row,
+  .mc-card-header,
+  .editor-panel-header {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    width: 100% !important;
+  }
+
+  .controls > *,
+  .main-actions > *,
+  .right-tools > *,
+  .actions-inline > *,
+  .filters-row > *,
+  .mc-form-row > label,
+  .mc-form-row > * {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .grid,
+  .content-grid,
+  .mc-layout-2col {
+    grid-template-columns: 1fr !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .table-wrapper,
+  .mc-table-wrapper {
+    width: 100% !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .table,
+  .mc-table {
+    min-width: 720px;
+  }
+
+  .mc-tabs,
+  .editor-tabs {
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: auto !important;
+    justify-content: flex-start !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .mc-tab-btn,
+  .editor-tab-btn {
+    min-height: 44px !important;
+    flex: 0 0 auto;
+  }
+
+  .result-item {
+    align-items: stretch !important;
+    flex-direction: column !important;
+  }
+
+  .result-title,
+  .result-sub {
+    max-width: 100% !important;
+  }
+
+  .result-right {
+    justify-content: stretch !important;
+  }
+
+  .result-right > * {
+    flex: 1 1 auto;
+  }
+
+  .totals {
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+
+  .search-input {
+    width: 100% !important;
+    border-radius: 12px !important;
+  }
+
+  .search-input input {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+}
