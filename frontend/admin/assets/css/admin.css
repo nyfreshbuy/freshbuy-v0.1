@@ -1190,3 +1190,139 @@ body {
     min-width: 0 !important;
   }
 }
+
+
+/* ======= Mobile Card Tables v3 ======= */
+@media (max-width: 768px) {
+  table.fb-mobile-card-table {
+    width: 100% !important;
+    min-width: 0 !important;
+    border-collapse: separate !important;
+    border-spacing: 0 !important;
+  }
+
+  table.fb-mobile-card-table thead {
+    display: none !important;
+  }
+
+  table.fb-mobile-card-table tbody {
+    display: flex !important;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+  }
+
+  table.fb-mobile-card-table tbody tr.fb-mobile-card-row {
+    display: grid !important;
+    grid-template-columns: 1fr;
+    width: 100%;
+    border: 1px solid rgba(148,163,184,.2);
+    border-radius: 14px;
+    overflow: hidden;
+    background: rgba(15,23,42,.92);
+    box-shadow: 0 8px 22px rgba(2,6,23,.18);
+  }
+
+  table.fb-mobile-card-table tbody tr.fb-mobile-card-row > td {
+    position: static !important;
+    display: grid !important;
+    grid-template-columns: minmax(92px, 34%) minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    min-height: 46px;
+    padding: 10px 12px !important;
+    border: 0 !important;
+    border-bottom: 1px solid rgba(148,163,184,.12) !important;
+    background: transparent !important;
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    word-break: break-word;
+  }
+
+  table.fb-mobile-card-table tbody tr.fb-mobile-card-row > td:last-child {
+    border-bottom: 0 !important;
+  }
+
+  table.fb-mobile-card-table tbody tr.fb-mobile-card-row > td::before {
+    content: attr(data-mobile-label);
+    color: #94a3b8;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.3;
+    align-self: start;
+  }
+
+  table.fb-mobile-card-table .fb-mobile-image-cell {
+    align-items: center;
+  }
+
+  table.fb-mobile-card-table .fb-mobile-image-cell img {
+    width: 64px !important;
+    height: 64px !important;
+    max-height: none !important;
+    object-fit: cover;
+    border-radius: 10px !important;
+  }
+
+  table.fb-mobile-card-table .fb-mobile-actions-cell {
+    display: block !important;
+    padding-top: 12px !important;
+    background: rgba(30,41,59,.42) !important;
+  }
+
+  table.fb-mobile-card-table .fb-mobile-actions-cell::before {
+    display: block;
+    margin-bottom: 8px;
+  }
+
+  table.fb-mobile-card-table .fb-mobile-actions-cell .admin-btn,
+  table.fb-mobile-card-table .fb-mobile-actions-cell .link-btn,
+  table.fb-mobile-card-table .fb-mobile-actions-cell button,
+  table.fb-mobile-card-table .fb-mobile-actions-cell a {
+    min-height: 42px !important;
+    margin: 4px 6px 4px 0 !important;
+    padding: 8px 11px !important;
+  }
+
+  table.fb-mobile-card-table .fb-mobile-select-cell {
+    grid-template-columns: minmax(92px, 34%) minmax(0, 1fr) !important;
+  }
+
+  table.fb-mobile-card-table .fb-mobile-select-cell input[type="checkbox"] {
+    width: 22px !important;
+    height: 22px !important;
+  }
+
+  table.fb-mobile-card-table tr.fb-mobile-card-empty-row {
+    display: block !important;
+    width: 100%;
+  }
+
+  table.fb-mobile-card-table tr.fb-mobile-card-empty-row > td {
+    display: block !important;
+    width: 100% !important;
+    padding: 18px 12px !important;
+    text-align: center;
+    border: 1px dashed rgba(148,163,184,.25) !important;
+    border-radius: 12px;
+    color: #94a3b8;
+    background: rgba(15,23,42,.55) !important;
+  }
+
+  table.fb-mobile-card-table tr.fb-mobile-card-empty-row > td::before {
+    display: none !important;
+  }
+
+  .admin-table-wrapper:has(table.fb-mobile-card-table),
+  .table-wrapper:has(table.fb-mobile-card-table),
+  .mc-table-wrapper:has(table.fb-mobile-card-table) {
+    overflow: visible !important;
+    width: 100% !important;
+    margin-right: 0 !important;
+    padding-bottom: 0 !important;
+  }
+}
