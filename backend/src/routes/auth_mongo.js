@@ -72,14 +72,32 @@ function normalizeUSPhone(input) {
   const digits = String(input || "").replace(/\D/g, "");
   if (!digits) return "";
 
-  // 10位 -> 补1
+  // 10位 -> 补1；11位且以1开头 -> 原样
   if (digits.length === 10) return "1" + digits;
-
-  // 11位且以1开头 -> 原样
   if (digits.length === 11 && digits.startsWith("1")) return digits;
 
   // 其他情况：先原样返回（你也可以改成 return "" 直接拒绝）
   return digits;
+}
+
+// 后台旧版新增用户会把美国手机号存成10位，注册用户存成11位。
+// 登录时同时查找两种格式；密码必须唯一匹配，避免同号重复记录误登。
+async function findUserByPhoneAndPassword(phoneInput, password) {
+  const digits = String(phoneInput || "").replace(/\D/g, "");
+  if (!digits) return null;
+
+  const candidates = new Set([normalizeUSPhone(digits)]);
+  if (digits.length === 10) candidates.add(digits);
+  if (digits.length === 11 && digits.startsWith("1")) candidates.add(digits.slice(1));
+
+  const users = await User.find({ phone: { $in: [...candidates] } }).select("+password");
+  const matches = [];
+
+  for (const candidate of users) {
+    if (await candidate.comparePassword(password)) matches.push(candidate);
+  }
+
+  return matches.length === 1 ? matches[0] : null;
 }
 
 // =========================
@@ -295,8 +313,8 @@ router.post("/login", async (req, res) => {
       });
     }
 
-    const user = await User.findOne({ phone }).select("+password");
-    if (!user || !(await user.comparePassword(password))) {
+    const user = await findUserByPhoneAndPassword(phoneRaw, password);
+    if (!user) {
       return res.status(401).json({
         success: false,
         msg: "账号或密码错误",
@@ -355,8 +373,8 @@ router.post("/admin-login", async (req, res) => {
       });
     }
 
-    const user = await User.findOne({ phone }).select("+password");
-    if (!user || !(await user.comparePassword(password))) {
+    const user = await findUserByPhoneAndPassword(phoneRaw, password);
+    if (!user) {
       return res.status(401).json({
         success: false,
         msg: "账号或密码错误",
