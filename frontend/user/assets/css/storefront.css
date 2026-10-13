@@ -228,3 +228,14 @@ body.fb-storefront {
 @media (max-width:767px) {
   .fb-storefront.fb-fixed-header .page { padding-top: 14px !important; }
 }
+
+.fb-current-section {
+  position: fixed; z-index: 49000; padding: 12px 20px; background: #fff;
+  border: 1px solid var(--fb-line); border-top: 0; border-radius: 0 0 12px 12px;
+  box-shadow: 0 4px 12px #20352a0a; color: var(--fb-green-dark);
+  font-size: 18px; font-weight: 750; line-height: 1.4; pointer-events: none;
+}
+.fb-current-section[hidden] { display: none; }
+@media (max-width:767px) {
+  .fb-current-section { padding: 10px 12px; font-size: 16px; }
+}

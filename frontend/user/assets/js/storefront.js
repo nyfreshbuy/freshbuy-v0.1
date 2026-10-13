@@ -101,6 +101,50 @@
     }
   }
   // Search remains handled by the existing controllers. Details lack a controller for this field.
+  if (page === 'index.html') {
+    const sections = [...document.querySelectorAll('.home-section')];
+    const stickyTitle = document.createElement('div');
+    stickyTitle.className = 'fb-current-section';
+    stickyTitle.hidden = true;
+    // A visual copy only: the original section headings remain available to screen readers.
+    stickyTitle.setAttribute('aria-hidden', 'true');
+    document.body.append(stickyTitle);
+    let scheduled = false;
+    function updateSectionTitle() {
+      scheduled = false;
+      const top = Math.max(0, Math.ceil(header.getBoundingClientRect().bottom));
+      const active = sections.find(section => {
+        const rect = section.getBoundingClientRect();
+        const title = section.querySelector('.section-header');
+        return title && rect.width > 0 && title.getBoundingClientRect().top <= top && rect.bottom > top;
+      });
+      if (!active) { stickyTitle.hidden = true; return; }
+      const rect = active.getBoundingClientRect();
+      const title = active.querySelector('.section-title');
+      stickyTitle.textContent = title?.textContent || '';
+      stickyTitle.style.left = Math.max(0,rect.left) + 'px';
+      stickyTitle.style.width = Math.min(rect.width, innerWidth - Math.max(0,rect.left)) + 'px';
+      stickyTitle.style.top = top + 'px';
+      stickyTitle.hidden = false;
+      // Let the next section push the current title away at the section boundary.
+      const height = stickyTitle.getBoundingClientRect().height;
+      stickyTitle.style.transform = 'translateY(' + Math.min(0, rect.bottom - top - height) + 'px)';
+    }
+    function scheduleSectionTitle() {
+      if (scheduled) return;
+      scheduled = true;
+      requestAnimationFrame(updateSectionTitle);
+    }
+    window.addEventListener('scroll', scheduleSectionTitle, {passive:true});
+    document.addEventListener('scroll', scheduleSectionTitle, {passive:true,capture:true});
+    window.addEventListener('resize', scheduleSectionTitle, {passive:true});
+    if (window.ResizeObserver) {
+      const observer = new ResizeObserver(scheduleSectionTitle);
+      observer.observe(header);
+      sections.forEach(section => observer.observe(section));
+    }
+    scheduleSectionTitle();
+  }
   document.querySelectorAll('input.search-input, #globalSearchInput, input.search-small').forEach(input => {
     input.type = 'search'; input.setAttribute('aria-label', input.placeholder || '搜索商品');
     input.setAttribute('enterkeyhint','search');
