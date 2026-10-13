@@ -2,11 +2,14 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="viewport" content="width=device-width,initial-scale=1, viewport-fit=cover" />
   <title>限时爆品特价区</title>
 
   <!-- ✅ 复用你现有样式路径（按你项目实际 CSS 路径调整） -->
   <link rel="stylesheet" href="/user/assets/css/style.css" />
+<link rel="stylesheet" href="/user/assets/css/storefront.css?v=20261013-1" />
+<script src="/user/assets/js/storefront-names.js?v=20261013-1"></script>
+<script defer src="/user/assets/js/storefront.js?v=20261013-1"></script>
 </head>
 <body>
 
@@ -30,8 +33,8 @@
   </main>
 
   <!-- ✅ 顺序很重要：先加载 cart.js，再加载 index.js（它会定义 window.FB） -->
-  <script src="/user/assets/js/cart.js"></script>
-  <script src="/user/assets/js/index.js"></script>
+  <script src="/user/assets/js/cart.js?v=20261013-1"></script>
+  <script src="/user/assets/js/index.js?v=20261013-1"></script>
 
   <!-- ✅ hot 专页逻辑 -->
   <script src="/user/assets/js/hot.js"></script>

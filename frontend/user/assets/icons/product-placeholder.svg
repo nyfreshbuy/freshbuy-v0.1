@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" role="img" aria-label="商品图片待补充">
+ <rect width="400" height="400" rx="24" fill="#f3f7ef"/>
+ <path d="M132 153h136l-12 130H144z" fill="#e2edde" stroke="#6f9275" stroke-width="5" stroke-linejoin="round"/>
+ <path d="M169 160v-25a31 31 0 0 1 62 0v25" fill="none" stroke="#6f9275" stroke-width="5" stroke-linecap="round"/>
+ <path d="M184 223c-6-25 12-44 39-44 0 29-12 48-39 44z" fill="#6f9275"/>
+ <path d="m181 240 28-43" fill="none" stroke="#6f9275" stroke-width="5" stroke-linecap="round"/>
+ <text x="200" y="326" text-anchor="middle" font-family="sans-serif" font-size="18" fill="#64736b">商品图片待补充</text>
+</svg>

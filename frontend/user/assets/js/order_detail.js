@@ -86,7 +86,7 @@ function renderOrderDetailToDOM(order) {
     .map(
       (it) => `
       <tr>
-        <td>${it.name || "--"}</td>
+        <td>${window.FBNames.html(it)}</td>
         <td>${Number(it.qty || 0)}</td>
         <td>${money(it.price)}</td>
         <td>${money(it.lineTotal ?? (Number(it.price || 0) * Number(it.qty || 0)))}</td>

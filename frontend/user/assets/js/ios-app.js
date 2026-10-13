@@ -26,7 +26,7 @@
   }
 
   function addBottomNavigation() {
-    if (document.querySelector(".freshbuy-app-nav")) return;
+    if (document.querySelector(".freshbuy-app-nav, .fb-bottom-nav")) return;
     var nav = document.createElement("nav");
     nav.className = "freshbuy-app-nav";
     nav.setAttribute("aria-label", "App 主导航");

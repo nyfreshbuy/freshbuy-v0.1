@@ -553,7 +553,7 @@ try {
     const imageUrl =
       p.image && String(p.image).trim()
         ? String(p.image).trim()
-        : `https://picsum.photos/seed/${encodeURIComponent(pid || displayName || "fb")}/500/400`;
+        : "/user/assets/icons/product-placeholder.svg";
 
     const tagline = (p.tag || p.category || "").slice(0, 18);
     const limitQty = getLimitQty(p);
@@ -596,6 +596,7 @@ if (allowZeroStock) {
       productId,
       variantKey,
       name: displayName || "商品",
+      nameEn: window.FBNames.names(p).en,
       price: isSingleVariant && originUnit > 0 ? originUnit : basePrice,
       priceNum: isSingleVariant && originUnit > 0 ? originUnit : basePrice,
       image: p.image || imageUrl,
@@ -627,7 +628,7 @@ if (allowZeroStock) {
         </div>
       </div>
 
-      <div class="product-name" data-go-detail>${displayName}</div>
+      <div class="product-name" data-go-detail>${window.FBNames.html(p, displayName)}</div>
       <div class="product-desc">${p.desc || ""}</div>
 
       <div class="product-price-row" style="display:flex;flex-direction:column;gap:2px;">

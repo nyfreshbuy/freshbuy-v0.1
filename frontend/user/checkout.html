@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <title>结算 - 在鲜购拼好货</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-KP7J1LKVFJ"></script>
 <script>
@@ -372,7 +372,10 @@
 }
     </style>
     <link rel="stylesheet" href="/user/assets/css/ios-app.css?v=1" />
-  </head>
+  <link rel="stylesheet" href="/user/assets/css/storefront.css?v=20261013-1" />
+<script src="/user/assets/js/storefront-names.js?v=20261013-1"></script>
+<script defer src="/user/assets/js/storefront.js?v=20261013-1"></script>
+</head>
 
   <body>
     <header>
@@ -676,7 +679,7 @@
   </div>
 </div>
     <!-- ✅ 必须先加载 cart.js：否则结算页不更新配送费/区域团 -->
-    <script src="/assets/js/cart.js?v=20"></script>
+    <script src="/assets/js/cart.js?v=20261013-1"></script>
     <!-- Stripe.js（必须） -->
     <script src="https://js.stripe.com/v3/"></script>
 
@@ -1016,7 +1019,7 @@ if (depVal) depVal.textContent = money(extra.bottleDeposit);
           (item.cover && String(item.cover).trim()) ||
           (Array.isArray(item.images) && item.images[0] ? String(item.images[0]).trim() : "") ||
           "";
-        if (!raw) return "https://picsum.photos/seed/" + encodeURIComponent(item.id || item._id || "x" + index) + "/200/200";
+        if (!raw) return "/user/assets/icons/product-placeholder.svg";
         if (/^https?:\/\//i.test(raw)) return raw;
         if (raw.startsWith("/")) return location.origin + raw;
         return raw;
@@ -1398,7 +1401,7 @@ function togglePickupModeUI(mode) {
 
 
           const imgUrl = pickImageUrl(item, index);
-          const fallback = "https://picsum.photos/seed/" + encodeURIComponent(item.id || item._id || "x" + index) + "/200/200";
+          const fallback = "/user/assets/icons/product-placeholder.svg";
 
           const showTax = item.taxable === true || item.hasTax === true;
 
@@ -1410,7 +1413,7 @@ function togglePickupModeUI(mode) {
                    onerror="this.onerror=null;this.src='${fallback}';" />
             </div>
             <div>
-              <div class="name">${item.name || ""}</div>
+              <div class="name">${window.FBNames.html(item)}</div>
               <div class="sub">
                 单价
 ${
@@ -2550,7 +2553,7 @@ if (token) {
       };
     </script>
 
-    <script src="/user/components/footer.js"></script>
+    <script src="/user/components/footer.js?v=20261013-1"></script>
 
     <!-- Google Maps Places（✅ callback 方式加载） -->
     <script
@@ -2558,6 +2561,6 @@ if (token) {
       async
       defer
     ></script>
-    <script src="/user/assets/js/ios-app.js?v=1"></script>
+    <script src="/user/assets/js/ios-app.js?v=20261013-1"></script>
   </body>
 </html>

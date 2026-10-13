@@ -66,7 +66,7 @@
   return !!(
     target &&
     target.closest &&
-    (target.closest(".filter-row") || target.closest(".category-bar"))
+    (target.closest(".filter-row") || target.closest(".category-bar") || target.closest(".fb-category-sidebar nav") || target.closest(".table-wrap, .table-wrapper, .detail-recommend-viewport"))
   );
 }
   document.addEventListener("touchstart", (e) => {

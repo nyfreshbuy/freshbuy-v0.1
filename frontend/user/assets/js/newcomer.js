@@ -229,7 +229,7 @@ console.log("✅ newcomer.js loaded (renderer-driven + sticky category pills + H
       const lower = kw.toLowerCase();
       list = list.filter(
         (p) =>
-          (p.name || "").toLowerCase().includes(lower) ||
+          window.FBNames.search(p).includes(lower) ||
           (p.__displayName || "").toLowerCase().includes(lower) ||
           (p.desc || "").toLowerCase().includes(lower)
       );

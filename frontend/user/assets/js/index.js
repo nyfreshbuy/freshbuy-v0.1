@@ -1360,7 +1360,7 @@ function createProductCard(p, extraBadgeText) {
   const imageUrl =
     p.image && String(p.image).trim()
       ? String(p.image).trim()
-      : `https://picsum.photos/seed/${encodeURIComponent(pid || displayName || "fb")}/500/400`;
+      : "/user/assets/icons/product-placeholder.svg";
 
   const tagline = (p.tag || p.category || "").slice(0, 18);
   const extraHint = buildTaxDepositHint(p);
@@ -1427,6 +1427,7 @@ if (stockUnits <= 0 && allowZero) {
     productId: productId,
     variantKey: variantKey,
     name: displayName || "商品",
+    nameEn: window.FBNames.names(p).en,
     price: (isSingleVariant && originUnit > 0) ? originUnit : basePrice,
     priceNum: (isSingleVariant && originUnit > 0) ? originUnit : basePrice,
     image: p.image || imageUrl,
@@ -1444,7 +1445,7 @@ if (stockUnits <= 0 && allowZero) {
 
     <div class="product-qty-badge" data-pid="${pid}"></div>
 </div>
-<div class="product-name" data-go-detail>${displayName}</div>
+<div class="product-name" data-go-detail>${window.FBNames.html(p, displayName)}</div>
   <div class="product-desc">${p.desc || ""}</div>
 
   <div class="product-price-row" style="display:flex;flex-direction:column;gap:2px;">
@@ -2639,7 +2640,7 @@ function doSearch(keyword) {
 
   const hit = (p) => {
     const fields = [
-      p?.name,
+      window.FBNames.search(p),
       p?.desc,
       p?.tag,
       p?.type,
@@ -2664,10 +2665,9 @@ function doSearch(keyword) {
   gridAll.innerHTML = "";
 
   if (!matched.length) {
-    gridAll.innerHTML = `<div style="padding:12px;font-size:13px;color:#6b7280;">没有找到「${keyword}」相关商品</div>`;
+    gridAll.innerHTML = `<div style="padding:12px;font-size:13px;color:#6b7280;">没有找到「${window.FBNames.escape(keyword)}」相关商品</div>`;
   } else {
-    const limit = getLimit("Normal");
-    matched.slice(0, limit).forEach((p) => gridAll.appendChild(createProductCard(p, "")));
+    matched.forEach((p) => gridAll.appendChild(createProductCard(p, "")));
   }
 
   try {

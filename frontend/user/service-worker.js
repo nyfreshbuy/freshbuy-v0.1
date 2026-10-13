@@ -14,7 +14,7 @@
 //   - Optional: allow page to trigger SKIP_WAITING via postMessage
 // =========================================================
 
-const CACHE_VERSION = "2026-02-24_v1"; // ✅ 每次改SW都要改版本号
+const CACHE_VERSION = "2026-10-13_ui_v1"; // ✅ 每次改SW都要改版本号
 const STATIC_CACHE = `freshbuy-static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `freshbuy-runtime-${CACHE_VERSION}`;
 

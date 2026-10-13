@@ -225,9 +225,7 @@ console.log("🧪 SPECIAL-PATCH v20260122-FIXSPECIAL");
 
     if (!raw) {
       return (
-        "https://picsum.photos/seed/" +
-        encodeURIComponent(product?.id || product?._id || ("x" + index)) +
-        "/160/160"
+        "/user/assets/icons/product-placeholder.svg"
       );
     }
 
@@ -235,9 +233,7 @@ console.log("🧪 SPECIAL-PATCH v20260122-FIXSPECIAL");
 
     if (/^[a-zA-Z]:\\/.test(raw)) {
       return (
-        "https://picsum.photos/seed/" +
-        encodeURIComponent(product?.id || product?._id || ("x" + index)) +
-        "/160/160"
+        "/user/assets/icons/product-placeholder.svg"
       );
     }
 
@@ -362,6 +358,7 @@ console.log("🧪 SPECIAL-PATCH v20260122-FIXSPECIAL");
             id: product.id,
             baseId: getBaseIdFromAny(product),
             name: product.name,
+            nameEn: product.nameEn || "",
             regularPrice: product.regularPrice,
             price: product.price,
             priceNum: product.priceNum,
@@ -752,9 +749,7 @@ const hitSpecial =
   specialLineTotal + 0.0001 < originalLineTotal; 
        const imgUrl = getProductImageUrl(product, index);
         const fallback =
-          "https://picsum.photos/seed/" +
-          encodeURIComponent(product?.id || product?._id || ("x" + index)) +
-          "/160/160";
+          "/user/assets/icons/product-placeholder.svg";
 
         const isDealTag = isDealProduct(product)
           ? `<span class="cart-tag cart-tag-deal">爆品</span>`
@@ -783,7 +778,7 @@ const hitSpecial =
 
               <div class="cart-item-main" style="flex:1;min-width:0;">
                 <div class="cart-item-title" style="font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-                  ${product.name || "未命名商品"} ${isDealTag}
+                  ${window.FBNames ? window.FBNames.html(product) : product.name || "未命名商品"} ${isDealTag}
                 </div>
                 <div class="cart-item-price" style="color:#16a34a;font-weight:800;margin-top:4px;">
                   $${price}

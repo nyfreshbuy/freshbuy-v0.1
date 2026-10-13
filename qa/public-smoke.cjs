@@ -1,0 +1,27 @@
+const fs=require('node:fs');
+const assert=require('node:assert/strict');
+const {chromium}=require('playwright');
+(async()=>{
+ const b=await chromium.launch();const p=await b.newPage({viewport:{width:390,height:844},serviceWorkers:'block'});
+ const errors=[];p.on('pageerror',e=>errors.push(e.message));
+ await p.goto('http://127.0.0.1:4173/user/index.html');await p.waitForSelector('.product-card');
+ await p.locator('#globalSearchInput').fill('Haitian');await p.locator('#globalSearchInput').press('Enter');
+ assert.ok(await p.locator('#productGridNormal .product-card').count()>0);
+ assert.equal(await p.locator('#productGridNormal .fb-name-en').count(),await p.locator('#productGridNormal .product-card').count());
+ assert.equal(await p.locator('#productGridNormal [data-add-only]:not([disabled])').count(),0);
+ await p.locator('#globalSearchInput').fill('宝发');await p.locator('#globalSearchInput').press('Enter');
+ const c=p.locator('#productGridNormal .product-card').filter({has:p.locator('[data-add-only]:not([disabled])')}).first();
+ const chinese=await c.locator('.fb-name-zh').textContent();await c.locator('[data-add-only]').click();
+ await p.waitForFunction(()=>window.FreshCart.getCount()===1);
+ await p.locator('#cartIcon').click();await p.waitForFunction(()=>document.getElementById('cartDrawer').getBoundingClientRect().right<=innerWidth+1);
+ const rect=await p.locator('#cartDrawer').boundingBox();assert.ok(rect.x>=0&&rect.x+rect.width<=391);
+ assert.match(await p.locator('#cartItemsList').textContent(),new RegExp(chinese));
+ await p.locator('#cartCloseBtn').click();await p.locator('.fb-bottom-nav a[data-tab=cart]').click();await p.waitForSelector('#cartList .cart-item');
+ assert.equal(await p.evaluate(()=>window.Cart.getCount()),1);assert.ok(await p.evaluate(()=>window.Cart.getSubtotal())>0);
+ await p.screenshot({path:'qa/real-cart-390.png'});
+ await p.goto('http://127.0.0.1:4173/user/Normal.html');await p.waitForSelector('.product-card');
+ await p.evaluate(()=>window.scrollTo(0,0));await p.screenshot({path:'qa/real-products-390.png'});
+ await p.setViewportSize({width:1180,height:820});await p.screenshot({path:'qa/real-products-1180.png'});
+ await p.setViewportSize({width:1440,height:1000});await p.screenshot({path:'qa/real-products-1440.png'});
+ assert.deepEqual(errors,[]);await b.close();console.log('PASS: public catalog English search, real-product local cart, drawer geometry and three-device screenshots; no production writes');
+})();

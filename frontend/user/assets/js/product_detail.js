@@ -129,6 +129,7 @@
       legacyProductId: String(p?.id || ""),
 
       name: p?.name || "商品",
+      nameEn: window.FBNames.names(p).en,
 
       price: finalPrice,
       priceNum: finalPrice,
@@ -316,7 +317,7 @@
     const imgEl = document.getElementById("detailImage");
 
     if (crumbEl) crumbEl.textContent = p.name || "商品详情";
-    if (titleEl) titleEl.textContent = p.name || "未命名商品";
+    if (titleEl) titleEl.innerHTML = window.FBNames.html(p);
     if (descEl) descEl.textContent = p.desc || "";
 
     const defaultVariant = p?.__defaultVisibleVariant || getDefaultVisibleVariant(p);
@@ -491,7 +492,7 @@
     const pid = getPid(p);
     const imgUrl =
       pickImageUrl(p) ||
-      `https://picsum.photos/seed/${encodeURIComponent(pid || "fb")}/640/400`;
+      "/user/assets/icons/product-placeholder.svg";
 
     const currPrice =
       typeof p.price === "number"
@@ -508,7 +509,7 @@
         ${isTop ? '<div class="detail-recommend-top-badge">TOP1</div>' : ""}
       </div>
       <div class="detail-recommend-body">
-        <div class="detail-recommend-name">${p.name || ""}</div>
+        <div class="detail-recommend-name">${window.FBNames.html(p)}</div>
         <div class="detail-recommend-desc">${p.desc || ""}</div>
         <div class="detail-recommend-price-row">
           <span class="detail-recommend-price">$${currPrice.toFixed(2)}</span>

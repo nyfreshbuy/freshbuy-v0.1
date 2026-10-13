@@ -16,3 +16,6 @@ build
 # system
 .DS_Store
 Thumbs.db
+# Local storefront QA output
+qa/*.png
+qa/results.json
