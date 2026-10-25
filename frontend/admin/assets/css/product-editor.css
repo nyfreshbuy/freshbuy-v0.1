@@ -1,0 +1,71 @@
+/* Compact product/cost forms. Scoped to this editor; no business behavior changes. */
+#productEditorPanel {
+  max-width: 1180px;
+  padding: 16px;
+}
+#productEditorPanel .editor-panel-header { gap: 10px; flex-wrap: wrap; }
+#productEditorPanel .form-row {
+  align-items: flex-start;
+  gap: 10px 14px;
+  margin-bottom: 10px;
+}
+#productEditorPanel .field-block {
+  flex: 1 1 200px;
+  min-width: 0;
+  max-width: 340px;
+  gap: 4px;
+}
+#productEditorPanel .field-block-wide { flex-basis: 100%; max-width: none; }
+#productEditorPanel .form-row input:not([type="checkbox"]):not([type="radio"]),
+#productEditorPanel .form-row select {
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  width: 100%;
+  height: 36px;
+  min-height: 36px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  line-height: 1.4;
+}
+#productEditorPanel input[type="checkbox"],
+#productEditorPanel input[type="radio"] {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  padding: 0;
+  vertical-align: middle;
+}
+#productEditorPanel .field-help { line-height: 1.45; }
+#productEditorPanel .purchase-summary { padding: 8px 10px; line-height: 1.5; }
+#productEditorPanel input[readonly] { opacity: .8; }
+#productEditorPanel #variantsEditor input { flex: 0 1 auto; }
+@media (max-width: 768px) {
+  #productEditorPanel {
+    padding: 12px;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+  /* A flex-basis of 260px becomes HEIGHT when the mobile row turns into a column. */
+  #productEditorPanel .field-block {
+    flex: 0 0 auto !important;
+    width: 100%;
+    max-width: 100%;
+  }
+  #productEditorPanel .form-row { gap: 10px !important; margin-bottom: 12px; }
+  #productEditorPanel .form-row input:not([type="checkbox"]):not([type="radio"]),
+  #productEditorPanel .form-row select { height: 44px; min-height: 44px; }
+  #productEditorPanel .editor-tabs { display: flex; }
+  #productEditorPanel .editor-tab-btn { flex: 1; white-space: nowrap; }
+}
+@media (max-width: 768px) {
+  #productEditorPanel .editor-panel-header > div:last-child {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center !important;
+    gap: 8px;
+  }
+  #productEditorPanel .editor-tabs { grid-column: 1; grid-row: 1; }
+  #productEditorPanel #btnCloseEditor { grid-column: 2; grid-row: 1; white-space: nowrap; }
+  #productEditorPanel #currentEditingInfo { grid-column: 1 / -1; grid-row: 2; }
+}
